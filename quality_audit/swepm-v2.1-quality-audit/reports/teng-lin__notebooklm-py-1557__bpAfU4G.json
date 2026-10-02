@@ -1,0 +1,79 @@
+{
+  "instance_id": "teng-lin__notebooklm-py-1557",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch is a large (2206-line), coherent refactoring that migrates all 19 files in the SINGLE_LEVEL_ALLOWLIST behind _row_adapters/safe_index, introducing new adapter classes (SavedChatNoteRow, SourceGuideRow, SourceFulltextRow, ResearchStartRow, ImportedSourceRow) and helpers (unwrap_artifact_rows, unwrap_mind_map_generation_leaf, unwrap_last_conversation_id, unwrap_import_rows). The SINGLE_LEVEL_ALLOWLIST is emptied by the test patch. It correctly addresses the stated issue of draining the RPC positional-read debt.",
+  "base_vs_gold_expectation": "The test patch empties SINGLE_LEVEL_ALLOWLIST to frozenset(), so the guardrail test_no_unbaselined_single_level_positional_rpc_indexing will fail on the unmodified base (19 files still have name[int] patterns, now all unbaselined). The new test files (test_artifacts_row_adapter.py, test_sources_row_adapter.py) import symbols that only exist after the gold patch (MIND_MAP_LEAF_ABSENT, unwrap_artifact_rows, etc.), so they fail with ImportError on base. Modified tests (test_chat_row_adapter.py, test_research_row_adapter.py) also import gold-patch-only symbols. The gold patch makes all these tests pass. Accept/reject logic works correctly in principle.",
+  "too_narrow_risks": [
+    "No tests verify that the existing public behavior is preserved end-to-end (e.g., that list_raw, suggest_reports, generate_mind_map, get_conversation_id, save_chat_answer_as_note still produce correct results on real/realistic payloads through the full code path). Tests focus on the adapter layer in isolation.",
+    "No tests for the _notebooks.py changes (safe_index replacements in _extract_summary, _extract_suggested_topics, get_source_ids, list, get, get_summary, get_description, create).",
+    "No tests for _note_service.py changes (safe_index replacements in _extract_note_row_container, _normalize_note_row, _is_note_row_like, create_note).",
+    "No tests for _source/listing.py changes (safe_index in _extract_sources_list).",
+    "No tests for _source/upload.py refactoring (unpack idioms replacing indexing in multiple functions).",
+    "No tests for _types/notebooks.py changes (Notebook.from_api_response safe_index replacements).",
+    "No tests for _source/add.py (path_segments unpacking, v_param next(iter()) change)."
+  ],
+  "too_broad_risks": [
+    "test_module_size_ratchet.py enforces exact line counts (_source/upload.py: 1242, _artifact/downloads.py: 1043, _research.py: 937) that are specific to the gold implementation. A valid alternative that achieves the same behavioral outcome but with different code structure (e.g., fewer comments, different adapter design) would fail these precise ceiling checks.",
+    "The guardrail test_no_stale_single_level_allowlist_entries will fail if a candidate solution only partially drains the allowlist (even if it drains most entries). The test patch forces the allowlist to be empty, making partial progress rejected even if the approach is valid and progressing.",
+    "The guardrail tests are pre-existing infrastructure tests of this repo, not tests written specifically for this issue. They enforce broad architectural invariants that may reject reasonable alternative implementations."
+  ],
+  "implementation_coupling": [
+    "test_artifacts_row_adapter.py imports MIND_MAP_LEAF_ABSENT, unwrap_artifact_rows, unwrap_mind_map_generation_leaf from notebooklm._row_adapters.artifacts — names that only exist in the gold patch. An alternative implementation using different function/class names or a different module location would fail.",
+    "test_chat_row_adapter.py imports SavedChatNoteRow and unwrap_last_conversation_id from notebooklm._row_adapters.chat — gold-patch-specific names.",
+    "test_research_row_adapter.py imports ImportedSourceRow, ResearchStartRow, unwrap_import_rows from notebooklm._row_adapters.research — gold-patch-specific names.",
+    "test_sources_row_adapter.py imports SourceFulltextRow, SourceGuideRow from notebooklm._row_adapters.sources — gold-patch-specific names.",
+    "test_chat_row_adapter.py tests SavedChatNoteRow._OUTER_NOTE_POS, _ID_POS, _SERVER_TITLE_POS class constants — position-contract tests pinned to the gold implementation's internal structure.",
+    "test_research_row_adapter.py tests ResearchStartRow._TASK_ID_POS, _REPORT_ID_POS and ImportedSourceRow._ID_ENVELOPE_POS, _ID_POS, _TITLE_POS, _MIN_LEN — pinned to gold implementation's internal constants.",
+    "Module size ratchet ceilings (1242, 1043, 937) are exact line counts measured from the gold patch output."
+  ],
+  "environment_risks": [
+    "The eval.sh uses 'uv run pytest' which requires uv and project dependencies to be pre-installed in the Docker image. If the Docker image is missing or deps are stale, tests fail regardless of solution correctness.",
+    "3600-second verifier timeout is generous for the test scope (9 test files), so timeout risk is low."
+  ],
+  "mismatches": [
+    "The instruction says 'SINGLE_LEVEL_ALLOWLIST in tests/_guardrails/test_no_raw_positional_rpc_indexing.py can be empty' — but the gold patch (solve.sh) does NOT modify that file. The test patch (applied by eval.sh) empties it. This is an intentional split: the gold patch changes source code, the test patch changes tests. However, this means a candidate solver must realize they must modify source code to satisfy tests they don't write — the test patch silently changes the guardrail from 19-entry baseline to empty, which is the core acceptance criterion.",
+    "The instruction demands 'Add or update tests to pin parity for the new row-adapter/safe-index seams' but those tests are already provided by the test patch, not written by the candidate. The candidate's own tests are not evaluated; only the pre-supplied test patch tests are run."
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 46-106: SINGLE_LEVEL_ALLOWLIST changed from 19-entry frozenset to frozenset() (empty)"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 140-319: New file test_artifacts_row_adapter.py imports MIND_MAP_LEAF_ABSENT, unwrap_artifact_rows, unwrap_mind_map_generation_leaf which only exist in gold patch"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 319-434: test_chat_row_adapter.py additions import SavedChatNoteRow, unwrap_last_conversation_id — gold-only symbols"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 465-590: test_research_row_adapter.py additions import ImportedSourceRow, ResearchStartRow, unwrap_import_rows — gold-only symbols"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 716-1058: New file test_sources_row_adapter.py imports SourceFulltextRow, SourceGuideRow — gold-only symbols"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 1-41: test_module_size_ratchet.py adjusts exact line counts (_source/upload.py: 1236→1242, _artifact/downloads.py: 1041→1043, _research.py: 936→937) to match gold patch output"
+    },
+    {
+      "file": "/testbed/tests/_guardrails/test_no_raw_positional_rpc_indexing.py",
+      "detail": "Base has SINGLE_LEVEL_ALLOWLIST with 19 entries; test patch empties it"
+    },
+    {
+      "file": "/testbed/src/notebooklm/_row_adapters/artifacts.py",
+      "detail": "Base does not export MIND_MAP_LEAF_ABSENT, unwrap_artifact_rows, or unwrap_mind_map_generation_leaf"
+    },
+    {
+      "file": "/audit_tasks/teng-lin__notebooklm-py-1557/solution/solve.sh",
+      "detail": "2206-line gold patch modifying ~25 source files across artifacts, chat, labels, mind_maps, notes, notebooks, research, sources, sharing, and types modules"
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The instance has a valid issue and a correct gold patch, but the tests are heavily coupled to the gold implementation. Six new adapter classes and four new helper functions are imported by name in the test patch — any alternative solution that achieves the same behavioral outcome (emptying the guardrail allowlist) but uses different class/function names, different module locations, or different internal structure would fail at import time. The module size ratchet tests pin exact line counts to the gold patch output. The core guardrail test (emptied SINGLE_LEVEL_ALLOWLIST) is a good behavioral test, but it's overwhelmed by implementation-coupled unit tests. Many changed source files (notebooks, note_service, source/listing, source/upload, source/add, types/notebooks) have no corresponding test coverage at all. Recommend revising tests to decouple from gold-specific adapter names and relax line-count constraints."
+}

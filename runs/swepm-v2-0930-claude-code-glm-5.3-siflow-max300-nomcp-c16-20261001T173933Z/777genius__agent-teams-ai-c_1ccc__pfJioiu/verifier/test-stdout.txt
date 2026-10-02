@@ -1,0 +1,211 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch test/main/services/team/ChangeExtractorService.test.ts...
+error: test/main/services/team/ChangeExtractorService.test.ts: already exists in working directory
+Checking patch test/main/services/team/TaskBoundaryParser.test.ts...
+error: while searching for:
+    expect(result.boundaries).toHaveLength(1);
+    expect(result.boundaries[0]?.mechanism).toBe('mcp');
+  });
+});
+
+error: patch failed: test/main/services/team/TaskBoundaryParser.test.ts:110
+error: test/main/services/team/TaskBoundaryParser.test.ts: patch does not apply
+Checking patch test/main/services/team/TeamMcpConfigBuilder.test.ts...
+error: while searching for:
+import { afterEach, describe, expect, it } from 'vitest';
+import * as fs from 'fs';
+
+import { TeamMcpConfigBuilder } from '@main/services/team/TeamMcpConfigBuilder';
+
+describe('TeamMcpConfigBuilder', () => {
+  const createdPaths: string[] = [];
+
+  afterEach(() => {
+    for (const filePath of createdPaths.splice(0)) {
+
+error: patch failed: test/main/services/team/TeamMcpConfigBuilder.test.ts:1
+error: test/main/services/team/TeamMcpConfigBuilder.test.ts: patch does not apply
+Checking patch test/renderer/store/changeReviewSlice.test.ts...
+error: test/renderer/store/changeReviewSlice.test.ts: already exists in working directory
+Checking patch test/renderer/store/extensionsSlice.test.ts...
+error: while searching for:
+  marketplaceId: 'test@marketplace',
+  qualifiedName: 'test@marketplace',
+  name: 'Test Plugin',
+  description: 'A test plugin',
+  category: 'testing',
+  hasLspServers: false,
+
+error: patch failed: test/renderer/store/extensionsSlice.test.ts:36
+error: test/renderer/store/extensionsSlice.test.ts: patch does not apply
+Checking patch test/renderer/utils/taskChangeRequest.test.ts...
+Checking patch test/shared/utils/extensionNormalizers.test.ts...
+error: while searching for:
+    marketplaceId: 'test@marketplace',
+    qualifiedName: 'test@marketplace',
+    name: 'test',
+    description: 'test',
+    category: 'development',
+    hasLspServers: false,
+
+error: patch failed: test/shared/utils/extensionNormalizers.test.ts:39
+error: test/shared/utils/extensionNormalizers.test.ts: patch does not apply
+The next patch would create the file test/main/services/team/ChangeExtractorService.test.ts,
+which already exists!  Assuming -R.
+patching file test/main/services/team/ChangeExtractorService.test.ts
+Hunk #1 FAILED at 1.
+Not deleting file test/main/services/team/ChangeExtractorService.test.ts as content differs from patch
+1 out of 1 hunk FAILED -- saving rejects to file test/main/services/team/ChangeExtractorService.test.ts.rej
+patching file test/main/services/team/TaskBoundaryParser.test.ts
+Hunk #1 succeeded at 239 with fuzz 2 (offset 129 lines).
+patching file test/main/services/team/TeamMcpConfigBuilder.test.ts
+Hunk #1 FAILED at 1.
+Hunk #2 succeeded at 31 with fuzz 2 (offset 17 lines).
+Hunk #3 succeeded at 149 with fuzz 2 (offset 104 lines).
+1 out of 3 hunks FAILED -- saving rejects to file test/main/services/team/TeamMcpConfigBuilder.test.ts.rej
+The next patch would create the file test/renderer/store/changeReviewSlice.test.ts,
+which already exists!  Assuming -R.
+patching file test/renderer/store/changeReviewSlice.test.ts
+Hunk #1 FAILED at 1.
+Not deleting file test/renderer/store/changeReviewSlice.test.ts as content differs from patch
+1 out of 1 hunk FAILED -- saving rejects to file test/renderer/store/changeReviewSlice.test.ts.rej
+patching file test/renderer/store/extensionsSlice.test.ts
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file test/renderer/utils/taskChangeRequest.test.ts
+patching file test/shared/utils/extensionNormalizers.test.ts
+Reversed (or previously applied) patch detected!  Assuming -R.
+
+ RUN  v3.2.4 /testbed
+
+ ✓ test/shared/utils/extensionNormalizers.test.ts (22 tests) 9ms
+ ✓ test/main/services/team/TaskBoundaryParser.test.ts (6 tests) 62ms
+ ❯ test/main/services/team/TeamMcpConfigBuilder.test.ts (10 tests | 10 failed) 70ms
+   × TeamMcpConfigBuilder > prefers the source MCP entry when workspace source is available 53ms
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > preserves user mcpServers from ~/.claude.json 4ms
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > agent-teams takes precedence over a same-named user server 2ms
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > generates config when ~/.claude.json is missing 2ms
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > generates config when ~/.claude.json is malformed 2ms
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > ignores non-object mcpServers in user config 2ms
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > merges top-level user MCP with generated agent-teams config 1ms
+     → createdDirs is not defined
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > does not inline project MCP config to preserve native Claude precedence 1ms
+     → createdDirs is not defined
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > generated agent-teams server overrides same-named user MCP entry 1ms
+     → createdDirs is not defined
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > ignores malformed user MCP file 1ms
+     → createdDirs is not defined
+     → createdDirs is not defined
+ ✓ test/main/services/team/ChangeExtractorService.test.ts (3 tests) 20ms
+ ✓ test/renderer/store/changeReviewSlice.test.ts (8 tests) 19ms
+ ✓ test/renderer/store/extensionsSlice.test.ts (15 tests) 99ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/renderer/utils/taskChangeRequest.test.ts [ test/renderer/utils/taskChangeRequest.test.ts ]
+Error: Failed to resolve import "@renderer/utils/taskChangeRequest" from "test/renderer/utils/taskChangeRequest.test.ts". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /testbed/test/renderer/utils/taskChangeRequest.test.ts:7:7
+  4  |    buildTaskChangeRequestOptions,
+  5  |    deriveTaskSince
+  6  |  } from "@renderer/utils/taskChangeRequest";
+     |          ^
+  7  |  describe("taskChangeRequest", () => {
+  8  |    it("derives since from the earliest known task timestamp with grace window", () => {
+ ❯ TransformPluginContext._formatError node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41
+ ❯ TransformPluginContext.error node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16
+ ❯ normalizeUrl node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23
+ ❯ node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+ ❯ TransformPluginContext.transform node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7
+ ❯ PluginContainer.transform node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18
+ ❯ loadAndTransform node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/15]⎯
+
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 10 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > prefers the source MCP entry when workspace source is available
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > preserves user mcpServers from ~/.claude.json
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > agent-teams takes precedence over a same-named user server
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > generates config when ~/.claude.json is missing
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > generates config when ~/.claude.json is malformed
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > ignores non-object mcpServers in user config
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > merges top-level user MCP with generated agent-teams config
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > does not inline project MCP config to preserve native Claude precedence
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > generated agent-teams server overrides same-named user MCP entry
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > ignores malformed user MCP file
+ReferenceError: createdDirs is not defined
+ ❯ test/main/services/team/TeamMcpConfigBuilder.test.ts:34:39
+     32|       fs.rmSync(fakeHome, { recursive: true, force: true });
+     33|     }
+     34|     for (const dirPath of createdDirs.splice(0)) {
+       |                                       ^
+     35|       try {
+     36|         fs.rmSync(dirPath, { recursive: true, force: true });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/15]⎯
+
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > merges top-level user MCP with generated agent-teams config
+ReferenceError: createdDirs is not defined
+ ❯ test/main/services/team/TeamMcpConfigBuilder.test.ts:156:5
+    154|     const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-ho…
+    155|     const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp…
+    156|     createdDirs.push(homeDir, projectDir);
+       |     ^
+    157|     mockHomeDir = homeDir;
+    158| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/15]⎯
+
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > does not inline project MCP config to preserve native Claude precedence
+ReferenceError: createdDirs is not defined
+ ❯ test/main/services/team/TeamMcpConfigBuilder.test.ts:213:5
+    211|     const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-ho…
+    212|     const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp…
+    213|     createdDirs.push(homeDir, projectDir);
+       |     ^
+    214|     mockHomeDir = homeDir;
+    215| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/15]⎯
+
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > generated agent-teams server overrides same-named user MCP entry
+ReferenceError: createdDirs is not defined
+ ❯ test/main/services/team/TeamMcpConfigBuilder.test.ts:244:5
+    242|   it('generated agent-teams server overrides same-named user MCP entry…
+    243|     const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-ho…
+    244|     createdDirs.push(homeDir);
+       |     ^
+    245|     mockHomeDir = homeDir;
+    246| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/15]⎯
+
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > ignores malformed user MCP file
+ReferenceError: createdDirs is not defined
+ ❯ test/main/services/team/TeamMcpConfigBuilder.test.ts:283:5
+    281|     const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-ho…
+    282|     const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp…
+    283|     createdDirs.push(homeDir, projectDir);
+       |     ^
+    284|     mockHomeDir = homeDir;
+    285| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/15]⎯
+
+
+ Test Files  2 failed | 5 passed (7)
+      Tests  10 failed | 54 passed (64)
+   Start at  19:38:14
+   Duration  12.20s (transform 1.31s, setup 144ms, collect 2.86s, tests 279ms, environment 5.30s, prepare 5.14s)
+
+OMNIGRIL_EXIT_CODE=1

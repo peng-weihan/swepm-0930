@@ -1,0 +1,5211 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/.changeset/add-file-processor-stream.md b/.changeset/add-file-processor-stream.md
+deleted file mode 100644
+--- a/.changeset/add-file-processor-stream.md
++++ /dev/null
+@@ -1,9 +0,0 @@
+----
+-"@kubb/core": minor
+----
+-
+-Add `FileProcessor.stream()`, an async generator that yields one `ParsedFile` at a time. `run()` now delegates to `stream()` internally, removing the `mode: 'sequential' | 'parallel'` option and the `p-limit` dependency.
+-
+-`safeBuild()` now flushes files after each plugin rather than all at once at the end, so parsed strings from plugin N are eligible for GC before plugin N+1 begins.
+-
+-Removed: `p-limit` dependency, `PARALLEL_CONCURRENCY_LIMIT` constant, `mode` option from `FileProcessor.run()`.
+diff --git a/.changeset/add-resolver-and-transformer-helpers.md b/.changeset/add-resolver-and-transformer-helpers.md
+--- a/.changeset/add-resolver-and-transformer-helpers.md
++++ b/.changeset/add-resolver-and-transformer-helpers.md
+@@ -3,4 +3,4 @@
+ "@kubb/core": minor
+ ---
+ 
+-Add `mergeResolvers(...resolvers)` to `@kubb/core` (last wins) and `composeTransformers(...visitors)` to `@kubb/ast` for combining multiple `Visitor` objects into a single sequential pipeline. `Resolver.name` is now required.
++Add `mergeResolvers(...resolvers)` to `@kubb/core` (last wins) and `composeTransformers(...visitors)` to `@kubb/ast` for combining multiple `Visitor` objects into a single sequential pipeline.
+diff --git a/.changeset/core-simplify-generate-dispatch.md b/.changeset/core-simplify-generate-dispatch.md
+deleted file mode 100644
+--- a/.changeset/core-simplify-generate-dispatch.md
++++ /dev/null
+@@ -1,7 +0,0 @@
+----
+-'@kubb/core': patch
+----
+-
+-Simplify the generate phase: schema and operation nodes now run through each plugin's generators in a single ordered pass instead of parallel batches.
+-
+-The generators run synchronously, so the old `Promise.all` batching never overlapped any work. It only marked where queued writes flushed. The pass now walks nodes in order and flushes every `GENERATE_FLUSH_EVERY` nodes (the renamed `SCHEMA_PARALLEL`), keeping the generation/write overlap that speeds up large specs on disk while dropping the `forBatches` helper.
+diff --git a/.changeset/ctx-param-in-define-resolver.md b/.changeset/ctx-param-in-define-resolver.md
+deleted file mode 100644
+--- a/.changeset/ctx-param-in-define-resolver.md
++++ /dev/null
+@@ -1,7 +0,0 @@
+----
+-"@kubb/core": patch
+----
+-
+-Replace `this` with explicit `ctx` parameter in `defineResolver` builders. `ResolverBuilder<T>` now receives the assembled resolver as `ctx`; `defaultResolveFile` takes it as a third parameter instead of a `this` receiver.
+-
+-Migration: replace `this.xxx(...)` calls inside `defineResolver` builders with `ctx.xxx(...)`.
+diff --git a/.changeset/improve-kubb-driver.md b/.changeset/improve-kubb-driver.md
+--- a/.changeset/improve-kubb-driver.md
++++ b/.changeset/improve-kubb-driver.md
+@@ -35,5 +35,4 @@ hooks.on('kubb:files:processing:update', ({ files }) => {
+ - `mergeFile` avoids array allocations when one side's `sources`/`imports`/`exports` is empty, returning the non-empty reference directly.
+ - `createFile` (SHA-256 + import/export combining) is skipped for new files that don't require merging with an existing cache entry.
+ - `kubb:generate:schema` and `kubb:generate:operation` are gated on `listenerCount`, so builds with no listeners on these channels drop the per-node emit overhead entirely.
+-- `FileProcessor` is a long-lived class field on `KubbDriver` rather than a per-`run()` scoped resource.
+-- `dispose()` methods added to `FileProcessor`, `Kubb`, and `Renderer` implementations, with `[Symbol.dispose]()` delegating to them consistently across the codebase.
++- `dispose()` methods added to `Kubb` and `Renderer` implementations, with `[Symbol.dispose]()` delegating to them consistently across the codebase.
+diff --git a/.changeset/kit-new-package.md b/.changeset/kit-new-package.md
+--- a/.changeset/kit-new-package.md
++++ b/.changeset/kit-new-package.md
+@@ -3,7 +3,7 @@
+ 'kubb': minor
+ ---
+ 
+-Add `@kubb/kit`, the authoring toolkit for plugins, generators, adapters, resolvers, and renderers, re-exporting `definePlugin`, `defineGenerator`, `defineResolver`, `defineParser`, `createAdapter`, `createRenderer`, `createStorage`, `Diagnostics`, `memoryStorage`, `fsStorage`, the `ast` namespace and `factory` node builders, and their companion option and hook types. `@kubb/kit/testing` holds the Vitest-backed test helpers (`createMockedPlugin`, `createMockedAdapter`, `renderGeneratorOperation`, `matchFiles`) on a separate entry point so the main import never pulls in Vitest.
++Add `@kubb/kit`, the authoring toolkit for plugins, generators, adapters, resolvers, and renderers, re-exporting `definePlugin`, `defineGenerator`, `createResolver`, `Resolver`, `defineParser`, `createAdapter`, `createRenderer`, `createStorage`, `Diagnostics`, `memoryStorage`, `fsStorage`, the `ast` namespace and `factory` node builders, and their companion option and hook types. `@kubb/kit/testing` holds the Vitest-backed test helpers (`createMockedPlugin`, `createMockedAdapter`, `renderGeneratorOperation`, `matchFiles`) on a separate entry point so the main import never pulls in Vitest.
+ 
+ `kubb` gains matching subpaths so most consumers never need to install `@kubb/kit`, `@kubb/ast`, or `@kubb/renderer-jsx` directly:
+ 
+diff --git a/.changeset/merge-file-processor-into-file-manager.md b/.changeset/merge-file-processor-into-file-manager.md
+new file mode 100644
+--- /dev/null
++++ b/.changeset/merge-file-processor-into-file-manager.md
+@@ -0,0 +1,7 @@
++---
++'@kubb/core': major
++---
++
++Merge `FileProcessor` into `FileManager`. `FileManager` now owns both the in-memory file store (`add`, `upsert`, `files`) and the `parse`/`write` methods that turn those files into source strings on `storage`. `FileProcessorHooks` is renamed `FileManagerHooks` and lives on `FileManager#hooks` instead of a separate class.
++
++`FileProcessor` is gone. There's one class to reach for instead of two closely coupled ones. `KubbDriver` now calls `fileManager.write(fileManager.files, { storage, parsers, extension })` once, after every plugin (and post-processing like the barrel plugin) has finished generating, instead of flushing in per-node batches during generation. That batching never measurably sped up a build and only added bookkeeping.
+diff --git a/.changeset/move-match-files-to-mocks.md b/.changeset/move-match-files-to-mocks.md
+deleted file mode 100644
+--- a/.changeset/move-match-files-to-mocks.md
++++ /dev/null
+@@ -1,8 +0,0 @@
+----
+-'@kubb/core': minor
+----
+-
+-Remove the public `FileProcessor` export from `@kubb/core` and move the `matchFiles` snapshot
+-helper into `@kubb/core/mocks`. `matchFiles(files, { parsers, format, pre })` takes its parsers and
+-formatter as options, so it renders generator output to file snapshots without `@kubb/core` pulling
+-in a parser or prettier.
+diff --git a/.changeset/perf-optimize-stream-pipeline.md b/.changeset/perf-optimize-stream-pipeline.md
+--- a/.changeset/perf-optimize-stream-pipeline.md
++++ b/.changeset/perf-optimize-stream-pipeline.md
+@@ -2,12 +2,10 @@
+ '@kubb/core': patch
+ '@kubb/parser-ts': patch
+ '@kubb/adapter-oas': patch
+-'@kubb/renderer-jsx': patch
+ ---
+ 
+ Cut per-file overhead in the code-generation pipeline.
+ 
+-- `@kubb/parser-ts` `parse` is now synchronous, returning `string` directly instead of `Promise<string> | string`. `FileProcessor.stream` is a plain `Generator` instead of `AsyncGenerator`, removing a microtask per file. The `emitImport` / `emitExport` string-emit helpers are removed, and import and export statements are generated through the TypeScript compiler API as before.
+-- `@kubb/core` `Renderer.stream` now returns `Iterable<FileNode>` only, dropping `AsyncIterable` support. `Parser.parse` is typed as `string` (synchronous). Adapter initialisation consolidates the streaming and non-streaming branches, removing a duplicate debug-log path. `flushPendingFiles` removes a dead `snapshot` parameter.
++- `@kubb/parser-ts` `parse` is now synchronous, returning `string` directly instead of `Promise<string> | string`. The `emitImport` / `emitExport` string-emit helpers are removed, and import and export statements are generated through the TypeScript compiler API as before.
++- `@kubb/core` `Parser.parse` is typed as `string` (synchronous). Adapter initialisation consolidates the streaming and non-streaming branches, removing a duplicate debug-log path. `flushPendingFiles` removes a dead `snapshot` parameter.
+ - `@kubb/adapter-oas` caches the underlying `BaseOas` instance and the schema parser at adapter scope so the schemas and operations iterables share one instance instead of rebuilding indexes per pass.
+-- `@kubb/renderer-jsx` `jsxRenderer` returns a synchronous `Generator` from `stream`, letting consumers skip the per-file microtask.
+diff --git a/.changeset/pre.json b/.changeset/pre.json
+--- a/.changeset/pre.json
++++ b/.changeset/pre.json
+@@ -41,7 +41,6 @@
+     "add-create-operation-params",
+     "add-default-adapter-and-parsers",
+     "add-express-style-paths",
+-    "add-file-processor-stream",
+     "add-find-circular-schemas",
+     "add-function-parameter-nodes",
+     "add-generator-array-to-add-generator",
+@@ -110,11 +109,9 @@
+     "core-remove-middleware",
+     "core-renderer-contract-trim",
+     "core-resolve-options-weak-map-guard",
+-    "core-simplify-generate-dispatch",
+     "core-split-createkubb-types",
+     "core-type-safety-escape-hatches",
+     "create-kubb-user-config-signature",
+-    "ctx-param-in-define-resolver",
+     "debug-logger-and-diagnostics",
+     "dedupe-single-plan",
+     "define-config-defaults-jsdoc",
+@@ -187,7 +184,6 @@
+     "mcp-stdio-only",
+     "migrate-mcp-to-tmcp",
+     "modernize-node-22-natives",
+-    "move-match-files-to-mocks",
+     "move-plugins-to-own-repo",
+     "move-telemetry-definelogger-to-cli",
+     "multi-content-type-response",
+diff --git a/.changeset/reduce-memory-fs-caching.md b/.changeset/reduce-memory-fs-caching.md
+--- a/.changeset/reduce-memory-fs-caching.md
++++ b/.changeset/reduce-memory-fs-caching.md
+@@ -7,6 +7,6 @@ Reduce peak memory by leaning on the existing `Storage` abstraction.
+ 
+ `BuildOutput.sources` is replaced by `BuildOutput.storage`, a read-through `Storage` view backed by `config.storage` (defaults to `fsStorage()`). Generated source bytes are no longer duplicated in memory.
+ 
+-`FileProcessor` now exposes a typed `events` property (`AsyncEventEmitter<FileProcessorEvents>`) with `start`, `update`, and `end` events. The previous `onStart`, `onUpdate`, and `onEnd` callback options have been removed.
++`FileManager` now exposes a typed `hooks` property (`AsyncEventEmitter<FileManagerHooks>`) with `start`, `update`, and `end` events around its `write()` batch. The previous `onStart`, `onUpdate`, and `onEnd` callback options have been removed.
+ 
+-`Kubb.driver` and `Kubb.config` now throw if accessed before `setup()` instead of returning `undefined`.
++`Kubb.driver` now throws if accessed before `setup()` instead of returning `undefined`.
+diff --git a/.changeset/remove-adapter-streaming.md b/.changeset/remove-adapter-streaming.md
+new file mode 100644
+--- /dev/null
++++ b/.changeset/remove-adapter-streaming.md
+@@ -0,0 +1,11 @@
++---
++'@kubb/adapter-oas': major
++'@kubb/core': major
++'@kubb/ast': major
++---
++
++Remove the adapter streaming architecture. `Adapter.stream` and `InputNode`'s `Stream` generic are gone, `schemas`/`operations` are always plain arrays now, and `@kubb/adapter-oas` only implements `parse()`.
++
++Streaming was meant to cut peak memory on large specs, but `KubbDriver` already buffered every schema and operation into arrays before running plugins (needed for fan-out and the pruning pre-scan), so the one-node-at-a-time benefit never applied in practice. The measured memory fix for large specs (e.g. the Stripe spec) comes from a separate `$ref` resolution cache in the parser, unaffected by this change.
++
++`InputNode<true>` and `Streamable<T, Stream>` are removed from `@kubb/ast`. A custom `Adapter` no longer needs (or can) implement `stream`.
+diff --git a/.changeset/remove-renderer-stream.md b/.changeset/remove-renderer-stream.md
+new file mode 100644
+--- /dev/null
++++ b/.changeset/remove-renderer-stream.md
+@@ -0,0 +1,10 @@
++---
++'@kubb/core': major
++'@kubb/renderer-jsx': major
++---
++
++Drop the renderer `stream()` capability. `Renderer.stream` is gone from `@kubb/core`'s renderer contract, `KubbDriver#dispatch` no longer looks for it, and `@kubb/renderer-jsx`'s `jsxRenderer`/`Runtime` no longer expose `stream()`.
++
++The renderer walk is synchronous and in-memory, with no IO to overlap, so yielding files one at a time bought nothing over `render()` collecting them into `files` first. Custom renderers that implemented `stream()` should implement `render()`/`files` instead, the only path `dispatch` uses now.
++
++`Kubb.build()`'s `storage` also changed: it's the configured `Storage` backend directly rather than a view scoped to the current build's file paths. Use `files` to list what a build produced; `storage` is for reading a generated file's content back.
+diff --git a/.changeset/rename-define-to-create.md b/.changeset/rename-define-to-create.md
+--- a/.changeset/rename-define-to-create.md
++++ b/.changeset/rename-define-to-create.md
+@@ -1,16 +1,12 @@
+ ---
+ "@kubb/core": major
+-"@kubb/adapter-oas": major
++"@kubb/kit": major
+ ---
+ 
+-Rename factory functions from `define*` to `create*`.
++Rename `defineResolver` to `createResolver`.
+ 
+-| Before | After |
+-|---|---|
+-| `definePlugin` | `createPlugin` |
+-| `defineAdapter` | `createAdapter` |
+-| `defineGenerator` | `createGenerator` |
+-| `defineLogger` | `createLogger` |
+-| `defineStorage` | `createStorage` |
++- `createResolver` takes a plain object (the `() =>` wrapper is no longer needed) and returns a `Resolver` class instance.
++- `mergeResolver` is removed; use `Resolver.merge` instead.
++- `Resolver` is exported from `@kubb/core` and `@kubb/kit`.
+ 
+-`defineConfig` remains unchanged.
++Other `define*` factories (`definePlugin`, `defineGenerator`, `defineParser`, `defineConfig`) are unchanged.
+diff --git a/.changeset/rename-printer-type-exports.md b/.changeset/rename-printer-type-exports.md
+--- a/.changeset/rename-printer-type-exports.md
++++ b/.changeset/rename-printer-type-exports.md
+@@ -17,4 +17,4 @@ Printer type exports now follow `Printer{Suffix}` convention:
+ 
+ - Replace `mergeResolvers` with a single `resolver` partial override pattern using `withFallback`
+ - Replace `transformers: Array<Visitor>` with a single `transformer?: Visitor`
+-- `getPreset` accepts `resolver?: Partial<TResolver>`. Use `this.default(...)` to call the preset implementation
++- `getPreset` accepts `resolver?: Partial<TResolver>`. Use `this.name(...)` / `this.default.name(...)` to call the preset implementation
+diff --git a/.changeset/resolver-core-namespace.md b/.changeset/resolver-core-namespace.md
+new file mode 100644
+--- /dev/null
++++ b/.changeset/resolver-core-namespace.md
+@@ -0,0 +1,37 @@
++---
++"@kubb/core": major
++---
++
++Replace the `default(name, type)` discriminator with a `resolver.default` namespace and top-level `name`/`file` entries. `createResolver` returns a `Resolver` class instance (same factory pattern as `createKubb`).
++
++The stringly-typed `default(name, type?: 'file' | 'function' | 'type' | 'const')` is gone. The built-in machinery now lives under `resolver.default` — `name` (camelCase identifier casing), `file` (the `FileNode` builder), `options`, `path`, `banner`, and `footer` (previously `resolveOptions`, `resolvePath`, `resolveFile`, `resolveBanner`, `resolveFooter`).
++
++Generators call the two top-level entries, each of which defaults to its `default` counterpart:
++
++- `resolver.name(name)` — the plugin's identifier casing. Override it to set a convention (PascalCase, a suffix, …).
++- `resolver.file(params, context)` — builds a `FileNode`. Override it for custom file-name casing, threading a caser through `params.resolveName` (default `toFilePath`).
++
++`resolver.default` is the built-in machinery and is not overridable — plugins delegate to it via `this.default.*` rather than replace it.
++
++Add plugin-specific helpers as top-level methods (`typeName`, …) and/or grouped namespaces (`query`, `schema`, …). Every helper reaches shared machinery through `this.name`, `this.default`, and `this.file`.
++
++```ts
++export const resolverTs = createResolver<PluginTs>({
++  pluginName: 'plugin-ts',
++  name(name) {
++    return ensureValidVarName(pascalCase(name))
++  },
++  typeName(name) {
++    return `${this.name(name)}Type`
++  },
++  query: {
++    keyName(node) {
++      return `${this.name(node.operationId)}QueryKey`
++    },
++  },
++})
++```
++
++`setResolver` accepts a partial override. The framework merges it over the plugin default through `Resolver.merge` (rebuild-on-merge so namespace `this` bindings stay correct).
++
++`Filter` is exported for include/exclude/override rules; `Exclude` and `Include` are aliases of `Filter`.
+diff --git a/packages/core/src/Url.ts b/internals/utils/src/Url.ts
+rename from packages/core/src/Url.ts
+rename to internals/utils/src/Url.ts
+--- a/packages/core/src/Url.ts
++++ b/internals/utils/src/Url.ts
+@@ -1,5 +1,5 @@
+-import { camelCase } from '../../../internals/utils/src/casing.ts'
+-import { isValidVarName } from '../../../internals/utils/src/reserved.ts'
++import { camelCase } from './casing.ts'
++import { isValidVarName } from './reserved.ts'
+ 
+ type URLObject = {
+   /**
+diff --git a/internals/utils/src/index.ts b/internals/utils/src/index.ts
+--- a/internals/utils/src/index.ts
++++ b/internals/utils/src/index.ts
+@@ -3,9 +3,10 @@ export { formatMsWithColor, getIntro, randomCliColor } from './colors.ts'
+ export { canUseTTY, isCIEnvironment } from './env.ts'
+ export { BuildError, getErrorMessage, toCause, toError } from './errors.ts'
+ export { clean, exists, findPackageJSON, getRelativePath, read, toFilePath, toPosixPath, trimExtName, write } from './fs.ts'
+-export type { PossiblePromise, Streamable } from './promise.ts'
+-export { arrayToAsyncIterable, createSerialRunner, isPromise, memoize } from './promise.ts'
++export type { PossiblePromise } from './promise.ts'
++export { createSerialRunner, isPromise, memoize } from './promise.ts'
+ export { isIdentifier, isValidVarName, transformReservedWord } from './reserved.ts'
+ export { runtime } from './runtime.ts'
+ export { singleQuote } from './string.ts'
+ export { formatMs, getElapsedMs } from './time.ts'
++export { Url } from './Url.ts'
+diff --git a/internals/utils/src/promise.ts b/internals/utils/src/promise.ts
+--- a/internals/utils/src/promise.ts
++++ b/internals/utils/src/promise.ts
+@@ -68,21 +68,6 @@ export function memoize<TKey, TValue>(store: Store<TKey, TValue>, factory: (key:
+   }
+ }
+ 
+-/**
+- * Container that switches between an eager `Array<T>` and a lazy `AsyncIterable<T>`.
+- *
+- * `Array<T>` by default. With `Stream` set to `true` it becomes `AsyncIterable<T>`, so large
+- * collections can be produced lazily without holding every item in memory. Pairs with
+- * {@link arrayToAsyncIterable}, which lifts a plain array into the streaming form.
+- *
+- * @example
+- * ```ts
+- * type Eager = Streamable<number> // Array<number>
+- * type Lazy = Streamable<number, true> // AsyncIterable<number>
+- * ```
+- */
+-export type Streamable<T, Stream extends boolean = false> = Stream extends true ? AsyncIterable<T> : Array<T>
+-
+ type SerialRunnerOptions = {
+   /**
+    * The async work to serialize.
+@@ -130,24 +115,3 @@ export function createSerialRunner({ run, onError }: SerialRunnerOptions): () =>
+     running = false
+   }
+ }
+-
+-/**
+- * Wraps a plain array in a reusable `AsyncIterable`.
+- * Each `[Symbol.asyncIterator]()` call returns a fresh generator so the
+- * iterable can be consumed multiple times (e.g. once per plugin pre-scan).
+- *
+- * @example
+- * ```ts
+- * const stream = arrayToAsyncIterable([1, 2, 3])
+- * for await (const n of stream) console.log(n) // 1, 2, 3
+- * ```
+- */
+-export function arrayToAsyncIterable<T>(arr: ReadonlyArray<T>): AsyncIterable<T> {
+-  return {
+-    [Symbol.asyncIterator]() {
+-      return (async function* () {
+-        yield* arr
+-      })()
+-    },
+-  }
+-}
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -42,7 +42,7 @@
+     "oxlint": "catalog:",
+     "taze": "^19.14.1",
+     "tsdown": "catalog:",
+-    "turbo": "^2.10.1",
++    "turbo": "^2.10.3",
+     "typescript": "catalog:",
+     "vitest": "catalog:"
+   },
+diff --git a/packages/adapter-oas/package.json b/packages/adapter-oas/package.json
+--- a/packages/adapter-oas/package.json
++++ b/packages/adapter-oas/package.json
+@@ -54,7 +54,7 @@
+   "dependencies": {
+     "@kubb/ast": "workspace:*",
+     "@kubb/core": "workspace:*",
+-    "@readme/openapi-parser": "^6.1.3",
++    "@readme/openapi-parser": "^6.2.0",
+     "@scalar/openapi-upgrader": "^0.2.9",
+     "api-ref-bundler": "0.5.1",
+     "yaml": "catalog:"
+diff --git a/packages/adapter-oas/src/adapter.bench.ts b/packages/adapter-oas/src/adapter.bench.ts
+--- a/packages/adapter-oas/src/adapter.bench.ts
++++ b/packages/adapter-oas/src/adapter.bench.ts
+@@ -1,15 +1,10 @@
+ import path from 'node:path'
+-import { existsSync } from 'node:fs'
+ import { bench, describe } from 'vitest'
+-import { adapterOas } from './adapter.ts'
+ import { parseDocument } from './factory.ts'
+ import { parseOas } from './parser.ts'
+ import type { Document } from './types.ts'
+-import type { AdapterSource } from '@kubb/core'
+ 
+ const petStorePath = path.resolve(import.meta.dirname, '../mocks/petStore.yaml')
+-const stripeSpecPath = '/tmp/kubb-stripe-spec3.json'
+-const hasStripe = existsSync(stripeSpecPath)
+ 
+ let petStoreDoc: Document | undefined
+ 
+@@ -30,31 +25,3 @@ describe('parseOas() performance', () => {
+     { iterations: 5, warmupIterations: 1 },
+   )
+ })
+-
+-describe.skipIf(!hasStripe)('Stripe spec — batch vs streaming (1,385 schemas)', () => {
+-  const stripeSource: AdapterSource = { type: 'path', path: stripeSpecPath }
+-
+-  bench(
+-    'batch — adapter.parse()',
+-    async () => {
+-      const adapter = adapterOas({ validate: false })
+-      await adapter.parse(stripeSource)
+-    },
+-    { iterations: 3, warmupIterations: 1 },
+-  )
+-
+-  bench(
+-    'streaming — adapter.stream() drain',
+-    async () => {
+-      const adapter = adapterOas({ validate: false })
+-      const stream = await adapter.stream!(stripeSource)
+-      for await (const _ of stream.schemas) {
+-        /* drain */
+-      }
+-      for await (const _ of stream.operations) {
+-        /* drain */
+-      }
+-    },
+-    { iterations: 3, warmupIterations: 1 },
+-  )
+-})
+diff --git a/packages/adapter-oas/src/adapter.ts b/packages/adapter-oas/src/adapter.ts
+--- a/packages/adapter-oas/src/adapter.ts
++++ b/packages/adapter-oas/src/adapter.ts
+@@ -1,12 +1,16 @@
+-import { ast, collect, extractRefName, narrowSchema } from '@kubb/ast'
++import { ast, collect, extractRefName, findCircularSchemas, narrowSchema } from '@kubb/ast'
+ import { createAdapter } from '@kubb/core'
+ import type { AdapterSource } from '@kubb/core'
+ import { DEFAULT_PARSER_OPTIONS } from './constants.ts'
++import { buildDiscriminatorChildMap, patchDiscriminatorNode } from './discriminator.ts'
++import type { DiscriminatorTarget } from './discriminator.ts'
+ import { assertInputExists, parseDocument, parseFromConfig, validateDocument } from './factory.ts'
++import { getOperations } from './operation.ts'
+ import { createSchemaParser } from './parser.ts'
++import { collectInlineEnums, refPromotedEnums } from './promoteEnums.ts'
+ import { getSchemas, resolveBaseUrl } from './resolvers.ts'
+-import { createInputStream, preScan } from './stream.ts'
+-import type { AdapterOas, Document } from './types.ts'
++import { reportSchemaDiagnostics } from './schemaDiagnostics.ts'
++import type { AdapterOas, Document, SchemaObject } from './types.ts'
+ 
+ /**
+  * The `name` of `@kubb/adapter-oas`, used to identify this adapter in a Kubb config.
+@@ -67,14 +71,11 @@ export const adapterOas = createAdapter<AdapterOas>((options) => {
+   let parsedDocument: Document | null = null
+ 
+   // Cache per source and per document so one adapter instance reused across a `defineConfig` array
+-  // parses each config's spec instead of replaying the first one. Keying the document by its source
+-  // object still collapses a config's concurrent `stream()` (build) and `parse()` (studio) calls,
+-  // which share one source object, onto a single parse. The document-derived caches key off the
+-  // resulting document, so distinct configs (distinct documents) stay isolated.
++  // parses each config's spec instead of replaying the first one. The document-derived caches key
++  // off the resulting document, so distinct configs (distinct documents) stay isolated.
+   const documentCache = new WeakMap<AdapterSource, Promise<Document>>()
+   const schemasCache = new WeakMap<Document, Promise<ReturnType<typeof getSchemas>['schemas']>>()
+   const schemaParserCache = new WeakMap<Document, ReturnType<typeof createSchemaParser>>()
+-  const preScanCache = new WeakMap<Document, ReturnType<typeof preScan>>()
+ 
+   function ensureDocument(source: AdapterSource): Promise<Document> {
+     const cached = documentCache.get(source)
+@@ -112,35 +113,76 @@ export const adapterOas = createAdapter<AdapterOas>((options) => {
+     return parser
+   }
+ 
+-  function ensurePreScan(
+-    document: Document,
+-    schemas: ReturnType<typeof getSchemas>['schemas'],
+-    parseSchema: ReturnType<typeof ensureSchemaParser>['parseSchema'],
+-    parseOperation: ReturnType<typeof ensureSchemaParser>['parseOperation'],
+-  ): ReturnType<typeof preScan> {
+-    const cached = preScanCache.get(document)
+-    if (cached) return cached
++  // Parses every schema and operation once. Ref aliases and discriminator children are
++  // resolved from the schemas already parsed in this same pass rather than re-parsed.
++  function parseInput({
++    document,
++    schemas,
++    parser,
++  }: {
++    document: Document
++    schemas: Record<string, SchemaObject>
++    parser: ReturnType<typeof ensureSchemaParser>
++  }): ast.InputNode {
++    const { parseSchema, parseOperation } = parser
++
++    const parsedByName = new Map<string, ast.SchemaNode>()
++    const refAliasMap = new Map<string, ast.SchemaNode>()
++    const enumNames: Array<string> = []
++    const discriminatorParentNodes: Array<ast.SchemaNode> = []
++
++    for (const [name, schema] of Object.entries(schemas)) {
++      const node = parseSchema({ schema, name }, parserOptions)
++      parsedByName.set(name, node)
++      reportSchemaDiagnostics({ node, name })
++      if (node.type === 'ref' && node.name && node.name !== name) {
++        refAliasMap.set(name, node)
++      }
++      if (narrowSchema(node, 'enum') && node.name) {
++        enumNames.push(node.name)
++      }
++      if (discriminator === 'propagate' && (schema.oneOf ?? schema.anyOf) && schema.discriminator?.propertyName) {
++        discriminatorParentNodes.push(node)
++      }
++    }
++
++    const circularNames = [...findCircularSchemas([...parsedByName.values()])]
++    const discriminatorChildMap: Map<string, DiscriminatorTarget> | null =
++      discriminatorParentNodes.length > 0 ? buildDiscriminatorChildMap(discriminatorParentNodes) : null
++
++    const operationNodes: Array<ast.OperationNode> = []
++    for (const operation of getOperations(document)) {
++      const operationNode = parseOperation(parserOptions, operation)
++      if (operationNode) operationNodes.push(operationNode)
++    }
++
++    let promotedEnums: Map<string, ast.SchemaNode> | null = null
++    if (enums === 'root') {
++      promotedEnums = collectInlineEnums([...parsedByName.values(), ...operationNodes], new Set(Object.keys(schemas)))
++      for (const name of promotedEnums.keys()) enumNames.push(name)
++    }
++
++    const schemaNodes: Array<ast.SchemaNode> = promotedEnums ? [...promotedEnums.values()] : []
++    for (const name of Object.keys(schemas)) {
++      const alias = refAliasMap.get(name)
++
++      let node: ast.SchemaNode
++      if (alias?.name && parsedByName.has(alias.name)) {
++        node = { ...parsedByName.get(alias.name)!, name }
++      } else {
++        const parsed = parsedByName.get(name)!
++        const child = discriminatorChildMap?.get(name)
++        node = child ? patchDiscriminatorNode(parsed, child) : parsed
++      }
+ 
+-    const result = preScan({ schemas, parseSchema, parseOperation, document, parserOptions, discriminator, enums })
+-    preScanCache.set(document, result)
+-    return result
+-  }
++      schemaNodes.push(promotedEnums ? refPromotedEnums(node, promotedEnums) : node)
++    }
+ 
+-  async function createStream(source: AdapterSource): Promise<ast.InputNode<true>> {
+-    const document = await ensureDocument(source)
+-    const schemas = await ensureSchemas(document)
+-    const { parseSchema, parseOperation } = ensureSchemaParser(document)
+-    const { refAliasMap, enumNames, circularNames, discriminatorChildMap, promotedEnums } = ensurePreScan(document, schemas, parseSchema, parseOperation)
+-
+-    return createInputStream({
+-      schemas,
+-      parseSchema,
+-      parseOperation,
+-      document,
+-      parserOptions,
+-      refAliasMap,
+-      discriminatorChildMap,
+-      promotedEnums,
++    const operations = promotedEnums ? operationNodes.map((node) => refPromotedEnums(node, promotedEnums!)) : operationNodes
++
++    return ast.factory.createInput({
++      schemas: schemaNodes,
++      operations,
+       meta: {
+         title: document.info?.title,
+         description: document.info?.description,
+@@ -196,12 +238,11 @@ export const adapterOas = createAdapter<AdapterOas>((options) => {
+       })
+     },
+     async parse(source) {
+-      const streamNode = await createStream(source)
+-
+-      const [schemas, operations] = await Promise.all([Array.fromAsync(streamNode.schemas), Array.fromAsync(streamNode.operations)])
++      const document = await ensureDocument(source)
++      const schemas = await ensureSchemas(document)
++      const parser = ensureSchemaParser(document)
+ 
+-      return ast.factory.createInput({ schemas, operations, meta: streamNode.meta })
++      return parseInput({ document, schemas, parser })
+     },
+-    stream: createStream,
+   }
+ })
+diff --git a/packages/adapter-oas/src/discriminator.ts b/packages/adapter-oas/src/discriminator.ts
+--- a/packages/adapter-oas/src/discriminator.ts
++++ b/packages/adapter-oas/src/discriminator.ts
+@@ -9,8 +9,8 @@ export type DiscriminatorTarget = {
+  * Maps each child schema name to its discriminator patch data by scanning the given
+  * top-level AST schema nodes for union schemas that carry a `discriminatorPropertyName`.
+  *
+- * The streaming path calls this on a small pre-parsed subset of schemas (only the
+- * discriminator parents) rather than on all schemas at once.
++ * Called on a small pre-parsed subset of schemas (only the discriminator parents)
++ * rather than on all schemas at once.
+  */
+ export function buildDiscriminatorChildMap(schemas: Array<ast.SchemaNode>): Map<string, DiscriminatorTarget> {
+   const childMap = new Map<string, DiscriminatorTarget>()
+@@ -73,8 +73,7 @@ export function buildDiscriminatorChildMap(schemas: Array<ast.SchemaNode>): Map<
+ 
+ /**
+  * Patches a single top-level `SchemaNode` with its discriminator entry (adds or replaces
+- * the discriminant property). Used by the streaming path to apply patches inline per yield
+- * without buffering all schemas.
++ * the discriminant property).
+  */
+ export function patchDiscriminatorNode(node: ast.SchemaNode, entry: { propertyName: string; enumValues: Array<string | number | boolean> }): ast.SchemaNode {
+   const objectNode = ast.narrowSchema(node, 'object')
+diff --git a/packages/adapter-oas/src/resolvers.ts b/packages/adapter-oas/src/resolvers.ts
+--- a/packages/adapter-oas/src/resolvers.ts
++++ b/packages/adapter-oas/src/resolvers.ts
+@@ -319,9 +319,7 @@ export function flattenSchema(schema: SchemaObject | null): SchemaObject | null
+ 
+   for (const fragment of allOfFragments) {
+     for (const [key, value] of Object.entries(fragment)) {
+-      if (merged[key as keyof typeof merged] === undefined) {
+-        merged[key as keyof typeof merged] = value
+-      }
++      merged[key as keyof SchemaObject] ??= value as SchemaObject[keyof SchemaObject]
+     }
+   }
+ 
+diff --git a/packages/adapter-oas/src/schemaDiagnostics.ts b/packages/adapter-oas/src/schemaDiagnostics.ts
+--- a/packages/adapter-oas/src/schemaDiagnostics.ts
++++ b/packages/adapter-oas/src/schemaDiagnostics.ts
+@@ -4,7 +4,7 @@ import { isHandledFormat } from './resolvers.ts'
+ 
+ /**
+  * Reports the advisory diagnostics (`KUBB_UNSUPPORTED_FORMAT`, `KUBB_DEPRECATED`) for one
+- * top-level schema. Walks the node the parser produced during `preScan`, threading the RFC 6901
++ * top-level schema. Walks the node the parser produced, threading the RFC 6901
+  * pointer as it descends so a nested field reports against its full path
+  * (`#/components/schemas/Pet/properties/owner/properties/name`). Refs are not followed, so the
+  * resolved schema is reported under its own walk. Reports land in the active build run, are a
+diff --git a/packages/adapter-oas/src/stream.ts b/packages/adapter-oas/src/stream.ts
+deleted file mode 100644
+--- a/packages/adapter-oas/src/stream.ts
++++ /dev/null
+@@ -1,177 +0,0 @@
+-import { ast, findCircularSchemas } from '@kubb/ast'
+-import { buildDiscriminatorChildMap, patchDiscriminatorNode } from './discriminator.ts'
+-import { getOperations } from './operation.ts'
+-import type { SchemaParser } from './parser.ts'
+-import { collectInlineEnums, refPromotedEnums } from './promoteEnums.ts'
+-import { reportSchemaDiagnostics } from './schemaDiagnostics.ts'
+-import type { DiscriminatorTarget } from './discriminator.ts'
+-import type { AdapterOas, Document, SchemaObject } from './types.ts'
+-
+-export type PreScanResult = {
+-  refAliasMap: Map<string, ast.SchemaNode>
+-  enumNames: Array<string>
+-  circularNames: Array<string>
+-  discriminatorChildMap: Map<string, DiscriminatorTarget> | null
+-  promotedEnums: Map<string, ast.SchemaNode> | null
+-}
+-
+-/**
+- * Parses every schema once to build the lookup structures that streaming needs upfront.
+- *
+- * Three things happen in this single pass:
+- * - `refAliasMap` records schemas that are pure `$ref` aliases so the streaming pass can inline them.
+- * - `enumNames` collects the names of every enum schema so plugins skip re-scanning the stream.
+- * - `circularNames` runs cycle detection, which requires all nodes in memory simultaneously.
+- *   The `allNodes` array is local and drops out of scope as soon as this function returns.
+- *
+- * After this call, only `refAliasMap` and `discriminatorChildMap` stay alive in the adapter closure.
+- * Both are proportional to the number of aliases or discriminator parents, not total schema count.
+- *
+- * Each schema is parsed again during the streaming pass. This is intentional.
+- * Holding the parsed nodes in memory here would defeat the streaming memory benefit.
+- *
+- * @example
+- * ```ts
+- * const { refAliasMap, enumNames, circularNames } = preScan({
+- *   schemas,
+- *   parseSchema,
+- *   parserOptions,
+- *   discriminator: 'preserve',
+- * })
+- * ```
+- */
+-export function preScan({
+-  schemas,
+-  parseSchema,
+-  parseOperation,
+-  document,
+-  parserOptions,
+-  discriminator,
+-  enums = 'inline',
+-}: {
+-  schemas: Record<string, SchemaObject>
+-  parseSchema: (entry: { schema: SchemaObject; name: string }, options: ast.ParserOptions) => ast.SchemaNode
+-  parseOperation?: SchemaParser['parseOperation']
+-  document?: Document
+-  parserOptions: ast.ParserOptions
+-  discriminator: AdapterOas['options']['discriminator']
+-  enums?: AdapterOas['options']['enums']
+-}): PreScanResult {
+-  const allNodes: Array<ast.SchemaNode> = []
+-  const refAliasMap = new Map<string, ast.SchemaNode>()
+-  const enumNames: Array<string> = []
+-  const discriminatorParentNodes: Array<ast.SchemaNode> = []
+-
+-  for (const [name, schema] of Object.entries(schemas)) {
+-    const node = parseSchema({ schema, name }, parserOptions)
+-    allNodes.push(node)
+-    reportSchemaDiagnostics({ node, name })
+-    if (node.type === 'ref' && node.name && node.name !== name) {
+-      refAliasMap.set(name, node)
+-    }
+-    if (ast.narrowSchema(node, ast.schemaTypes.enum) && node.name) {
+-      enumNames.push(node.name)
+-    }
+-    if (discriminator === 'propagate' && (schema.oneOf ?? schema.anyOf) && schema.discriminator?.propertyName) {
+-      discriminatorParentNodes.push(node)
+-    }
+-  }
+-
+-  const circularNames = [...findCircularSchemas(allNodes)]
+-  const discriminatorChildMap = discriminatorParentNodes.length > 0 ? buildDiscriminatorChildMap(discriminatorParentNodes) : null
+-
+-  let promotedEnums: Map<string, ast.SchemaNode> | null = null
+-  if (enums === 'root' && document && parseOperation) {
+-    // Walk operations too so inline enums in request/response bodies are promoted.
+-    const operationNodes: Array<ast.OperationNode> = []
+-    for (const operation of getOperations(document)) {
+-      const operationNode = parseOperation(parserOptions, operation)
+-      if (operationNode) operationNodes.push(operationNode)
+-    }
+-
+-    promotedEnums = collectInlineEnums([...allNodes, ...operationNodes], new Set(Object.keys(schemas)))
+-    for (const name of promotedEnums.keys()) enumNames.push(name)
+-  }
+-
+-  return { refAliasMap, enumNames, circularNames, discriminatorChildMap, promotedEnums }
+-}
+-
+-/**
+- * Creates a lazy `InputNode<true>` from already-resolved adapter state.
+- *
+- * The schema and operation iterables each start a fresh parse pass on every
+- * `[Symbol.asyncIterator]()` call. This lets multiple plugins consume the same
+- * stream object independently without sharing a cursor or holding all nodes in memory.
+- *
+- * Ref aliases in `refAliasMap` are inlined during iteration: an alias entry is replaced
+- * with its target's parsed node (but keeps the alias name) so plugins never receive bare `ref` nodes.
+- *
+- * @example
+- * ```ts
+- * const streamNode = createInputStream({ schemas, parseSchema, parseOperation, document, parserOptions, refAliasMap, discriminatorChildMap, meta })
+- * for await (const schema of streamNode.schemas) {
+- *   // each call to for-await restarts from the first schema
+- * }
+- * ```
+- */
+-export function createInputStream({
+-  schemas,
+-  parseSchema,
+-  parseOperation,
+-  document,
+-  parserOptions,
+-  refAliasMap,
+-  discriminatorChildMap,
+-  promotedEnums,
+-  meta,
+-}: {
+-  schemas: Record<string, SchemaObject>
+-  parseSchema: SchemaParser['parseSchema']
+-  parseOperation: SchemaParser['parseOperation']
+-  document: Document
+-  parserOptions: ast.ParserOptions
+-  refAliasMap: Map<string, ast.SchemaNode>
+-  discriminatorChildMap: Map<string, DiscriminatorTarget> | null
+-  promotedEnums?: Map<string, ast.SchemaNode> | null
+-  meta: ast.InputMeta
+-}): ast.InputNode<true> {
+-  const schemasIterable: AsyncIterable<ast.SchemaNode> = {
+-    [Symbol.asyncIterator]() {
+-      return (async function* () {
+-        // Promoted enums are emitted first so the schema list owns the lifted definitions.
+-        if (promotedEnums) {
+-          for (const definition of promotedEnums.values()) yield definition
+-        }
+-
+-        for (const [name, schema] of Object.entries(schemas)) {
+-          // Inline ref aliases: replace the alias entry with its target's parsed node
+-          // (keeping the alias name). Skip the first parse entirely for alias entries
+-          // since that result is never used.
+-          const alias = refAliasMap.get(name)
+-          if (alias?.name && schemas[alias.name]) {
+-            const aliasNode = { ...parseSchema({ schema: schemas[alias.name]!, name: alias.name }, parserOptions), name }
+-            yield promotedEnums ? refPromotedEnums(aliasNode, promotedEnums) : aliasNode
+-            continue
+-          }
+-
+-          const parsed = parseSchema({ schema, name }, parserOptions)
+-          const node = discriminatorChildMap?.get(name) ? patchDiscriminatorNode(parsed, discriminatorChildMap.get(name)!) : parsed
+-          yield promotedEnums ? refPromotedEnums(node, promotedEnums) : node
+-        }
+-      })()
+-    },
+-  }
+-
+-  const operationsIterable: AsyncIterable<ast.OperationNode> = {
+-    [Symbol.asyncIterator]() {
+-      return (async function* () {
+-        for (const operation of getOperations(document)) {
+-          const node = parseOperation(parserOptions, operation)
+-          if (node) yield promotedEnums ? refPromotedEnums(node, promotedEnums) : node
+-        }
+-      })()
+-    },
+-  }
+-
+-  return ast.factory.createInput({ stream: true, schemas: schemasIterable, operations: operationsIterable, meta })
+-}
+diff --git a/packages/adapter-oas/src/types.ts b/packages/adapter-oas/src/types.ts
+--- a/packages/adapter-oas/src/types.ts
++++ b/packages/adapter-oas/src/types.ts
+@@ -227,7 +227,7 @@ export type AdapterOasResolvedOptions = {
+   enumSuffix: AdapterOasOptions['enumSuffix']
+   /**
+    * Map from original `$ref` paths to their collision-resolved schema names.
+-   * Populated once the adapter resolves a spec's schemas, on the first `stream()` or `parse()`.
++   * Populated once the adapter resolves a spec's schemas, on the first `parse()`.
+    *
+    * @example
+    * ```ts
+diff --git a/packages/ast/src/nodes/file.ts b/packages/ast/src/nodes/file.ts
+--- a/packages/ast/src/nodes/file.ts
++++ b/packages/ast/src/nodes/file.ts
+@@ -233,12 +233,12 @@ export type FileNode<TMeta extends object = object> = BaseNode & {
+   meta?: TMeta
+   /**
+    * Optional banner prepended to the generated file content.
+-   * Accepts `null` so `resolver.resolveBanner()` results can be passed directly.
++   * Accepts `null` so `resolver.default.banner()` results can be passed directly.
+    */
+   banner?: string | null
+   /**
+    * Optional footer appended to the generated file content.
+-   * Accepts `null` so `resolver.resolveFooter()` results can be passed directly.
++   * Accepts `null` so `resolver.default.footer()` results can be passed directly.
+    */
+   footer?: string | null
+   /**
+diff --git a/packages/ast/src/nodes/input.ts b/packages/ast/src/nodes/input.ts
+--- a/packages/ast/src/nodes/input.ts
++++ b/packages/ast/src/nodes/input.ts
+@@ -1,4 +1,3 @@
+-import type { Streamable } from '@internals/utils'
+ import { defineNode } from '../defineNode.ts'
+ import type { BaseNode } from './base.ts'
+ import type { OperationNode } from './operation.ts'
+@@ -67,9 +66,6 @@ export type InputMeta = {
+  * Input AST node that contains all schemas and operations for one API document.
+  * Produced by the adapter and consumed by all Kubb plugins.
+  *
+- * `Stream` switches `schemas` and `operations` between eager `Array`s (the default) and lazy
+- * `AsyncIterable`s. The streaming variant `InputNode<true>` yields nodes one at a time.
+- *
+  * @example
+  * ```ts
+  * const input: InputNode = {
+@@ -79,27 +75,20 @@ export type InputMeta = {
+  *   meta: { circularNames: [], enumNames: [] },
+  * }
+  * ```
+- *
+- * @example Streaming variant for large specs
+- * ```ts
+- * for await (const schema of inputNode.schemas) {
+- *   // only this one SchemaNode is live here. Previous ones are GC-eligible
+- * }
+- * ```
+  */
+-export type InputNode<Stream extends boolean = false> = BaseNode & {
++export type InputNode = BaseNode & {
+   /**
+    * Node kind.
+    */
+   kind: 'Input'
+   /**
+    * All schema nodes in the document.
+    */
+-  schemas: Streamable<SchemaNode, Stream>
++  schemas: Array<SchemaNode>
+   /**
+    * All operation nodes in the document.
+    */
+-  operations: Streamable<OperationNode, Stream>
++  operations: Array<OperationNode>
+   /**
+    * Document metadata populated by the adapter.
+    */
+@@ -117,28 +106,15 @@ export const inputDef = defineNode<InputNode, Partial<Omit<InputNode, 'kind'>>>(
+ })
+ 
+ /**
+- * Creates an `InputNode`. Pass `stream: true` for the streaming variant whose `schemas` and
+- * `operations` are `AsyncIterable` sources. Otherwise it builds the eager variant with array
+- * `schemas`/`operations`. Both variants get the defaulted `meta`.
++ * Creates an `InputNode`, defaulting `schemas`/`operations` to empty arrays and `meta` per
++ * {@link inputDef}.
+  *
+- * @example Eager
++ * @example
+  * ```ts
+  * const input = createInput()
+  * // { kind: 'Input', schemas: [], operations: [] }
+  * ```
+- *
+- * @example Streaming
+- * ```ts
+- * const node = createInput({ stream: true, schemas: schemasIterable, operations: operationsIterable, meta: { title: 'My API' } })
+- * ```
+  */
+-export function createInput<Stream extends boolean = false>(options: Partial<Omit<InputNode<Stream>, 'kind'>> & { stream?: Stream } = {}): InputNode<Stream> {
+-  const { stream, ...overrides } = options
+-  // Streaming inputs carry AsyncIterable sources, so skip the array defaults that
+-  // inputDef.create applies for the eager variant. Keep the meta default.
+-  if (stream) {
+-    return { kind: 'Input', meta: { circularNames: [], enumNames: [] }, ...overrides } as InputNode<Stream>
+-  }
+-
+-  return inputDef.create(overrides as Partial<Omit<InputNode, 'kind'>>) as InputNode<Stream>
++export function createInput(overrides: Partial<Omit<InputNode, 'kind'>> = {}): InputNode {
++  return inputDef.create(overrides)
+ }
+diff --git a/packages/ast/src/utils/schemaGraph.ts b/packages/ast/src/utils/schemaGraph.ts
+--- a/packages/ast/src/utils/schemaGraph.ts
++++ b/packages/ast/src/utils/schemaGraph.ts
+@@ -91,7 +91,7 @@ function computeUsedSchemaNames(operations: ReadonlyArray<OperationNode>, schema
+  *
+  * @example Only generate schemas referenced by included operations
+  * ```ts
+- * const includedOps = operations.filter((op) => resolver.resolveOptions(op, { options, include }) !== null)
++ * const includedOps = operations.filter((op) => resolver.default.options(op, { options, include }) !== null)
+  * const allowed = collectUsedSchemaNames(includedOps, schemas)
+  *
+  * for (const schema of schemas) {
+diff --git a/packages/cli/package.json b/packages/cli/package.json
+--- a/packages/cli/package.json
++++ b/packages/cli/package.json
+@@ -54,7 +54,7 @@
+     "typecheck": "tsc -p ./tsconfig.json --noEmit --emitDeclarationOnly false"
+   },
+   "dependencies": {
+-    "@clack/prompts": "^1.6.0",
++    "@clack/prompts": "^1.7.0",
+     "@kubb/core": "workspace:*",
+     "chokidar": "^5.0.0",
+     "gunshi": "^0.35.1",
+diff --git a/packages/cli/src/Telemetry.ts b/packages/cli/src/Telemetry.ts
+--- a/packages/cli/src/Telemetry.ts
++++ b/packages/cli/src/Telemetry.ts
+@@ -4,105 +4,35 @@ import process from 'node:process'
+ import { isCIEnvironment, runtime } from '@internals/utils'
+ import { OTLP_ENDPOINT } from './constants.ts'
+ 
+-// OpenTelemetry OTLP JSON types
+-// https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto
+-// https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/common/v1/common.proto
+-
+-type OtlpStringValue = { stringValue: string }
+-type OtlpBoolValue = { boolValue: boolean }
+-type OtlpIntValue = { intValue: number }
+-type OtlpDoubleValue = { doubleValue: number }
+-type OtlpBytesValue = { bytesValue: string }
+-type OtlpArrayValue = { arrayValue: { values: Array<OtlpAnyValue> } }
+-type OtlpKvListValue = { kvlistValue: { values: Array<OtlpKeyValue> } }
+-
+-type OtlpAnyValue = OtlpStringValue | OtlpBoolValue | OtlpIntValue | OtlpDoubleValue | OtlpBytesValue | OtlpArrayValue | OtlpKvListValue
+-
+ type OtlpKeyValue = {
+   key: string
+-  value: OtlpAnyValue
+-}
+-
+-type OtlpResource = {
+-  attributes: Array<OtlpKeyValue>
+-  droppedAttributesCount?: number
+-}
+-
+-type OtlpInstrumentationScope = {
+-  name: string
+-  version?: string
+-  attributes?: Array<OtlpKeyValue>
+-  droppedAttributesCount?: number
+-}
+-
+-/**
+- * @see https://github.com/open-telemetry/opentelemetry-proto/blob/main/opentelemetry/proto/trace/v1/trace.proto#L103
+- */
+-type OtlpSpanKind = 0 | 1 | 2 | 3 | 4 | 5
+-
+-/**
+- * Span status code.
+- * - `0` is unset
+- * - `1` is OK
+- * - `2` is error
+- */
+-type OtlpStatusCode = 0 | 1 | 2
+-
+-type OtlpStatus = {
+-  code: OtlpStatusCode
+-  message?: string
++  value:
++    | { stringValue: string }
++    | { boolValue: boolean }
++    | { intValue: number }
++    | { arrayValue: { values: Array<{ kvlistValue: { values: Array<OtlpKeyValue> } }> } }
++    | { kvlistValue: { values: Array<OtlpKeyValue> } }
+ }
+ 
+ type OtlpSpan = {
+   traceId: string
+   spanId: string
+-  traceState?: string
+-  parentSpanId?: string
+   name: string
+-  kind: OtlpSpanKind
++  kind: 1
+   startTimeUnixNano: string
+   endTimeUnixNano: string
+-  attributes?: Array<OtlpKeyValue>
+-  droppedAttributesCount?: number
+-  events?: Array<OtlpSpanEvent>
+-  droppedEventsCount?: number
+-  links?: Array<OtlpSpanLink>
+-  droppedLinksCount?: number
+-  status?: OtlpStatus
+-}
+-
+-type OtlpSpanEvent = {
+-  timeUnixNano: string
+-  name: string
+-  attributes?: Array<OtlpKeyValue>
+-  droppedAttributesCount?: number
+-}
+-
+-type OtlpSpanLink = {
+-  traceId: string
+-  spanId: string
+-  traceState?: string
+-  attributes?: Array<OtlpKeyValue>
+-  droppedAttributesCount?: number
+-}
+-
+-type OtlpScopeSpans = {
+-  scope: OtlpInstrumentationScope
+-  spans: Array<OtlpSpan>
+-  schemaUrl?: string
+-}
+-
+-type OtlpResourceSpans = {
+-  resource: OtlpResource
+-  scopeSpans: Array<OtlpScopeSpans>
+-  schemaUrl?: string
++  attributes: Array<OtlpKeyValue>
++  status: { code: 1 | 2 }
+ }
+ 
+-/**
+- * Root payload sent to POST /v1/traces.
+- */
+ type OtlpExportTraceServiceRequest = {
+-  resourceSpans: Array<OtlpResourceSpans>
++  resourceSpans: Array<{
++    resource: { attributes: Array<OtlpKeyValue> }
++    scopeSpans: Array<{
++      scope: { name: string; version: string }
++      spans: Array<OtlpSpan>
++    }>
++  }>
+ }
+ 
+ /**
+@@ -217,24 +147,22 @@ export class Telemetry {
+         key: 'kubb.plugins',
+         value: {
+           arrayValue: {
+-            values: event.plugins.map(
+-              (p): OtlpKvListValue => ({
+-                kvlistValue: {
+-                  values: [
+-                    { key: 'name', value: { stringValue: p.name } },
+-                    {
+-                      key: 'options',
+-                      value: {
+-                        stringValue: JSON.stringify({
+-                          ...p.options,
+-                          usedEnumNames: undefined,
+-                        }),
+-                      },
++            values: event.plugins.map((p) => ({
++              kvlistValue: {
++                values: [
++                  { key: 'name', value: { stringValue: p.name } },
++                  {
++                    key: 'options',
++                    value: {
++                      stringValue: JSON.stringify({
++                        ...p.options,
++                        usedEnumNames: undefined,
++                      }),
+                     },
+-                  ],
+-                },
+-              }),
+-            ),
++                  },
++                ],
++              },
++            })),
+           },
+         },
+       },
+@@ -261,12 +189,12 @@ export class Telemetry {
+                   traceId,
+                   spanId,
+                   name: event.command,
+-                  kind: 1 satisfies OtlpSpanKind,
++                  kind: 1,
+                   startTimeUnixNano: String(startTimeNs),
+                   endTimeUnixNano: String(endTimeNs),
+                   attributes,
+                   status: {
+-                    code: (event.status === 'success' ? 1 : 2) satisfies OtlpStatusCode,
++                    code: event.status === 'success' ? 1 : 2,
+                   },
+                 },
+               ],
+diff --git a/packages/cli/src/loggers/clackLogger.ts b/packages/cli/src/loggers/clackLogger.ts
+--- a/packages/cli/src/loggers/clackLogger.ts
++++ b/packages/cli/src/loggers/clackLogger.ts
+@@ -2,10 +2,18 @@ import { relative } from 'node:path'
+ import process from 'node:process'
+ import { styleText } from 'node:util'
+ import * as clack from '@clack/prompts'
+-import { formatMsWithColor, getElapsedMs, getIntro, toCause } from '@internals/utils'
++import { formatMsWithColor, getElapsedMs, getIntro } from '@internals/utils'
+ import { Diagnostics, type KubbHooks, logLevel as logLevelMap } from '@kubb/core'
+ import { defineLogger } from './defineLogger.ts'
+-import { buildProgressLine, createProgressCounters, formatCommandWithArgs, formatMessage, recordPluginResult, resetProgressCounters } from './utils.ts'
++import {
++  buildProgressLine,
++  createProgressCounters,
++  formatCommandWithArgs,
++  formatErrorFrames,
++  formatMessage,
++  recordPluginResult,
++  resetProgressCounters,
++} from './utils.ts'
+ 
+ /**
+  * TTY logger for local development, with spinners and progress bars.
+@@ -124,8 +132,6 @@ export const clackLogger = defineLogger({
+     })
+ 
+     context.on('kubb:error', ({ error }) => {
+-      const caused = toCause(error)
+-
+       const text = [styleText('red', '✗'), error.message].join(' ')
+ 
+       if (state.isSpinning) {
+@@ -134,19 +140,17 @@ export const clackLogger = defineLogger({
+       }
+       clack.log.error(getMessage(text))
+ 
+-      // Show stack trace in verbose mode (first 3 frames)
+-      if (logLevel >= logLevelMap.verbose && error.stack) {
+-        const frames = error.stack.split('\n').slice(1, 4)
+-        for (const frame of frames) {
+-          clack.log.message(getMessage(styleText('dim', frame.trim())))
++      const frames = logLevel >= logLevelMap.verbose ? formatErrorFrames(error) : null
++      if (frames) {
++        for (const frame of frames.frames) {
++          clack.log.message(getMessage(styleText('dim', frame)))
+         }
+ 
+-        if (caused?.stack) {
+-          clack.log.message(styleText('dim', `└─ caused by ${caused.message}`))
++        if (frames.cause) {
++          clack.log.message(styleText('dim', frames.cause.header))
+ 
+-          const frames = caused.stack.split('\n').slice(1, 4)
+-          for (const frame of frames) {
+-            clack.log.message(getMessage(`    ${styleText('dim', frame.trim())}`))
++          for (const frame of frames.cause.frames) {
++            clack.log.message(getMessage(`    ${styleText('dim', frame)}`))
+           }
+         }
+       }
+diff --git a/packages/cli/src/loggers/plainLogger.ts b/packages/cli/src/loggers/plainLogger.ts
+--- a/packages/cli/src/loggers/plainLogger.ts
++++ b/packages/cli/src/loggers/plainLogger.ts
+@@ -1,8 +1,8 @@
+ import { relative } from 'node:path'
+-import { formatMs, toCause } from '@internals/utils'
++import { formatMs } from '@internals/utils'
+ import { Diagnostics, type KubbHooks, logLevel as logLevelMap } from '@kubb/core'
+ import { defineLogger } from './defineLogger.ts'
+-import { createHookTimer, formatCommandWithArgs, formatMessage } from './utils.ts'
++import { createHookTimer, formatCommandWithArgs, formatErrorFrames, formatMessage } from './utils.ts'
+ 
+ /**
+  * Plain console adapter for non-TTY environments, built on `console.log`.
+@@ -58,25 +58,21 @@ export const plainLogger = defineLogger({
+     })
+ 
+     context.on('kubb:error', ({ error }) => {
+-      const caused = toCause(error)
+-
+       const text = getMessage(['✗', error.message].join(' '))
+ 
+       console.log(text)
+ 
+-      // Show stack trace in verbose mode (first 3 frames)
+-      if (logLevel >= logLevelMap.verbose && error.stack) {
+-        const frames = error.stack.split('\n').slice(1, 4)
+-        for (const frame of frames) {
+-          console.log(getMessage(frame.trim()))
++      const frames = logLevel >= logLevelMap.verbose ? formatErrorFrames(error) : null
++      if (frames) {
++        for (const frame of frames.frames) {
++          console.log(getMessage(frame))
+         }
+ 
+-        if (caused?.stack) {
+-          console.log(`└─ caused by ${caused.message}`)
++        if (frames.cause) {
++          console.log(frames.cause.header)
+ 
+-          const frames = caused.stack.split('\n').slice(1, 4)
+-          for (const frame of frames) {
+-            console.log(getMessage(`    ${frame.trim()}`))
++          for (const frame of frames.cause.frames) {
++            console.log(getMessage(`    ${frame}`))
+           }
+         }
+       }
+diff --git a/packages/cli/src/loggers/types.ts b/packages/cli/src/loggers/types.ts
+deleted file mode 100644
+--- a/packages/cli/src/loggers/types.ts
++++ /dev/null
+@@ -1,6 +0,0 @@
+-/**
+- * Logger adapter selected by `setupReporters` based on the runtime environment.
+- * - `'clack'`: TTY-aware output with spinners and progress bars.
+- * - `'plain'`: Plain `console.log` output for non-TTY environments.
+- */
+-export type LoggerType = 'clack' | 'plain'
+diff --git a/packages/cli/src/loggers/utils.ts b/packages/cli/src/loggers/utils.ts
+--- a/packages/cli/src/loggers/utils.ts
++++ b/packages/cli/src/loggers/utils.ts
+@@ -1,12 +1,11 @@
+ import process from 'node:process'
+ import { styleText } from 'node:util'
+-import { canUseTTY, formatMs, getElapsedMs } from '@internals/utils'
++import { canUseTTY, formatMs, getElapsedMs, toCause } from '@internals/utils'
+ import type { Reporter, ReporterContext } from '@kubb/core'
+ import { logLevel as logLevelMap } from '@kubb/core'
+-import type { Logger, LoggerContext, LoggerOptions } from './defineLogger.ts'
++import type { LoggerContext, LoggerOptions } from './defineLogger.ts'
+ import { clackLogger } from './clackLogger.ts'
+ import { plainLogger } from './plainLogger.ts'
+-import type { LoggerType } from './types.ts'
+ 
+ /**
+  * Optionally prefix a message with a [HH:MM:SS] timestamp when logLevel >= verbose.
+@@ -25,6 +24,36 @@ export function formatMessage(message: string, logLevel: number): string {
+   return message
+ }
+ 
++/**
++ * First stack frames for verbose error output, including an optional `cause` chain.
++ */
++export function formatErrorFrames(error: Error): { frames: Array<string>; cause?: { header: string; frames: Array<string> } } | null {
++  if (!error.stack) {
++    return null
++  }
++
++  const frames = error.stack
++    .split('\n')
++    .slice(1, 4)
++    .map((frame) => frame.trim())
++  const caused = toCause(error)
++
++  if (!caused?.stack) {
++    return { frames }
++  }
++
++  return {
++    frames,
++    cause: {
++      header: `└─ caused by ${caused.message}`,
++      frames: caused.stack
++        .split('\n')
++        .slice(1, 4)
++        .map((frame) => frame.trim()),
++    },
++  }
++}
++
+ type ProgressState = {
+   /**
+    * Total number of plugins scheduled for this generation run.
+@@ -127,7 +156,6 @@ export type HookTimer = {
+    * Returns the elapsed milliseconds since `start(id)`, or `undefined` when no start was recorded.
+    */
+   end(id: string): number | undefined
+-  clear(): void
+ }
+ 
+ /**
+@@ -148,9 +176,6 @@ export function createHookTimer(): HookTimer {
+       starts.delete(id)
+       return getElapsedMs(hrStart)
+     },
+-    clear(): void {
+-      starts.clear()
+-    },
+   }
+ }
+ 
+@@ -164,18 +189,6 @@ export function formatCommandWithArgs(command: string, args?: ReadonlyArray<stri
+   return args?.length ? `${command} ${args.join(' ')}` : command
+ }
+ 
+-function detectLogger(): LoggerType {
+-  if (canUseTTY()) {
+-    return 'clack'
+-  }
+-  return 'plain'
+-}
+-
+-const logMapper: Record<LoggerType, Logger> = {
+-  clack: clackLogger,
+-  plain: plainLogger,
+-}
+-
+ /**
+  * Bridges a {@link Reporter} onto the run's event emitter: calls `report` with each config's
+  * {@link GenerationResult} on `kubb:generation:end`. The reporter never touches the emitter.
+@@ -210,11 +223,7 @@ async function setupReporters(context: LoggerContext, { logLevel, reporters }: L
+       if (hasJson) {
+         continue
+       }
+-      const type = detectLogger()
+-      const logger = logMapper[type]
+-      if (!logger) {
+-        throw new Error(`Unknown adapter type: ${type}`)
+-      }
++      const logger = canUseTTY() ? clackLogger : plainLogger
+       await logger.install(context, { logLevel })
+     }
+ 
+diff --git a/packages/cli/src/runners/generate/utils.ts b/packages/cli/src/runners/generate/utils.ts
+--- a/packages/cli/src/runners/generate/utils.ts
++++ b/packages/cli/src/runners/generate/utils.ts
+@@ -133,18 +133,14 @@ export function createHookId(): string {
+  * `isNewerVersion('5.10.0', '5.9.0') // false`
+  */
+ export function isNewerVersion(current: string, latest: string): boolean {
+-  const parse = (value: string) => (value.split('-')[0] ?? '').split('.').map(Number)
+-  const currentParts = parse(current)
+-  const latestParts = parse(latest)
+-
+-  for (let index = 0; index < Math.max(currentParts.length, latestParts.length); index++) {
+-    const currentPart = currentParts[index] ?? 0
+-    const latestPart = latestParts[index] ?? 0
+-    if (Number.isNaN(currentPart) || Number.isNaN(latestPart)) return false
+-    if (latestPart > currentPart) return true
+-    if (latestPart < currentPart) return false
+-  }
+-  return false
++  const release = (value: string) => value.split('-')[0] ?? ''
++  const isNumeric = (value: string) => /^\d+(\.\d+)*$/.test(value)
++
++  const currentRelease = release(current)
++  const latestRelease = release(latest)
++  if (!isNumeric(currentRelease) || !isNumeric(latestRelease)) return false
++
++  return currentRelease.localeCompare(latestRelease, undefined, { numeric: true }) < 0
+ }
+ 
+ /**
+diff --git a/packages/cli/src/runners/mcp/run.ts b/packages/cli/src/runners/mcp/run.ts
+--- a/packages/cli/src/runners/mcp/run.ts
++++ b/packages/cli/src/runners/mcp/run.ts
+@@ -16,11 +16,14 @@ type McpOptions = {
+  */
+ export async function run({ version }: McpOptions): Promise<void> {
+   const { run: startMcpServer } = (await import('@kubb/mcp')) as typeof McpModule
++
+   const hrStart = process.hrtime()
+   const report = (status: 'success' | 'failed') => Telemetry.send(Telemetry.build({ command: 'mcp', kubbVersion: version, hrStart, status }))
++
+   try {
+     console.log(styleText('cyan', '⏳ Starting MCP server...'))
+     console.warn(styleText('yellow', 'This feature is still under development, use with caution'))
++
+     await startMcpServer()
+     await report('success')
+   } catch (error) {
+diff --git a/packages/cli/src/runners/validate/run.ts b/packages/cli/src/runners/validate/run.ts
+--- a/packages/cli/src/runners/validate/run.ts
++++ b/packages/cli/src/runners/validate/run.ts
+@@ -14,36 +14,25 @@ type ValidateOptions = {
+   version: string
+ }
+ 
+-type ValidateModule = typeof import('@kubb/adapter-oas')
+-type ValidateDependencies = {
+-  /**
+-   * Loads `@kubb/adapter-oas`. Injected so tests can substitute a mock.
+-   */
+-  loadValidateModule: () => Promise<ValidateModule>
+-}
+-
+-/**
+- * Dynamically loads `@kubb/adapter-oas` for OpenAPI validation.
+- */
+-export function loadValidateModule(): Promise<ValidateModule> {
+-  return import('@kubb/adapter-oas') as Promise<ValidateModule>
+-}
+-
+ /**
+  * Validates an OpenAPI/Swagger file at `input` using `@kubb/adapter-oas`.
+  * Exits the process with code 1 on validation failure or missing dependency.
+  */
+-export async function run({ input, version }: ValidateOptions, dependencies: ValidateDependencies = { loadValidateModule }): Promise<void> {
++export async function run({ input, version }: ValidateOptions): Promise<void> {
+   const hrStart = process.hrtime()
+   const report = (status: 'success' | 'failed') => Telemetry.send(Telemetry.build({ command: 'validate', kubbVersion: version, hrStart, status }))
++
+   try {
+-    const { adapterOas } = await dependencies.loadValidateModule()
++    const { adapterOas } = await import('@kubb/adapter-oas')
++
+     const adapter = adapterOas()
+     if (!adapter.validate) {
+       throw new Error('The loaded adapter does not support validation.')
+     }
++
+     await adapter.validate(input, { throwOnError: true })
+     await report('success')
++
+     console.log('✅ Validation success')
+   } catch (error) {
+     await report('failed')
+@@ -58,6 +47,7 @@ export async function run({ input, version }: ValidateOptions, dependencies: Val
+     }
+     console.error('❌ Validation failed')
+     console.error(getErrorMessage(error))
++
+     process.exit(1)
+   }
+ }
+diff --git a/packages/core/src/Diagnostics.ts b/packages/core/src/Diagnostics.ts
+--- a/packages/core/src/Diagnostics.ts
++++ b/packages/core/src/Diagnostics.ts
+@@ -226,10 +226,10 @@ const isUpdate = isKind<UpdateDiagnostic>('update')
+  * Accent color per severity. The color tints the `[CODE]` tag (red error, yellow warning,
+  * blue info).
+  */
+-const severityStyle: Record<DiagnosticSeverity, { color: 'red' | 'yellow' | 'blue' }> = {
+-  error: { color: 'red' },
+-  warning: { color: 'yellow' },
+-  info: { color: 'blue' },
++const severityStyle: Record<DiagnosticSeverity, 'red' | 'yellow' | 'blue'> = {
++  error: 'red',
++  warning: 'yellow',
++  info: 'blue',
+ }
+ 
+ /**
+@@ -358,8 +358,8 @@ const diagnosticCatalog: Record<DiagnosticCode, DiagnosticDoc> = {
+  *
+  * The sink lives in a single `AsyncLocalStorage` in the `@kubb/core` bundle.
+  * `Diagnostics.scope` activates it for a run, so anything inside that run (the
+- * adapter parse, a lazily consumed stream, a generator) reports through
+- * `Diagnostics.report` and lands in the same run.
++ * adapter parse, a generator) reports through `Diagnostics.report` and lands
++ * in the same run.
+  */
+ export class Diagnostics {
+   static #reporterStorage = new AsyncLocalStorage<(diagnostic: Diagnostic) => void>()
+@@ -632,7 +632,7 @@ export class Diagnostics {
+    */
+   static format(diagnostic: Diagnostic): { headline: string; details: Array<string> } {
+     const { code, severity, message } = diagnostic
+-    const { color } = severityStyle[severity]
++    const color = severityStyle[severity]
+     const problem = isProblem(diagnostic) ? diagnostic : undefined
+ 
+     const tag = styleText(color, styleText('bold', `[${code}]`))
+diff --git a/packages/core/src/FileManager.ts b/packages/core/src/FileManager.ts
+--- a/packages/core/src/FileManager.ts
++++ b/packages/core/src/FileManager.ts
+@@ -1,13 +1,46 @@
+-import { ast, type FileNode } from '@kubb/ast'
++import { read } from '@internals/utils'
++import { ast, extractStringsFromNodes, type CodeNode, type FileNode } from '@kubb/ast'
++import type { Storage } from './createStorage.ts'
++import type { Parser } from './defineParser.ts'
+ import { AsyncEventEmitter } from './asyncEventEmitter.ts'
+ 
+ /**
+- * Hooks fired by a `FileManager`.
+- *
+- * - `upsert` fires once per resolved file added through `add` or `upsert`.
++ * Hooks fired around a `FileManager#write` batch: `start` before it, `update` per file, `end` after.
+  */
+ export type FileManagerHooks = {
+-  upsert: [file: FileNode]
++  start: [files: Array<FileNode>]
++  update: [params: { file: FileNode; source?: string; processed: number; total: number; percentage: number }]
++  end: [files: Array<FileNode>]
++}
++
++type ParseOptions = {
++  parsers?: Map<FileNode['extname'], Parser>
++  extension?: Record<FileNode['extname'], FileNode['extname'] | ''>
++}
++
++type WriteOptions = ParseOptions & {
++  storage: Storage
++}
++
++function joinSources(file: FileNode): string {
++  return file.sources
++    .map((source) => extractStringsFromNodes(source.nodes as Array<CodeNode>))
++    .filter(Boolean)
++    .join('\n\n')
++}
++
++async function parseCopy(file: FileNode): Promise<string> {
++  let content: string
++  try {
++    content = await read(file.copy as string)
++  } catch (err) {
++    throw new Error(`[kubb] Could not copy file into output: ${file.copy}`, { cause: err })
++  }
++
++  return [file.banner, content, file.footer]
++    .filter((segment): segment is string => Boolean(segment))
++    .map((segment) => segment.trimEnd())
++    .join('\n')
+ }
+ 
+ function mergeFile<TMeta extends object = object>(a: FileNode<TMeta>, b: FileNode<TMeta>): FileNode<TMeta> {
+@@ -38,26 +71,25 @@ function compareFiles(a: FileNode, b: FileNode): number {
+   const bIsIndex = isIndexPath(b.path)
+   if (aIsIndex && !bIsIndex) return 1
+   if (!aIsIndex && bIsIndex) return -1
++
+   return 0
+ }
+ 
+ /**
+- * In-memory file store for generated files. Files sharing a `path` are merged
+- * (sources/imports/exports concatenated). The `files` getter is sorted by
+- * path length (barrel `index.ts` last within a bucket).
++ * In-memory file store for generated files, and the writer that turns them into source
++ * strings on `storage`. Files sharing a `path` are merged (sources/imports/exports
++ * concatenated). The `files` getter is sorted by path length (barrel `index.ts` last
++ * within a bucket).
+  *
+  * @example
+  * ```ts
+  * const manager = new FileManager()
+  * manager.upsert(myFile)
+  * manager.files // sorted view
++ * await manager.write(manager.files, { storage: fsStorage() })
+  * ```
+  */
+ export class FileManager {
+-  /**
+-   * Subscribe to file-store changes. Listeners on `upsert` see each resolved file as it lands
+-   * through `add` or `upsert`.
+-   */
+   readonly hooks = new AsyncEventEmitter<FileManagerHooks>()
+   readonly #cache = new Map<string, FileNode>()
+   // Cached sorted view. Null means stale and rebuilt lazily on next `files` read.
+@@ -83,7 +115,6 @@ export class FileManager {
+       const merged = existing && mergeExisting ? ast.factory.createFile(mergeFile(existing, file)) : ast.factory.createFile(file)
+       this.#cache.set(merged.path, merged)
+       resolved.push(merged)
+-      this.hooks.emit('upsert', merged)
+     }
+ 
+     if (resolved.length > 0) this.#sorted = null
+@@ -101,15 +132,6 @@ export class FileManager {
+     return [...seen.values()]
+   }
+ 
+-  getByPath(path: string): FileNode | null {
+-    return this.#cache.get(path) ?? null
+-  }
+-
+-  deleteByPath(path: string): void {
+-    if (!this.#cache.delete(path)) return
+-    this.#sorted = null
+-  }
+-
+   clear(): void {
+     this.#cache.clear()
+     this.#sorted = null
+@@ -124,15 +146,57 @@ export class FileManager {
+     this.hooks.removeAll()
+   }
+ 
+-  [Symbol.dispose](): void {
+-    this.dispose()
+-  }
+-
+   /**
+    * All stored files in stable sort order (shortest path first, barrel files
+    * last within a length bucket). Returns a cached view, do not mutate.
+    */
+   get files(): Array<FileNode> {
+     return (this.#sorted ??= [...this.#cache.values()].sort(compareFiles))
+   }
++
++  /**
++   * Converts a file's AST sources (or its `copy` source) into the final on-disk string.
++   */
++  async parse(file: FileNode, { parsers, extension }: ParseOptions = {}): Promise<string> {
++    if (file.copy) {
++      return parseCopy(file)
++    }
++
++    const parseExtName = extension?.[file.extname] || undefined
++
++    if (!parsers || !file.extname) {
++      return joinSources(file)
++    }
++
++    const parser = parsers.get(file.extname)
++
++    if (!parser) {
++      return joinSources(file)
++    }
++
++    return parser.parse(file, { extname: parseExtName })
++  }
++
++  /**
++   * Converts and writes every file at once, letting `storage.setItem` decide how much of
++   * that runs concurrently.
++   */
++  async write(files: Array<FileNode>, { storage, parsers, extension }: WriteOptions): Promise<void> {
++    if (files.length === 0) return
++
++    await this.hooks.emit('start', files)
++
++    const total = files.length
++    let processed = 0
++    await Promise.all(
++      files.map(async (file) => {
++        const source = await this.parse(file, { parsers, extension })
++        processed++
++        await this.hooks.emit('update', { file, source, processed, total, percentage: (processed / total) * 100 })
++        if (source) await storage.setItem(file.path, source)
++      }),
++    )
++
++    await this.hooks.emit('end', files)
++  }
+ }
+diff --git a/packages/core/src/FileProcessor.ts b/packages/core/src/FileProcessor.ts
+deleted file mode 100644
+--- a/packages/core/src/FileProcessor.ts
++++ /dev/null
+@@ -1,230 +0,0 @@
+-import { read } from '@internals/utils'
+-import { extractStringsFromNodes, type CodeNode, type FileNode } from '@kubb/ast'
+-import { STREAM_FLUSH_EVERY } from './constants.ts'
+-import type { Storage } from './createStorage.ts'
+-import type { Parser } from './defineParser.ts'
+-import { AsyncEventEmitter } from './asyncEventEmitter.ts'
+-
+-/**
+- * Hooks fired by a `FileProcessor`.
+- *
+- * - `start` opens a batch, from `run` or a queue flush.
+- * - `update` fires once per file as it is converted.
+- * - `end` closes a batch.
+- * - `enqueue` fires for every `enqueue` call.
+- * - `drain` fires when `drain()` empties the queue with no in-flight batch left.
+- */
+-export type FileProcessorHooks = {
+-  start: [files: Array<FileNode>]
+-  update: [params: { file: FileNode; source?: string; processed: number; total: number; percentage: number }]
+-  end: [files: Array<FileNode>]
+-  enqueue: [file: FileNode]
+-  drain: []
+-}
+-
+-/**
+- * Per-file progress record yielded by `stream` and surfaced through the `update` event.
+- */
+-export type ParsedFile = {
+-  file: FileNode
+-  source: string
+-  processed: number
+-  total: number
+-  percentage: number
+-}
+-
+-type FileProcessorOptions = {
+-  /**
+-   * Storage destination for queued writes.
+-   */
+-  storage: Storage
+-  /**
+-   * Parsers indexed by file extension.
+-   */
+-  parsers?: Map<FileNode['extname'], Parser>
+-  /**
+-   * Output extname per source extname, applied during conversion.
+-   */
+-  extension?: Record<FileNode['extname'], FileNode['extname'] | ''>
+-}
+-
+-function joinSources(file: FileNode): string {
+-  const sources = file.sources
+-  if (sources.length === 0) return ''
+-  const parts: Array<string> = []
+-  for (const source of sources) {
+-    const text = extractStringsFromNodes(source.nodes as Array<CodeNode>)
+-    if (text) parts.push(text)
+-  }
+-  return parts.join('\n\n')
+-}
+-
+-async function parseCopy(file: FileNode): Promise<string> {
+-  let content: string
+-  try {
+-    content = await read(file.copy as string)
+-  } catch (err) {
+-    throw new Error(`[kubb] Could not copy file into output: ${file.copy}`, { cause: err })
+-  }
+-
+-  return [file.banner, content, file.footer]
+-    .filter((segment): segment is string => Boolean(segment))
+-    .map((segment) => segment.trimEnd())
+-    .join('\n')
+-}
+-
+-/**
+- * Turns `FileNode`s into source strings and writes them to storage.
+- *
+- * Two modes share the same instance. Stateless mode (`parse`, `stream`, `run`) just runs the
+- * conversion. Queue mode (`enqueue`, `flush`, `drain`) buffers files deduped by path and
+- * writes each batch through storage with up to `STREAM_FLUSH_EVERY` requests in flight.
+- *
+- * `flush` does not wait for its batch to finish, so dispatch can overlap with IO. The next
+- * `flush` or `drain` picks the in-flight batch up. `drain` blocks until everything has been
+- * written and is meant for the end of a build.
+- *
+- * To surface build-level hook signals (`kubb:files:processing:*` and friends) subscribe to
+- * `hooks` and re-emit on the kubb bus.
+- */
+-export class FileProcessor {
+-  readonly hooks = new AsyncEventEmitter<FileProcessorHooks>()
+-  readonly #parsers: Map<FileNode['extname'], Parser> | null
+-  readonly #storage: Storage
+-  readonly #extension: Record<FileNode['extname'], FileNode['extname'] | ''> | null
+-  readonly #pending = new Map<string, FileNode>()
+-  #runningFlush: Promise<void> | null = null
+-
+-  constructor(options: FileProcessorOptions) {
+-    this.#parsers = options.parsers ?? null
+-    this.#storage = options.storage
+-    this.#extension = options.extension ?? null
+-  }
+-
+-  /**
+-   * Files waiting in the queue.
+-   */
+-  get size(): number {
+-    return this.#pending.size
+-  }
+-
+-  async parse(file: FileNode): Promise<string> {
+-    if (file.copy) {
+-      return parseCopy(file)
+-    }
+-
+-    const parsers = this.#parsers
+-    const parseExtName = this.#extension?.[file.extname] || undefined
+-
+-    if (!parsers || !file.extname) {
+-      return joinSources(file)
+-    }
+-
+-    const parser = parsers.get(file.extname)
+-
+-    if (!parser) {
+-      return joinSources(file)
+-    }
+-
+-    return parser.parse(file, { extname: parseExtName })
+-  }
+-
+-  async *stream(files: ReadonlyArray<FileNode>): AsyncGenerator<ParsedFile> {
+-    const total = files.length
+-    if (total === 0) return
+-
+-    let processed = 0
+-    for (const file of files) {
+-      const source = await this.parse(file)
+-      processed++
+-
+-      yield { file, source, processed, total, percentage: (processed / total) * 100 }
+-    }
+-  }
+-
+-  async run(files: Array<FileNode>): Promise<Array<FileNode>> {
+-    await this.hooks.emit('start', files)
+-
+-    for await (const { file, source, processed, total, percentage } of this.stream(files)) {
+-      await this.hooks.emit('update', { file, source, processed, percentage, total })
+-    }
+-
+-    await this.hooks.emit('end', files)
+-
+-    return files
+-  }
+-
+-  /**
+-   * Adds a file to the next flush. A later `enqueue` for the same path replaces the previous
+-   * entry, matching `FileManager.upsert`. Fires the `enqueue` event.
+-   */
+-  enqueue(file: FileNode): void {
+-    this.#pending.set(file.path, file)
+-    this.hooks.emit('enqueue', file)
+-  }
+-
+-  /**
+-   * Starts processing the queued files. Waits for any previous flush to finish (so two
+-   * batches never run together) and then returns without waiting for the new one. The next
+-   * `flush` or `drain` picks up the in-flight task.
+-   */
+-  async flush(): Promise<void> {
+-    if (this.#runningFlush) await this.#runningFlush
+-    if (this.#pending.size === 0) return
+-
+-    const batch = [...this.#pending.values()]
+-    this.#pending.clear()
+-
+-    this.#runningFlush = this.#processAndWrite(batch).finally(() => {
+-      this.#runningFlush = null
+-    })
+-  }
+-
+-  /**
+-   * Waits for the in-flight flush and writes any files still queued. Fires the `drain` event
+-   * when both are done.
+-   */
+-  async drain(): Promise<void> {
+-    if (this.#runningFlush) await this.#runningFlush
+-
+-    if (this.#pending.size > 0) {
+-      const batch = [...this.#pending.values()]
+-      this.#pending.clear()
+-      await this.#processAndWrite(batch)
+-    }
+-
+-    await this.hooks.emit('drain')
+-  }
+-
+-  async #processAndWrite(files: Array<FileNode>): Promise<void> {
+-    const storage = this.#storage
+-
+-    await this.hooks.emit('start', files)
+-
+-    // Single pass: each file's write starts right after its `update` fires, so IO overlaps
+-    // parsing and the batch never holds every rendered source in memory at once.
+-    const queue: Array<Promise<void>> = []
+-    for await (const item of this.stream(files)) {
+-      await this.hooks.emit('update', item)
+-      if (item.source) {
+-        queue.push(storage.setItem(item.file.path, item.source))
+-        if (queue.length >= STREAM_FLUSH_EVERY) await Promise.all(queue.splice(0))
+-      }
+-    }
+-    await Promise.all(queue)
+-
+-    await this.hooks.emit('end', files)
+-  }
+-
+-  /**
+-   * Clears every listener and the pending queue.
+-   */
+-  dispose(): void {
+-    this.hooks.removeAll()
+-    this.#pending.clear()
+-  }
+-
+-  [Symbol.dispose](): void {
+-    this.dispose()
+-  }
+-}
+diff --git a/packages/core/src/KubbDriver.ts b/packages/core/src/KubbDriver.ts
+--- a/packages/core/src/KubbDriver.ts
++++ b/packages/core/src/KubbDriver.ts
+@@ -1,17 +1,17 @@
+ import { resolve } from 'node:path'
+-import { arrayToAsyncIterable, getElapsedMs, isPromise, memoize } from '@internals/utils'
++import { getElapsedMs, memoize } from '@internals/utils'
+ import { ast, collectUsedSchemaNames, type Enforce, type FileNode, type InputMeta, type InputNode, type OperationNode, type SchemaNode } from '@kubb/ast'
+-import { GENERATE_FLUSH_EVERY, OPERATION_FILTER_TYPES } from './constants.ts'
++import { OPERATION_FILTER_TYPES } from './constants.ts'
+ import { type Diagnostic, Diagnostics, type ProblemDiagnostic } from './Diagnostics.ts'
+ import type { RendererFactory } from './createRenderer.ts'
+ import type { Storage } from './createStorage.ts'
+ import type { Generator } from './defineGenerator.ts'
+ import type { Parser } from './defineParser.ts'
+ import type { Plugin } from './definePlugin.ts'
+ import { normalizeOutput } from './definePlugin.ts'
+-import { defineResolver } from './defineResolver.ts'
++import type { ResolverOverride } from './createResolver.ts'
++import { createResolver, Resolver } from './createResolver.ts'
+ import { FileManager } from './FileManager.ts'
+-import { FileProcessor } from './FileProcessor.ts'
+ import { Transform } from './Transform.ts'
+ 
+ import type {
+@@ -24,7 +24,6 @@ import type {
+   KubbPluginSetupContext,
+   NormalizedPlugin,
+   PluginFactoryOptions,
+-  Resolver,
+ } from './types.ts'
+ import type { AsyncEventEmitter } from './asyncEventEmitter.ts'
+ 
+@@ -44,11 +43,7 @@ type RequirePluginContext = {
+   requiredBy?: string
+ }
+ 
+-function enforceOrder(enforce: Enforce | undefined): number {
+-  if (enforce === 'pre') return -1
+-  if (enforce === 'post') return 1
+-  return 0
+-}
++const ENFORCE_ORDER = { pre: -1, post: 1 } satisfies Record<Enforce, number>
+ 
+ /**
+  * Orders plugins so every dependency runs before its dependents (Kahn's algorithm), with
+@@ -59,7 +54,7 @@ function enforceOrder(enforce: Enforce | undefined): number {
+  * config are ignored here and surface later through `requirePlugin`.
+  */
+ function sortPlugins(plugins: Array<NormalizedPlugin>): Array<NormalizedPlugin> {
+-  const queue = [...plugins].sort((a, b) => enforceOrder(a.enforce) - enforceOrder(b.enforce))
++  const queue = [...plugins].sort((a, b) => (a.enforce ? ENFORCE_ORDER[a.enforce] : 0) - (b.enforce ? ENFORCE_ORDER[b.enforce] : 0))
+   const names = new Set(queue.map((plugin) => plugin.name))
+   const blockedBy = new Map(queue.map((plugin) => [plugin.name, new Set(plugin.dependencies?.filter((name) => names.has(name) && name !== plugin.name))]))
+ 
+@@ -90,13 +85,12 @@ export class KubbDriver {
+   readonly options: Options
+ 
+   /**
+-   * The streaming `InputNode<true>` produced by the adapter. Set after adapter setup.
+-   * Parse-only adapters are wrapped automatically.
++   * The `InputNode` produced by the adapter. Set after adapter setup.
+    */
+-  inputNode: InputNode<true> | null = null
++  inputNode: InputNode | null = null
+   adapter: Adapter | null = null
+   /**
+-   * Raw adapter source so `adapter.parse()` / `adapter.stream()` can run lazily.
++   * Raw adapter source so `adapter.parse()` can run lazily.
+    * Intentionally outlives the build, cleared by `dispose()`.
+    */
+   #adapterSource: AdapterSource | null = null
+@@ -154,10 +148,6 @@ export class KubbDriver {
+     const normalized = sortPlugins(this.config.plugins.map((rawPlugin) => this.#normalizePlugin(rawPlugin as Plugin)))
+ 
+     for (const plugin of normalized) {
+-      if (plugin.apply) {
+-        plugin.apply(this.config)
+-      }
+-
+       this.#registerPlugin(plugin)
+       this.plugins.set(plugin.name, plugin)
+     }
+@@ -173,49 +163,27 @@ export class KubbDriver {
+ 
+   /**
+    * Builds a `NormalizedPlugin` from a hook-style plugin, filling in default
+-   * options and copying `apply` when present. Registering its lifecycle handlers
+-   * on the `AsyncEventEmitter` is done separately by `#registerPlugin`.
++   * options. Registering its lifecycle handlers on the `AsyncEventEmitter` is
++   * done separately by `#registerPlugin`.
+    */
+   #normalizePlugin(plugin: Plugin): NormalizedPlugin {
+-    const normalized: NormalizedPlugin = {
++    return {
+       name: plugin.name,
+       dependencies: plugin.dependencies,
+       enforce: plugin.enforce,
+       hooks: plugin.hooks,
+       options: plugin.options ?? { output: { path: '.', mode: 'directory' }, exclude: [], override: [] },
+     } as NormalizedPlugin
+-
+-    if ('apply' in plugin && typeof plugin.apply === 'function') {
+-      normalized.apply = plugin.apply as (config: Config) => boolean
+-    }
+-
+-    return normalized
+   }
+ 
+   /**
+    * Parses the adapter source into `this.inputNode`. Idempotent, so repeated calls from
+-   * `run` do not re-parse. Adapters with `stream()` are used directly.
+-   * Adapters with only `parse()` are wrapped via `ast.factory.createInput({ stream: true })` so the dispatch loop
+-   * stays stream-only.
++   * `run` do not re-parse.
+    */
+   async #parseInput(): Promise<void> {
+     if (this.inputNode || !this.adapter || !this.#adapterSource) return
+ 
+-    const adapter = this.adapter
+-    const source = this.#adapterSource
+-
+-    if (adapter.stream) {
+-      this.inputNode = await adapter.stream(source)
+-      return
+-    }
+-
+-    const parsed = await adapter.parse(source)
+-    this.inputNode = ast.factory.createInput({
+-      stream: true,
+-      schemas: arrayToAsyncIterable(parsed.schemas),
+-      operations: arrayToAsyncIterable(parsed.operations),
+-      meta: parsed.meta,
+-    })
++    this.inputNode = await this.adapter.parse(this.#adapterSource)
+   }
+ 
+   /**
+@@ -339,10 +307,10 @@ export class KubbDriver {
+ 
+   /**
+    * Returns `true` when at least one generator was registered for the given plugin
+-   * via `addGenerator()` in `kubb:plugin:setup` (event-based path).
++   * via `addGenerator()` in `kubb:plugin:setup`.
+    *
+    * Used by the build loop to decide whether to walk the AST and emit generator events
+-   * for a plugin that has no static `plugin.generators`.
++   * for a plugin.
+    */
+   hasEventGenerators(pluginName: string): boolean {
+     return this.#eventGeneratorPlugins.has(pluginName)
+@@ -355,7 +323,7 @@ export class KubbDriver {
+    * contributes a `timing` diagnostic for the run summary.
+    */
+   async run({ storage }: { storage: Storage }): Promise<{ diagnostics: Array<Diagnostic> }> {
+-    const { hooks, config } = this
++    const { hooks, config, fileManager } = this
+     const diagnostics: Array<Diagnostic> = []
+     const parsersMap = new Map<FileNode['extname'], Parser>()
+ 
+@@ -365,37 +333,36 @@ export class KubbDriver {
+       }
+     }
+ 
+-    const processor = new FileProcessor({ parsers: parsersMap, storage, extension: config.output.extension })
+-    // Bridge processor lifecycle to the user-facing kubb hooks so existing listeners on
+-    // kubb:files:processing:* keep firing.
+-    processor.hooks.on('start', async (files) => {
++    // Bridge the write batch's lifecycle to the user-facing kubb hooks so existing listeners
++    // on kubb:files:processing:* keep firing. Tracked locally (not via #trackListener) since
++    // these must come off at the end of this run, not just at driver disposal.
++    const onWriteStart = async (files: Array<FileNode>) => {
+       await hooks.emit('kubb:files:processing:start', { files })
+-    })
++    }
+     const updateBuffer: Array<{ file: FileNode; source?: string; processed: number; total: number; percentage: number }> = []
+-    processor.hooks.on('update', (item) => {
++    const onWriteUpdate = (item: (typeof updateBuffer)[number]) => {
+       updateBuffer.push(item)
+-    })
+-    processor.hooks.on('end', async (files) => {
++    }
++    const onWriteEnd = async (files: Array<FileNode>) => {
+       await hooks.emit('kubb:files:processing:update', {
+         files: updateBuffer.map((item) => ({ ...item, config })),
+       })
+       updateBuffer.length = 0
+       await hooks.emit('kubb:files:processing:end', { files })
+-    })
+-    const onFileUpsert = (file: FileNode): void => {
+-      processor.enqueue(file)
+     }
+-    this.fileManager.hooks.on('upsert', onFileUpsert)
++    fileManager.hooks.on('start', onWriteStart)
++    fileManager.hooks.on('update', onWriteUpdate)
++    fileManager.hooks.on('end', onWriteEnd)
+ 
+-    // Make `diagnostics` the active sink so deep code (adapter parse, lazily consumed
+-    // streams, generators) can report into this run via `Diagnostics.report`.
++    // Make `diagnostics` the active sink so deep code (adapter parse, generators) can
++    // report into this run via `Diagnostics.report`.
+     return Diagnostics.scope(
+       (diagnostic) => diagnostics.push(diagnostic),
+       async () => {
+         try {
+           const outputRoot = resolve(config.root, config.output.path)
+ 
+-          // Parse the adapter source into the streaming `InputNode`.
++          // Parse the adapter source into `this.inputNode`.
+           await this.#parseInput()
+           // Emit `kubb:plugin:setup` so plugins can register macros via `addMacro`/`setMacros`.
+           // Each call writes into `this.#transforms`, which `#runGenerators` later reads through
+@@ -441,17 +408,15 @@ export class KubbDriver {
+             await this.#emitPluginEnd({ plugin, duration, success: true })
+           }
+ 
+-          // Stream every node through the transform registry and into each plugin's generators.
+-          // When there are no entries it returns early. When `inputNode` is missing it still
+-          // closes out each entry's `kubb:plugin:end` directly.
+-          diagnostics.push(...(await this.#runGenerators(generatorPlugins, () => processor.flush())))
+-          // Wait for the last in-flight batch and write anything still pending.
+-          await processor.drain()
++          // Run every node through the transform registry and into each plugin's generators.
++          diagnostics.push(...(await this.#runGenerators(generatorPlugins)))
+ 
+           await hooks.emit('kubb:plugins:end', Object.assign({ config }, this.#filesPayload()))
+ 
+-          // Plugins-end listeners (barrel plugin etc.) may have queued more files.
+-          await processor.drain()
++          // Write every generated file once, after post-processing (barrel etc.) has had its
++          // chance to add more. Writing mid-generation measured no faster in practice, so a
++          // single pass keeps the pipeline simpler.
++          await fileManager.write(fileManager.files, { storage, parsers: parsersMap, extension: config.output.extension })
+ 
+           await hooks.emit('kubb:build:end', { files: this.fileManager.files, config, outputDir: outputRoot })
+ 
+@@ -460,7 +425,9 @@ export class KubbDriver {
+           diagnostics.push(Diagnostics.from(caughtError))
+           return { diagnostics: Diagnostics.dedupe(diagnostics) }
+         } finally {
+-          this.fileManager.hooks.off('upsert', onFileUpsert)
++          fileManager.hooks.off('start', onWriteStart)
++          fileManager.hooks.off('update', onWriteUpdate)
++          fileManager.hooks.off('end', onWriteEnd)
+         }
+       },
+     )
+@@ -488,24 +455,22 @@ export class KubbDriver {
+   }
+ 
+   /**
+-   * Streams schemas and operations through every plugin's generators. Each node is run
++   * Runs schemas and operations through every plugin's generators. Each node is run
+    * through the plugin's macros (from `this.#transforms`) before the generator sees it,
+    * so plugins stay isolated and the hot path stays per-node. Schemas run before operations
+-   * because the two passes share `flushPending` and the FileProcessor's event emitter.
++   * so file output stays deterministic across runs.
+    * A failing plugin contributes an error diagnostic so the rest of the build continues.
+    * Every plugin also contributes a `timing` diagnostic.
+    *
+-   * Plugins run sequentially so `kubb:plugin:end` fires as each plugin completes, instead
+-   * of all at once after every plugin has marched through the parallel batches together.
+-   * That ordering is what drives the CLI's `Plugins N/M` counter. Without it the bar would
+-   * sit at the initial value until the very end of the run.
++   * Plugins are processed one at a time, in full, so `kubb:plugin:end` fires as each one
++   * completes rather than all at once at the end. That ordering drives the CLI's
++   * `Plugins N/M` counter.
+    *
+    * When `this.inputNode` is `null`, every entry still gets a `kubb:plugin:end` so
+    * post-plugin listeners (the barrel writer and friends) complete.
+    */
+   async #runGenerators(
+     entries: Array<{ plugin: NormalizedPlugin; context: Omit<GeneratorContext, 'options'>; hrStart: ReturnType<typeof process.hrtime> }>,
+-    flushPending: () => Promise<void>,
+   ): Promise<Array<Diagnostic>> {
+     const diagnostics: Array<Diagnostic> = []
+ 
+@@ -523,198 +488,113 @@ export class KubbDriver {
+     const transforms = this.#transforms
+     const { schemas, operations } = this.inputNode
+ 
+-    type PluginState = {
+-      plugin: NormalizedPlugin
+-      generatorContext: Omit<GeneratorContext, 'options'>
+-      generators: Array<Generator>
+-      hrStart: ReturnType<typeof process.hrtime>
+-      failed: boolean
+-      error: Error | null
+-      optionsAreStatic: boolean
+-      allowedSchemaNames: Set<string> | null
+-    }
+-
+-    const states: Array<PluginState> = entries.map(({ plugin, context, hrStart }) => {
+-      const { exclude, include, override } = plugin.options
+-      const hasExclude = Array.isArray(exclude) && exclude.length > 0
+-      const hasInclude = Array.isArray(include) && include.length > 0
+-      const hasOverride = Array.isArray(override) && override.length > 0
+-      return {
+-        plugin,
+-        generatorContext: { ...context, resolver: this.getResolver(plugin.name) },
+-        generators: plugin.generators ?? [],
+-        hrStart,
+-        failed: false,
+-        error: null,
+-        optionsAreStatic: !hasExclude && !hasInclude && !hasOverride,
+-        allowedSchemaNames: null,
+-      }
+-    })
+-
+     const emitsSchemaHook = this.hooks.listenerCount('kubb:generate:schema') > 0
+     const emitsOperationHook = this.hooks.listenerCount('kubb:generate:operation') > 0
+     const emitsOperationsHook = this.hooks.listenerCount('kubb:generate:operations') > 0
+ 
+-    // Buffer the streaming adapter's nodes once. Each plugin reads the same buffer
+-    // instead of re-parsing the document per pass, and the pruning pre-scan below
+-    // shares it too (previously it iterated its own copies).
+-    const schemasBuffer: Array<SchemaNode> = await Array.fromAsync(schemas)
+-    const operationsBuffer: Array<OperationNode> = await Array.fromAsync(operations)
+-
+     // Pre-scan: plugins with operation-based includes (but no schemaName include) need
+-    // the reachable schema set. This requires the full schema graph in memory at once,
+-    // since transitive reachability can't be derived from a single node.
+-    const pruningStates = states.filter(({ plugin }) => {
+-      const { include } = plugin.options
+-      return (include?.some(({ type }) => OPERATION_FILTER_TYPES.has(type)) ?? false) && !(include?.some(({ type }) => type === 'schemaName') ?? false)
+-    })
+-
+-    if (pruningStates.length > 0) {
+-      const includedOpsByState = new Map<PluginState, Array<OperationNode>>(pruningStates.map((state) => [state, []]))
+-      for (const operation of operationsBuffer) {
+-        for (const state of pruningStates) {
+-          const { exclude, include, override } = state.plugin.options
+-          const options = state.generatorContext.resolver.resolveOptions(operation, { options: state.plugin.options, exclude, include, override })
+-          if (options !== null) includedOpsByState.get(state)?.push(operation)
+-        }
+-      }
+-
+-      for (const state of pruningStates) {
+-        state.allowedSchemaNames = collectUsedSchemaNames(includedOpsByState.get(state) ?? [], schemasBuffer)
+-        includedOpsByState.delete(state)
+-      }
+-    }
+-
+-    // Apply the plugin's macros, then resolve options (skipping the resolver when
+-    // optionsAreStatic). Returns null when include/exclude/override rules out the node.
+-    // The per-node dispatch and the collected-operations tail both go through this so
+-    // they agree on what a plugin sees.
+-    const resolveForPlugin = <TNode extends SchemaNode | OperationNode>(
+-      state: PluginState,
+-      node: TNode,
+-    ): { transformedNode: TNode; options: NormalizedPlugin['options'] } | null => {
+-      const { plugin, generatorContext } = state
+-      const transformedNode = transforms.applyTo(plugin.name, node)
+-      if (state.optionsAreStatic) return { transformedNode, options: plugin.options }
+-
++    // the reachable schema set, keyed by plugin name. This requires the full schema graph
++    // in memory at once, since transitive reachability can't be derived from a single node.
++    const allowedSchemaNamesByPlugin = new Map<string, Set<string>>()
++    for (const { plugin } of entries) {
+       const { exclude, include, override } = plugin.options
+-      const options = generatorContext.resolver.resolveOptions(transformedNode, { options: plugin.options, exclude, include, override })
+-      if (options === null) return null
+-      return { transformedNode, options }
+-    }
+-
+-    // One generation pass: which generator method runs, which kubb:generate hook fires, and
+-    // whether the schema-only allowedSchemaNames prune applies.
+-    type NodeDispatch<TNode extends SchemaNode | OperationNode> = {
+-      method: 'schema' | 'operation'
+-      checkAllowedNames: boolean
+-      emit: ((node: TNode, ctx: GeneratorContext) => Promise<void> | void) | null
++      const needsPruning =
++        (include?.some(({ type }) => OPERATION_FILTER_TYPES.has(type)) ?? false) && !(include?.some(({ type }) => type === 'schemaName') ?? false)
++      if (!needsPruning) continue
++
++      const resolver = this.getResolver(plugin.name)
++      const includedOps = operations.filter(
++        (operation) => resolver.default.options(operation, { options: plugin.options, exclude, include, override }) !== null,
++      )
++      allowedSchemaNamesByPlugin.set(plugin.name, collectUsedSchemaNames(includedOps, schemas))
+     }
+ 
+-    // Schemas and operations share this body, differing only in the dispatch descriptor.
+-    const dispatchNode = async <TNode extends SchemaNode | OperationNode>(state: PluginState, node: TNode, dispatch: NodeDispatch<TNode>): Promise<void> => {
+-      if (state.failed) return
+-      try {
+-        const resolved = resolveForPlugin(state, node)
+-        if (!resolved) return
+-
+-        const { transformedNode, options } = resolved
+-        if (
+-          dispatch.checkAllowedNames &&
+-          state.allowedSchemaNames !== null &&
+-          'name' in transformedNode &&
+-          transformedNode.name &&
+-          !state.allowedSchemaNames.has(transformedNode.name)
+-        ) {
+-          return
+-        }
+-
+-        const ctx = { ...state.generatorContext, options }
+-        for (const gen of state.generators) {
+-          const run = gen[dispatch.method] as ((node: TNode, ctx: GeneratorContext) => unknown) | undefined
+-          if (!run) continue
+-          const raw = run(transformedNode, ctx)
+-          const result = isPromise(raw) ? await raw : raw
+-          const applied = this.dispatch({ result, renderer: gen.renderer })
+-          if (isPromise(applied)) await applied
+-        }
+-        if (dispatch.emit) await dispatch.emit(transformedNode, ctx)
+-      } catch (caughtError) {
+-        state.failed = true
+-        state.error = caughtError as Error
++    for (const { plugin, context, hrStart } of entries) {
++      const generatorContext = { ...context, resolver: this.getResolver(plugin.name) }
++      const { exclude, include, override } = plugin.options
++      const optionsAreStatic = !exclude?.length && !include?.length && !override?.length
++      const allowedSchemaNames = allowedSchemaNamesByPlugin.get(plugin.name) ?? null
++
++      let error: Error | null = null
++
++      // Applies the plugin's macros, then resolves options (skipping the resolver when
++      // optionsAreStatic). Returns null when include/exclude/override rules out the node.
++      // The per-node dispatch and the collected-operations tail both go through this so
++      // they agree on what the plugin sees.
++      const resolveForPlugin = <TNode extends SchemaNode | OperationNode>(
++        node: TNode,
++      ): { transformedNode: TNode; options: NormalizedPlugin['options'] } | null => {
++        const transformedNode = transforms.applyTo(plugin.name, node)
++        if (optionsAreStatic) return { transformedNode, options: plugin.options }
++
++        const options = generatorContext.resolver.default.options<NormalizedPlugin['options']>(transformedNode, {
++          options: plugin.options,
++          exclude,
++          include,
++          override,
++        })
++        if (options === null) return null
++
++        return { transformedNode, options }
+       }
+-    }
+ 
+-    const schemaDispatch = {
+-      method: 'schema',
+-      checkAllowedNames: true,
+-      emit: emitsSchemaHook ? (node: SchemaNode, ctx: GeneratorContext) => this.hooks.emit('kubb:generate:schema', node, ctx) : null,
+-    } as const
+-    const operationDispatch = {
+-      method: 'operation',
+-      checkAllowedNames: false,
+-      emit: emitsOperationHook ? (node: OperationNode, ctx: GeneratorContext) => this.hooks.emit('kubb:generate:operation', node, ctx) : null,
+-    } as const
+-
+-    // Walk nodes in order, flushing queued writes every GENERATE_FLUSH_EVERY nodes so writes
+-    // reach disk while later nodes are still generating. The generators are synchronous, so
+-    // batching them through Promise.all never overlapped anything a sequential walk doesn't.
+-    const dispatchPass = async <TNode extends SchemaNode | OperationNode>(
+-      state: PluginState,
+-      nodes: ReadonlyArray<TNode>,
+-      dispatch: NodeDispatch<TNode>,
+-    ): Promise<void> => {
+-      let sinceFlush = 0
+-      for (const node of nodes) {
+-        await dispatchNode(state, node, dispatch)
+-        if (++sinceFlush >= GENERATE_FLUSH_EVERY) {
+-          sinceFlush = 0
+-          await flushPending()
++      // Schemas before operations, in adapter order, so file output stays deterministic. A
++      // caught error stops this plugin but not the others, so its remaining nodes are
++      // skipped rather than retried.
++      if (emitsSchemaHook) {
++        for (const node of schemas) {
++          if (error) break
++          try {
++            const resolved = resolveForPlugin(node)
++            if (!resolved) continue
++
++            const { transformedNode, options } = resolved
++            if (allowedSchemaNames !== null && transformedNode.name && !allowedSchemaNames.has(transformedNode.name)) continue
++
++            await this.hooks.emit('kubb:generate:schema', transformedNode, { ...generatorContext, options })
++          } catch (caughtError) {
++            error = caughtError as Error
++          }
+         }
+       }
+-      if (sinceFlush > 0) await flushPending()
+-    }
+ 
+-    for (const state of states) {
+-      // Only plugins with a gen.operations (or a kubb:generate:operations listener) need the
+-      // aggregated pass below.
+-      const needsOperationsAggregate = emitsOperationsHook || state.generators.some((gen) => !!gen.operations)
++      if (emitsOperationHook) {
++        for (const node of operations) {
++          if (error) break
++          try {
++            const resolved = resolveForPlugin(node)
++            if (!resolved) continue
+ 
+-      // Run schemas before operations: the two passes share the flush and the FileProcessor's
+-      // event emitter, so interleaving them would race on the shared dirty list.
+-      await dispatchPass(state, schemasBuffer, schemaDispatch)
+-      await dispatchPass(state, operationsBuffer, operationDispatch)
++            await this.hooks.emit('kubb:generate:operation', resolved.transformedNode, { ...generatorContext, options: resolved.options })
++          } catch (caughtError) {
++            error = caughtError as Error
++          }
++        }
++      }
+ 
+-      if (!state.failed && needsOperationsAggregate) {
++      if (!error && emitsOperationsHook) {
+         try {
+-          const { plugin, generatorContext, generators } = state
+           const ctx = { ...generatorContext, options: plugin.options }
+-          // Match what the per-node dispatch passed to gen.operation(): each operation
++          // Match what the per-node dispatch emitted on kubb:generate:operation: each operation
+           // transformed and filtered by this plugin's excludes/includes/overrides.
+-          const pluginOperations = operationsBuffer.reduce<Array<OperationNode>>((acc, node) => {
+-            const resolved = resolveForPlugin(state, node)
++          const pluginOperations = operations.reduce<Array<OperationNode>>((acc, node) => {
++            const resolved = resolveForPlugin(node)
+             if (resolved) acc.push(resolved.transformedNode)
+             return acc
+           }, [])
+-          for (const gen of generators) {
+-            if (!gen.operations) continue
+-            const result = await gen.operations(pluginOperations, ctx)
+-            await this.dispatch({ result, renderer: gen.renderer })
+-          }
+           await this.hooks.emit('kubb:generate:operations', pluginOperations, ctx)
+         } catch (caughtError) {
+-          state.failed = true
+-          state.error = caughtError as Error
++          error = caughtError as Error
+         }
+       }
+ 
+-      const duration = getElapsedMs(state.hrStart)
+-      await this.#emitPluginEnd({ plugin: state.plugin, duration, success: !state.failed, error: state.failed && state.error ? state.error : undefined })
++      const duration = getElapsedMs(hrStart)
++      await this.#emitPluginEnd({ plugin, duration, success: !error, error: error ?? undefined })
+ 
+-      if (state.failed && state.error) {
+-        diagnostics.push({ ...Diagnostics.from(state.error), plugin: state.plugin.name })
++      if (error) {
++        diagnostics.push({ ...Diagnostics.from(error), plugin: plugin.name })
+       }
+-      diagnostics.push(Diagnostics.performance({ plugin: state.plugin.name, duration }))
++      diagnostics.push(Diagnostics.performance({ plugin: plugin.name, duration }))
+     }
+ 
+     return diagnostics
+@@ -751,13 +631,6 @@ export class KubbDriver {
+     }
+ 
+     using instance = renderer()
+-    if (instance.stream) {
+-      for (const file of instance.stream(result)) {
+-        this.fileManager.upsert(file)
+-      }
+-      return
+-    }
+-
+     await instance.render(result)
+     this.fileManager.upsert(...instance.files)
+   }
+@@ -791,19 +664,16 @@ export class KubbDriver {
+     this.dispose()
+   }
+ 
+-  #getDefaultResolver = memoize(
+-    this.#defaultResolvers,
+-    (pluginName: string): Resolver => defineResolver<PluginFactoryOptions>(() => ({ name: 'default', pluginName })),
+-  )
++  #getDefaultResolver = memoize(this.#defaultResolvers, (pluginName: string): Resolver => createResolver<PluginFactoryOptions>({ pluginName }))
+ 
+   /**
+    * Merges `partial` with the plugin's default resolver and stores the result.
+    * Also mirrors it onto `plugin.resolver` so callers using `getPlugin(name).resolver`
+    * get the up-to-date resolver without going through `getResolver()`.
+    */
+-  setPluginResolver(pluginName: string, partial: Partial<Resolver>): void {
++  setPluginResolver(pluginName: string, partial: ResolverOverride): void {
+     const defaultResolver = this.#getDefaultResolver(pluginName)
+-    const merged = { ...defaultResolver, ...partial }
++    const merged = Resolver.merge(defaultResolver, partial)
+     this.#resolvers.set(pluginName, merged)
+     const plugin = this.plugins.get(pluginName)
+     if (plugin) {
+@@ -814,13 +684,13 @@ export class KubbDriver {
+   /**
+    * Returns the resolver for the given plugin.
+    *
+-   * Resolution order: dynamic resolver set via `setPluginResolver` → static resolver on the
+-   * plugin → lazily created default resolver (identity name, no path transforms).
++   * Resolution order: resolver set via `setPluginResolver` → lazily created default
++   * resolver (identity name, no path transforms).
+    */
+   getResolver<TName extends keyof Kubb.PluginRegistry>(pluginName: TName): Kubb.PluginRegistry[TName]['resolver']
+   getResolver<TResolver extends Resolver = Resolver>(pluginName: string): TResolver
+   getResolver(pluginName: string): Resolver {
+-    return this.#resolvers.get(pluginName) ?? this.plugins.get(pluginName)?.resolver ?? this.#getDefaultResolver(pluginName)
++    return this.#resolvers.get(pluginName) ?? this.#getDefaultResolver(pluginName)
+   }
+ 
+   getContext<TOptions extends PluginFactoryOptions>(plugin: NormalizedPlugin<TOptions>): Omit<GeneratorContext<TOptions>, 'options'> {
+diff --git a/packages/core/src/Transform.ts b/packages/core/src/Transform.ts
+--- a/packages/core/src/Transform.ts
++++ b/packages/core/src/Transform.ts
+@@ -22,13 +22,6 @@ export class Transform {
+   // driver resolves a node a second time, and a stateful macro runs once per node.
+   readonly #memo = new Map<string, WeakMap<SchemaNode | OperationNode, SchemaNode | OperationNode>>()
+ 
+-  /**
+-   * Number of plugins with at least one registered macro.
+-   */
+-  get size(): number {
+-    return this.#macros.size
+-  }
+-
+   /**
+    * Appends `macro` to the plugin's list, after any macros already registered.
+    */
+@@ -47,13 +40,6 @@ export class Transform {
+     this.#invalidate(pluginName)
+   }
+ 
+-  /**
+-   * Looks up the composed visitor for `pluginName`, or `undefined` when the plugin has no macros.
+-   */
+-  get(pluginName: string): Visitor | undefined {
+-    return this.#visitorFor(pluginName)
+-  }
+-
+   /**
+    * Runs the plugin's macros on `node`. Returns the original node reference when the plugin has no
+    * macros, so callers can compare by identity to detect a no-op.
+diff --git a/packages/core/src/constants.ts b/packages/core/src/constants.ts
+--- a/packages/core/src/constants.ts
++++ b/packages/core/src/constants.ts
+@@ -1,8 +1,3 @@
+-/**
+- * Number of file writes to batch in parallel during `flushPendingFiles`.
+- */
+-export const STREAM_FLUSH_EVERY = 50
+-
+ /**
+  * Maximum number of █ characters in a plugin timing bar.
+  */
+@@ -13,12 +8,6 @@ export const SUMMARY_MAX_BAR_LENGTH = 10 as const
+  */
+ export const SUMMARY_TIME_SCALE_DIVISOR = 100 as const
+ 
+-/**
+- * How many schema/operation nodes to generate between write flushes. Flushing as generation runs
+- * lets writes reach disk before the build finishes, rather than queuing them all to the end.
+- */
+-export const GENERATE_FLUSH_EVERY = 8
+-
+ /**
+  * Upper bound of hook listeners a single plugin can add to one event (its schema, operation,
+  * and operations generators, plus lifecycle hooks). Used to size the hooks emitter's
+diff --git a/packages/core/src/createAdapter.ts b/packages/core/src/createAdapter.ts
+--- a/packages/core/src/createAdapter.ts
++++ b/packages/core/src/createAdapter.ts
+@@ -80,14 +80,6 @@ export type Adapter<TOptions extends AdapterFactoryOptions = AdapterFactoryOptio
+    * Validate the document at the given path or URL.
+    */
+   validate: (input: string, options?: { throwOnError?: boolean }) => Promise<void>
+-  /**
+-   * Memory-efficient streaming variant of `parse()`.
+-   *
+-   * Returns an `InputNode<true>` whose `schemas` and `operations` are `AsyncIterable`.
+-   * Each `for await` loop creates a fresh parse pass over the cached in-memory document.
+-   * No pre-built arrays are held in memory.
+-   */
+-  stream?: (source: AdapterSource) => Promise<InputNode<true>>
+ }
+ 
+ type AdapterBuilder<T extends AdapterFactoryOptions> = (options: T['options']) => Adapter<T>
+diff --git a/packages/core/src/createKubb.ts b/packages/core/src/createKubb.ts
+--- a/packages/core/src/createKubb.ts
++++ b/packages/core/src/createKubb.ts
+@@ -2,52 +2,12 @@ import { resolve } from 'node:path'
+ import { BuildError } from '@internals/utils'
+ import { HOOK_LISTENERS_PER_PLUGIN } from './constants.ts'
+ import { Diagnostics } from './Diagnostics.ts'
+-import { createStorage, type Storage } from './createStorage.ts'
++import type { Storage } from './createStorage.ts'
+ import { KubbDriver } from './KubbDriver.ts'
+ import { fsStorage } from './storages/fsStorage.ts'
+ import type { BuildOutput, Config, KubbHooks, UserConfig } from './types.ts'
+ import { AsyncEventEmitter } from './asyncEventEmitter.ts'
+ 
+-/**
+- * Builds a `Storage` view scoped to the file paths produced by the current build.
+- * Reads delegate to the underlying `storage` so source bytes stay where they were
+- * written. Writes register the key so subsequent reads and `getKeys` are scoped
+- * to this build's output.
+- */
+-function createSourcesView(storage: Storage): Storage {
+-  const paths = new Set<string>()
+-
+-  return createStorage(() => ({
+-    name: `${storage.name}:sources`,
+-    async hasItem(key: string) {
+-      return paths.has(key) && (await storage.hasItem(key))
+-    },
+-    async getItem(key: string) {
+-      return paths.has(key) ? storage.getItem(key) : null
+-    },
+-    async setItem(key: string, value: string) {
+-      paths.add(key)
+-      await storage.setItem(key, value)
+-    },
+-    async removeItem(key: string) {
+-      paths.delete(key)
+-      await storage.removeItem(key)
+-    },
+-    async getKeys(base?: string) {
+-      if (!base) return [...paths]
+-      const result: Array<string> = []
+-      for (const key of paths) {
+-        if (key.startsWith(base)) result.push(key)
+-      }
+-      return result
+-    },
+-    async clear() {
+-      paths.clear()
+-      await storage.clear()
+-    },
+-  }))()
+-}
+-
+ function resolveConfig(userConfig: UserConfig): Config {
+   return {
+     ...userConfig,
+@@ -114,7 +74,6 @@ export class Kubb {
+   async setup(): Promise<void> {
+     const config = this.config
+     const driver = new KubbDriver(config, { hooks: this.hooks })
+-    const storage = createSourcesView(config.storage)
+ 
+     // Each generator a plugin registers adds a listener to the shared hooks emitter, so size the
+     // ceiling to the plugin count. Without this, a multi-generator plugin set trips Node's
+@@ -128,7 +87,7 @@ export class Kubb {
+     await driver.setup()
+ 
+     this.#driver = driver
+-    this.#storage = storage
++    this.#storage = config.storage
+   }
+ 
+   /**
+diff --git a/packages/core/src/createRenderer.ts b/packages/core/src/createRenderer.ts
+--- a/packages/core/src/createRenderer.ts
++++ b/packages/core/src/createRenderer.ts
+@@ -16,14 +16,8 @@ export type Renderer<TElement = unknown> = {
+   render(element: TElement): Promise<void>
+   /**
+    * Accumulated {@link FileNode} results produced by the last {@link render} call.
+-   * Not populated when {@link stream} is implemented.
+    */
+   readonly files: Array<FileNode>
+-  /**
+-   * When present, core calls this instead of {@link render} and {@link files},
+-   * forwarding each file to `FileManager` as soon as it is ready.
+-   */
+-  stream?(element: TElement): Iterable<FileNode>
+   /**
+    * Disposer hook so renderers participate in `using` blocks: `using r = rendererFactory()`
+    * runs cleanup on every exit path, including thrown errors.
+diff --git a/packages/core/src/createResolver.ts b/packages/core/src/createResolver.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/core/src/createResolver.ts
+@@ -0,0 +1,511 @@
++import path from 'node:path'
++import { camelCase, toFilePath } from '@internals/utils'
++import { ast, operationDef, schemaDef, type FileNode, type InputMeta, type Node, type OperationNode, type SchemaNode } from '@kubb/ast'
++import { Diagnostics } from './Diagnostics.ts'
++import type { Filter, Override, PluginFactoryOptions } from './definePlugin.ts'
++import type { Config, Group, Output } from './types.ts'
++
++/**
++ * Context for resolving filtered options for a given operation or schema node.
++ *
++ * @internal
++ */
++export type ResolveOptionsContext<TOptions> = {
++  options: TOptions
++  exclude?: Array<Filter>
++  include?: Array<Filter>
++  override?: Array<Override<TOptions>>
++}
++
++/**
++ * The built-in resolution machinery exposed on every resolver as `resolver.default`.
++ * Plugins delegate to it via `this.default.*` and set their own conventions through
++ * the top-level `name` and `file` entries.
++ */
++export type ResolverDefault = {
++  /**
++   * Built-in camelCase casing for a generated identifier.
++   */
++  name(name: string): string
++  options<TOptions>(node: Node, context: ResolveOptionsContext<TOptions>): TOptions | null
++  path(params: ResolverPathParams, context: ResolverContext): string
++  file(params: ResolverFileParams, context: ResolverContext): FileNode
++  banner(meta: InputMeta | undefined, context: ResolveBannerContext): string | null
++  footer(meta: InputMeta | undefined, context: ResolveBannerContext): string | null
++}
++
++/**
++ * File-specific parameters for `resolver.default.path`.
++ * Provide `tag` for tag-based grouping or `path` for path-based grouping.
++ *
++ * @example
++ * ```ts
++ * resolver.default.path(
++ *   { baseName: 'petTypes.ts', tag: 'pets' },
++ *   { root: '/src', output: { path: 'types' }, group: { type: 'tag' } },
++ * )
++ * // → '/src/types/pets/petTypes.ts'
++ * ```
++ */
++export type ResolverPathParams = {
++  baseName: FileNode['baseName']
++  /**
++   * Tag value used when `group.type === 'tag'`.
++   */
++  tag?: string
++  /**
++   * Path value used when `group.type === 'path'`.
++   */
++  path?: string
++}
++
++/**
++ * Shared context passed as the second argument to `resolver.default.path` and
++ * `resolver.default.file`: where output is rooted, which output config is active,
++ * and the optional grouping strategy.
++ */
++export type ResolverContext = {
++  root: string
++  output: Output
++  group?: Group
++}
++
++/**
++ * File-specific parameters for `resolver.default.file`.
++ * `tag` and `path` are used only when a matching `group` is present in the context.
++ *
++ * @example
++ * ```ts
++ * resolver.default.file(
++ *   { name: 'listPets', extname: '.ts', tag: 'pets' },
++ *   { root: '/src', output: { path: 'types' }, group: { type: 'tag' } },
++ * )
++ * // → { baseName: 'listPets.ts', path: '/src/types/pets/listPets.ts', ... }
++ * ```
++ */
++export type ResolverFileParams = {
++  name: string
++  extname: FileNode['extname']
++  /**
++   * Tag value used when `group.type === 'tag'`.
++   */
++  tag?: string
++  /**
++   * Path value used when `group.type === 'path'`.
++   */
++  path?: string
++  /**
++   * Casing applied to `name` to build the file base name. A plugin's `file` override
++   * threads its own caser here to change file naming without reimplementing the builder.
++   *
++   * @default toFilePath
++   */
++  resolveName?: (name: string) => string
++}
++
++/**
++ * Per-file context describing the file a banner/footer is being resolved for, so a
++ * `banner`/`footer` function can branch on the file kind (e.g. skip a `'use server'`
++ * directive on re-export files).
++ */
++export type ResolveBannerFile = {
++  /**
++   * Full output path of the file being generated.
++   */
++  path: string
++  /**
++   * File name only, e.g. `'stocks.ts'`.
++   */
++  baseName: string
++  /**
++   * `true` for `index.ts` re-export barrels.
++   */
++  isBarrel?: boolean
++  /**
++   * `true` for group `[dir]/[dir].ts` aggregation files.
++   */
++  isAggregation?: boolean
++}
++
++/**
++ * Document metadata extended with per-file context, passed to a `banner`/`footer` function.
++ *
++ * @example Skip a directive on re-export files
++ * `banner: (meta) => (meta.isBarrel || meta.isAggregation) ? '' : "'use server'"`
++ */
++export type BannerMeta = InputMeta & {
++  /**
++   * Full output path of the file being generated.
++   */
++  filePath: string
++  /**
++   * File name only, e.g. `'stocks.ts'`.
++   */
++  baseName: string
++  /**
++   * `true` for `index.ts` re-export barrels.
++   */
++  isBarrel: boolean
++  /**
++   * `true` for group `[dir]/[dir].ts` aggregation files.
++   */
++  isAggregation: boolean
++}
++
++/**
++ * Context passed to `resolver.default.banner` and `resolver.default.footer`.
++ * `output` is optional since not every plugin configures a banner/footer, and `config`
++ * carries the global Kubb config used to derive the default Kubb banner.
++ */
++export type ResolveBannerContext = {
++  output?: Pick<Output, 'banner' | 'footer'>
++  config: Config
++  file?: ResolveBannerFile
++}
++
++/**
++ * Raw resolver fields passed to `createResolver` or patched through `Resolver.merge`.
++ * `default` is the built-in machinery and is not user-settable.
++ */
++type ResolverBuildOptions = {
++  pluginName: string
++  name?: (name: string) => string
++  file?: (params: ResolverFileParams, context: ResolverContext) => FileNode
++  [key: string]: unknown
++}
++
++/**
++ * Partial resolver fields accepted by `Resolver.merge` and `setResolver`.
++ */
++export type ResolverOverride = Omit<ResolverBuildOptions, 'pluginName'>
++
++/**
++ * The plugin-specific resolver fields handed to `createResolver`. `name` and `file` fall
++ * back to the built-ins when omitted. Every method reaches sibling helpers through `this`,
++ * which `ThisType` types as the full resolver.
++ */
++type ResolverOptions<T extends PluginFactoryOptions> = Omit<T['resolver'], keyof Resolver> & {
++  pluginName: T['name']
++  name?: T['resolver']['name']
++  file?: T['resolver']['file']
++} & ThisType<T['resolver']>
++
++function isNamespace(value: unknown): value is Record<string, unknown> {
++  return typeof value === 'object' && value !== null && !Array.isArray(value)
++}
++
++/**
++ * Base constraint for all plugin resolver objects.
++ *
++ * The built-in machinery lives under `default`. Generators call the top-level `name` and
++ * `file`, and a plugin overrides them to set its conventions. Extend with top-level helpers
++ * (`typeName`, …) and/or grouped namespaces (`query`, `schema`, …).
++ *
++ * @example Top-level helper
++ * ```ts
++ * type MyResolver = Resolver & {
++ *   typeName(name: string): string
++ * }
++ * ```
++ *
++ * @example Grouped namespace
++ * ```ts
++ * type MyResolver = Resolver & {
++ *   query: {
++ *     name(node: OperationNode): string
++ *     keyName(node: OperationNode): string
++ *   }
++ * }
++ * ```
++ */
++export class Resolver {
++  // String patterns are compiled lazily and cached, so the same filter is reused for every node.
++  static #patternCache = new Map<string, RegExp>()
++  static #optionsCache = new WeakMap<object, WeakMap<Node, { value: unknown }>>()
++
++  readonly pluginName: string
++  #options: ResolverBuildOptions
++
++  constructor(options: ResolverBuildOptions) {
++    this.pluginName = options.pluginName
++    this.#options = options
++    this.#apply(options)
++  }
++
++  /**
++   * The built-in resolution machinery. Always reaches the untouched defaults, even when a
++   * plugin overrides the top-level `name` or `file`.
++   */
++  get default(): ResolverDefault {
++    return {
++      name: camelCase,
++      options: this.#resolveOptions.bind(this),
++      path: this.#resolvePath.bind(this),
++      file: this.#resolveFile.bind(this),
++      banner: this.#resolveBanner.bind(this),
++      footer: this.#resolveFooter.bind(this),
++    }
++  }
++
++  name(name: string): string {
++    return this.default.name(name)
++  }
++
++  file(params: ResolverFileParams, context: ResolverContext): FileNode {
++    return this.default.file(params, context)
++  }
++
++  /**
++   * Merges `override` over `base` and returns a new resolver with helpers re-bound.
++   * Each key is replaced wholesale. Used when applying `setResolver` partial overrides.
++   */
++  static merge<T extends Resolver>(base: T, override: ResolverOverride | Resolver): T {
++    const patch = override instanceof Resolver ? override.#options : override
++    return createResolver({ ...base.#options, ...patch }) as T
++  }
++
++  /**
++   * Binds each entry of `options` onto the resolver, so `this.name`, `this.default`, and
++   * `this.file` resolve there for top-level helpers and namespace methods alike. `default`
++   * is skipped so it can't be shadowed.
++   */
++  #apply(options: ResolverBuildOptions): void {
++    const root = this as Resolver & Record<string, unknown>
++    const bind = (value: unknown) => (typeof value === 'function' ? value.bind(root) : value)
++
++    for (const [key, value] of Object.entries(options)) {
++      if (key === 'pluginName' || key === 'default' || value === undefined) continue
++      root[key] = isNamespace(value) ? Object.fromEntries(Object.entries(value).map(([method, member]) => [method, bind(member)])) : bind(value)
++    }
++  }
++
++  static #testPattern(value: string, pattern: string | RegExp): boolean {
++    if (typeof pattern === 'string') {
++      let regex = Resolver.#patternCache.get(pattern)
++      regex ??= new RegExp(pattern)
++      Resolver.#patternCache.set(pattern, regex)
++      return regex.test(value)
++    }
++    // Use .match() for user-supplied RegExp to preserve semantics regardless of `g`/`y` flags.
++    return value.match(pattern) !== null
++  }
++
++  static #matchesOperation(node: OperationNode, { type, pattern }: Filter): boolean {
++    if (type === 'tag') return node.tags.some((tag) => Resolver.#testPattern(tag, pattern))
++    if (type === 'operationId') return Resolver.#testPattern(node.operationId, pattern)
++    if (type === 'path') return node.path !== undefined && Resolver.#testPattern(node.path, pattern)
++    if (type === 'method') return node.method !== undefined && Resolver.#testPattern(node.method.toLowerCase(), pattern)
++    if (type === 'contentType') return node.requestBody?.content?.some((c) => Resolver.#testPattern(c.contentType, pattern)) ?? false
++    return false
++  }
++
++  /**
++   * Returns `null` when the filter type doesn't apply to schemas, so include rules built
++   * from operation filters (e.g. `tag`) don't exclude every schema.
++   */
++  static #matchesSchema(node: SchemaNode, { type, pattern }: Filter): boolean | null {
++    if (type === 'schemaName') return node.name ? Resolver.#testPattern(node.name, pattern) : false
++    return null
++  }
++
++  static #computeOptions<TOptions>(node: Node, { options, exclude = [], include, override = [] }: ResolveOptionsContext<TOptions>): TOptions | null {
++    if (operationDef.is(node)) {
++      if (exclude.some((filter) => Resolver.#matchesOperation(node, filter))) return null
++      if (include && !include.some((filter) => Resolver.#matchesOperation(node, filter))) return null
++
++      return { ...options, ...override.find((filter) => Resolver.#matchesOperation(node, filter))?.options }
++    }
++
++    if (schemaDef.is(node)) {
++      if (exclude.some((filter) => Resolver.#matchesSchema(node, filter) === true)) return null
++      if (include) {
++        const applicable = include.map((filter) => Resolver.#matchesSchema(node, filter)).filter((result) => result !== null)
++        if (applicable.length > 0 && !applicable.includes(true)) return null
++      }
++
++      return { ...options, ...override.find((filter) => Resolver.#matchesSchema(node, filter) === true)?.options }
++    }
++
++    return options
++  }
++
++  /**
++   * Applies include/exclude filters and merges matching override options, caching the result
++   * per `(options, node)` pair. Returns `null` when the node is filtered out.
++   */
++  #resolveOptions<TOptions>(node: Node, context: ResolveOptionsContext<TOptions>): TOptions | null {
++    // A re-instantiated plugin can hand back a non-object `options`, which WeakMap rejects
++    // as a key. Compute directly in that case instead of throwing.
++    const { options } = context
++    if (typeof options !== 'object' || options === null) {
++      return Resolver.#computeOptions(node, context)
++    }
++
++    let byOptions = Resolver.#optionsCache.get(options)
++    if (!byOptions) {
++      byOptions = new WeakMap()
++      Resolver.#optionsCache.set(options, byOptions)
++    }
++
++    const cached = byOptions.get(node)
++    if (cached) return cached.value as TOptions | null
++
++    const result = Resolver.#computeOptions(node, context)
++    byOptions.set(node, { value: result })
++    return result
++  }
++
++  /**
++   * A custom `group.name` wins; otherwise `tag` groups use the camelCased tag and `path`
++   * groups use the first non-traversal segment (`''` when none remain, placing the file in
++   * the output root, kept safe by the caller's boundary check).
++   */
++  static #resolveGroupDir(group: Group, groupValue: string): string {
++    if (group.name) return group.name({ group: groupValue })
++    if (group.type === 'tag') return camelCase(groupValue)
++    const segment = groupValue.split('/').filter((part) => part !== '' && part !== '.' && part !== '..')[0]
++    return segment ? camelCase(segment) : ''
++  }
++
++  /**
++   * `mode: 'file'` resolves directly to `output.path`. `mode: 'directory'` (default) resolves
++   * to `output.path/{baseName}`, or into a subdirectory when `group` and a `tag`/`path` value
++   * are provided.
++   */
++  #resolvePath({ baseName, tag, path: groupPath }: ResolverPathParams, { root, output, group }: ResolverContext): string {
++    if (output.mode === 'file') {
++      return path.resolve(root, output.path)
++    }
++
++    const outputDir = path.resolve(root, output.path)
++    const result =
++      group && (groupPath || tag)
++        ? path.resolve(outputDir, Resolver.#resolveGroupDir(group, group.type === 'path' ? groupPath! : tag!), baseName)
++        : path.resolve(outputDir, baseName)
++
++    // Reject paths escaping the output directory: a malicious OpenAPI spec or a misconfigured
++    // group.name function could otherwise write anywhere. `result === outputDir` stays allowed
++    // for the edge case where baseName resolves to the output directory itself.
++    const outputDirWithSep = outputDir.endsWith(path.sep) ? outputDir : `${outputDir}${path.sep}`
++    if (result !== outputDir && !result.startsWith(outputDirWithSep)) {
++      throw new Diagnostics.Error({
++        code: Diagnostics.code.pathTraversal,
++        severity: 'error',
++        message: `Resolved path "${result}" is outside the output directory "${outputDir}".`,
++        help: 'This can stem from a path traversal in the OpenAPI specification or a misconfigured `group.name` function. Keep generated paths within the output directory.',
++        location: { kind: 'config' },
++      })
++    }
++
++    return result
++  }
++
++  /**
++   * Builds a `FileNode` by combining file-name casing (`params.resolveName`) with path
++   * resolution. The resolved file starts with empty `sources`, `imports`, and `exports`,
++   * which consumers populate separately.
++   */
++  #resolveFile({ name, extname, tag, path: groupPath, resolveName = toFilePath }: ResolverFileParams, context: ResolverContext): FileNode {
++    const resolvedName = context.output.mode === 'file' ? '' : resolveName(name)
++    const filePath = this.#resolvePath({ baseName: `${resolvedName}${extname}` as FileNode['baseName'], tag, path: groupPath }, context)
++
++    return ast.factory.createFile({
++      path: filePath,
++      baseName: path.basename(filePath) as `${string}.${string}`,
++      meta: {
++        pluginName: this.pluginName,
++      },
++      sources: [],
++      imports: [],
++      exports: [],
++    })
++  }
++
++  /**
++   * Missing fields default to empty/`false` so the `BannerMeta` shape stays stable even when
++   * a caller (e.g. the barrel plugin) has no document metadata.
++   */
++  static #buildBannerMeta(meta: InputMeta | undefined, file: ResolveBannerFile | undefined): BannerMeta {
++    return {
++      title: meta?.title,
++      description: meta?.description,
++      version: meta?.version,
++      baseURL: meta?.baseURL,
++      circularNames: meta?.circularNames ?? [],
++      enumNames: meta?.enumNames ?? [],
++      filePath: file?.path ?? '',
++      baseName: file?.baseName ?? '',
++      isBarrel: file?.isBarrel ?? false,
++      isAggregation: file?.isAggregation ?? false,
++    }
++  }
++
++  /**
++   * Resolves a user-configured banner/footer value. `undefined` means not configured.
++   */
++  static #resolveUserText(
++    value: string | ((meta: BannerMeta) => string) | undefined,
++    meta: InputMeta | undefined,
++    file: ResolveBannerFile | undefined,
++  ): string | undefined {
++    if (typeof value === 'function') return value(Resolver.#buildBannerMeta(meta, file))
++    if (typeof value === 'string') return value
++    return undefined
++  }
++
++  static #buildDefaultBanner({ title, version, config }: { title?: string; version?: string; config: Config }): string {
++    const lines = ['/**', '* Generated by Kubb (https://kubb.dev/).', '* Do not edit manually.']
++
++    if (config.output.defaultBanner !== 'simple') {
++      const input = Array.isArray(config.input) ? config.input[0] : config.input
++      const source = input && 'path' in input ? path.basename(input.path) : input && 'data' in input ? 'text content' : ''
++
++      if (source) lines.push(`* Source: ${source}`)
++      if (title) lines.push(`* Title: ${title}`)
++      if (version) lines.push(`* OpenAPI spec version: ${version}`)
++    }
++
++    return `${lines.join('\n')}\n*/\n`
++  }
++
++  /**
++   * A user-supplied `output.banner` overrides the default Kubb notice. When
++   * `config.output.defaultBanner` is `false` and no user banner is set, returns `null`.
++   */
++  #resolveBanner(meta: InputMeta | undefined, { output, config, file }: ResolveBannerContext): string | null {
++    const userBanner = Resolver.#resolveUserText(output?.banner, meta, file)
++    if (userBanner !== undefined) return userBanner
++
++    if (config.output.defaultBanner === false) return null
++
++    return Resolver.#buildDefaultBanner({ title: meta?.title, version: meta?.version, config })
++  }
++
++  #resolveFooter(meta: InputMeta | undefined, { output, file }: ResolveBannerContext): string | null {
++    return Resolver.#resolveUserText(output?.footer, meta, file) ?? null
++  }
++}
++
++/**
++ * Defines a plugin resolver, the object that decides what every generated symbol and file
++ * path is called. Override the top-level `name` and `file` to set the plugin's conventions,
++ * and add your own naming helpers, top-level (`typeName`, …) or grouped in namespaces
++ * (`query`, `schema`, …). Every method reaches sibling helpers and the built-in machinery
++ * through `this.name`, `this.file`, and `this.default`.
++ *
++ * @example Custom identifier and file casing
++ * ```ts
++ * export const resolverTs = createResolver<PluginTs>({
++ *   pluginName: 'plugin-ts',
++ *   name(name) {
++ *     return ensureValidVarName(pascalCase(name))
++ *   },
++ *   file(params, context) {
++ *     return this.default.file({ ...params, resolveName: (name) => toFilePath(name, pascalCase) }, context)
++ *   },
++ * })
++ * ```
++ */
++export function createResolver<T extends PluginFactoryOptions>(options: ResolverOptions<T>): T['resolver'] {
++  return new Resolver(options as unknown as ResolverBuildOptions) as T['resolver']
++}
+diff --git a/packages/core/src/defineGenerator.ts b/packages/core/src/defineGenerator.ts
+--- a/packages/core/src/defineGenerator.ts
++++ b/packages/core/src/defineGenerator.ts
+@@ -5,7 +5,7 @@ import type { RendererFactory } from './createRenderer.ts'
+ import type { KubbHooks } from './types.ts'
+ import type { KubbDriver } from './KubbDriver.ts'
+ import type { Plugin, PluginFactoryOptions } from './definePlugin.ts'
+-import type { Resolver } from './defineResolver.ts'
++import type { Resolver } from './createResolver.ts'
+ import type { Config } from './types.ts'
+ import type { AsyncEventEmitter } from './asyncEventEmitter.ts'
+ 
+@@ -68,11 +68,11 @@ export type GeneratorContext<TOptions extends PluginFactoryOptions = PluginFacto
+    * called. Kubb picks a `setResolver` registration first, then the plugin's static
+    * `resolver`, then the built-in default.
+    *
+-   * @example Resolve a type name
+-   * `ctx.resolver.default('pet', 'type') // 'Pet'`
++   * @example Resolve a name
++   * `ctx.resolver.name('pet') // 'pet'`
+    *
+    * @example Resolve an output file
+-   * `ctx.resolver.resolveFile({ name: 'pet', extname: '.ts' }, { root, output })`
++   * `ctx.resolver.file({ name: 'pet', extname: '.ts' }, { root, output })`
+    */
+   resolver: TOptions['resolver']
+   /**
+diff --git a/packages/core/src/definePlugin.ts b/packages/core/src/definePlugin.ts
+--- a/packages/core/src/definePlugin.ts
++++ b/packages/core/src/definePlugin.ts
+@@ -1,17 +1,10 @@
+ import type { Enforce, FileNode, HttpMethod, Macro, UserFileNode } from '@kubb/ast'
+ import { diagnosticCode } from './constants.ts'
+ import type { Generator } from './defineGenerator.ts'
+-import type { BannerMeta, Resolver } from './defineResolver.ts'
++import type { BannerMeta, Resolver, ResolverOverride } from './createResolver.ts'
+ import { Diagnostics } from './Diagnostics.ts'
+ import type { Config, KubbHooks } from './types.ts'
+ 
+-/**
+- * Reads a type from a registry, falling back to `{}` when the key is absent. Lets
+- * `Kubb.ConfigOptionsRegistry` and `Kubb.PluginOptionsRegistry` be augmented without
+- * touching core.
+- *
+- * @internal
+- */
+ type ExtractRegistryKey<T, K extends PropertyKey> = K extends keyof T ? T[K] : {}
+ 
+ /**
+@@ -194,6 +187,12 @@ type ByContentType = {
+   pattern: string | RegExp
+ }
+ 
++/**
++ * Pattern filter for include, exclude, and override rules. Matches operations or schemas
++ * by tag, operationId, path, method, content type, or schema name.
++ */
++export type Filter = ByTag | ByOperationId | ByPath | ByMethod | ByContentType | BySchemaName
++
+ /**
+  * Filter that skips matching operations or schemas during generation, for example
+  * deprecated endpoints or internal-only schemas.
+@@ -207,7 +206,7 @@ type ByContentType = {
+  * ]
+  * ```
+  */
+-export type Exclude = ByTag | ByOperationId | ByPath | ByMethod | ByContentType | BySchemaName
++export type Exclude = Filter
+ 
+ /**
+  * Filter that restricts generation to operations or schemas matching at least
+@@ -221,7 +220,7 @@ export type Exclude = ByTag | ByOperationId | ByPath | ByMethod | ByContentType
+  * ]
+  * ```
+  */
+-export type Include = ByTag | ByOperationId | ByPath | ByMethod | ByContentType | BySchemaName
++export type Include = Filter
+ 
+ /**
+  * Filter paired with a partial options object. When the filter matches, the
+@@ -246,7 +245,7 @@ export type Include = ByTag | ByOperationId | ByPath | ByMethod | ByContentType
+  * ]
+  * ```
+  */
+-export type Override<TOptions> = (ByTag | ByOperationId | ByPath | ByMethod | BySchemaName | ByContentType) & {
++export type Override<TOptions> = Filter & {
+   options: Omit<Partial<TOptions>, 'override'>
+ }
+ 
+@@ -265,7 +264,7 @@ export type PluginFactoryOptions<
+   TResolvedOptions extends object = TOptions,
+   /**
+    * Resolver that encapsulates naming and path-resolution helpers.
+-   * Define with `defineResolver` and export alongside the plugin.
++   * Define with `createResolver` and export alongside the plugin.
+    */
+   TResolver extends Resolver = Resolver,
+ > = {
+@@ -296,9 +295,10 @@ export type KubbPluginSetupContext<TFactory extends PluginFactoryOptions = Plugi
+   addGenerator<TElement = unknown>(...generators: Array<Generator<TFactory, TElement>>): void
+   /**
+    * Set or override the resolver for this plugin.
+-   * The resolver controls file naming and path resolution.
++   * The resolver controls file naming and path resolution. Overrides merge over the built-in
++   * defaults, so a partial `core` or a single namespace method replaces only what it names.
+    */
+-  setResolver(resolver: Partial<TFactory['resolver']>): void
++  setResolver(resolver: ResolverOverride): void
+   /**
+    * Add a macro that rewrites AST nodes before they reach generators. Macros run in the order they
+    * are added, after any macros from earlier `addMacro` calls.
+diff --git a/packages/core/src/defineResolver.ts b/packages/core/src/defineResolver.ts
+deleted file mode 100644
+--- a/packages/core/src/defineResolver.ts
++++ /dev/null
+@@ -1,716 +0,0 @@
+-import path from 'node:path'
+-import { camelCase, pascalCase, toFilePath } from '@internals/utils'
+-import { ast, operationDef, schemaDef, type FileNode, type InputMeta, type Node, type OperationNode, type SchemaNode } from '@kubb/ast'
+-import { Diagnostics } from './Diagnostics.ts'
+-import type { PluginFactoryOptions } from './definePlugin.ts'
+-import type { Config, Group, Output } from './types.ts'
+-
+-/**
+- * Type/string pattern filter for include/exclude/override matching.
+- */
+-type PatternFilter = {
+-  type: string
+-  pattern: string | RegExp
+-}
+-
+-/**
+- * Pattern filter with partial option overrides applied when the pattern matches.
+- */
+-type PatternOverride<TOptions> = PatternFilter & {
+-  options: Omit<Partial<TOptions>, 'override'>
+-}
+-
+-/**
+- * Context for resolving filtered options for a given operation or schema node.
+- *
+- * @internal
+- */
+-export type ResolveOptionsContext<TOptions> = {
+-  options: TOptions
+-  exclude?: Array<PatternFilter>
+-  include?: Array<PatternFilter>
+-  override?: Array<PatternOverride<TOptions>>
+-}
+-
+-/**
+- * Base constraint for all plugin resolver objects.
+- *
+- * `default`, `resolveOptions`, `resolvePath`, `resolveFile`, `resolveBanner`, and `resolveFooter`
+- * are injected automatically by `defineResolver`. Extend this type to add custom resolution methods.
+- *
+- * @example
+- * ```ts
+- * type MyResolver = Resolver & {
+- *   resolveName(node: SchemaNode): string
+- *   resolveTypedName(node: SchemaNode): string
+- * }
+- * ```
+- */
+-export type Resolver = {
+-  name: string
+-  pluginName: string
+-  default(name: string, type?: 'file' | 'function' | 'type' | 'const'): string
+-  resolveOptions<TOptions>(node: Node, context: ResolveOptionsContext<TOptions>): TOptions | null
+-  resolvePath(params: ResolverPathParams, context: ResolverContext): string
+-  resolveFile(params: ResolverFileParams, context: ResolverContext): FileNode
+-  resolveBanner(meta: InputMeta | undefined, context: ResolveBannerContext): string | null
+-  resolveFooter(meta: InputMeta | undefined, context: ResolveBannerContext): string | null
+-}
+-
+-/**
+- * File-specific parameters for `Resolver.resolvePath`.
+- *
+- * Pass alongside a `ResolverContext` to identify which file to resolve.
+- * Provide `tag` for tag-based grouping or `path` for path-based grouping.
+- *
+- * @example
+- * ```ts
+- * resolver.resolvePath(
+- *   { baseName: 'petTypes.ts', tag: 'pets' },
+- *   { root: '/src', output: { path: 'types' }, group: { type: 'tag' } },
+- * )
+- * // → '/src/types/pets/petTypes.ts'
+- * ```
+- */
+-export type ResolverPathParams = {
+-  baseName: FileNode['baseName']
+-  /**
+-   * Tag value used when `group.type === 'tag'`.
+-   */
+-  tag?: string
+-  /**
+-   * Path value used when `group.type === 'path'`.
+-   */
+-  path?: string
+-}
+-
+-/**
+- * Shared context passed as the second argument to `Resolver.resolvePath` and `Resolver.resolveFile`.
+- *
+- * Describes where on disk output is rooted, which output config is active, and the optional
+- * grouping strategy that controls subdirectory layout.
+- *
+- * @example
+- * ```ts
+- * const context: ResolverContext = {
+- *   root: config.root,
+- *   output,
+- *   group,
+- * }
+- * ```
+- */
+-export type ResolverContext = {
+-  root: string
+-  output: Output
+-  group?: Group
+-  /**
+-   * Plugin name used to populate `meta.pluginName` on the resolved file.
+-   */
+-  pluginName?: string
+-}
+-
+-/**
+- * File-specific parameters for `Resolver.resolveFile`.
+- *
+- * Pass alongside a `ResolverContext` to fully describe the file to resolve.
+- * `tag` and `path` are used only when a matching `group` is present in the context.
+- *
+- * @example
+- * ```ts
+- * resolver.resolveFile(
+- *   { name: 'listPets', extname: '.ts', tag: 'pets' },
+- *   { root: '/src', output: { path: 'types' }, group: { type: 'tag' } },
+- * )
+- * // → { baseName: 'listPets.ts', path: '/src/types/pets/listPets.ts', ... }
+- * ```
+- */
+-export type ResolverFileParams = {
+-  name: string
+-  extname: FileNode['extname']
+-  /**
+-   * Tag value used when `group.type === 'tag'`.
+-   */
+-  tag?: string
+-  /**
+-   * Path value used when `group.type === 'path'`.
+-   */
+-  path?: string
+-}
+-
+-/**
+- * Per-file context describing the file a banner/footer is being resolved for.
+- *
+- * Supplied by the generator (or the barrel plugin) at resolve-time and merged
+- * into `BannerMeta` so a `banner`/`footer` function can branch on the file kind,
+- * e.g. omit a `'use server'` directive on re-export files.
+- */
+-export type ResolveBannerFile = {
+-  /**
+-   * Full output path of the file being generated.
+-   */
+-  path: string
+-  /**
+-   * File name only, e.g. `'stocks.ts'`.
+-   */
+-  baseName: string
+-  /**
+-   * `true` for `index.ts` re-export barrels.
+-   */
+-  isBarrel?: boolean
+-  /**
+-   * `true` for group `[dir]/[dir].ts` aggregation files.
+-   */
+-  isAggregation?: boolean
+-}
+-
+-/**
+- * Document metadata extended with per-file context, passed to a `banner`/`footer` function.
+- *
+- * Carries everything in {@link InputMeta} plus the file the banner is rendered into, so a
+- * single function can decide per file (e.g. skip a directive on barrel/aggregation files).
+- *
+- * @example Skip a directive on re-export files
+- * `banner: (meta) => (meta.isBarrel || meta.isAggregation) ? '' : "'use server'"`
+- */
+-export type BannerMeta = InputMeta & {
+-  /**
+-   * Full output path of the file being generated.
+-   */
+-  filePath: string
+-  /**
+-   * File name only, e.g. `'stocks.ts'`.
+-   */
+-  baseName: string
+-  /**
+-   * `true` for `index.ts` re-export barrels.
+-   */
+-  isBarrel: boolean
+-  /**
+-   * `true` for group `[dir]/[dir].ts` aggregation files.
+-   */
+-  isAggregation: boolean
+-}
+-
+-/**
+- * Context passed to `Resolver.resolveBanner` and `Resolver.resolveFooter`.
+- *
+- * `output` is optional, since not every plugin configures a banner/footer.
+- * `config` carries the global Kubb config, used to derive the default Kubb banner.
+- * `file` carries per-file context forwarded to a `banner`/`footer` function.
+- *
+- * @example
+- * ```ts
+- * resolver.resolveBanner(meta, { output: { banner: '// generated' }, config })
+- * // → '// generated'
+- * ```
+- */
+-export type ResolveBannerContext = {
+-  output?: Pick<Output, 'banner' | 'footer'>
+-  config: Config
+-  file?: ResolveBannerFile
+-}
+-
+-/**
+- * Merges document `meta` with per-file `file` context into the `BannerMeta` passed to a
+- * `banner`/`footer` function. Missing fields default to empty/`false` so the object shape
+- * is stable even when a caller (e.g. the barrel plugin) has no document metadata.
+- */
+-function buildBannerMeta({ meta, file }: { meta: InputMeta | undefined; file: ResolveBannerFile | undefined }): BannerMeta {
+-  return {
+-    title: meta?.title,
+-    description: meta?.description,
+-    version: meta?.version,
+-    baseURL: meta?.baseURL,
+-    circularNames: meta?.circularNames ?? [],
+-    enumNames: meta?.enumNames ?? [],
+-    filePath: file?.path ?? '',
+-    baseName: file?.baseName ?? '',
+-    isBarrel: file?.isBarrel ?? false,
+-    isAggregation: file?.isAggregation ?? false,
+-  }
+-}
+-
+-/**
+- * Builder type for the plugin-specific resolver fields.
+- *
+- * `default`, `resolveOptions`, `resolvePath`, `resolveFile`, `resolveBanner`, and `resolveFooter`
+- * are optional, with built-in fallbacks injected when omitted.
+- *
+- * Methods in the returned object can call sibling resolver methods via `this`.
+- */
+-type ResolverBuilder<T extends PluginFactoryOptions> = () => Omit<
+-  T['resolver'],
+-  'default' | 'resolveOptions' | 'resolvePath' | 'resolveFile' | 'resolveBanner' | 'resolveFooter' | 'name' | 'pluginName'
+-> &
+-  Partial<Pick<T['resolver'], 'default' | 'resolveOptions' | 'resolvePath' | 'resolveFile' | 'resolveBanner' | 'resolveFooter'>> & {
+-    name: string
+-    pluginName: T['name']
+-  } & ThisType<T['resolver']>
+-
+-// String patterns are compiled lazily and cached, so the same filter is reused for every node.
+-const stringPatternCache = new Map<string, RegExp>()
+-
+-function testPattern(value: string, pattern: string | RegExp): boolean {
+-  if (typeof pattern === 'string') {
+-    let regex = stringPatternCache.get(pattern)
+-    if (!regex) {
+-      regex = new RegExp(pattern)
+-      stringPatternCache.set(pattern, regex)
+-    }
+-    return regex.test(value)
+-  }
+-  // Use .match() for user-supplied RegExp to preserve semantics regardless of `g`/`y` flags.
+-  return value.match(pattern) !== null
+-}
+-
+-/**
+- * Checks if an operation matches a pattern for a given filter type (`tag`, `operationId`, `path`, `method`).
+- */
+-function matchesOperationPattern(node: OperationNode, type: string, pattern: string | RegExp): boolean {
+-  if (type === 'tag') return node.tags.some((tag) => testPattern(tag, pattern))
+-  if (type === 'operationId') return testPattern(node.operationId, pattern)
+-  if (type === 'path') return node.path !== undefined && testPattern(node.path, pattern)
+-  if (type === 'method') return node.method !== undefined && testPattern(node.method.toLowerCase(), pattern)
+-  if (type === 'contentType') return node.requestBody?.content?.some((c) => testPattern(c.contentType, pattern)) ?? false
+-  return false
+-}
+-
+-/**
+- * Checks if a schema matches a pattern for a given filter type (`schemaName`).
+- *
+- * Returns `null` when the filter type doesn't apply to schemas.
+- */
+-function matchesSchemaPattern(node: SchemaNode, type: string, pattern: string | RegExp): boolean | null {
+-  if (type === 'schemaName') return node.name ? testPattern(node.name, pattern) : false
+-  return null
+-}
+-
+-/**
+- * Default name resolver used by `defineResolver`.
+- *
+- * - `camelCase` for `file`, with dotted names split into `/`-joined nested paths.
+- * - `PascalCase` for `type`.
+- * - `camelCase` for `function` and everything else.
+- */
+-function defaultResolver(name: string, type?: 'file' | 'function' | 'type' | 'const'): string {
+-  if (type === 'file') return toFilePath(name)
+-  if (type === 'type') return pascalCase(name)
+-  return camelCase(name)
+-}
+-
+-/**
+- * Default option resolver. Applies include/exclude filters and merges matching override options.
+- *
+- * Returns `null` when the node is filtered out by an `exclude` rule or not matched by any `include` rule.
+- *
+- * @example Include/exclude filtering
+- * ```ts
+- * const options = defaultResolveOptions(operationNode, {
+- *   options: { output: 'types' },
+- *   exclude: [{ type: 'tag', pattern: 'internal' }],
+- * })
+- * // → null when node has tag 'internal'
+- * ```
+- *
+- * @example Override merging
+- * ```ts
+- * const options = defaultResolveOptions(operationNode, {
+- *   options: { enumType: 'asConst' },
+- *   override: [{ type: 'operationId', pattern: 'listPets', options: { enumType: 'enum' } }],
+- * })
+- * // → { enumType: 'enum' } when operationId matches
+- * ```
+- */
+-const resolveOptionsCache = new WeakMap<object, WeakMap<Node, { value: unknown }>>()
+-
+-function computeOptions<TOptions>(
+-  node: Node,
+-  options: TOptions,
+-  exclude: Array<PatternFilter>,
+-  include: Array<PatternFilter> | undefined,
+-  override: Array<PatternOverride<TOptions>>,
+-): TOptions | null {
+-  if (operationDef.is(node)) {
+-    if (exclude.some(({ type, pattern }) => matchesOperationPattern(node, type, pattern))) return null
+-    if (include && !include.some(({ type, pattern }) => matchesOperationPattern(node, type, pattern))) return null
+-
+-    const overrideOptions = override.find(({ type, pattern }) => matchesOperationPattern(node, type, pattern))?.options
+-
+-    return { ...options, ...overrideOptions }
+-  }
+-
+-  if (schemaDef.is(node)) {
+-    if (exclude.some(({ type, pattern }) => matchesSchemaPattern(node, type, pattern) === true)) return null
+-    if (include) {
+-      const results = include.map(({ type, pattern }) => matchesSchemaPattern(node, type, pattern))
+-      const applicable = results.filter((result) => result !== null)
+-
+-      if (applicable.length > 0 && !applicable.includes(true)) return null
+-    }
+-    const overrideOptions = override.find(({ type, pattern }) => matchesSchemaPattern(node, type, pattern) === true)?.options
+-
+-    return { ...options, ...overrideOptions }
+-  }
+-
+-  return options
+-}
+-
+-function defaultResolveOptions<TOptions>(node: Node, { options, exclude = [], include, override = [] }: ResolveOptionsContext<TOptions>): TOptions | null {
+-  // A plugin's `options` is normally an object, but a re-instantiated plugin (e.g. a
+-  // Studio/agent merge) can hand back something falsy-but-not-nullish. `WeakMap` only
+-  // accepts object keys, so cache only when `options` actually qualifies; otherwise fall
+-  // back to computing directly instead of throwing "Invalid value used as weak map key".
+-  if (typeof options !== 'object' || options === null) {
+-    return computeOptions(node, options, exclude, include, override)
+-  }
+-
+-  let byOptions = resolveOptionsCache.get(options)
+-  if (!byOptions) {
+-    byOptions = new WeakMap()
+-    resolveOptionsCache.set(options, byOptions)
+-  }
+-  const cached = byOptions.get(node)
+-  if (cached !== undefined) return cached.value as TOptions | null
+-
+-  const result = computeOptions(node, options, exclude, include, override)
+-
+-  byOptions.set(node, { value: result })
+-
+-  return result
+-}
+-
+-/**
+- * Default path resolver used by `defineResolver`.
+- *
+- * - `mode: 'file'` resolves directly to `output.path` (the full file path, extension included).
+- * - `mode: 'directory'` (default) resolves to `output.path/{baseName}`, or into a
+- *   subdirectory when `group` and a `tag`/`path` value are provided.
+- *
+- * A custom `group.name` function overrides the default subdirectory naming.
+- * For `tag` groups the default is the camelCased tag.
+- * For `path` groups the default is the first path segment after `/`.
+- *
+- * @example Flat output
+- * ```ts
+- * defaultResolvePath({ baseName: 'petTypes.ts' }, { root: '/src', output: { path: 'types' } })
+- * // → '/src/types/petTypes.ts'
+- * ```
+- *
+- * @example Tag-based grouping
+- * ```ts
+- * defaultResolvePath(
+- *   { baseName: 'petTypes.ts', tag: 'pets' },
+- *   { root: '/src', output: { path: 'types' }, group: { type: 'tag' } },
+- * )
+- * // → '/src/types/pets/petTypes.ts'
+- * ```
+- *
+- * @example Path-based grouping
+- * ```ts
+- * defaultResolvePath(
+- *   { baseName: 'petTypes.ts', path: '/pets/list' },
+- *   { root: '/src', output: { path: 'types' }, group: { type: 'path' } },
+- * )
+- * // → '/src/types/pets/petTypes.ts'
+- * ```
+- *
+- * @example Single file (`mode: 'file'`)
+- * ```ts
+- * defaultResolvePath(
+- *   { baseName: 'petTypes.ts' },
+- *   { root: '/src', output: { path: 'types.ts', mode: 'file' } },
+- * )
+- * // → '/src/types.ts'
+- * ```
+- */
+-export function defaultResolvePath({ baseName, tag, path: groupPath }: ResolverPathParams, { root, output, group }: ResolverContext): string {
+-  const mode = output.mode ?? 'directory'
+-
+-  if (mode === 'file') {
+-    return path.resolve(root, output.path)
+-  }
+-
+-  const result: string = (() => {
+-    if (group && (groupPath || tag)) {
+-      const groupValue = group.type === 'path' ? groupPath! : tag!
+-      const defaultName =
+-        group.type === 'tag'
+-          ? ({ group: groupName }: { group: string }) => camelCase(groupName)
+-          : ({ group: groupName }: { group: string }) => {
+-              // Strip traversal components (empty, '.', '..') before taking the first meaningful segment.
+-              // When every segment is a traversal component (e.g. '../../') we fall back to '' so the
+-              // file is placed directly in the output root, and the boundary check below ensures safety.
+-              const segment = groupName.split('/').filter((part) => part !== '' && part !== '.' && part !== '..')[0]
+-              return segment ? camelCase(segment) : ''
+-            }
+-      const resolveName = group.name ?? defaultName
+-      const groupName = resolveName({ group: groupValue })
+-
+-      return path.resolve(root, output.path, groupName, baseName)
+-    }
+-    return path.resolve(root, output.path, baseName)
+-  })()
+-
+-  // Ensure the resolved path stays within the configured output directory.
+-  // This prevents path traversal from malicious OpenAPI specs or custom group.name functions.
+-  // `result === outputDir` is intentionally permitted: it matches edge cases where baseName
+-  // resolves to the output directory itself.
+-  const outputDir = path.resolve(root, output.path)
+-  const outputDirWithSep = outputDir.endsWith(path.sep) ? outputDir : `${outputDir}${path.sep}`
+-  if (result !== outputDir && !result.startsWith(outputDirWithSep)) {
+-    throw new Diagnostics.Error({
+-      code: Diagnostics.code.pathTraversal,
+-      severity: 'error',
+-      message: `Resolved path "${result}" is outside the output directory "${outputDir}".`,
+-      help: 'This can stem from a path traversal in the OpenAPI specification or a misconfigured `group.name` function. Keep generated paths within the output directory.',
+-      location: { kind: 'config' },
+-    })
+-  }
+-
+-  return result
+-}
+-
+-/**
+- * Default file resolver used by `defineResolver`.
+- *
+- * Resolves a `FileNode` by combining name resolution (`resolver.default`) with
+- * path resolution (`resolver.resolvePath`). The resolved file always has empty
+- * `sources`, `imports`, and `exports` arrays, which consumers populate separately.
+- *
+- * In `mode: 'file'` the name is omitted and the file sits directly at the output path.
+- *
+- * @example Resolve a schema file
+- * ```ts
+- * const file = defaultResolveFile.call(
+- *   resolver,
+- *   { name: 'pet', extname: '.ts' },
+- *   { root: '/src', output: { path: 'types' } },
+- * )
+- * // → { baseName: 'pet.ts', path: '/src/types/pet.ts', sources: [], ... }
+- * ```
+- *
+- * @example Resolve an operation file with tag grouping
+- * ```ts
+- * const file = defaultResolveFile.call(
+- *   resolver,
+- *   { name: 'listPets', extname: '.ts', tag: 'pets' },
+- *   { root: '/src', output: { path: 'types' }, group: { type: 'tag' } },
+- * )
+- * // → { baseName: 'listPets.ts', path: '/src/types/pets/listPets.ts', ... }
+- * ```
+- */
+-export function defaultResolveFile(this: Resolver, { name, extname, tag, path: groupPath }: ResolverFileParams, context: ResolverContext): FileNode {
+-  const mode = context.output.mode ?? 'directory'
+-  const resolvedName = mode === 'file' ? '' : this.default(name, 'file')
+-  const baseName = `${resolvedName}${extname}` as FileNode['baseName']
+-  const filePath = this.resolvePath({ baseName, tag, path: groupPath }, context)
+-
+-  return ast.factory.createFile({
+-    path: filePath,
+-    baseName: path.basename(filePath) as `${string}.${string}`,
+-    meta: {
+-      pluginName: this.pluginName,
+-    },
+-    sources: [],
+-    imports: [],
+-    exports: [],
+-  })
+-}
+-
+-/**
+- * Generates the default "Generated by Kubb" banner from config and optional node metadata.
+- */
+-function buildDefaultBanner({ title, description, version, config }: { title?: string; description?: string; version?: string; config: Config }): string {
+-  try {
+-    const source = (() => {
+-      if (Array.isArray(config.input)) {
+-        const first = config.input[0]
+-        if (first && 'path' in first) return path.basename(first.path)
+-        return ''
+-      }
+-      if (config.input && 'path' in config.input) return path.basename(config.input.path)
+-      if (config.input && 'data' in config.input) return 'text content'
+-      return ''
+-    })()
+-
+-    let banner = '/**\n* Generated by Kubb (https://kubb.dev/).\n* Do not edit manually.\n'
+-
+-    if (config.output.defaultBanner === 'simple') {
+-      banner += '*/\n'
+-      return banner
+-    }
+-
+-    if (source) {
+-      banner += `* Source: ${source}\n`
+-    }
+-
+-    if (title) {
+-      banner += `* Title: ${title}\n`
+-    }
+-
+-    if (description) {
+-      const formattedDescription = description.replace(/\n/gm, '\n* ')
+-      banner += `* Description: ${formattedDescription}\n`
+-    }
+-
+-    if (version) {
+-      banner += `* OpenAPI spec version: ${version}\n`
+-    }
+-
+-    banner += '*/\n'
+-    return banner
+-  } catch (_error) {
+-    return '/**\n* Generated by Kubb (https://kubb.dev/).\n* Do not edit manually.\n*/'
+-  }
+-}
+-
+-/**
+- * Default banner resolver. Returns the banner string for a generated file.
+- *
+- * A user-supplied `output.banner` overrides the default Kubb "Generated by Kubb" notice.
+- * When no `output.banner` is set, the Kubb notice is used (including `title` and `version`
+- * from the document metadata when `meta` is provided).
+- *
+- * - When `output.banner` is a function, calls it with the file's `BannerMeta` and returns the result.
+- * - When `output.banner` is a string, returns it directly.
+- * - When `config.output.defaultBanner` is `false`, returns `undefined`.
+- * - Otherwise returns the Kubb "Generated by Kubb" notice.
+- *
+- * @example String banner overrides default
+- * ```ts
+- * defaultResolveBanner(undefined, { output: { banner: '// my banner' }, config })
+- * // → '// my banner'
+- * ```
+- *
+- * @example Function banner with metadata
+- * ```ts
+- * defaultResolveBanner(meta, { output: { banner: (m) => `// v${m.version}` }, config })
+- * // → '// v3.0.0'
+- * ```
+- *
+- * @example Function banner skips re-export files
+- * ```ts
+- * defaultResolveBanner(meta, { output: { banner: (m) => (m.isBarrel ? '' : "'use server'") }, config, file: { path, baseName, isBarrel: true } })
+- * // → ''
+- * ```
+- *
+- * @example No user banner, Kubb notice with OAS metadata
+- * ```ts
+- * defaultResolveBanner(meta, { config })
+- * // → '/** Generated by Kubb ... Title: Pet Store ... *\/'
+- * ```
+- *
+- * @example Disabled default banner
+- * ```ts
+- * defaultResolveBanner(undefined, { config: { output: { defaultBanner: false }, ...config } })
+- * // → null
+- * ```
+- */
+-export function defaultResolveBanner(meta: InputMeta | undefined, { output, config, file }: ResolveBannerContext): string | null {
+-  if (typeof output?.banner === 'function') {
+-    return output.banner(buildBannerMeta({ meta, file }))
+-  }
+-
+-  if (typeof output?.banner === 'string') {
+-    return output.banner
+-  }
+-
+-  if (config.output.defaultBanner === false) {
+-    return null
+-  }
+-
+-  return buildDefaultBanner({
+-    title: meta?.title,
+-    version: meta?.version,
+-    config,
+-  })
+-}
+-
+-/**
+- * Default footer resolver. Returns the footer string for a generated file.
+- *
+- * - When `output.footer` is a function, calls it with the file's `BannerMeta` and returns the result.
+- * - When `output.footer` is a string, returns it directly.
+- * - Otherwise returns `undefined`.
+- *
+- * @example String footer
+- * ```ts
+- * defaultResolveFooter(undefined, { output: { footer: '// end of file' }, config })
+- * // → '// end of file'
+- * ```
+- *
+- * @example Function footer with metadata
+- * ```ts
+- * defaultResolveFooter(meta, { output: { footer: (m) => `// ${m.title}` }, config })
+- * // → '// Pet Store'
+- * ```
+- */
+-export function defaultResolveFooter(meta: InputMeta | undefined, { output, file }: ResolveBannerContext): string | null {
+-  if (typeof output?.footer === 'function') {
+-    return output.footer(buildBannerMeta({ meta, file }))
+-  }
+-  if (typeof output?.footer === 'string') {
+-    return output.footer
+-  }
+-  return null
+-}
+-
+-/**
+- * Defines a plugin resolver. The resolver is the object that decides what
+- * every generated symbol and file path is called. Built-in defaults handle
+- * name casing, include/exclude/override filtering, output path computation,
+- * and file construction. Supply your own to override any of them:
+- *
+- * - `default` sets the name casing strategy (camelCase or PascalCase).
+- * - `resolveOptions` does include/exclude/override filtering.
+- * - `resolvePath` computes the output path.
+- * - `resolveFile` builds the full `FileNode`.
+- * - `resolveBanner` and `resolveFooter` produce the top and bottom of file text.
+- *
+- * Methods in the returned object can call sibling resolver methods via `this`.
+- * A custom rule can delegate to a default, for example `this.default(name, 'type')`.
+- *
+- * @example Basic resolver with naming helpers
+- * ```ts
+- * export const resolverTs = defineResolver<PluginTs>(() => ({
+- *   name: 'default',
+- *   resolveName(name) {
+- *     return this.default(name, 'function')
+- *   },
+- *   resolveTypeName(name) {
+- *     return this.default(name, 'type')
+- *   },
+- * }))
+- * ```
+- *
+- * @example Custom output path
+- * ```ts
+- * import path from 'node:path'
+- *
+- * export const resolverTs = defineResolver<PluginTs>(() => ({
+- *   name: 'custom',
+- *   resolvePath({ baseName }, { root, output }) {
+- *     return path.resolve(root, output.path, 'generated', baseName)
+- *   },
+- * }))
+- * ```
+- */
+-export function defineResolver<T extends PluginFactoryOptions>(build: ResolverBuilder<T>): T['resolver'] {
+-  // `resolver` is kept so the default `resolveFile` wrapper can reference the fully assembled
+-  // object via `.call(resolver, ...)` at call-time, after the result is assigned below.
+-  let resolver: T['resolver']
+-
+-  const result = {
+-    default: defaultResolver,
+-    resolveOptions: defaultResolveOptions,
+-    resolvePath: defaultResolvePath,
+-    resolveFile: (params: ResolverFileParams, context: ResolverContext) => defaultResolveFile.call(resolver as Resolver, params, context),
+-    resolveBanner: defaultResolveBanner,
+-    resolveFooter: defaultResolveFooter,
+-    ...build(),
+-  } as T['resolver']
+-
+-  resolver = result
+-
+-  return resolver
+-}
+diff --git a/packages/core/src/index.ts b/packages/core/src/index.ts
+--- a/packages/core/src/index.ts
++++ b/packages/core/src/index.ts
+@@ -10,12 +10,11 @@ export { createStorage } from './createStorage.ts'
+ export { defineGenerator } from './defineGenerator.ts'
+ export { defineParser } from './defineParser.ts'
+ export { definePlugin } from './definePlugin.ts'
+-export { defineResolver } from './defineResolver.ts'
++export { createResolver, Resolver } from './createResolver.ts'
+ export { KubbDriver } from './KubbDriver.ts'
+ export { fsStorage } from './storages/fsStorage.ts'
+ export { memoryStorage } from './storages/memoryStorage.ts'
+ 
+ export { AsyncEventEmitter } from './asyncEventEmitter.ts'
+-export { Url } from './Url.ts'
+ 
+ export * from './types.ts'
+diff --git a/packages/core/src/mocks.ts b/packages/core/src/mocks.ts
+--- a/packages/core/src/mocks.ts
++++ b/packages/core/src/mocks.ts
+@@ -5,9 +5,7 @@ import { applyMacros } from '@kubb/ast'
+ import { expect } from 'vitest'
+ import type { Parser } from './defineParser.ts'
+ import { FileManager } from './FileManager.ts'
+-import { FileProcessor } from './FileProcessor.ts'
+ import type { KubbDriver } from './KubbDriver.ts'
+-import { memoryStorage } from './storages/memoryStorage.ts'
+ import type { Adapter, AdapterFactoryOptions, Config, Generator, GeneratorContext, NormalizedPlugin, PluginFactoryOptions, RendererFactory } from './types.ts'
+ 
+ /**
+@@ -39,11 +37,6 @@ export function createMockedPluginDriver(options: { name?: string; plugin?: Norm
+       if (!renderer) return
+ 
+       using instance = renderer()
+-      if (instance.stream) {
+-        for (const file of instance.stream(result)) fileManager.upsert(file)
+-        return
+-      }
+-
+       await instance.render(result)
+       fileManager.upsert(...instance.files)
+     },
+@@ -228,15 +221,15 @@ export async function matchFiles(files: Array<FileNode> | undefined, options: Ma
+   if (!files?.length) return
+ 
+   const { parsers = new Map(), format, pre } = options
+-  const fileProcessor = new FileProcessor({ storage: memoryStorage(), parsers })
++  const fileManager = new FileManager()
+   const processed = new Map<string, string>()
+ 
+   for (const file of files) {
+     if (!file?.path || processed.has(file.path)) {
+       continue
+     }
+ 
+-    const parsed = await fileProcessor.parse(file)
++    const parsed = await fileManager.parse(file, { parsers })
+     const code = file.baseName.endsWith('.json') || !format ? parsed : await format(parsed)
+ 
+     processed.set(file.path, code)
+diff --git a/packages/core/src/storages/fsStorage.ts b/packages/core/src/storages/fsStorage.ts
+--- a/packages/core/src/storages/fsStorage.ts
++++ b/packages/core/src/storages/fsStorage.ts
+@@ -1,8 +1,39 @@
+ import { access, glob, readFile, rm } from 'node:fs/promises'
+ import { join, relative, resolve } from 'node:path'
+-import { clean, runtime, toPosixPath, write } from '@internals/utils'
++import { clean, toPosixPath, write } from '@internals/utils'
+ import { createStorage } from '../createStorage.ts'
+ 
++// Caps concurrent writes so a build with thousands of files doesn't open that many file
++// descriptors at once.
++const WRITE_CONCURRENCY = 50
++
++function createLimiter(concurrency: number) {
++  let active = 0
++  const queue: Array<() => void> = []
++
++  function next(): void {
++    if (active >= concurrency) return
++    const run = queue.shift()
++    if (!run) return
++    active++
++    run()
++  }
++
++  return function limit<TResult>(task: () => Promise<TResult>): Promise<TResult> {
++    return new Promise((resolve, reject) => {
++      queue.push(() => {
++        task()
++          .then(resolve, reject)
++          .finally(() => {
++            active--
++            next()
++          })
++      })
++      next()
++    })
++  }
++}
++
+ /**
+  * Built-in filesystem storage driver.
+  *
+@@ -15,6 +46,8 @@ import { createStorage } from '../createStorage.ts'
+  * - the write is skipped when the file content is already identical
+  * - missing parent directories are created automatically
+  * - Bun's native file API is used when running under Bun
++ * - concurrent `setItem` calls are capped at {@link WRITE_CONCURRENCY} in flight, so a caller
++ *   can fire every file's write without pacing itself
+  *
+  * @example
+  * ```ts
+@@ -28,55 +61,54 @@ import { createStorage } from '../createStorage.ts'
+  * })
+  * ```
+  */
+-export const fsStorage = createStorage(() => ({
+-  name: 'fs',
+-  async hasItem(key: string) {
+-    try {
+-      await access(resolve(key))
+-      return true
+-    } catch (_error) {
+-      return false
+-    }
+-  },
+-  async getItem(key: string) {
+-    try {
+-      return await readFile(resolve(key), 'utf8')
+-    } catch (_error) {
+-      return null
+-    }
+-  },
+-  async setItem(key: string, value: string) {
+-    await write(resolve(key), value, { sanity: false })
+-  },
+-  async removeItem(key: string) {
+-    await rm(resolve(key), { force: true })
+-  },
+-  async getKeys(base?: string) {
+-    const resolvedBase = resolve(base ?? process.cwd())
++export const fsStorage = createStorage(() => {
++  const limit = createLimiter(WRITE_CONCURRENCY)
+ 
+-    if (runtime.isBun) {
+-      const bunGlob = new Bun.Glob('**/*')
+-      return Array.fromAsync(bunGlob.scan({ cwd: resolvedBase, onlyFiles: true, dot: true }))
+-    }
++  return {
++    name: 'fs',
++    async hasItem(key: string) {
++      try {
++        await access(resolve(key))
++        return true
++      } catch (_error) {
++        return false
++      }
++    },
++    async getItem(key: string) {
++      try {
++        return await readFile(resolve(key), 'utf8')
++      } catch (_error) {
++        return null
++      }
++    },
++    async setItem(key: string, value: string) {
++      await limit(() => write(resolve(key), value, { sanity: false }))
++    },
++    async removeItem(key: string) {
++      await rm(resolve(key), { force: true })
++    },
++    async getKeys(base?: string) {
++      const resolvedBase = resolve(base ?? process.cwd())
++      const keys: Array<string> = []
+ 
+-    const keys: Array<string> = []
+-    try {
+-      for await (const entry of glob('**/*', { cwd: resolvedBase, withFileTypes: true })) {
+-        if (entry.isFile()) {
+-          keys.push(toPosixPath(relative(resolvedBase, join(entry.parentPath, entry.name))))
++      try {
++        for await (const entry of glob('**/*', { cwd: resolvedBase, withFileTypes: true })) {
++          if (entry.isFile()) {
++            keys.push(toPosixPath(relative(resolvedBase, join(entry.parentPath, entry.name))))
++          }
+         }
++      } catch (_error) {
++        // base directory does not exist yet
+       }
+-    } catch (_error) {
+-      // base directory does not exist yet
+-    }
+ 
+-    return keys
+-  },
+-  async clear(base?: string) {
+-    if (!base) {
+-      return
+-    }
++      return keys
++    },
++    async clear(base?: string) {
++      if (!base) {
++        return
++      }
+ 
+-    await clean(resolve(base))
+-  },
+-}))
++      await clean(resolve(base))
++    },
++  }
++})
+diff --git a/packages/core/src/types.ts b/packages/core/src/types.ts
+--- a/packages/core/src/types.ts
++++ b/packages/core/src/types.ts
+@@ -10,10 +10,6 @@ import type { KubbPluginEndContext, KubbPluginSetupContext, KubbPluginStartConte
+ import type { KubbDriver } from './KubbDriver.ts'
+ 
+ /**
+- * Extracts a type from a registry, falling back to `{}` when the key doesn't exist.
+- * Lets plugins augment `Kubb.ConfigOptionsRegistry` and `Kubb.PluginOptionsRegistry`
+- * without changing core.
+- *
+  * @internal
+  */
+ type ExtractRegistryKey<T, K extends PropertyKey> = K extends keyof T ? T[K] : {}
+@@ -771,14 +767,11 @@ export type BuildOutput = {
+    */
+   driver: KubbDriver
+   /**
+-   * Read-only view of every file written during this build.
+-   * Reads go straight to `config.storage`, nothing extra is held in memory.
++   * The configured `Storage` backend, for reading back a generated file's final content.
++   * Use `files` to list what this build produced.
+    *
+    * @example Read a generated file
+    * `const code = await buildOutput.storage.getItem('/src/gen/pet.ts')`
+-   *
+-   * @example List all generated file paths
+-   * `const paths = await buildOutput.storage.getKeys()`
+    */
+   storage: Storage
+ }
+@@ -801,10 +794,10 @@ export type { CreateKubbOptions, Kubb } from './createKubb.ts'
+ export type { GenerationResult, Reporter, ReporterContext, ReporterName, UserReporter } from './createReporter.ts'
+ export type { Renderer, RendererFactory } from './createRenderer.ts'
+ export type { Storage } from './createStorage.ts'
+-export type { FileProcessorHooks, ParsedFile } from './FileProcessor.ts'
++export type { FileManagerHooks } from './FileManager.ts'
+ export type { Generator, GeneratorContext } from './defineGenerator.ts'
+ export type { Parser } from './defineParser.ts'
+-export type { Exclude, Group, Include, Output, OutputMode, OutputOptions, Override } from './definePlugin.ts'
++export type { Exclude, Filter, Group, Include, Output, OutputMode, OutputOptions, Override } from './definePlugin.ts'
+ export type { KubbPluginEndContext, KubbPluginSetupContext, KubbPluginStartContext, NormalizedPlugin, Plugin, PluginFactoryOptions } from './definePlugin.ts'
+ export type {
+   BannerMeta,
+@@ -813,6 +806,8 @@ export type {
+   ResolveOptionsContext,
+   Resolver,
+   ResolverContext,
++  ResolverDefault,
+   ResolverFileParams,
++  ResolverOverride,
+   ResolverPathParams,
+-} from './defineResolver.ts'
++} from './createResolver.ts'
+diff --git a/packages/kit/package.json b/packages/kit/package.json
+--- a/packages/kit/package.json
++++ b/packages/kit/package.json
+@@ -63,9 +63,6 @@
+   "devDependencies": {
+     "@internals/utils": "workspace:*"
+   },
+-  "peerDependencies": {
+-    "@kubb/core": "workspace:*"
+-  },
+   "engines": {
+     "node": ">=22"
+   }
+diff --git a/packages/kit/src/index.ts b/packages/kit/src/index.ts
+--- a/packages/kit/src/index.ts
++++ b/packages/kit/src/index.ts
+@@ -1,11 +1,12 @@
+ export { ast } from '@kubb/ast'
++export { Url } from '@internals/utils'
+ export { createAdapter } from '@kubb/core'
+ export { createRenderer } from '@kubb/core'
+ export { createStorage } from '@kubb/core'
+ export { defineGenerator } from '@kubb/core'
+ export { defineParser } from '@kubb/core'
+ export { definePlugin } from '@kubb/core'
+-export { defineResolver } from '@kubb/core'
++export { createResolver, Resolver } from '@kubb/core'
+ export { Diagnostics } from '@kubb/core'
+ export { fsStorage } from '@kubb/core'
+ export { memoryStorage } from '@kubb/core'
+@@ -36,9 +37,10 @@ export type {
+   ResolveBannerContext,
+   ResolveBannerFile,
+   ResolveOptionsContext,
+-  Resolver,
+   ResolverContext,
++  ResolverDefault,
+   ResolverFileParams,
++  ResolverOverride,
+   ResolverPathParams,
+   Storage,
+   UserConfig,
+diff --git a/packages/kubb/package.json b/packages/kubb/package.json
+--- a/packages/kubb/package.json
++++ b/packages/kubb/package.json
+@@ -136,10 +136,10 @@
+     "@nuxt/kit": "^4.4.8",
+     "@nuxt/schema": "^4.4.8",
+     "esbuild": "^0.28.1",
+-    "rolldown": "^1.1.3",
++    "rolldown": "^1.1.4",
+     "rollup": "^4.62.2",
+     "typescript": "catalog:",
+-    "vite": "^8.1.1",
++    "vite": "^8.1.3",
+     "webpack": "^5.108.3"
+   },
+   "preferGlobal": true,
+diff --git a/packages/kubb/src/defineConfig.ts b/packages/kubb/src/defineConfig.ts
+--- a/packages/kubb/src/defineConfig.ts
++++ b/packages/kubb/src/defineConfig.ts
+@@ -23,26 +23,18 @@ type DefinedConfig<TConfig extends ConfigInput> = TConfig extends (cli: CLIOptio
+  * - `parsers` defaults to `[parserTs, parserTsx, parserMd]`
+  * - `reporters` defaults to `[cliReporter, jsonReporter, fileReporter]`
+  * - `plugins` gets `pluginBarrel()` appended when none is already present
+- * - `output.barrel` defaults to `{ type: 'named' }` only when `pluginBarrel` is part of `plugins`.
+- *   When the user provides a plugins list without `pluginBarrel`, `barrel` is left untouched.
++ * - `output.barrel` defaults to `{ type: 'named' }` when not set (`pluginBarrel` is always present after the step above)
+  * - `output.format` defaults to `false`
+  * - `output.lint` defaults to `false`
+  */
+ function applyDefaults<TInput>(config: UserConfig<TInput>): UserConfig<TInput> {
+   const alreadyHasBarrel = config.plugins?.some((p) => p.name === pluginBarrelName)
+   const plugins = alreadyHasBarrel ? (config.plugins ?? []) : [...(config.plugins ?? []), pluginBarrel()]
+-  const hasBarrelPlugin = plugins.some((p) => p.name === pluginBarrelName)
+ 
+   const output = { ...config.output }
+-  if (hasBarrelPlugin && output.barrel === undefined) {
+-    output.barrel = { type: 'named' }
+-  }
+-  if (output.format === undefined) {
+-    output.format = false
+-  }
+-  if (output.lint === undefined) {
+-    output.lint = false
+-  }
++  output.barrel ??= { type: 'named' }
++  output.format ??= false
++  output.lint ??= false
+ 
+   return {
+     ...config,
+@@ -71,8 +63,7 @@ function normalizeConfig<TInput>(config: UserConfig<TInput> | Array<UserConfig<T
+  * - `parsers` → `[parserTs, parserTsx, parserMd]`.
+  * - `reporters` → `[cliReporter, jsonReporter, fileReporter]`.
+  * - `plugins` → `pluginBarrel()` is appended when not already present.
+- * - `output.barrel` → `{ type: 'named' }` only when `pluginBarrel` is
+- *   in the plugins list.
++ * - `output.barrel` → `{ type: 'named' }` when not set.
+  * - `output.format` and `output.lint` → `false`.
+  *
+  * Accepts a config object, an array of configs, a Promise resolving to one,
+diff --git a/packages/plugin-barrel/src/plugin.ts b/packages/plugin-barrel/src/plugin.ts
+--- a/packages/plugin-barrel/src/plugin.ts
++++ b/packages/plugin-barrel/src/plugin.ts
+@@ -24,8 +24,8 @@ function withBarrelBannerFooter({ file, plugin, config }: { file: FileNode; plug
+   const context = { output, config, file: { path: file.path, baseName: file.baseName, isBarrel: true } }
+   return {
+     ...file,
+-    banner: hasBanner ? resolver.resolveBanner(undefined, context) : file.banner,
+-    footer: hasFooter ? resolver.resolveFooter(undefined, context) : file.footer,
++    banner: hasBanner ? resolver.default.banner(undefined, context) : file.banner,
++    footer: hasFooter ? resolver.default.footer(undefined, context) : file.footer,
+   }
+ }
+ 
+diff --git a/packages/renderer-jsx/src/Runtime.tsx b/packages/renderer-jsx/src/Runtime.tsx
+--- a/packages/renderer-jsx/src/Runtime.tsx
++++ b/packages/renderer-jsx/src/Runtime.tsx
+@@ -276,20 +276,4 @@ export class Runtime {
+       this.nodes.push(file)
+     }
+   }
+-
+-  /**
+-   * Walks `element` synchronously and yields each {@link FileNode} as it is
+-   * produced, without buffering into an intermediate array first. Callers can
+-   * begin processing each file before the rest of the element tree is traversed.
+-   *
+-   * @example
+-   * ```ts
+-   * for (const file of runtime.stream(element)) {
+-   *   await writeFile(file)
+-   * }
+-   * ```
+-   */
+-  *stream(element: KubbReactElement): Generator<FileNode> {
+-    yield* walkFiles(element)
+-  }
+ }
+diff --git a/packages/renderer-jsx/src/components/File.tsx b/packages/renderer-jsx/src/components/File.tsx
+--- a/packages/renderer-jsx/src/components/File.tsx
++++ b/packages/renderer-jsx/src/components/File.tsx
+@@ -40,12 +40,12 @@ type Props<TMeta> = BaseProps & {
+   meta?: TMeta | null
+   /**
+    * Text prepended to the generated file content before any source blocks.
+-   * Accepts `null` so `resolver.resolveBanner()` results can be passed directly.
++   * Accepts `null` so `resolver.default.banner()` results can be passed directly.
+    */
+   banner?: string | null
+   /**
+    * Text appended to the generated file content after all source blocks.
+-   * Accepts `null` so `resolver.resolveFooter()` results can be passed directly.
++   * Accepts `null` so `resolver.default.footer()` results can be passed directly.
+    */
+   footer?: string | null
+   /**
+diff --git a/packages/renderer-jsx/src/jsxRenderer.tsx b/packages/renderer-jsx/src/jsxRenderer.tsx
+--- a/packages/renderer-jsx/src/jsxRenderer.tsx
++++ b/packages/renderer-jsx/src/jsxRenderer.tsx
+@@ -1,4 +1,3 @@
+-import type { FileNode } from '@kubb/ast'
+ import { Runtime } from './Runtime.tsx'
+ import type { KubbReactElement } from './types.ts'
+ 
+@@ -9,8 +8,7 @@ import type { KubbReactElement } from './types.ts'
+  * generic, with no hard dependency on `@kubb/renderer-jsx`.
+  *
+  * Every component must be a pure function. Hooks, suspense, and class
+- * components are not supported. The returned renderer also exposes `stream()`
+- * for incremental file emission.
++ * components are not supported.
+  *
+  * @example Wire up a JSX generator
+  * ```tsx
+@@ -29,14 +27,6 @@ import type { KubbReactElement } from './types.ts'
+  *   },
+  * })
+  * ```
+- *
+- * @example Stream files as they are produced
+- * ```tsx
+- * const renderer = jsxRenderer()
+- * for (const file of renderer.stream(element)) {
+- *   await writeFile(file.path, file.sources[0])
+- * }
+- * ```
+  */
+ export const jsxRenderer = () => {
+   const runtime = new Runtime()
+@@ -48,9 +38,6 @@ export const jsxRenderer = () => {
+     get files() {
+       return runtime.nodes
+     },
+-    stream(element: KubbReactElement): Generator<FileNode> {
+-      return runtime.stream(element)
+-    },
+     [Symbol.dispose]() {},
+   }
+ }
+diff --git a/packages/unplugin-kubb/package.json b/packages/unplugin-kubb/package.json
+--- a/packages/unplugin-kubb/package.json
++++ b/packages/unplugin-kubb/package.json
+@@ -120,9 +120,9 @@
+     "@nuxt/kit": "^4.4.8",
+     "@nuxt/schema": "^4.4.8",
+     "esbuild": "^0.28.1",
+-    "rolldown": "^1.1.3",
++    "rolldown": "^1.1.4",
+     "rollup": "^4.62.2",
+-    "vite": "^8.1.1",
++    "vite": "^8.1.3",
+     "webpack": "^5.108.3"
+   },
+   "peerDependencies": {
+diff --git a/packages/unplugin-kubb/src/unpluginFactory.ts b/packages/unplugin-kubb/src/unpluginFactory.ts
+--- a/packages/unplugin-kubb/src/unpluginFactory.ts
++++ b/packages/unplugin-kubb/src/unpluginFactory.ts
+@@ -81,17 +81,10 @@ export const unpluginFactory: UnpluginFactory<Options | undefined> = (options, m
+ 
+     const alreadyHasBarrel = options.config.plugins?.some((p) => p.name === pluginBarrelName)
+     const plugins = alreadyHasBarrel ? (options.config.plugins ?? []) : [...(options.config.plugins ?? []), pluginBarrel()]
+-    const hasBarrelPlugin = plugins.some((p) => p.name === pluginBarrelName)
+     const output = { ...options.config.output }
+-    if (hasBarrelPlugin && output.barrel === undefined) {
+-      output.barrel = { type: 'named' }
+-    }
+-    if (output.format === undefined) {
+-      output.format = false
+-    }
+-    if (output.lint === undefined) {
+-      output.lint = false
+-    }
++    output.barrel ??= { type: 'named' }
++    output.format ??= false
++    output.lint ??= false
+ 
+     const config = {
+       ...options.config,
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -72,14 +72,14 @@ importers:
+         specifier: 'catalog:'
+         version: 0.22.3(typescript@6.0.3)
+       turbo:
+-        specifier: ^2.10.1
+-        version: 2.10.1
++        specifier: ^2.10.3
++        version: 2.10.3
+       typescript:
+         specifier: 'catalog:'
+         version: 6.0.3
+       vitest:
+         specifier: 'catalog:'
+-        version: 4.1.9(@types/node@22.20.0)(@vitest/coverage-v8@4.1.9)(@vitest/ui@4.1.9)(vite@8.1.1(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))
++        version: 4.1.9(@types/node@22.20.0)(@vitest/coverage-v8@4.1.9)(@vitest/ui@4.1.9)(vite@8.1.3(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))
+ 
+   internals/shared:
+     devDependencies:
+@@ -108,8 +108,8 @@ importers:
+         specifier: workspace:*
+         version: link:../core
+       '@readme/openapi-parser':
+-        specifier: ^6.1.3
+-        version: 6.1.3(openapi-types@12.1.3)
++        specifier: ^6.2.0
++        version: 6.2.0(openapi-types@12.1.3)
+       '@scalar/openapi-upgrader':
+         specifier: ^0.2.9
+         version: 0.2.9
+@@ -142,8 +142,8 @@ importers:
+   packages/cli:
+     dependencies:
+       '@clack/prompts':
+-        specifier: ^1.6.0
+-        version: 1.6.0
++        specifier: ^1.7.0
++        version: 1.7.0
+       '@kubb/core':
+         specifier: workspace:*
+         version: link:../core
+@@ -251,17 +251,17 @@ importers:
+         specifier: ^0.28.1
+         version: 0.28.1
+       rolldown:
+-        specifier: ^1.1.3
+-        version: 1.1.3
++        specifier: ^1.1.4
++        version: 1.1.4
+       rollup:
+         specifier: ^4.62.2
+         version: 4.62.2
+       typescript:
+         specifier: 'catalog:'
+         version: 6.0.3
+       vite:
+-        specifier: ^8.1.1
+-        version: 8.1.1(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
++        specifier: ^8.1.3
++        version: 8.1.3(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
+       webpack:
+         specifier: ^5.108.3
+         version: 5.108.3(esbuild@0.28.1)
+@@ -374,7 +374,7 @@ importers:
+         version: link:../plugin-barrel
+       unplugin:
+         specifier: ^3.3.0
+-        version: 3.3.0(@farmfe/core@1.7.11(@types/node@26.0.1))(esbuild@0.28.1)(rolldown@1.1.3)(rollup@4.62.2)(vite@8.1.1(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))(webpack@5.108.3(esbuild@0.28.1))
++        version: 3.3.0(@farmfe/core@1.7.11(@types/node@26.0.1))(esbuild@0.28.1)(rolldown@1.1.4)(rollup@4.62.2)(vite@8.1.3(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))(webpack@5.108.3(esbuild@0.28.1))
+     devDependencies:
+       '@farmfe/core':
+         specifier: ^1.7.11
+@@ -392,14 +392,14 @@ importers:
+         specifier: ^0.28.1
+         version: 0.28.1
+       rolldown:
+-        specifier: ^1.1.3
+-        version: 1.1.3
++        specifier: ^1.1.4
++        version: 1.1.4
+       rollup:
+         specifier: ^4.62.2
+         version: 4.62.2
+       vite:
+-        specifier: ^8.1.1
+-        version: 8.1.1(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
++        specifier: ^8.1.3
++        version: 8.1.3(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
+       webpack:
+         specifier: ^5.108.3
+         version: 5.108.3(esbuild@0.28.1)
+@@ -528,12 +528,12 @@ packages:
+   '@changesets/write@0.4.0':
+     resolution: {integrity: sha512-CdTLvIOPiCNuH71pyDu3rA+Q0n65cmAbXnwWH84rKGiFumFzkmHNT8KHTMEchcxN+Kl8I54xGUhJ7l3E7X396Q==}
+ 
+-  '@clack/core@1.4.2':
+-    resolution: {integrity: sha512-0Ty/1Gfm+Kb07sXcuESjyKfwEhSy4Ns1AgeEisHb/bDY5fWme0tTeTkU14T1Gmcs17YIjB/teiDe4uaCghbYqQ==}
++  '@clack/core@1.4.3':
++    resolution: {integrity: sha512-/kr3UWNtdJfxZtPgDqUOmG2pvwlmcLGheex5yiZKdwbzZJxhV+HMNR9QNmyY5cGwTNV6LrR7Jtp+KjhUAP1qBQ==}
+     engines: {node: '>= 20.12.0'}
+ 
+-  '@clack/prompts@1.6.0':
+-    resolution: {integrity: sha512-EYlRokl8szrP9Z25qT5aepMdBjzBvHF9ZEhzIiUBc9guz/T31EqRgvD0QSgZcpE93xiwrr+OkB4nz0BZyF6fSA==}
++  '@clack/prompts@1.7.0':
++    resolution: {integrity: sha512-y7/yvZ2TPAnR9+jnc00klvNNLkJiXFFrQA/hlLCcxA9a2A4zQIOimyFQ9XfwYKiGD1fb5GY8vbKIIgO8d5Tb2A==}
+     engines: {node: '>= 20.12.0'}
+ 
+   '@emnapi/core@1.11.1':
+@@ -850,8 +850,8 @@ packages:
+     resolution: {integrity: sha512-igfWuMF0x0Pmx/XwhPwH/bcXgbuwNnjUjqxCAsY6VQhmGKo0e9soJq3Q0ohj+rBkBfX6o2ysTP1/t2M82aK4qA==}
+     engines: {node: ^14.18.0 || >=16.10.0}
+ 
+-  '@oxc-project/types@0.137.0':
+-    resolution: {integrity: sha512-WT+Gb24i8hmvo85AIv2oEYouEXkRlKAlT9WaCa3TfLgNCN+GhrJOGZuIlMouAh38Qe4QOx26eUOVsq70qXrywA==}
++  '@oxc-project/types@0.138.0':
++    resolution: {integrity: sha512-1a7ZKmrRTCoN1XMZ4L0PyyqrMnrNlLyPuOkdSX2MZg7IiIGRUyurNhAm73ptDOraoBcIordsIGKNPKUzy3ZmfA==}
+ 
+   '@oxfmt/binding-android-arm-eabi@0.56.0':
+     resolution: {integrity: sha512-CSCxi7ovYojgfdPOdUb9T508HKeAdDIKeRGg7x8IZwVJrWz9gVgX7MbUnFqtQAE4QvoNo07mj2JlwnOzJw4qqA==}
+@@ -1109,8 +1109,8 @@ packages:
+     peerDependencies:
+       ajv: 4.11.8 - 8
+ 
+-  '@readme/openapi-parser@6.1.3':
+-    resolution: {integrity: sha512-eRhSdlKSR5Pva81s8T5e209Fv8dJBUvaWZ7IvNRaLQL5kJkbyo9ucnm498kO0UKMx+meu3PYFkOOoPSkywt3NA==}
++  '@readme/openapi-parser@6.2.0':
++    resolution: {integrity: sha512-JS7TheecOlDe4hw/9RJkZwFDWXSwqUPxDBcq0IIY0WL5cPv9hCrUw+gq+Gn2y8d4kSbAKLQlG0/d2V9WXNxujw==}
+     engines: {node: '>=20'}
+     peerDependencies:
+       openapi-types: '>=7'
+@@ -1119,97 +1119,97 @@ packages:
+     resolution: {integrity: sha512-9FC/6ho8uFa8fV50+FPy/ngWN53jaUu4GRXlAjcxIRrzhltJnpKkBG2Tp0IDraFJeWrOpk84RJ9EMEEYzaI1Bw==}
+     engines: {node: '>=18'}
+ 
+-  '@rolldown/binding-android-arm64@1.1.3':
+-    resolution: {integrity: sha512-DT6Z3PhvioeHMvxo+xHc3KtqggrI7CCTXCmC2h/5zUlp5jVitv7XEy+9q5/7v8IolhlioawpMo8Kg0EEBy7J0g==}
++  '@rolldown/binding-android-arm64@1.1.4':
++    resolution: {integrity: sha512-EZLpf/8y7GXkkra90ML47kzik/GMP3EMcE9bPyHmRfxLC6z9+aW5A8poCsoxjrT5GfEcNAAvWwUHjvP1pUQkfw==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [arm64]
+     os: [android]
+ 
+-  '@rolldown/binding-darwin-arm64@1.1.3':
+-    resolution: {integrity: sha512-0NwgwsjM7LrsuVnXMK3koTpagBNOhloc/BNjKqZjv4V5zI5r13qx69uVhRx+o5Z0yy4Hzq+lpy7TAgUG/ocvrw==}
++  '@rolldown/binding-darwin-arm64@1.1.4':
++    resolution: {integrity: sha512-aUi+HBvmYb7j8krl1+qJgkG8C17fO79gk3c+jPw4S8glRFc1DTija9S3EyaTSQUm5GJXYKDAsugBEhFHH2vYiQ==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [arm64]
+     os: [darwin]
+ 
+-  '@rolldown/binding-darwin-x64@1.1.3':
+-    resolution: {integrity: sha512-YtiBp4disu6V560loT6PjMdiRaWmVvDNrUunAalbiFx2ggeJwxdAsgZMcoGP17uyAsTwAj5V1niksxlHnVQ1Sw==}
++  '@rolldown/binding-darwin-x64@1.1.4':
++    resolution: {integrity: sha512-F7hHC3gwY11+vByKPRWqwGbeXWVgKmL+pTGCinaEhdihzBV2aQ0fvZOch9cXYUOKuKKq429HeYXOqQLc7wFCEg==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [x64]
+     os: [darwin]
+ 
+-  '@rolldown/binding-freebsd-x64@1.1.3':
+-    resolution: {integrity: sha512-yD3EkEdXk2LypPxnf/kSZHirarsI8gcPzc62SukhR9VJTyvV+F9Q/GxWNuCojc7sXyuVC4DxRGhdDK4X8VSsbw==}
++  '@rolldown/binding-freebsd-x64@1.1.4':
++    resolution: {integrity: sha512-sI5yw+7s92SK6odiEhD5lKCBlWcpjHS5qyqpVQbZAJ0fIzEUXrmbl3DH2ybR3PZogulNJF+COLtmA8hUfvkCCQ==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [x64]
+     os: [freebsd]
+ 
+-  '@rolldown/binding-linux-arm-gnueabihf@1.1.3':
+-    resolution: {integrity: sha512-c+8vieQbsD7HNAHKIA34w0GJ9FedFFuJGD+7E6vz7Q3uqAIugL5p45fhlsj4UaAsHpcmlqugBWMhA0/j7o0sIg==}
++  '@rolldown/binding-linux-arm-gnueabihf@1.1.4':
++    resolution: {integrity: sha512-mCi0OKgEieFircrtVYmQAFGszRtMnZ6fpZAXrxanXAu7lqZcsK1E1RAaZNG0uKAnxox3B1f4EyQNnoyMfN1vAA==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [arm]
+     os: [linux]
+ 
+-  '@rolldown/binding-linux-arm64-gnu@1.1.3':
+-    resolution: {integrity: sha512-50jD0uUwLvur7Zz9LHz17kaAdTPjn5wN93hEgjvmYFRZwiR7ZJYovTd5ipyWJDAnXKvZ+wgc+/Ika6dwSF5OcA==}
++  '@rolldown/binding-linux-arm64-gnu@1.1.4':
++    resolution: {integrity: sha512-B9Ial3Kv5sh0SHnB1g/QWcUQCEvCF6QKGAl4zXypYj65mVI+B4AhFBwPtSN7pDrJeIx8Z7zdy4ntx+wQABom7w==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [arm64]
+     os: [linux]
+     libc: [glibc]
+ 
+-  '@rolldown/binding-linux-arm64-musl@1.1.3':
+-    resolution: {integrity: sha512-BO9+oPL8K9poZJBfYPsXNtYjPE5uM3qeehT3aFcW4LITOl+iSqhp0abzjR2nWBUNjIZeKXjAEWBZ64WjNoHd6w==}
++  '@rolldown/binding-linux-arm64-musl@1.1.4':
++    resolution: {integrity: sha512-lZVym0PuHE1KZ22gmFTC15lAkrg9iTszR617oYRB/iPY1A56ywoJzVKOJBKaot5RiikCObmur6pogpse3gRcng==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [arm64]
+     os: [linux]
+     libc: [musl]
+ 
+-  '@rolldown/binding-linux-ppc64-gnu@1.1.3':
+-    resolution: {integrity: sha512-f3VpLB1vQ0Eo6ecr/6cekLnvYMFF4YBFoVGkfkvPLq1bAkbAwHYQPZKoAmG6OJyTcxxoC+AvezGx/S1obNC0Mw==}
++  '@rolldown/binding-linux-ppc64-gnu@1.1.4':
++    resolution: {integrity: sha512-t2DNiLJWNTbnEHyUzTumldML6ET4/g16467LZoDDJ3tSxGvguL5/NyC2lCsNKuyRycg9XeDQF5SSv+TNOhQEXg==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [ppc64]
+     os: [linux]
+     libc: [glibc]
+ 
+-  '@rolldown/binding-linux-s390x-gnu@1.1.3':
+-    resolution: {integrity: sha512-AmurZ26Pqx/RI9N1gzEOCklkKXl927yjfXWUUS0O7Puh8ARM/Ob8qfrD3qnWksScdw6cSrW5PSHE9DyLu7+PtA==}
++  '@rolldown/binding-linux-s390x-gnu@1.1.4':
++    resolution: {integrity: sha512-0WIRnL1Uw4BvTZRLQt+PVgo6ZKTJadlC2btP+/EOXv2f/DWbY0rEgl+y834mIVwP1FkTlWVTrGGJXf12lru7EQ==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [s390x]
+     os: [linux]
+     libc: [glibc]
+ 
+-  '@rolldown/binding-linux-x64-gnu@1.1.3':
+-    resolution: {integrity: sha512-JJpqs8bRGITDOdbkNKnlojzBabbOHrqjSvDr0IVsZObE1lBcPjxItUEY9eWIDbxaJ3cGrXPWGfGkIxFijg/URg==}
++  '@rolldown/binding-linux-x64-gnu@1.1.4':
++    resolution: {integrity: sha512-JWtGshGfX+oENAKonoNkqEJX+7hC8yfhi9GUyPX1VX4mdh1y5r+ZiJLR5XzAB0aoP6s/PcILsGjKq8O0mm24bw==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [x64]
+     os: [linux]
+     libc: [glibc]
+ 
+-  '@rolldown/binding-linux-x64-musl@1.1.3':
+-    resolution: {integrity: sha512-rSJcdjPxzA/by/6/rYs+v+bXU7UjvnbUWz8MJb6kh6+knqB1dCrtHg0uu7C/4haqJvqdkYHQ5IGn+tCH9GLW/g==}
++  '@rolldown/binding-linux-x64-musl@1.1.4':
++    resolution: {integrity: sha512-rT6yQcxUuXs4CnbofqwHRRV0iem349rLMYpTjkgQGLjrY4ado/eDzwPZPTCgTOlF6Nkp8NEv70yLMTn6qkWxsQ==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [x64]
+     os: [linux]
+     libc: [musl]
+ 
+-  '@rolldown/binding-openharmony-arm64@1.1.3':
+-    resolution: {integrity: sha512-hQ3/PYkDJICgevvyNcVrihVeqq7k1Pp3VZ9lY+dauAYUJKO+auqApvANhvR1An9BhmqYKvW2Mu1F9u4DXSMLxQ==}
++  '@rolldown/binding-openharmony-arm64@1.1.4':
++    resolution: {integrity: sha512-KXMGoboq5cyaCQjDA4GLuRiOwBQ0EyFnJoVViLeZ45/3rFItRODEr+NdsBcVpll40hhNArlm/speWGRvj08LzA==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [arm64]
+     os: [openharmony]
+ 
+-  '@rolldown/binding-wasm32-wasi@1.1.3':
+-    resolution: {integrity: sha512-Elcv/BtML9lXrV6JuKITc/grN2kYV9gjsQpW8Jfw4ioK0TOkjBjye0nnyqQNy9STNaI20lXNaQBRrD5gSgR0Yg==}
++  '@rolldown/binding-wasm32-wasi@1.1.4':
++    resolution: {integrity: sha512-5K83rb36oJiY7BCyE9zLZtGcPV4g5wvq+xwdO0XPIwDVZI8cyB/AUjkNXGb92/rnmezEkjMOpgY61rtwjQtFwg==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [wasm32]
+ 
+-  '@rolldown/binding-win32-arm64-msvc@1.1.3':
+-    resolution: {integrity: sha512-2DrEfhluH9yhiaFApmsjsjwrSYbNcY1oFTzYSP1a535jDbV98zCFanA/96TBUd0iDFcxGmw9QRExwGCXz3U+/g==}
++  '@rolldown/binding-win32-arm64-msvc@1.1.4':
++    resolution: {integrity: sha512-PnWBtw3TV5KOg69HQQDR0mnQuyCmSGR2pAB4DC1rPF808fgKeTUMj2EOEyKATpgiuxuR5APQmiDO7PDgEjTFSA==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [arm64]
+     os: [win32]
+ 
+-  '@rolldown/binding-win32-x64-msvc@1.1.3':
+-    resolution: {integrity: sha512-OL4OMk7UPXOeVGGd3qo5zJyPIljf4AFgk5QAkPPS+OoLuOOozhuaQGC18MxVTnw/06q93gShAJzlwnSCY9YtqA==}
++  '@rolldown/binding-win32-x64-msvc@1.1.4':
++    resolution: {integrity: sha512-M1lpniBePobTfsa7Ks9a199e1akxsXn+GYBUKsEzv3YFzOm1HJAMNwKI3qr0Zq+mxwx9gOZoTdP1yXRYsZUocQ==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     cpu: [x64]
+     os: [win32]
+@@ -1380,33 +1380,33 @@ packages:
+     peerDependencies:
+       tmcp: ^1.16.3
+ 
+-  '@turbo/darwin-64@2.10.1':
+-    resolution: {integrity: sha512-EjfrTXVmT0r4Spv+nu1KRcvjqavCq35F5GRCvoxQi83uoX3wxQ2QTgDkSxO8O4HVXyi28dW0of/y2RFBOD4emA==}
++  '@turbo/darwin-64@2.10.3':
++    resolution: {integrity: sha512-guuiO2kKc7yUQFU2jhWyM/BrYGD/brqb0+JvJIXTQ/QI1NlWfHZ1id50kkkOWqxmBiDc8DgW2orfY85pQIc7gw==}
+     cpu: [x64]
+     os: [darwin]
+ 
+-  '@turbo/darwin-arm64@2.10.1':
+-    resolution: {integrity: sha512-nVNvaJ7aHxF5zBw8Nc9Er2Iw8A/SPAw25sqlu/63/qGfDMGdarRYrxjdM0O0XK8X8bGg3Yr93Ro7I5tJksrfgA==}
++  '@turbo/darwin-arm64@2.10.3':
++    resolution: {integrity: sha512-UglEDl/r1/h5Vw6oS6cEE29Jugz2sDLxHCSupNznKatj1fDMRXFqYKFcbvm8RTFhtYPI45NxkrPNo9BqNychBg==}
+     cpu: [arm64]
+     os: [darwin]
+ 
+-  '@turbo/linux-64@2.10.1':
+-    resolution: {integrity: sha512-jaYr5GQGfW2jMkoux7/Yh+pUhKgqBM0pyAZnNTUybnVPy4qB2jP0C4B32Nmg00BYaAU3FaWr/bQ3CKKIYjdI2Q==}
++  '@turbo/linux-64@2.10.3':
++    resolution: {integrity: sha512-KuQxaPWD7OBmwEZqO0sgijwcuXR5eMWbo7BEt2m1D2Q3RylJDj7WMcJ0Btv2VJA0QC+khzAaTAm1yWowJ0CWAw==}
+     cpu: [x64]
+     os: [linux]
+ 
+-  '@turbo/linux-arm64@2.10.1':
+-    resolution: {integrity: sha512-2Wg5TBGYQjaPMJhQzYf0EEM9N5mSE3AKmWBWKz6fsjZ8dlLL4uV7X3PnwtNO1+kRYjwg34ilJwweaT8MvxZOcA==}
++  '@turbo/linux-arm64@2.10.3':
++    resolution: {integrity: sha512-DPkIKQ+6p0sho3Cx/e/A3F+AKgXQJA+z//cHsTcyyM1YWRGSYA0UTP8NUpb4iS2tVBSniGwmjRUr73hpq8kcDg==}
+     cpu: [arm64]
+     os: [linux]
+ 
+-  '@turbo/windows-64@2.10.1':
+-    resolution: {integrity: sha512-fRCK6wZiWQgE5fb+WpaBgDsHNo/fKcCoMEOms9E5Il/Bp/ec9uhsVNn0V/2gmN2hSCyFm7oKf0BZY6Lb6CDMOQ==}
++  '@turbo/windows-64@2.10.3':
++    resolution: {integrity: sha512-8NvFAze9D4PsosZAnK3aGqHz2vLzREz9lNIxLgfE0jRchq2sZQE190cwFm7WX17yg3ftPvwCvWH3rhLbG1UHCQ==}
+     cpu: [x64]
+     os: [win32]
+ 
+-  '@turbo/windows-arm64@2.10.1':
+-    resolution: {integrity: sha512-6REIwRpmmnJdHYL+fIv2BGBC9PYd+8Ta+J53nmcHjqi46v/z+hS1sirYU5fg7Cg1r9/99dpRtSXHKTgvcLYSpg==}
++  '@turbo/windows-arm64@2.10.3':
++    resolution: {integrity: sha512-AqjqV5cHbFa0YRaQ+Dyw6lSm6as4h/Uf8LcZ7VN8i+Odr23ShFD5SUvVAR1d3rZqibFVs9c0VdtXdfQfkdcs3A==}
+     cpu: [arm64]
+     os: [win32]
+ 
+@@ -2890,8 +2890,8 @@ packages:
+       vue-tsc:
+         optional: true
+ 
+-  rolldown@1.1.3:
+-    resolution: {integrity: sha512-1F1eEtUBtFvcGm1HQ9TiUIUHPQG7mSAODrhIzjxoUEFuo8OcbrGLiVLkevNgj84TE4lnHvnumwFjhJO5Eu135g==}
++  rolldown@1.1.4:
++    resolution: {integrity: sha512-IjZYiLxZwpnhwhdBH2ugdTGVSdhCQUmLxLoqyjiL0JxYjyRst+5a0P3xfrTxJ5F638j4Mvvw5FAX5XE6eHpXbA==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     hasBin: true
+ 
+@@ -3125,8 +3125,8 @@ packages:
+     resolution: {integrity: sha512-LxhtAkPDTkVCMQjt2h6eBVY28KCjikZqZfMcC15YBeNjkgUpdCfBu5HoiOTDu86v6smE8yOjyEktJ8hlbANHQA==}
+     engines: {node: '>=0.6.x'}
+ 
+-  turbo@2.10.1:
+-    resolution: {integrity: sha512-z9WGX2bAfElLOri8JY6pcwr+GfS18B5iGefLcvv3nwM9MoE/fPQQhpgZKTRlBciqGSDuLnfNyfP+eji8mEapQA==}
++  turbo@2.10.3:
++    resolution: {integrity: sha512-uZIqzfgtWbyqu1Tqwdd0giRnPGgL0ejbcdF8eZLJhtTTVSrOgArZGzYeXTD6XNcc7ANgdhqex11Y9bHBeyiQLQ==}
+     hasBin: true
+ 
+   type-is@1.6.18:
+@@ -3234,8 +3234,8 @@ packages:
+     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
+     engines: {node: '>= 0.8'}
+ 
+-  vite@8.1.1:
+-    resolution: {integrity: sha512-X/05/cT+VITy2AeDc1der6smvGWWREtL4hPbPTaVbjSBuuWkmNOjR6HP3NzqcQA2nF6VHGUPaFRJyft/2AE9Kg==}
++  vite@8.1.3:
++    resolution: {integrity: sha512-Ds+gBRbj0lwRO2Y5hwnUBdxSwlAve9LeRyU4sNnAr0ewW0gWF0n5bgXgUzbgZ49MV9BVUAQUFYVcDUcilUExMA==}
+     engines: {node: ^20.19.0 || >=22.12.0}
+     hasBin: true
+     peerDependencies:
+@@ -3633,14 +3633,14 @@ snapshots:
+       human-id: 4.2.0
+       prettier: 2.8.8
+ 
+-  '@clack/core@1.4.2':
++  '@clack/core@1.4.3':
+     dependencies:
+       fast-wrap-ansi: 0.2.2
+       sisteransi: 1.0.5
+ 
+-  '@clack/prompts@1.6.0':
++  '@clack/prompts@1.7.0':
+     dependencies:
+-      '@clack/core': 1.4.2
++      '@clack/core': 1.4.3
+       fast-string-width: 3.0.2
+       fast-wrap-ansi: 0.2.2
+       sisteransi: 1.0.5
+@@ -3943,7 +3943,7 @@ snapshots:
+       pkg-types: 2.3.1
+       std-env: 4.1.0
+ 
+-  '@oxc-project/types@0.137.0': {}
++  '@oxc-project/types@0.138.0': {}
+ 
+   '@oxfmt/binding-android-arm-eabi@0.56.0':
+     optional: true
+@@ -4075,7 +4075,7 @@ snapshots:
+       leven: 3.1.0
+       picocolors: 1.1.1
+ 
+-  '@readme/openapi-parser@6.1.3(openapi-types@12.1.3)':
++  '@readme/openapi-parser@6.2.0(openapi-types@12.1.3)':
+     dependencies:
+       '@apidevtools/json-schema-ref-parser': 14.2.1(@types/json-schema@7.0.15)
+       '@readme/better-ajv-errors': 2.4.0(ajv@8.20.0)
+@@ -4087,53 +4087,53 @@ snapshots:
+ 
+   '@readme/openapi-schemas@3.1.0': {}
+ 
+-  '@rolldown/binding-android-arm64@1.1.3':
++  '@rolldown/binding-android-arm64@1.1.4':
+     optional: true
+ 
+-  '@rolldown/binding-darwin-arm64@1.1.3':
++  '@rolldown/binding-darwin-arm64@1.1.4':
+     optional: true
+ 
+-  '@rolldown/binding-darwin-x64@1.1.3':
++  '@rolldown/binding-darwin-x64@1.1.4':
+     optional: true
+ 
+-  '@rolldown/binding-freebsd-x64@1.1.3':
++  '@rolldown/binding-freebsd-x64@1.1.4':
+     optional: true
+ 
+-  '@rolldown/binding-linux-arm-gnueabihf@1.1.3':
++  '@rolldown/binding-linux-arm-gnueabihf@1.1.4':
+     optional: true
+ 
+-  '@rolldown/binding-linux-arm64-gnu@1.1.3':
++  '@rolldown/binding-linux-arm64-gnu@1.1.4':
+     optional: true
+ 
+-  '@rolldown/binding-linux-arm64-musl@1.1.3':
++  '@rolldown/binding-linux-arm64-musl@1.1.4':
+     optional: true
+ 
+-  '@rolldown/binding-linux-ppc64-gnu@1.1.3':
++  '@rolldown/binding-linux-ppc64-gnu@1.1.4':
+     optional: true
+ 
+-  '@rolldown/binding-linux-s390x-gnu@1.1.3':
++  '@rolldown/binding-linux-s390x-gnu@1.1.4':
+     optional: true
+ 
+-  '@rolldown/binding-linux-x64-gnu@1.1.3':
++  '@rolldown/binding-linux-x64-gnu@1.1.4':
+     optional: true
+ 
+-  '@rolldown/binding-linux-x64-musl@1.1.3':
++  '@rolldown/binding-linux-x64-musl@1.1.4':
+     optional: true
+ 
+-  '@rolldown/binding-openharmony-arm64@1.1.3':
++  '@rolldown/binding-openharmony-arm64@1.1.4':
+     optional: true
+ 
+-  '@rolldown/binding-wasm32-wasi@1.1.3':
++  '@rolldown/binding-wasm32-wasi@1.1.4':
+     dependencies:
+       '@emnapi/core': 1.11.1
+       '@emnapi/runtime': 1.11.1
+       '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)
+     optional: true
+ 
+-  '@rolldown/binding-win32-arm64-msvc@1.1.3':
++  '@rolldown/binding-win32-arm64-msvc@1.1.4':
+     optional: true
+ 
+-  '@rolldown/binding-win32-x64-msvc@1.1.3':
++  '@rolldown/binding-win32-x64-msvc@1.1.4':
+     optional: true
+ 
+   '@rolldown/pluginutils@1.0.1': {}
+@@ -4236,22 +4236,22 @@ snapshots:
+     dependencies:
+       tmcp: 1.19.4(typescript@6.0.3)
+ 
+-  '@turbo/darwin-64@2.10.1':
++  '@turbo/darwin-64@2.10.3':
+     optional: true
+ 
+-  '@turbo/darwin-arm64@2.10.1':
++  '@turbo/darwin-arm64@2.10.3':
+     optional: true
+ 
+-  '@turbo/linux-64@2.10.1':
++  '@turbo/linux-64@2.10.3':
+     optional: true
+ 
+-  '@turbo/linux-arm64@2.10.1':
++  '@turbo/linux-arm64@2.10.3':
+     optional: true
+ 
+-  '@turbo/windows-64@2.10.1':
++  '@turbo/windows-64@2.10.3':
+     optional: true
+ 
+-  '@turbo/windows-arm64@2.10.1':
++  '@turbo/windows-arm64@2.10.3':
+     optional: true
+ 
+   '@tybys/wasm-util@0.10.3':
+@@ -4308,7 +4308,7 @@ snapshots:
+       obug: 2.1.3
+       std-env: 4.1.0
+       tinyrainbow: 3.1.0
+-      vitest: 4.1.9(@types/node@22.20.0)(@vitest/coverage-v8@4.1.9)(@vitest/ui@4.1.9)(vite@8.1.1(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))
++      vitest: 4.1.9(@types/node@22.20.0)(@vitest/coverage-v8@4.1.9)(@vitest/ui@4.1.9)(vite@8.1.3(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))
+ 
+   '@vitest/expect@4.1.9':
+     dependencies:
+@@ -4319,13 +4319,13 @@ snapshots:
+       chai: 6.2.2
+       tinyrainbow: 3.1.0
+ 
+-  '@vitest/mocker@4.1.9(vite@8.1.1(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))':
++  '@vitest/mocker@4.1.9(vite@8.1.3(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))':
+     dependencies:
+       '@vitest/spy': 4.1.9
+       estree-walker: 3.0.3
+       magic-string: 0.30.21
+     optionalDependencies:
+-      vite: 8.1.1(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
++      vite: 8.1.3(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
+ 
+   '@vitest/pretty-format@4.1.9':
+     dependencies:
+@@ -4354,7 +4354,7 @@ snapshots:
+       sirv: 3.0.2
+       tinyglobby: 0.2.17
+       tinyrainbow: 3.1.0
+-      vitest: 4.1.9(@types/node@22.20.0)(@vitest/coverage-v8@4.1.9)(@vitest/ui@4.1.9)(vite@8.1.1(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))
++      vitest: 4.1.9(@types/node@22.20.0)(@vitest/coverage-v8@4.1.9)(@vitest/ui@4.1.9)(vite@8.1.3(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))
+ 
+   '@vitest/utils@4.1.9':
+     dependencies:
+@@ -5628,7 +5628,7 @@ snapshots:
+ 
+   reusify@1.1.0: {}
+ 
+-  rolldown-plugin-dts@0.26.0(rolldown@1.1.3)(typescript@6.0.3):
++  rolldown-plugin-dts@0.26.0(rolldown@1.1.4)(typescript@6.0.3):
+     dependencies:
+       '@babel/generator': 8.0.0
+       '@babel/helper-validator-identifier': 8.0.2
+@@ -5638,32 +5638,32 @@ snapshots:
+       dts-resolver: 3.0.0
+       get-tsconfig: 5.0.0-beta.5
+       obug: 2.1.3
+-      rolldown: 1.1.3
++      rolldown: 1.1.4
+     optionalDependencies:
+       typescript: 6.0.3
+     transitivePeerDependencies:
+       - oxc-resolver
+ 
+-  rolldown@1.1.3:
++  rolldown@1.1.4:
+     dependencies:
+-      '@oxc-project/types': 0.137.0
++      '@oxc-project/types': 0.138.0
+       '@rolldown/pluginutils': 1.0.1
+     optionalDependencies:
+-      '@rolldown/binding-android-arm64': 1.1.3
+-      '@rolldown/binding-darwin-arm64': 1.1.3
+-      '@rolldown/binding-darwin-x64': 1.1.3
+-      '@rolldown/binding-freebsd-x64': 1.1.3
+-      '@rolldown/binding-linux-arm-gnueabihf': 1.1.3
+-      '@rolldown/binding-linux-arm64-gnu': 1.1.3
+-      '@rolldown/binding-linux-arm64-musl': 1.1.3
+-      '@rolldown/binding-linux-ppc64-gnu': 1.1.3
+-      '@rolldown/binding-linux-s390x-gnu': 1.1.3
+-      '@rolldown/binding-linux-x64-gnu': 1.1.3
+-      '@rolldown/binding-linux-x64-musl': 1.1.3
+-      '@rolldown/binding-openharmony-arm64': 1.1.3
+-      '@rolldown/binding-wasm32-wasi': 1.1.3
+-      '@rolldown/binding-win32-arm64-msvc': 1.1.3
+-      '@rolldown/binding-win32-x64-msvc': 1.1.3
++      '@rolldown/binding-android-arm64': 1.1.4
++      '@rolldown/binding-darwin-arm64': 1.1.4
++      '@rolldown/binding-darwin-x64': 1.1.4
++      '@rolldown/binding-freebsd-x64': 1.1.4
++      '@rolldown/binding-linux-arm-gnueabihf': 1.1.4
++      '@rolldown/binding-linux-arm64-gnu': 1.1.4
++      '@rolldown/binding-linux-arm64-musl': 1.1.4
++      '@rolldown/binding-linux-ppc64-gnu': 1.1.4
++      '@rolldown/binding-linux-s390x-gnu': 1.1.4
++      '@rolldown/binding-linux-x64-gnu': 1.1.4
++      '@rolldown/binding-linux-x64-musl': 1.1.4
++      '@rolldown/binding-openharmony-arm64': 1.1.4
++      '@rolldown/binding-wasm32-wasi': 1.1.4
++      '@rolldown/binding-win32-arm64-msvc': 1.1.4
++      '@rolldown/binding-win32-x64-msvc': 1.1.4
+ 
+   rollup@4.62.2:
+     dependencies:
+@@ -5868,8 +5868,8 @@ snapshots:
+       import-without-cache: 0.4.0
+       obug: 2.1.3
+       picomatch: 4.0.4
+-      rolldown: 1.1.3
+-      rolldown-plugin-dts: 0.26.0(rolldown@1.1.3)(typescript@6.0.3)
++      rolldown: 1.1.4
++      rolldown-plugin-dts: 0.26.0(rolldown@1.1.4)(typescript@6.0.3)
+       semver: 7.8.5
+       tinyexec: 1.2.4
+       tinyglobby: 0.2.17
+@@ -5887,14 +5887,14 @@ snapshots:
+ 
+   tsscmp@1.0.6: {}
+ 
+-  turbo@2.10.1:
++  turbo@2.10.3:
+     optionalDependencies:
+-      '@turbo/darwin-64': 2.10.1
+-      '@turbo/darwin-arm64': 2.10.1
+-      '@turbo/linux-64': 2.10.1
+-      '@turbo/linux-arm64': 2.10.1
+-      '@turbo/windows-64': 2.10.1
+-      '@turbo/windows-arm64': 2.10.1
++      '@turbo/darwin-64': 2.10.3
++      '@turbo/darwin-arm64': 2.10.3
++      '@turbo/linux-64': 2.10.3
++      '@turbo/linux-arm64': 2.10.3
++      '@turbo/windows-64': 2.10.3
++      '@turbo/windows-arm64': 2.10.3
+ 
+   type-is@1.6.18:
+     dependencies:
+@@ -5942,17 +5942,17 @@ snapshots:
+       picomatch: 4.0.4
+       webpack-virtual-modules: 0.6.2
+ 
+-  unplugin@3.3.0(@farmfe/core@1.7.11(@types/node@26.0.1))(esbuild@0.28.1)(rolldown@1.1.3)(rollup@4.62.2)(vite@8.1.1(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))(webpack@5.108.3(esbuild@0.28.1)):
++  unplugin@3.3.0(@farmfe/core@1.7.11(@types/node@26.0.1))(esbuild@0.28.1)(rolldown@1.1.4)(rollup@4.62.2)(vite@8.1.3(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))(webpack@5.108.3(esbuild@0.28.1)):
+     dependencies:
+       '@jridgewell/remapping': 2.3.5
+       picomatch: 4.0.4
+       webpack-virtual-modules: 0.6.2
+     optionalDependencies:
+       '@farmfe/core': 1.7.11(@types/node@26.0.1)
+       esbuild: 0.28.1
+-      rolldown: 1.1.3
++      rolldown: 1.1.4
+       rollup: 4.62.2
+-      vite: 8.1.1(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
++      vite: 8.1.3(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
+       webpack: 5.108.3(esbuild@0.28.1)
+ 
+   untildify@4.0.0: {}
+@@ -5979,12 +5979,12 @@ snapshots:
+ 
+   vary@1.1.2: {}
+ 
+-  vite@8.1.1(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0):
++  vite@8.1.3(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0):
+     dependencies:
+       lightningcss: 1.32.0
+       picomatch: 4.0.4
+       postcss: 8.5.16
+-      rolldown: 1.1.3
++      rolldown: 1.1.4
+       tinyglobby: 0.2.17
+     optionalDependencies:
+       '@types/node': 22.20.0
+@@ -5994,12 +5994,12 @@ snapshots:
+       terser: 5.48.0
+       yaml: 2.9.0
+ 
+-  vite@8.1.1(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0):
++  vite@8.1.3(@types/node@26.0.1)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0):
+     dependencies:
+       lightningcss: 1.32.0
+       picomatch: 4.0.4
+       postcss: 8.5.16
+-      rolldown: 1.1.3
++      rolldown: 1.1.4
+       tinyglobby: 0.2.17
+     optionalDependencies:
+       '@types/node': 26.0.1
+@@ -6009,10 +6009,10 @@ snapshots:
+       terser: 5.48.0
+       yaml: 2.9.0
+ 
+-  vitest@4.1.9(@types/node@22.20.0)(@vitest/coverage-v8@4.1.9)(@vitest/ui@4.1.9)(vite@8.1.1(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)):
++  vitest@4.1.9(@types/node@22.20.0)(@vitest/coverage-v8@4.1.9)(@vitest/ui@4.1.9)(vite@8.1.3(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)):
+     dependencies:
+       '@vitest/expect': 4.1.9
+-      '@vitest/mocker': 4.1.9(vite@8.1.1(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))
++      '@vitest/mocker': 4.1.9(vite@8.1.3(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0))
+       '@vitest/pretty-format': 4.1.9
+       '@vitest/runner': 4.1.9
+       '@vitest/snapshot': 4.1.9
+@@ -6029,7 +6029,7 @@ snapshots:
+       tinyexec: 1.2.4
+       tinyglobby: 0.2.17
+       tinyrainbow: 3.1.0
+-      vite: 8.1.1(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
++      vite: 8.1.3(@types/node@22.20.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(yaml@2.9.0)
+       why-is-node-running: 2.3.0
+     optionalDependencies:
+       '@types/node': 22.20.0
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

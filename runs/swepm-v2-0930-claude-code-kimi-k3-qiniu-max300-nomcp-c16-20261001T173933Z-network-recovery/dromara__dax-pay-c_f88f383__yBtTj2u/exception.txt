@@ -1,0 +1,33 @@
+Traceback (most recent call last):
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/trial/trial.py", line 415, in run
+    await self._prepare()
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/trial/trial.py", line 459, in _prepare
+    await self._setup_agent()
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/trial/trial.py", line 1574, in _setup_agent
+    await asyncio.wait_for(
+    ...<2 lines>...
+    )
+  File "/home/mlei/.local/share/uv/python/cpython-3.13.8-linux-x86_64-gnu/lib/python3.13/asyncio/tasks.py", line 507, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 1061, in setup
+    await self.install(environment)
+  File "/data/swepmv2-harbor-runtime/campaigns/v2-0930-max300-nomcp/claude_no_mcp.py", line 20, in install
+    result = await self.exec_as_agent(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 1006, in exec_as_agent
+    return await self._exec(
+           ^^^^^^^^^^^^^^^^^
+        environment, command, env=env, cwd=cwd, timeout_sec=timeout_sec
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 973, in _exec
+    raise self._classify_exec_error(command, result)
+harbor.agents.installed.base.NonZeroAgentExitCodeError: Command failed (exit 127): set -eu; test -x /opt/swepm-claude/claude; mkdir -p "$HOME/.local/bin"; ln -sfn /opt/swepm-claude/claude "$HOME/.local/bin/claude"; /opt/swepm-claude/claude --version
+stdout: bash: line 1: /opt/swepm-claude/claude: cannot execute: required file not found
+
+stderr: None

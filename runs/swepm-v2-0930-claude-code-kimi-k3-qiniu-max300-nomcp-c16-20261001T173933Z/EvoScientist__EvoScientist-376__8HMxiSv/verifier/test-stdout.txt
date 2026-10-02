@@ -1,0 +1,365 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch tests/test_backends.py...
+error: while searching for:
+
+import re
+import shlex
+import sys
+from pathlib import Path
+
+import pytest
+
+error: patch failed: tests/test_backends.py:2
+error: tests/test_backends.py: patch does not apply
+Checking patch tests/test_channel_comprehensive.py...
+error: while searching for:
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
+
+
+error: patch failed: tests/test_channel_comprehensive.py:15
+error: tests/test_channel_comprehensive.py: patch does not apply
+Checking patch tests/test_channel_debug.py...
+error: while searching for:
+
+import asyncio
+import logging
+from unittest.mock import AsyncMock, MagicMock, patch
+
+from EvoScientist.channels.debug import (
+
+error: patch failed: tests/test_channel_debug.py:2
+error: tests/test_channel_debug.py: patch does not apply
+Checking patch tests/test_channel_sends.py...
+error: tests/test_channel_sends.py: already exists in working directory
+Checking patch tests/test_cli_async_runtime.py...
+error: tests/test_cli_async_runtime.py: already exists in working directory
+Checking patch tests/test_cli_interrupts.py...
+error: tests/test_cli_interrupts.py: already exists in working directory
+Checking patch tests/test_cli_serve.py...
+error: while searching for:
+from __future__ import annotations
+
+import os
+from types import SimpleNamespace
+
+from EvoScientist.cli import commands
+from EvoScientist.config import MemoryObservationWriter
+
+
+def _make_config(
+
+error: patch failed: tests/test_cli_serve.py:3
+error: tests/test_cli_serve.py: patch does not apply
+Checking patch tests/test_code_interpreter_middleware.py...
+error: while searching for:
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+error: patch failed: tests/test_code_interpreter_middleware.py:9
+error: tests/test_code_interpreter_middleware.py: patch does not apply
+Checking patch tests/test_event_loop.py...
+error: while searching for:
+"""Tests for event loop management in streaming display."""
+
+import asyncio
+from unittest.mock import Mock, patch
+
+import pytest
+
+from EvoScientist.stream.display import _create_event_loop, _get_event_loop
+from tests.fakes import FakeGraphGateway
+
+
+class _TrackingEventLoopPolicy(asyncio.DefaultEventLoopPolicy):
+    """Event loop policy that records loops created by one test."""
+
+    def __init__(self):
+        super().__init__()
+        self.created_loops: list[asyncio.AbstractEventLoop] = []
+
+    def new_event_loop(self) -> asyncio.AbstractEventLoop:
+        loop = super().new_event_loop()
+        self.created_loops.append(loop)
+        return loop
+
+
+@pytest.fixture(autouse=True)
+def isolated_event_loop_policy():
+    previous_policy = asyncio.get_event_loop_policy()
+    test_policy = _TrackingEventLoopPolicy()
+    asyncio.set_event_loop_policy(test_policy)
+    try:
+        yield
+    finally:
+        try:
+            for loop in test_policy.created_loops:
+                if not loop.is_closed():
+                    loop.close()
+        finally:
+            asyncio.set_event_loop_policy(previous_policy)
+
+
+class TestCreateEventLoop:
+    """Tests for _create_event_loop helper."""
+
+    def test_creates_new_loop(self):
+        """Should create a new event loop and set it as current."""
+        # Get initial loop (if any)
+        try:
+            initial_loop = asyncio.get_event_loop()
+            initial_loop.close()
+        except RuntimeError:
+            pass
+
+        # Create new loop
+        loop = _create_event_loop()
+
+        assert loop is not None
+        assert not loop.is_closed()
+        assert asyncio.get_event_loop() is loop
+
+        # Cleanup
+        loop.close()
+
+    def test_replaces_closed_loop(self):
+        """Should replace a closed loop."""
+        old_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(old_loop)
+        old_loop.close()
+
+        new_loop = _create_event_loop()
+
+        assert new_loop is not old_loop
+        assert not new_loop.is_closed()
+        assert asyncio.get_event_loop() is new_loop
+
+        # Cleanup
+        new_loop.close()
+
+
+class TestGetEventLoop:
+    """Tests for _get_event_loop helper."""
+
+    def test_returns_existing_open_loop(self):
+        """Should return existing event loop if it's open."""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        result = _get_event_loop()
+
+        assert result is loop
+        assert not result.is_closed()
+
+        # Cleanup
+        loop.close()
+
+    def test_creates_new_loop_when_closed(self):
+        """Should create new event loop if current one is closed."""
+        old_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(old_loop)
+        old_loop.close()
+
+        result = _get_event_loop()
+
+        assert result is not old_loop
+        assert not result.is_closed()
+
+        # Cleanup
+        result.close()
+
+    def test_handles_no_event_loop(self):
+        """Should handle RuntimeError when no event loop exists (edge case)."""
+        # This test simulates what happens in a worker thread
+        # In practice, get_event_loop() returns a closed loop, not RuntimeError
+        # But we handle the RuntimeError case defensively
+        loop = _get_event_loop()
+        assert loop is not None
+        assert not loop.is_closed()
+
+        # Cleanup
+        loop.close()
+
+
+class TestMultipleStreamingCalls:
+    """Tests for the main bug fix: multiple _run_streaming calls."""
+
+    def test_sequential_streaming_calls(self):
+        """Multiple sequential calls should work without 'Event loop is closed' error."""
+        from EvoScientist.stream.display import _run_streaming
+
+        # Mock agent that returns simple events
+        mock_agent = Mock()
+
+        async def mock_stream(_request):
+            """Mock event stream."""
+            yield {"type": "text", "content": "test response"}
+            yield {"type": "done", "response": "test response"}
+
+        # Clean up any existing event loop to start fresh
+        try:
+            existing_loop = asyncio.get_
+error: patch failed: tests/test_event_loop.py:1
+error: tests/test_event_loop.py: patch does not apply
+Checking patch tests/test_mcp_client.py...
+error: while searching for:
+"""Tests for EvoScientist.mcp module."""
+
+import textwrap
+from pathlib import Path
+from types import SimpleNamespace
+
+
+error: patch failed: tests/test_mcp_client.py:1
+error: tests/test_mcp_client.py: patch does not apply
+Checking patch tests/test_model_fallback.py...
+error: while searching for:
+from EvoScientist.middleware.events import NoOpSink
+from EvoScientist.middleware.model_fallback import (
+    _guard_and_fallback,
+    _is_non_fallbackable,
+    _try_fallbacks,
+    add_fallback,
+    clear_fallbacks,
+)
+
+error: patch failed: tests/test_model_fallback.py:16
+error: tests/test_model_fallback.py: patch does not apply
+Checking patch tests/test_onboard_async_runtime.py...
+error: tests/test_onboard_async_runtime.py: already exists in working directory
+Checking patch tests/test_runtime.py...
+error: tests/test_runtime.py: already exists in working directory
+Checking patch tests/test_serve_agent_holder.py...
+error: while searching for:
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+error: patch failed: tests/test_serve_agent_holder.py:8
+error: tests/test_serve_agent_holder.py: patch does not apply
+Checking patch tests/test_stream_cancel.py...
+error: while searching for:
+
+from __future__ import annotations
+
+from unittest.mock import MagicMock
+
+import pytest
+
+from EvoScientist.stream import display as display_mod
+from tests.fakes import FakeGraphGateway
+
+
+error: patch failed: tests/test_stream_cancel.py:2
+error: tests/test_stream_cancel.py: patch does not apply
+Checking patch tests/test_tool_selector_middleware.py...
+error: while searching for:
+"""Tests for LLMToolSelectorMiddleware integration and the event-sink handoff."""
+
+from typing import Any
+from unittest.mock import MagicMock, patch
+
+import pytest
+from langchain.agents.middleware.types import ModelRequest
+
+error: patch failed: tests/test_tool_selector_middleware.py:1
+error: tests/test_tool_selector_middleware.py: patch does not apply
+Checking patch tests/test_tui_banner_position.py...
+error: while searching for:
+
+from __future__ import annotations
+
+from contextlib import asynccontextmanager
+from pathlib import Path
+from unittest.mock import AsyncMock
+
+error: patch failed: tests/test_tui_banner_position.py:16
+error: tests/test_tui_banner_position.py: patch does not apply
+Checking patch tests/test_ui_runtime.py...
+error: while searching for:
+"""Tests for UI backend runtime selection."""
+
+from dataclasses import dataclass
+
+from EvoScientist.cli.tui_runtime import (
+    normalize_ui_backend,
+    resolve_ui_backend,
+    run_streaming,
+)
+from tests.fakes import FakeGraphGateway
+
+
+
+error: patch failed: tests/test_ui_runtime.py:1
+error: tests/test_ui_runtime.py: patch does not apply
+patching file tests/test_backends.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_channel_comprehensive.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_channel_debug.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+The next patch would create the file tests/test_channel_sends.py,
+which already exists!  Assuming -R.
+patching file tests/test_channel_sends.py
+The next patch would create the file tests/test_cli_async_runtime.py,
+which already exists!  Assuming -R.
+patching file tests/test_cli_async_runtime.py
+The next patch would create the file tests/test_cli_interrupts.py,
+which already exists!  Assuming -R.
+patching file tests/test_cli_interrupts.py
+patching file tests/test_cli_serve.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_code_interpreter_middleware.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_event_loop.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_mcp_client.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_model_fallback.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+The next patch would create the file tests/test_onboard_async_runtime.py,
+which already exists!  Assuming -R.
+patching file tests/test_onboard_async_runtime.py
+The next patch would create the file tests/test_runtime.py,
+which already exists!  Assuming -R.
+patching file tests/test_runtime.py
+patching file tests/test_serve_agent_holder.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_stream_cancel.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_tool_selector_middleware.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_tui_banner_position.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_ui_runtime.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+   Building evoscientist @ file:///testbed
+      Built evoscientist @ file:///testbed
+Uninstalled 1 package in 1ms
+Installed 1 package in 3ms
+============================= test session starts ==============================
+platform linux -- Python 3.12.14, pytest-9.1.1, pluggy-1.6.0 -- /testbed/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /testbed
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, cov-7.1.0, timeout-2.4.0, langsmith-0.10.6, anyio-4.14.2
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+timeout: 30.0s
+timeout method: signal
+timeout func_only: False
+collecting ... ERROR: file or directory not found: tests/test_channel_sends.py
+
+collected 0 items
+
+============================ no tests ran in 0.01s =============================
+OMNIGRIL_EXIT_CODE=4

@@ -1,0 +1,57 @@
+{
+  "instance_id": "duckdb__duckdb-21978",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.78,
+  "gold_patch_assessment": "The gold patch correctly refactors FlatVector::GetData<T>(Vector&) to return const T* and introduces FlatVector::GetDataMutable<T>(Vector&) returning T*. It updates ~800 call sites across 226 files (162 core source files, 64 extension patches). The non-templated GetData(Vector&) is also changed from data_ptr_t to const_data_ptr_t with a corresponding GetDataMutable. ListVector::GetData is deprecated. The patch is comprehensive and correctly addresses the stated issue.",
+  "base_vs_gold_expectation": "The test.patch at /tmp/test.patch introduces 20 FlatVector::GetDataMutable calls across 6 files (1 core source, 5 test files). On the base code, GetDataMutable does not exist, so applying the test patch and building will cause compilation errors — base is REJECTED. On the gold-patched code, GetDataMutable exists and all code compiles and tests pass — gold is ACCEPTED. The discrimination mechanism is compilation-based, which works for this case.",
+  "too_narrow_risks": [
+    "Test only verifies GetDataMutable exists — a minimal implementation adding GetDataMutable as an alias for GetData (without making GetData return const T*) would pass all tests, despite not fulfilling the core requirement",
+    "No static_assert or compile-time type check verifies that FlatVector::GetData<T>(Vector&) returns const T* rather than T*",
+    "Test patch covers only 20 of ~800 GetDataMutable call sites — a candidate who partially converts call sites could still pass if they convert the 20 tested sites",
+    "Test does not verify the non-templated GetData(Vector&) returns const_data_ptr_t instead of data_ptr_t",
+    "No test for the ListVector::GetData deprecation attribute"
+  ],
+  "too_broad_risks": [
+    "make unittest_release builds the entire DuckDB codebase in release mode and runs ALL unit tests, not just tests related to the FlatVector API change",
+    "Any pre-existing flaky test or transient failure in the full test suite would cause false rejection of a correct solution",
+    "Full release build of DuckDB on 4 CPUs can take 20-40 minutes, consuming a large fraction of the 3600s verifier timeout before tests even begin"
+  ],
+  "implementation_coupling": [
+    "Test requires the exact method name GetDataMutable — alternative names like GetMutableData, GetWriteData, or MutableGetData would fail compilation of the test patch even though they are semantically equivalent",
+    "Test assumes the approach of separate const/mutable methods rather than other valid designs (e.g., explicit MutableRef wrapper, tag-dispatching, or accessor objects)"
+  ],
+  "environment_risks": [
+    "3600s verifier timeout must cover a full DuckDB release build plus the complete unit test suite on 4 CPUs with 24GB RAM — this is feasible but tight, with little margin for build system overhead or slow tests",
+    "No pre-built build cache exists in /testbed/build/ — every verification requires a from-scratch release build",
+    "The eval.sh uses set -uo pipefail without -e, so a failed test.patch application would silently proceed to building the unpatched code (accepting base incorrectly) — though test.patch does exist and applies cleanly in the current setup"
+  ],
+  "mismatches": [
+    "The instruction describes a refactoring that 'should make it clear at compile time whether a caller is reading or modifying' but no test actually verifies the compile-time distinction — tests only check that GetDataMutable exists, not that GetData prevents mutation",
+    "The gold patch modifies 64 extension patch files (.github/patches/extensions/*) that are not built during make unittest_release, so those changes are untested by the verifier"
+  ],
+  "evidence": [
+    {
+      "file": "/testbed/src/include/duckdb/common/vector/flat_vector.hpp",
+      "detail": "Base code line 64: GetData<T>(Vector&) returns T* (mutable). Gold changes this to const T* and adds GetDataMutable<T> returning T*."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "179-line patch changing 6 files (20 sites) from GetData to GetDataMutable. No static_assert or type trait checks included."
+    },
+    {
+      "file": "/audit_tasks/duckdb__duckdb-21978/tests/eval.sh",
+      "detail": "Line 48: runs 'make unittest_release' which builds full release and runs ALL unit tests. No -e flag means test.patch failure is silently ignored."
+    },
+    {
+      "file": "/audit_tasks/duckdb__duckdb-21978/solution/solve.sh",
+      "detail": "7591-line solve.sh containing a 226-file gold patch with ~800 GetDataMutable conversions and zero test file additions."
+    },
+    {
+      "file": "/testbed/Makefile",
+      "detail": "Lines 454-458: unittest_release depends on release (full build), then runs all unit tests via scripts/ci/run_tests.py."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "This instance tests a large-scale C++ API refactoring (FlatVector const-correctness). The verification mechanism — compilation failure when GetDataMutable is called but doesn't exist — correctly rejects the base and accepts the gold. However, the tests are too narrow in a critical way: they only verify GetDataMutable exists, not that GetData was changed to return const T*. A trivial alias implementation (adding GetDataMutable without changing GetData) would pass. The tests are simultaneously too broad, running the entire DuckDB unit test suite. Adding static_assert checks (e.g., static_assert(std::is_const_v<std::remove_pointer_t<decltype(FlatVector::GetData<int>(vec))>>)) would close the main gap. The method name coupling (requiring exact name GetDataMutable) is a minor concern for a benchmark but reduces the solution space."
+}

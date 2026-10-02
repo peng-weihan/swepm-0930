@@ -1,0 +1,52 @@
+{
+  "instance_id": "letta-ai__letta-code-3687",
+  "overall_quality": "good",
+  "test_scope": "balanced",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch is a large, coherent refactor (~1900 lines across 25+ files) that addresses all stated issue requirements: (1) ChannelGateway now registers MessageChannel as an external tool rather than relying on ChannelAdapter/ChannelRegistry state, (2) tool discovery uses runtime-context-scoped external tools, (3) channel context serialization into subagent child env is removed, (4) preserve_skill_sources field is added to runtime_start, (5) attached App Server connections can disable process service startup. The patch removes MessageChannel from built-in TOOL_DEFINITIONS, removes channelToolScope/channelTurnSources from RuntimeContextSnapshot, creates new modules (message-channel-gateway-tool.ts, routed-runtime-registration.ts), and adjusts external tool filtering to allow unscoped runtime tools to be accessed without a matching connectionId.",
+  "base_vs_gold_expectation": "Tests will fail on the unmodified base because: (a) the test patch imports symbols that only exist after the gold patch (buildGatewayMessageChannelTool, clearMessageChannelDiscoveryErrors, subscribeChannelRoutesChanged, createRoutedRuntimeRegistrationRefresher), (b) new test files reference new source files (message-channel-gateway-tool.ts, routed-runtime-registration.ts), (c) tests assert MessageChannel is NOT a built-in (opposite of base behavior), and (d) tests reference startProcessServices option that only the gold patch adds. With the gold patch applied, tests should pass as all referenced functions, modules, and behavioral expectations are consistent.",
+  "too_narrow_risks": [
+    "message-channel-gateway-tool.test.ts has only one test (empty sources returns null); positive case of building a tool with active sources is only tested indirectly via send-message-stream-channel-envelope.test.ts",
+    "routedSources accumulation across multiple deliveries in gateway-core is not directly tested (only registerRuntime sets routedSources explicitly)",
+    "Route change notification tests only cover addRoute/removeRoute but not removeRoutesForAccount or removeRoutesForScope notification",
+    "No test verifies that the generated MessageChannel JSON schema includes a 'target' property in the routed-runtime-registration flow (only the envelope test checks it)"
+  ],
+  "too_broad_risks": [],
+  "implementation_coupling": [
+    "Tests import internal helpers like buildGatewayMessageChannelTool and createRoutedRuntimeRegistrationRefresher directly, but these are new public module exports introduced by the gold patch, so this is reasonable for unit testing",
+    "Test for clearMessageChannelDiscoveryErrors is coupled to the exact renamed function, but this is a test cleanup utility"
+  ],
+  "environment_risks": [
+    "Tests require bun runtime (bun test); the Docker image has bun 1.3.0 installed which should work",
+    "16 test files are run in a single bun test invocation; if any file has import resolution issues due to partial patch application, it could cause cascading failures"
+  ],
+  "mismatches": [],
+  "evidence": [
+    {
+      "file": "/audit_tasks/letta-ai__letta-code-3687/instruction.md",
+      "detail": "Issue describes 5 distinct requirements; all are addressed by the gold patch"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch modifies 16 test files, adds 2 new test files, removes old channel-scope tests, and adds new tests for gateway-owned tool registration, preserve_skill_sources, startProcessServices, and route change notifications"
+    },
+    {
+      "file": "/audit_tasks/letta-ai__letta-code-3687/solution/solve.sh",
+      "detail": "Gold patch is inline; modifies 25+ source files including new modules message-channel-gateway-tool.ts and routed-runtime-registration.ts"
+    },
+    {
+      "file": "/testbed/src/tools/manager.ts",
+      "detail": "On base, contains functions (maybeAppendChannelTools, refreshDynamicChannelToolsInLoadedRegistry, etc.) that gold patch removes; test patch accordingly removes tests that reference them"
+    },
+    {
+      "file": "/testbed/src/channels/message-channel-gateway-tool.ts",
+      "detail": "Does not exist on base; created by gold patch; referenced by test patch"
+    },
+    {
+      "file": "/testbed/src/channels/routed-runtime-registration.ts",
+      "detail": "Does not exist on base; created by gold patch; test patch adds comprehensive unit tests for it"
+    }
+  ],
+  "recommended_action": "keep",
+  "summary": "Well-constructed instance with a large but coherent refactoring gold patch that moves MessageChannel tool ownership from local adapter inference to the ChannelGateway. The 16 test files cover the main behavioral changes across tool registration, external tool filtering, subagent env composition, protocol validation, and lifecycle management. Tests correctly fail on base (import missing symbols/modules) and should pass with the gold patch. Minor narrowness in the gateway tool builder test (only null case tested directly), but the positive path is covered indirectly. No significant mismatches or environment risks beyond standard bun test runner dependency."
+}

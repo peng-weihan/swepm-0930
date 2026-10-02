@@ -1,0 +1,367 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+The next patch would delete the file packages/cli/src/config/keyBindings.test.ts,
+which does not exist!  Assuming -R.
+patching file packages/cli/src/config/keyBindings.test.ts
+patching file packages/cli/src/ui/components/ExitPlanModeDialog.test.tsx
+Hunk #1 FAILED at 10.
+1 out of 1 hunk FAILED -- saving rejects to file packages/cli/src/ui/components/ExitPlanModeDialog.test.tsx.rej
+patching file packages/cli/src/ui/components/InputPrompt.test.tsx
+Hunk #1 FAILED at 44.
+1 out of 1 hunk FAILED -- saving rejects to file packages/cli/src/ui/components/InputPrompt.test.tsx.rej
+patching file packages/cli/src/ui/hooks/useSuspend.test.ts
+Hunk #1 FAILED at 29.
+1 out of 1 hunk FAILED -- saving rejects to file packages/cli/src/ui/hooks/useSuspend.test.ts.rej
+patching file packages/cli/src/ui/hooks/useTabbedNavigation.test.ts
+The next patch would create the file packages/cli/src/ui/key/keyBindings.test.ts,
+which already exists!  Assuming -R.
+patching file packages/cli/src/ui/key/keyBindings.test.ts
+Hunk #1 FAILED at 1.
+Not deleting file packages/cli/src/ui/key/keyBindings.test.ts as content differs from patch
+1 out of 1 hunk FAILED -- saving rejects to file packages/cli/src/ui/key/keyBindings.test.ts.rej
+patching file packages/cli/src/ui/key/keyMatchers.test.ts (renamed from packages/cli/src/ui/keyMatchers.test.ts)
+Hunk #1 FAILED at 10.
+Hunk #2 FAILED at 445.
+Hunk #3 FAILED at 462.
+3 out of 3 hunks FAILED -- saving rejects to file packages/cli/src/ui/key/keyMatchers.test.ts.rej
+patching file packages/cli/src/ui/key/keybindingUtils.test.ts (renamed from packages/cli/src/ui/utils/keybindingUtils.test.ts)
+Hunk #1 FAILED at 6.
+Hunk #2 succeeded at 34 (offset 11 lines).
+Hunk #3 succeeded at 49 (offset 11 lines).
+Hunk #4 succeeded at 64 (offset 11 lines).
+Hunk #5 succeeded at 74 (offset 11 lines).
+Hunk #6 succeeded at 84 (offset 11 lines).
+Hunk #7 succeeded at 94 (offset 11 lines).
+Hunk #8 succeeded at 104 (offset 11 lines).
+1 out of 8 hunks FAILED -- saving rejects to file packages/cli/src/ui/key/keybindingUtils.test.ts.rej
+
+> @google/gemini-cli@0.34.0-nightly.20260304.28af4e127 build
+> node scripts/build.js
+
+
+> @google/gemini-cli@0.34.0-nightly.20260304.28af4e127 generate
+> node scripts/generate-git-commit-info.js
+
+
+> @google/gemini-cli-a2a-server@0.34.0-nightly.20260304.28af4e127 build
+> node ../../scripts/build_package.js
+
+Successfully copied files.
+
+> @google/gemini-cli@0.34.0-nightly.20260304.28af4e127 build
+> node ../../scripts/build_package.js
+
+src/config/keyBindings.test.ts(8,39): error TS2307: Cannot find module './keyBindings.js' or its corresponding type declarations.
+src/config/keyBindings.test.ts(14,8): error TS2307: Cannot find module './keyBindings.js' or its corresponding type declarations.
+src/config/keyBindings.test.ts(30,31): error TS18046: 'bindings' is of type 'unknown'.
+src/ui/key/keyMatchers.test.ts(8,55): error TS2307: Cannot find module './keyMatchers.js' or its corresponding type declarations.
+src/ui/key/keyMatchers.test.ts(14,8): error TS2307: Cannot find module './key/keyBindings.js' or its corresponding type declarations.
+src/ui/key/keyMatchers.test.ts(15,26): error TS2307: Cannot find module './hooks/useKeypress.js' or its corresponding type declarations.
+src/ui/key/keybindingUtils.test.ts(8,49): error TS2307: Cannot find module './keybindingUtils.js' or its corresponding type declarations.
+src/utils/devtoolsService.ts(64,28): error TS2307: Cannot find module '@google/gemini-cli-devtools' or its corresponding type declarations.
+
+> @google/gemini-cli-core@0.34.0-nightly.20260304.28af4e127 build
+> node ../../scripts/build_package.js
+
+Successfully copied files.
+Copied documentation to dist/docs
+
+> @google/gemini-cli-devtools@0.34.0-nightly.20260304.28af4e127 build
+> npm run build:client && tsc -p tsconfig.build.json
+
+
+> @google/gemini-cli-devtools@0.34.0-nightly.20260304.28af4e127 build:client
+> node esbuild.client.js
+
+
+> @google/gemini-cli-sdk@0.34.0-nightly.20260304.28af4e127 build
+> node ../../scripts/build_package.js
+
+Successfully copied files.
+
+> @google/gemini-cli-test-utils@0.34.0-nightly.20260304.28af4e127 build
+> node ../../scripts/build_package.js
+
+Successfully copied files.
+
+> gemini-cli-vscode-ide-companion@0.34.0-nightly.20260304.28af4e127 build
+> npm run build:dev
+
+
+> gemini-cli-vscode-ide-companion@0.34.0-nightly.20260304.28af4e127 build:dev
+> npm run check-types && npm run lint && node esbuild.js
+
+
+> gemini-cli-vscode-ide-companion@0.34.0-nightly.20260304.28af4e127 check-types
+> tsc --noEmit
+
+
+> gemini-cli-vscode-ide-companion@0.34.0-nightly.20260304.28af4e127 lint
+> eslint src
+
+[watch] build started
+[watch] build finished
+
+> @google/gemini-cli@0.34.0-nightly.20260304.28af4e127 test
+> vitest run src/ui/key/keyBindings.test.ts src/ui/key/keyMatchers.test.ts src/ui/key/keybindingUtils.test.ts src/ui/hooks/useSuspend.test.ts src/ui/hooks/useTabbedNavigation.test.ts src/ui/components/InputPrompt.test.tsx src/ui/components/ExitPlanModeDialog.test.tsx --reporter=verbose
+
+
+ RUN  v3.2.4 /testbed/packages/cli
+      Coverage enabled with v8
+
+ ✓ src/ui/key/keyBindings.test.ts > keyBindings config > KeyBinding > parses key names and modifiers from strings 3ms
+ ✓ src/ui/key/keyBindings.test.ts > keyBindings config > KeyBinding > rejects malformed specifications 1ms
+ ✓ src/ui/key/keyBindings.test.ts > keyBindings config > defaultKeyBindings > should have bindings for all commands 4ms
+ ✓ src/ui/key/keyBindings.test.ts > keyBindings config > defaultKeyBindings > should have valid key binding structures 5ms
+ ✓ src/ui/key/keyBindings.test.ts > keyBindings config > defaultKeyBindings > should export all required types 0ms
+ ✓ src/ui/key/keyBindings.test.ts > keyBindings config > command metadata > has a description entry for every command 4ms
+ ✓ src/ui/key/keyBindings.test.ts > keyBindings config > command metadata > categorizes each command exactly once 3ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > keyboard navigation > moves to next tab on Right arrow 28ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > keyboard navigation > moves to previous tab on Left arrow 5ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > keyboard navigation > moves to next tab on Tab key 8ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > keyboard navigation > moves to previous tab on Shift+Tab key 4ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > keyboard navigation > does not navigate when isNavigationBlocked returns true 45ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > initialization > returns initial index of 0 by default 5ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > initialization > returns specified initial index 5ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > initialization > clamps initial index to valid range 8ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > goToNextTab > advances to next tab 5ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > goToNextTab > stops at last tab when wrapAround is false 5ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > goToNextTab > wraps to first tab when wrapAround is true 9ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > goToPrevTab > moves to previous tab 6ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > goToPrevTab > stops at first tab when wrapAround is false 4ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > goToPrevTab > wraps to last tab when wrapAround is true 4ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > setCurrentIndex > sets index directly 4ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > setCurrentIndex > ignores out-of-bounds index 44ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > isNavigationBlocked > blocks navigation when callback returns true 5ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > isNavigationBlocked > allows navigation when callback returns false 5ms
+ ✓ src/ui/hooks/useSuspend.test.ts > useSuspend > cleans terminal state on suspend and restores/repaints on resume in alternate screen mode 35ms
+ ✓ src/ui/hooks/useSuspend.test.ts > useSuspend > does not toggle alternate screen or mouse restore when alternate screen mode is disabled 6ms
+ ✓ src/ui/hooks/useSuspend.test.ts > useSuspend > warns and skips suspension on windows 6ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > onTabChange callback > calls onTabChange when tab changes via goToNextTab 7ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > onTabChange callback > calls onTabChange when tab changes via setCurrentIndex 11ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > onTabChange callback > does not call onTabChange when tab does not change 4ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > isFirstTab and isLastTab > returns correct boundary flags based on position 10ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > tabCount changes > reinitializes when tabCount changes 7ms
+[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: true > renders correctly with plan content 192ms
+[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should call shellHistory.getPreviousCommand on up arrow in shell mode 109ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should call shellHistory.getNextCommand on down arrow in shell mode 16ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should set the buffer text when a shell history command is retrieved 69ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should call shellHistory.addCommandToHistory on submit in shell mode 13ms
+[?2004h[?2004h[?2004h ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: true > calls onApprove with AUTO_EDIT when first option is selected 97ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: true > calls onApprove with DEFAULT when second option is selected 52ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should submit command in shell mode when Enter pressed with suggestions visible but no arrow navigation 16ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should accept suggestion in shell mode when Enter pressed after arrow navigation 17ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should NOT call shell history methods when not in shell mode 53ms
+[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > arrow key navigation > should move to start of line on Up arrow if on first line but not at start 30ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > arrow key navigation > should navigate history on Up arrow if on first line and at start 61ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > arrow key navigation > should move to end of line on Down arrow if on last line but not at end 13ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > arrow key navigation > should navigate history on Down arrow if on last line and at end 12ms
+[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should call completion.navigateUp for both up arrow and Ctrl+P when suggestions are showing 13ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should call completion.navigateDown for both down arrow and Ctrl+N when suggestions are showing 17ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should NOT call completion navigation when suggestions are not showing 13ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should clear the buffer and reset completion on Ctrl+C 34ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > clipboard image paste > should handle Ctrl+V when clipboard has an image 12ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > clipboard image paste > should not insert anything when clipboard has no image 11ms
+[?2004h[?2004h[?2004h ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: true > calls onFeedback when feedback is typed and submitted 210ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: true > calls onCancel when Esc is pressed 39ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: true > displays error state when file read fails 10ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: true > displays error state when plan file is empty 9ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: true > handles long plan content appropriately 39ms
+[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > clipboard image paste > should handle image save failure gracefully 15ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > clipboard image paste > should insert image path at cursor position with proper spacing 12ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > clipboard image paste > should handle errors during clipboard operations 13ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > clipboard text paste > should insert text from clipboard on Ctrl+V 38ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > clipboard text paste > should use OSC 52 when useOSC52Paste setting is enabled 12ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > 'should complete a partial parent comm…' 16ms
+[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > 'should append a sub-command when pare…' 13ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > 'should handle the backspace edge case…' 13ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > 'should complete a partial argument fo…' 16ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should autocomplete on Enter when suggestions are active, without submitting 15ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should complete a command based on its altNames 15ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should not submit on Enter when the buffer is empty or only contains whitespace 12ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should submit directly on Enter when isPerfectMatch is true 14ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should execute perfect match on Enter even if suggestions are showing, if at first suggestion 12ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: true > allows number key quick selection 47ms
+[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should autocomplete and NOT execute on Enter if a DIFFERENT suggestion is selected even if perfect match 17ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should submit directly on Enter when a complete leaf command is typed 12ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should submit on Enter when an @-path is a perfect match 13ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should NOT submit on Shift+Enter even if an @-path is a perfect match 16ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should auto-execute commands with autoExecute: true on Enter 14ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should autocomplete commands with autoExecute: false on Enter 17ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should autocomplete on Tab, even for executable commands 13ms
+[?2004h ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: true > clears feedback text when Ctrl+C is pressed while editing 150ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: true > bubbles up Ctrl+C when feedback is empty while editing 78ms
+[?2004h[?2004h ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: true > does not submit empty feedback when Enter is pressed 32ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: true > allows arrow navigation while typing feedback to change selection 67ms
+[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should NOT autocomplete on Shift+Tab 118ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should autocomplete custom commands from .toml files on Enter 14ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should auto-execute argument completion when command has autoExecute: true 16ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should autocomplete argument completion when command has autoExecute: false 13ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should autocomplete command name even with autoExecute: true if command has completion function 17ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should autocomplete an @-path on Enter without submitting 13ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should add a newline on enter when the line ends with a backslash 14ms
+[?2004h[?2004h ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: true > automatically submits feedback when Ctrl+X is used to edit the plan 34ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: false > renders correctly with plan content 21ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: false > calls onApprove with AUTO_EDIT when first option is selected 31ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: false > calls onApprove with DEFAULT when second option is selected 40ms
+[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should clear the buffer on Ctrl+C if it has text 13ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should render correctly in plan mode 13ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should NOT clear the buffer on Ctrl+C if it is empty 14ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should call setBannerVisible(false) when clear screen key is pressed 12ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Background Color Styles > should render with background color by default 18ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Background Color Styles > should render with safe grey background but NO side borders in 8-bit mode when background is 'black' 22ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Background Color Styles > should render with safe grey background but NO side borders in 8-bit mode when background is '#000000' 17ms
+[?2004h[?2004h ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: false > calls onFeedback when feedback is typed and submitted 115ms
+[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Background Color Styles > should render with safe grey background but NO side borders in 8-bit mode when background is '#000' 18ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Background Color Styles > should render with safe grey background but NO side borders in 8-bit mode when background is 'white' 15ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Background Color Styles > should render with safe grey background but NO side borders in 8-bit mode when background is '#ffffff' 18ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Background Color Styles > should render with safe grey background but NO side borders in 8-bit mode when background is '#fff' 15ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Background Color Styles > should NOT render with background color but SHOULD render horizontal lines when color depth is < 24 and background is NOT black 19ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Background Color Styles > should handle 4-bit color mode (16 colors) as low color depth 16ms
+[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Background Color Styles > should render horizontal lines (but NO background) in 8-bit mode when background is blue 20ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Background Color Styles > should render with plain borders when useBackgroundColor is false 16ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > cursor-based completion trigger > 'should trigger completion when cursor…' 17ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > cursor-based completion trigger > 'should trigger completion when cursor…' 14ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > cursor-based completion trigger > 'should NOT trigger completion when cu…' 27ms
+[?2004h[?2004h ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: false > calls onCancel when Esc is pressed 19ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: false > displays error state when file read fails 11ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: false > displays error state when plan file is empty 8ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: false > handles long plan content appropriately 25ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: false > allows number key quick selection 29ms
+[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > cursor-based completion trigger > 'should NOT trigger completion when cu…' 71ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > cursor-based completion trigger > 'should NOT trigger completion when cu…' 16ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > cursor-based completion trigger > 'should handle multiline text correctly' 15ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > cursor-based completion trigger > 'should handle Unicode characters (emo…' 18ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > cursor-based completion trigger > 'should handle Unicode characters with…' 19ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > cursor-based completion trigger > 'should handle escaped spaces in paths…' 14ms
+[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: false > clears feedback text when Ctrl+C is pressed while editing 203ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: false > bubbles up Ctrl+C when feedback is empty while editing 72ms
+[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > cursor-based completion trigger > 'should NOT trigger completion after u…' 19ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > cursor-based completion trigger > 'should handle multiple escaped spaces…' 15ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > cursor-based completion trigger > 'should handle escaped spaces in slash…' 17ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > cursor-based completion trigger > 'should handle Unicode characters with…' 14ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > vim mode > 'should not call buffer.handleInput wh…' 18ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > vim mode > 'should call buffer.handleInput when v…' 14ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > vim mode > 'should call handleInput when vim mode…' 18ms
+[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > unfocused paste > should handle bracketed paste when not focused 18ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > unfocused paste > should ignore regular keypresses when not focused 35ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Highlighting and Cursor Display > single-line scenarios > should display cursor correctly 'mid-word' 18ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Highlighting and Cursor Display > single-line scenarios > should display cursor correctly 'at the beginning of the line' 23ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Highlighting and Cursor Display > single-line scenarios > should display cursor correctly 'at the end of the line' 17ms
+[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: false > does not submit empty feedback when Enter is pressed 31ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: false > allows arrow navigation while typing feedback to change selection 69ms
+ ✓ src/ui/components/ExitPlanModeDialog.test.tsx > ExitPlanModeDialog > useAlternateBuffer: false > automatically submits feedback when Ctrl+X is used to edit the plan 25ms
+[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Highlighting and Cursor Display > single-line scenarios > should display cursor correctly 'on a highlighted token' 18ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Highlighting and Cursor Display > single-line scenarios > should display cursor correctly 'for multi-byte unicode characters' 16ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Highlighting and Cursor Display > single-line scenarios > should display cursor correctly 'after multi-byte unicode characters' 17ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Highlighting and Cursor Display > single-line scenarios > should display cursor correctly 'at the end of a line with unicode cha…' 15ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Highlighting and Cursor Display > single-line scenarios > should display cursor correctly 'at the end of a short line with unico…' 17ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Highlighting and Cursor Display > single-line scenarios > should display cursor correctly 'on an empty line' 16ms
+[?2004h[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Highlighting and Cursor Display > single-line scenarios > should display cursor correctly 'on a space between words' 19ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Highlighting and Cursor Display > multi-line scenarios > should display cursor correctly 'in the middle of a line' in a multiline block 19ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Highlighting and Cursor Display > multi-line scenarios > should display cursor correctly 'at the beginning of a line' in a multiline block 15ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Highlighting and Cursor Display > multi-line scenarios > should display cursor correctly 'at the end of a line' in a multiline block 20ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Highlighting and Cursor Display > multi-line scenarios > should display cursor on a blank line in a multiline block 16ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > multiline rendering > should correctly render multiline input including blank lines 18ms
+[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > multiline paste > should handle multiline paste 'with \n newlines' 22ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > multiline paste > should handle multiline paste 'with extra slashes before \n newlines' 20ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > multiline paste > should handle multiline paste 'with \r\n newlines' 20ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > large paste placeholder > should handle large clipboard paste (lines > 5) by calling buffer.insert 20ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > large paste placeholder > should handle large clipboard paste (chars > 500) by calling buffer.insert 17ms
+[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > large paste placeholder > should handle normal clipboard paste by calling buffer.insert 19ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > large paste placeholder > should replace placeholder with actual content on submit 22ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > paste auto-submission protection > should prevent auto-submission immediately after an unsafe paste 33ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > paste auto-submission protection > should prevent perfect match auto-submission immediately after an unsafe paste 24ms
+[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > paste auto-submission protection > should allow submission after unsafe paste protection timeout 31ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > paste auto-submission protection > should allow immediate submission for a trusted paste ('kitty') 26ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > paste auto-submission protection > should not interfere with normal Enter key submission when no recent paste 28ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > enhanced input UX - keyboard shortcuts > should clear buffer on Ctrl-C 20ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > enhanced input UX - keyboard shortcuts > should submit /rewind on double ESC when buffer is empty 19ms
+[?2004h[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > enhanced input UX - keyboard shortcuts > should clear the buffer on esc esc if it has text 23ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > enhanced input UX - keyboard shortcuts > should reset escape state on any non-ESC key 24ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > enhanced input UX - keyboard shortcuts > should handle ESC in shell mode by disabling shell mode 22ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > enhanced input UX - keyboard shortcuts > should handle ESC when completion suggestions are showing 22ms
+[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > enhanced input UX - keyboard shortcuts > should not call onEscapePromptChange when not provided 24ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > enhanced input UX - keyboard shortcuts > should not interfere with existing keyboard shortcuts 24ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > reverse search > invokes reverse search on Ctrl+R 74ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > reverse search > resets reverse search state on Escape ('standard') 187ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > reverse search > resets reverse search state on Escape ('kitty') 134ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > reverse search > completes the highlighted entry on Tab and exits reverse-search 80ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > reverse search > should NOT autocomplete on Shift+Tab in reverse search 184ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > reverse search > submits the highlighted entry on Enter and exits reverse-search 131ms
+[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > reverse search > should restore text and cursor position after reverse search" 137ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Ctrl+E keyboard shortcut > should move cursor to end of current line in multiline input 28ms
+[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Ctrl+E keyboard shortcut > should move cursor to end of current line for single line input 26ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > command search (Ctrl+R when not in shell) > enters command search on Ctrl+R and shows suggestions 79ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > command search (Ctrl+R when not in shell) > expands and collapses long suggestion via Right/Left arrows 195ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > command search (Ctrl+R when not in shell) > renders match window and expanded view (snapshots) 85ms
+[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > command search (Ctrl+R when not in shell) > does not show expand/collapse indicator for short suggestions 82ms
+[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > command search (Ctrl+R when not in shell) > ensures Ctrl+R search results are prioritized newest-to-oldest by reversing userMessages 25ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Tab clean UI toggle > 'should toggle clean UI details on dou…' 22ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Tab clean UI toggle > 'should accept ghost text and NOT togg…' 24ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Tab clean UI toggle > 'should NOT toggle clean UI details on…' 28ms
+[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Tab clean UI toggle > should NOT accept ghost text on Shift+Tab 129ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Tab clean UI toggle > should not reveal clean UI details on Shift+Tab when hidden 29ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Tab clean UI toggle > should toggle clean UI details on double-Tab by default 26ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > mouse interaction > should move cursor on mouse click - 'first line, first char' 85ms
+[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > mouse interaction > should move cursor on mouse click - 'first line, middle char' 84ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > mouse interaction > should move cursor on mouse click - 'second line, first char' 82ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > mouse interaction > should move cursor on mouse click - 'second line, end char' 81ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > mouse interaction > should unfocus embedded shell on click 80ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > mouse interaction > should toggle paste expansion on double-click 88ms
+[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > mouse interaction > should collapse expanded paste on double-click after the end of the line 144ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > mouse interaction > should move cursor on mouse click with plain borders 83ms
+[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > queued message editing > should load all queued messages when up arrow is pressed with empty input 31ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > queued message editing > should not load queued messages when input is not empty 28ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > queued message editing > should handle undefined messages from popAllMessages 28ms
+[?2004h[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > queued message editing > should work with NAVIGATION_UP key as well 28ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > queued message editing > should handle single queued message 28ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > queued message editing > should only check for queued messages when buffer text is trimmed empty 29ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > queued message editing > should not call popAllMessages if it is not provided 31ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > queued message editing > should navigate input history on fresh start when no queued messages exist 32ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > snapshots > should render correctly in shell mode 81ms
+[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > snapshots > should render correctly when accepting edits 82ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > snapshots > should render correctly in yolo mode 81ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > snapshots > should not show inverted cursor when shell is focused 81ms
+[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > should still allow input when shell is not focused 49ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > command queuing while streaming > 'should prevent slash commands' 34ms
+[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > command queuing while streaming > 'should prevent shell commands' 29ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > command queuing while streaming > 'should allow regular messages' 25ms
+[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > IME Cursor Support > should report correct cursor position for simple ASCII text 77ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > IME Cursor Support > should report correct cursor position for text with double-width characters 80ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > IME Cursor Support > should report correct cursor position for a line full of "😀" emojis 83ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > IME Cursor Support > should report correct cursor position for mixed emojis and multi-line input 84ms
+[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > IME Cursor Support > should report correct cursor position and focus for multi-line input 84ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > IME Cursor Support > should report cursor position 0 when input is empty and placeholder is shown 82ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > image path transformation snapshots > should snapshot collapsed image path 82ms
+[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > image path transformation snapshots > should snapshot expanded image path when cursor is on it 81ms
+[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Ctrl+O paste expansion > Ctrl+O triggers paste expansion via keybinding 30ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Ctrl+O paste expansion > 'hint appears on large paste via Ctrl+V' 28ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Ctrl+O paste expansion > 'hint does not appear for small pastes…' 29ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > Ctrl+O paste expansion > 'hint appears on large terminal paste …' 30ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > tryTogglePasteExpansion > 'returns false when no pasted content …' 24ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > tryTogglePasteExpansion > 'expands placeholder under cursor' 20ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > tryTogglePasteExpansion > 'collapses expanded paste when cursor …' 22ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > tryTogglePasteExpansion > 'expands placeholder when cursor is im…' 19ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > tryTogglePasteExpansion > 'shows hint when cursor is not on plac…' 21ms
+[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > History Navigation and Completion Suppression > should move cursor to 'start' on 'Up arrow' (older history) 32ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > History Navigation and Completion Suppression > should move cursor to 'start' on 'Ctrl+P' (older history) 34ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > History Navigation and Completion Suppression > should move cursor to 'end' on 'Down arrow' (newer history) 36ms
+[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > History Navigation and Completion Suppression > should move cursor to 'end' on 'Ctrl+N' (newer history) 101ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > History Navigation and Completion Suppression > should suppress completion after history navigation 31ms
+[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > History Navigation and Completion Suppression > should not render suggestions during history navigation 144ms
+[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > History Navigation and Completion Suppression > should continue to suppress completion after manual cursor movement 36ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > History Navigation and Completion Suppression > should re-enable completion after typing 36ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > shortcuts help visibility > opens shortcuts help with ? on empty prompt even when showShortcutsHint is false 31ms
+[?2004h[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > shortcuts help visibility > should close shortcuts help when a 'terminal paste event occurs' 31ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > shortcuts help visibility > should close shortcuts help when a 'Ctrl+V (PASTE_CLIPBOARD) is pressed' 30ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > shortcuts help visibility > should close shortcuts help when a 'mouse right-click paste occurs' 32ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > shortcuts help visibility > should close shortcuts help when a 'Ctrl+R hotkey is pressed' 33ms
+[?2004h[?2004h ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > shortcuts help visibility > should close shortcuts help when a 'Ctrl+X hotkey is pressed' 33ms
+ ✓ src/ui/components/InputPrompt.test.tsx > InputPrompt > shortcuts help visibility > should close shortcuts help when a 'F12 hotkey is pressed' 32ms
+
+ Test Files  2 failed | 5 passed (7)
+      Tests  250 passed (250)
+   Start at  07:38:55
+   Duration  21.02s (transform 3.27s, setup 28.78s, collect 6.27s, tests 9.13s, environment 1ms, prepare 4.07s)
+
+OMNIGRIL_EXIT_CODE=1

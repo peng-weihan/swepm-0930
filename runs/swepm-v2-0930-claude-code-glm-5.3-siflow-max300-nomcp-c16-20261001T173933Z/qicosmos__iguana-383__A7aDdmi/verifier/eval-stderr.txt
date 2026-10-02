@@ -1,0 +1,200 @@
+Checking patch test/conformance/iguana_conformance.cpp...
+error: test/conformance/iguana_conformance.cpp: already exists in working directory
+Checking patch test/github_events_schema.h...
+error: test/github_events_schema.h: already exists in working directory
+Checking patch test/person_type.h...
+error: test/person_type.h: already exists in working directory
+Checking patch test/test_github_events.cpp...
+error: test/test_github_events.cpp: already exists in working directory
+Checking patch test/test_headers.h...
+error: while searching for:
+};
+YLT_REFL(MyClass2, member_unsigned0, member_unsigned1, member_signed);
+
+struct person {
+  std::string name;
+  int age;
+};
+YLT_REFL(person, name, age);
+
+// canada.json
+struct property_t {
+  std::string name;
+
+error: patch failed: test/test_headers.h:31
+error: test/test_headers.h: patch does not apply
+Checking patch test/test_json_files.cpp...
+error: while searching for:
+  }
+}
+
+TEST_CASE("test github_events.json") {
+  {
+    std::string one_event = R"([
+    {
+      "type": "PushEvent",
+      "created_at": "2013-01-10T07:58:30Z",
+      "actor": {
+        "gravatar_id": "a7cec1f75a06a5f8ab53139515da5d99",
+        "login": "jathanism",
+        "avatar_url": "https://secure.gravatar.com/avatar/a7cec1f75a06a5f8ab53139515da5d99?d=https://a248.e.akamai.net/assets.github.com%2Fimages%2Fgravatars%2Fgravatar-user-420.png",
+        "url": "https://api.github.com/users/jathanism",
+        "id": 138052
+      },
+      "repo": {
+        "url": "https://api.github.com/repos/jathanism/trigger",
+        "id": 6357414,
+        "name": "jathanism/trigger"
+      },
+      "public": true,
+      "payload": {
+        "commits": [
+          {
+            "url": "https://api.github.com/repos/jathanism/trigger/commits/05570a3080693f6e55244e012b3b1ec59516c01b",
+            "message": "- SSH Channel data now initialized in base class (TriggerSSHChannelBase)\n- New doc w/ checklist for adding new vendor support to Trigger.",
+            "distinct": true,
+            "sha": "05570a3080693f6e55244e012b3b1ec59516c01b",
+            "author": {
+              "email": "jathanism@aol.com",
+              "name": "jathanism"
+            }
+          }
+        ],
+        "distinct_size": 1,
+        "ref": "refs/heads/issue-22",
+        "push_id": 134107894,
+        "head": "05570a3080693f6e55244e012b3b1ec59516c01b",
+        "before": "7460e1588817b3f885fb4ec76ec2f08c7caf6385",
+        "size": 1
+      },
+      "id": "1652857722"
+    }])";
+    std::vector<githubEvents::event_t> events;
+    iguana::from_json(events, one_event);
+    CHECK(events.size() == 1);
+
+    auto &event = events.front();
+    CHECK(event.type == "PushEvent");
+    CHECK(event.created_at == "2013-01-10T07:58:30Z");
+    CHECK(event.actor);
+    CHECK(event.actor.value().gravatar_id ==
+          "a7cec1f75a06a5f8ab53139515da5d99");
+    CHECK(event.repo.url == "https://api.github.com/repos/jathanism/trigger");
+    CHECK(event.___public == true);
+    CHECK(event.id == "1652857722");
+  }
+  std::vector<githubEvents::event_t> events;
+  iguana::from_json_file(events, "../data/github_events.json");
+
+  {
+    auto &&content = iguana::json_file_content("../data/github_events.json");
+
+    iguana::jvalue val;
+    CHECK_NOTHROW(iguana::parse(val, content));
+    auto &&arr = val.to_array();
+    auto &&last = arr.rbegin();
+    auto &&actor = last->at<iguana::jobject>("actor");
+    CHECK(!actor["id"].is_double());
+  }
+}
+
+TEST_CASE("test marine_ik.json") {
+  marine_ik::marine_ik_t t;
+  iguana::from_json_file(t, "../data/marine_ik.json");
+
+error: patch failed: test/test_json_files.cpp:209
+error: test/test_json_files.cpp: patch does not apply
+Checking patch test/test_pb.cpp...
+error: while searching for:
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+
+error: patch failed: test/test_pb.cpp:1
+error: test/test_pb.cpp: patch does not apply
+Checking patch test/test_proto3.cpp...
+error: while searching for:
+#include <fstream>
+
+#include "iguana/pb_writer.hpp"
+
+error: patch failed: test/test_proto3.cpp:1
+error: test/test_proto3.cpp: patch does not apply
+Checking patch test/test_reflection.cpp...
+error: while searching for:
+  test_refl_private();
+  constexpr size_t size = members_count_v<person>;
+  CHECK(size == 5);
+  constexpr auto tp = struct_to_tuple<person>();
+  constexpr size_t tp_size = std::tuple_size_v<decltype(tp)>;
+  CHECK(tp_size == 5);
+
+#if __cplusplus >= 202002L
+  constexpr auto arr = get_member_names<person>();
+
+error: patch failed: test/test_reflection.cpp:100
+error: test/test_reflection.cpp: patch does not apply
+Checking patch test/test_some.cpp...
+error: while searching for:
+};
+YLT_REFL(point_t, x, y);
+
+struct person {
+  std::string name;
+  bool ok;
+
+error: patch failed: test/test_some.cpp:14
+error: test/test_some.cpp: patch does not apply
+Checking patch test/test_xml.cpp...
+error: while searching for:
+YLT_REFL(some_book, title, author);
+REQUIRED(some_book, title, author);
+
+TEST_CASE("test required filed") {
+  some_book book{"book", "tom"};
+  std::string xml_str;
+
+error: patch failed: test/test_xml.cpp:544
+error: test/test_xml.cpp: patch does not apply
+Checking patch test/unit_test.cpp...
+error: while searching for:
+
+#include "doctest.h"
+#include "iguana/json_reader.hpp"
+#include "test_headers.h"
+
+TEST_CASE("test parse item num_t") {
+  {
+
+error: patch failed: test/unit_test.cpp:12
+error: test/unit_test.cpp: patch does not apply
+CMake Error at CMakeLists.txt:119 (add_executable):
+  Cannot find source file:
+
+    test/test_github_events.cpp
+
+  Tried extensions .c .C .c++ .cc .cpp .cxx .cu .mpp .m .M .mm .ixx .cppm .h
+  .hh .h++ .hm .hpp .hxx .in .txx .f .F .for .f77 .f90 .f95 .f03 .hip .ispc
+
+
+CMake Error at CMakeLists.txt:131 (add_executable):
+  Cannot find source file:
+
+    test/conformance/iguana_conformance.cpp
+
+  Tried extensions .c .C .c++ .cc .cpp .cxx .cu .mpp .m .M .mm .ixx .cppm .h
+  .hh .h++ .hm .hpp .hxx .in .txx .f .F .for .f77 .f90 .f95 .f03 .hip .ispc
+
+
+CMake Error at CMakeLists.txt:119 (add_executable):
+  No SOURCES given to target: test_github_events
+
+
+CMake Error at CMakeLists.txt:131 (add_executable):
+  No SOURCES given to target: iguana_conformance
+
+
+CMake Generate step failed.  Build files cannot be regenerated correctly.
+gmake: Makefile: No such file or directory
+gmake: *** No rule to make target 'Makefile'.  Stop.
+No tests were found!!!

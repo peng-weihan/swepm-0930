@@ -1,0 +1,59 @@
+{
+  "instance_id": "github__spec-kit-2389",
+  "overall_quality": "good",
+  "test_scope": "balanced",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch is a large, comprehensive implementation (~2679 lines) that addresses all the stated requirements: multi-install support with multi_install_safe declarations on integrations, a new 'use' subcommand, updated 'switch' behavior for already-installed targets (rejecting --integration-options), upgrade support for non-default integrations, shared template alignment with default integration, symlink safety checks for shared infrastructure paths, graceful handling of corrupt manifests, POSIX-style path output, and a new integration_state.py/shared_infra.py/integration_runtime.py module decomposition. It introduces new modules (integration_state.py, shared_infra.py, integration_runtime.py), updates the main __init__.py CLI logic extensively, adds multi_install_safe flags to 17 integration definitions, and updates documentation.",
+  "base_vs_gold_expectation": "The test patch applies cleanly to the base. Tests would fail on the base because: (1) test_integration_state.py imports from specify_cli.integration_state which doesn't exist, (2) several tests in test_cli.py import specify_cli.shared_infra and specify_cli._refresh_shared_templates which don't exist, (3) tests check for 'multi_install_safe' attribute that doesn't exist on base integrations, (4) tests assert on new JSON fields (default_integration, installed_integrations, integration_settings, integration_state_schema) absent from base output, (5) tests for the 'use' subcommand would fail since it doesn't exist. The gold patch should make all these tests pass.",
+  "too_narrow_risks": [
+    "No explicit test that installing an additional integration does NOT change the default integration key in init-options.json (only integration.json is checked in test_install_multi_safe_integration)",
+    "No test for 'specify integration upgrade' without a key argument defaulting to the default integration (the issue specifies this behavior)",
+    "No test that shared templates are refreshed when 'use' changes the default but the templates are untracked (only modified templates are tested)",
+    "The rollback-on-failed-install test coverage is limited to switch scenarios; no direct test for partial install rollback during multi-install"
+  ],
+  "too_broad_risks": [
+    "test_presets.py changes are not testing the issue's functionality — they refactor existing tests to suppress a new warning. If the warning suppression logic is wrong, unrelated preset tests could fail, but this is unlikely since the helper is a no-op when the warning doesn't fire.",
+    "test_project_scoped_commands_require_specify_directory tests 30+ commands (presets, extensions, workflows) unrelated to integration management — this tests project-guard behavior broadly but is low-risk since these are existing commands that should already pass",
+    "test_safe_integrations_have_disjoint_manifests parametrizes over all safe integration pairs, creating actual projects for each — this is expensive but tests declared invariants, not the gold patch per se"
+  ],
+  "implementation_coupling": [
+    "Tests directly import and test internal functions from specify_cli.integration_state (normalize_integration_state, default_integration_key, integration_setting, write_integration_json) — this couples to the gold patch's module decomposition. An alternative implementation putting these in __init__.py or a differently-named module would fail.",
+    "Tests import specify_cli.shared_infra.install_shared_infra and specify_cli.shared_infra.refresh_shared_templates — same coupling to module structure.",
+    "Tests check exact JSON field names in integration.json (integration_state_schema, default_integration, installed_integrations, integration_settings) — but these are specified by the issue itself, so this is acceptable.",
+    "test_shared_template_writes_are_not_world_writable checks exact mode 0o644 — this is a specific implementation choice not explicitly mentioned in the issue"
+  ],
+  "environment_risks": [
+    "Several tests use os.symlink and are marked skipif(not hasattr(os, 'symlink')) — this should be fine on Linux but could skip on some environments",
+    "Tests use os.chdir() extensively and restore via try/finally — if the test framework crashes, CWD could be left in a bad state",
+    "The parametrized disjoint-manifest tests create many project directories (one per safe integration pair) — with 17 safe integrations, that's 136 pairs × 2 orderings = 272 project setups, which could be slow but within the 3600s timeout"
+  ],
+  "mismatches": [],
+  "evidence": [
+    {
+      "file": "/audit_tasks/github__spec-kit-2389/instruction.md",
+      "detail": "Issue specifies multi-install, use command, switch-already-installed, upgrade non-default, list display, symlink safety, corrupt manifest handling — all covered by tests"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "1589-line test patch adds ~95 new/modified test methods across 6 files, covering core multi-install scenarios, symlink safety, manifest handling, and integration state normalization"
+    },
+    {
+      "file": "/audit_tasks/github__spec-kit-2389/tests/eval.sh",
+      "detail": "Runs pytest on exactly the 6 test files modified/created by the test patch with -x -v --tb=short"
+    },
+    {
+      "file": "/testbed/src/specify_cli/integration_state.py",
+      "detail": "Does not exist in base — test_integration_state.py imports will fail on base (correct rejection)"
+    },
+    {
+      "file": "/testbed/src/specify_cli/shared_infra.py",
+      "detail": "Does not exist in base — test_cli.py symlink tests importing from this module will fail on base (correct rejection)"
+    },
+    {
+      "file": "/audit_tasks/github__spec-kit-2389/solution/solve.sh",
+      "detail": "Gold patch is ~2679 lines touching docs, __init__.py, 3 new modules, 17 integration definitions, and manifest.py"
+    }
+  ],
+  "recommended_action": "keep",
+  "summary": "This is a well-constructed benchmark instance for a complex multi-integration management feature. The gold patch comprehensively addresses all requirements from the issue (multi-install, use command, switch behavior, upgrade, symlink safety, manifest handling). The test suite is thorough with ~95 test methods covering the core functionality, edge cases, error paths, and security (symlink) scenarios. The main coupling risk is that tests import from specific new modules (integration_state, shared_infra) introduced by the gold patch — alternative implementations using different module structures would fail. However, the JSON state format tested is explicitly prescribed by the issue. The test_presets.py changes are a minor broadness concern but are protective refactors unlikely to cause false failures. Overall quality is good with balanced test scope."
+}

@@ -1,0 +1,396 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch tests/contracts/test_import_boundaries.py...
+Checking patch tests/providers/test_cerebras.py...
+error: while searching for:
+
+def test_build_request_body_remaps_max_tokens_preserves_message_name(cerebras_provider):
+    """Cerebras does not strip message ``name``; ``max_tokens`` maps to completion field."""
+    with patch("providers.cerebras.request.build_base_request_body") as mock_convert:
+        mock_convert.return_value = {
+            "model": "llama3.1-8b",
+            "messages": [{"role": "user", "name": "alice", "content": "hi"}],
+
+error: patch failed: tests/providers/test_cerebras.py:108
+error: tests/providers/test_cerebras.py: patch does not apply
+Checking patch tests/providers/test_gemini.py...
+error: while searching for:
+
+from providers.base import ProviderConfig
+from providers.gemini import GEMINI_DEFAULT_BASE, GeminiProvider
+from providers.gemini.request import GEMINI_SKIP_THOUGHT_SIGNATURE_VALIDATOR
+
+
+class MockMessage:
+
+error: patch failed: tests/providers/test_gemini.py:7
+error: tests/providers/test_gemini.py: patch does not apply
+Checking patch tests/providers/test_groq.py...
+error: while searching for:
+
+
+def test_build_request_body_sanitizes_and_remaps_via_mock_converter(groq_provider):
+    with patch("providers.groq.request.build_base_request_body") as mock_convert:
+        mock_convert.return_value = {
+            "model": "llama-3.3-70b-versatile",
+            "messages": [
+
+error: patch failed: tests/providers/test_groq.py:107
+error: tests/providers/test_groq.py: patch does not apply
+Checking patch tests/providers/test_nim_request_clone.py...
+error: while searching for:
+
+from copy import deepcopy
+
+from providers.nvidia_nim.request import clone_body_without_reasoning_budget
+
+
+def test_clone_body_without_reasoning_budget_strips_top_level_and_nested():
+
+error: patch failed: tests/providers/test_nim_request_clone.py:2
+error: tests/providers/test_nim_request_clone.py: patch does not apply
+Checking patch tests/providers/test_nvidia_nim.py...
+error: while searching for:
+from config.nim import NimSettings
+from providers.defaults import NVIDIA_NIM_DEFAULT_BASE
+from providers.nvidia_nim import NvidiaNimProvider
+from providers.nvidia_nim.request import NIM_TOOL_ARGUMENT_ALIASES_KEY
+
+
+# Mock data classes
+
+error: patch failed: tests/providers/test_nvidia_nim.py:8
+error: tests/providers/test_nvidia_nim.py: patch does not apply
+Checking patch tests/providers/test_nvidia_nim_request.py...
+error: while searching for:
+"""Tests for providers/nvidia_nim/request.py."""
+
+from copy import deepcopy
+from types import SimpleNamespace
+
+error: patch failed: tests/providers/test_nvidia_nim_request.py:1
+error: tests/providers/test_nvidia_nim_request.py: patch does not apply
+Checking patch tests/providers/test_open_router.py...
+error: while searching for:
+
+import pytest
+
+from core.anthropic.stream_contracts import (
+    assert_anthropic_stream_contract,
+    parse_sse_text,
+    text_content,
+    thinking_content,
+)
+from providers.base import ProviderConfig
+from providers.open_router import OpenRouterProvider
+from providers.open_router.request import OPENROUTER_DEFAULT_MAX_TOKENS
+
+
+class MockMessage:
+
+error: patch failed: tests/providers/test_open_router.py:6
+error: tests/providers/test_open_router.py: patch does not apply
+patching file tests/contracts/test_import_boundaries.py
+patching file tests/providers/test_cerebras.py
+Hunk #1 FAILED at 108.
+Hunk #2 FAILED at 123.
+2 out of 2 hunks FAILED -- saving rejects to file tests/providers/test_cerebras.py.rej
+patching file tests/providers/test_gemini.py
+Hunk #1 FAILED at 7.
+1 out of 1 hunk FAILED -- saving rejects to file tests/providers/test_gemini.py.rej
+patching file tests/providers/test_groq.py
+Hunk #1 FAILED at 107.
+Hunk #2 FAILED at 138.
+2 out of 2 hunks FAILED -- saving rejects to file tests/providers/test_groq.py.rej
+patching file tests/providers/test_nim_request_clone.py
+Hunk #1 FAILED at 2.
+1 out of 1 hunk FAILED -- saving rejects to file tests/providers/test_nim_request_clone.py.rej
+patching file tests/providers/test_nvidia_nim.py
+Hunk #1 FAILED at 8.
+1 out of 1 hunk FAILED -- saving rejects to file tests/providers/test_nvidia_nim.py.rej
+patching file tests/providers/test_nvidia_nim_request.py
+Hunk #1 FAILED at 1.
+Hunk #2 FAILED at 9.
+2 out of 2 hunks FAILED -- saving rejects to file tests/providers/test_nvidia_nim_request.py.rej
+patching file tests/providers/test_open_router.py
+Hunk #1 FAILED at 6.
+Hunk #2 FAILED at 144.
+2 out of 3 hunks FAILED -- saving rejects to file tests/providers/test_open_router.py.rej
+============================= test session starts ==============================
+platform linux -- Python 3.14.0, pytest-9.1.0, pluggy-1.6.0 -- /testbed/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /testbed
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, anyio-4.12.1, cov-7.1.0, xdist-3.8.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+created: 192/192 workers
+192 workers [122 items]
+
+scheduling tests via LoadScheduling
+
+tests/contracts/test_import_boundaries.py::test_provider_catalog_is_single_source_for_supported_ids 
+tests/providers/test_gemini.py::test_build_request_body_merges_caller_nested_google 
+tests/providers/test_cerebras.py::test_stream_response_reasoning_content 
+tests/providers/test_nvidia_nim.py::test_preflight_and_build_request_issue_206_post_tool_text 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_private_alias_metadata_is_stripped_without_mutating_body 
+tests/contracts/test_import_boundaries.py::test_provider_adapters_do_not_import_runtime_layers 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_safe_tool_schema_does_not_add_alias_metadata 
+tests/contracts/test_import_boundaries.py::test_api_may_only_import_narrow_provider_facade 
+tests/contracts/test_import_boundaries.py::test_openai_responses_uses_adapter_boundary 
+tests/contracts/test_import_boundaries.py::test_provider_transports_live_under_transport_family_packages 
+tests/contracts/test_import_boundaries.py::test_api_and_messaging_do_not_import_provider_common 
+tests/providers/test_cerebras.py::test_stream_response_text 
+tests/contracts/test_import_boundaries.py::test_removed_openrouter_rollback_transport_stays_removed 
+tests/contracts/test_import_boundaries.py::test_anthropic_stream_engine_owns_provider_stream_state 
+tests/providers/test_cerebras.py::test_cleanup 
+tests/contracts/test_import_boundaries.py::test_admin_config_uses_package_owners_and_catalog_manifest 
+tests/providers/test_gemini.py::test_build_request_body_preserves_caller_extra_body 
+tests/providers/test_cerebras.py::test_default_base_url_constant 
+tests/contracts/test_import_boundaries.py::test_cli_surfaces_are_explicit_launchers_and_managed_claude 
+tests/contracts/test_import_boundaries.py::test_settings_stays_schema_only 
+tests/providers/test_gemini.py::test_build_request_body_adds_gemini3_current_turn_fallback_signature 
+tests/contracts/test_import_boundaries.py::test_messaging_workflow_uses_split_runtime_owners 
+tests/providers/test_gemini.py::test_build_request_body_preserves_tool_call_extra_content 
+tests/providers/test_cerebras.py::test_build_request_body_basic 
+tests/providers/test_cerebras.py::test_init 
+tests/providers/test_cerebras.py::test_build_request_body_prefers_existing_max_completion_tokens 
+tests/providers/test_gemini.py::test_stream_response_text 
+tests/contracts/test_import_boundaries.py::test_provider_request_policy_lives_with_transport_families 
+tests/providers/test_groq.py::test_build_request_body_basic 
+tests/providers/test_gemini.py::test_stream_response_reasoning_content 
+tests/providers/test_gemini.py::test_stream_response_preserves_tool_call_extra_content 
+tests/providers/test_gemini.py::test_cleanup 
+tests/providers/test_gemini.py::test_build_request_body_global_disable_sets_reasoning_none 
+tests/providers/test_groq.py::test_build_request_body_global_disable_blocks_reasoning_mapping 
+tests/providers/test_gemini.py::test_build_request_body_basic 
+tests/providers/test_gemini.py::test_build_request_body_uses_cached_tool_call_signature 
+tests/providers/test_cerebras.py::test_build_request_body_global_disable_blocks_reasoning_mapping 
+tests/contracts/test_import_boundaries.py::test_core_does_not_import_product_packages 
+tests/providers/test_groq.py::test_init 
+tests/providers/test_groq.py::test_default_base_url_constant 
+tests/providers/test_cerebras.py::test_build_request_body_preserves_caller_extra_body 
+tests/providers/test_groq.py::test_build_request_body_prefers_existing_max_completion_tokens 
+tests/providers/test_groq.py::test_stream_response_reasoning_content 
+tests/contracts/test_import_boundaries.py::test_provider_runtime_replaces_old_registry_module 
+tests/providers/test_nim_request_clone.py::test_clone_body_drops_empty_extra_body_after_strip 
+tests/providers/test_groq.py::test_build_request_body_preserves_caller_extra_body 
+tests/providers/test_nim_request_clone.py::test_clone_body_without_reasoning_budget_returns_none_without_extra_body 
+tests/providers/test_nvidia_nim.py::test_stream_response_restores_aliased_tool_arguments 
+tests/providers/test_nvidia_nim.py::test_stream_response_restores_nested_aliased_tool_arguments 
+tests/providers/test_nvidia_nim.py::test_stream_response_retries_without_reasoning_content 
+tests/providers/test_nim_request_clone.py::test_clone_body_without_reasoning_budget_returns_none_when_unchanged 
+tests/providers/test_nvidia_nim.py::test_stream_response_buffers_chunked_aliased_tool_arguments 
+tests/providers/test_nvidia_nim.py::test_tool_call_stream 
+tests/providers/test_nvidia_nim.py::test_stream_response_task_tool_still_forces_background_false 
+tests/providers/test_nvidia_nim.py::test_stream_response_bad_request_without_reasoning_budget_does_not_retry 
+tests/providers/test_nvidia_nim.py::test_build_request_body_omits_reasoning_when_request_disables_thinking 
+[gw6] [  0%] PASSED tests/contracts/test_import_boundaries.py::test_settings_stays_schema_only 
+tests/providers/test_nim_request_clone.py::test_clone_body_without_reasoning_budget_strips_top_level_and_nested 
+tests/providers/test_nvidia_nim.py::test_stream_response_suppresses_thinking_when_disabled 
+tests/providers/test_nvidia_nim_request.py::TestSetIfNotNone::test_value_none_skips 
+tests/providers/test_nvidia_nim_request.py::TestSetExtra::test_value_equals_ignore_value_skips 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_presence_penalty_included_when_nonzero 
+tests/contracts/test_import_boundaries.py::test_config_does_not_import_non_config_packages 
+tests/providers/test_nvidia_nim_request.py::TestSetIfNotNone::test_value_not_none_sets 
+tests/providers/test_nvidia_nim.py::test_build_request_body 
+tests/providers/test_nvidia_nim_request.py::TestSetExtra::test_value_none_skips 
+[gw78] [  1%] PASSED tests/providers/test_nvidia_nim_request.py::TestSetExtra::test_value_none_skips 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_no_chat_template_kwargs_when_thinking_disabled 
+tests/providers/test_open_router.py::test_build_request_body_omits_reasoning_when_native_thinking_disabled 
+tests/providers/test_open_router.py::test_stream_response_reopens_interleaved_thinking_after_text 
+tests/providers/test_open_router.py::test_openrouter_extra_body_allows_openrouter_only_keys 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_tool_schema_boolean_subschemas_are_removed_without_mutating_request 
+tests/providers/test_open_router.py::test_stream_response_reopened_tool_use_preserves_tool_identity 
+[gw92] [  2%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_no_chat_template_kwargs_when_thinking_disabled 
+tests/providers/test_gemini.py::test_build_request_body_sdk_wire_json_has_literal_extra_body 
+[gw87] [  3%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_safe_tool_schema_does_not_add_alias_metadata 
+tests/providers/test_open_router.py::test_build_request_body_omits_reasoning_when_globally_disabled 
+[gw76] [  4%] PASSED tests/providers/test_nvidia_nim_request.py::TestSetIfNotNone::test_value_none_skips 
+tests/providers/test_gemini.py::test_default_base_url_constant 
+tests/providers/test_open_router.py::test_build_request_body_flattens_system_blocks 
+tests/providers/test_open_router.py::test_build_request_body_omits_reasoning_when_request_disables_thinking 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_assistant_thinking_blocks_removed_when_disabled 
+[gw96] [  4%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_assistant_thinking_blocks_removed_when_disabled 
+tests/providers/test_nvidia_nim.py::test_build_request_body_omits_reasoning_when_globally_disabled 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_no_reasoning_params_in_extra_body 
+[gw95] [  5%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_no_reasoning_params_in_extra_body 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_assistant_thinking_replayed_as_reasoning_content_when_enabled 
+[gw97] [  6%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_assistant_thinking_replayed_as_reasoning_content_when_enabled 
+[gw89] [  7%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_private_alias_metadata_is_stripped_without_mutating_body 
+tests/providers/test_nvidia_nim.py::test_stream_response_text 
+tests/providers/test_open_router.py::test_stream_response_passes_native_sse_events 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_nested_schema_keyword_properties_are_aliased_without_mutating_request 
+tests/providers/test_open_router.py::test_build_request_body_default_max_tokens 
+tests/providers/test_nvidia_nim.py::test_init 
+tests/providers/test_nvidia_nim_request.py::TestSetExtra::test_key_in_extra_body_skips 
+[gw43] [  8%] PASSED tests/providers/test_groq.py::test_default_base_url_constant 
+[gw52] [  9%] PASSED tests/providers/test_nim_request_clone.py::test_clone_body_without_reasoning_budget_strips_top_level_and_nested 
+tests/providers/test_nvidia_nim.py::test_stream_response_retries_without_chat_template 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_parallel_tool_calls_included 
+[gw84] [  9%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_parallel_tool_calls_included 
+tests/providers/test_nvidia_nim.py::test_stream_response_retries_without_reasoning_budget 
+tests/providers/test_open_router.py::test_build_request_body_preserves_signed_thinking_history 
+tests/providers/test_open_router.py::test_stream_response_preserves_redacted_thinking_when_enabled 
+tests/providers/test_gemini.py::test_init 
+tests/providers/test_groq.py::test_cleanup 
+tests/providers/test_cerebras.py::test_build_request_body_remaps_max_tokens_preserves_message_name 
+[gw54] [ 10%] PASSED tests/providers/test_nim_request_clone.py::test_clone_body_without_reasoning_budget_returns_none_without_extra_body 
+[gw77] [ 11%] PASSED tests/providers/test_nvidia_nim_request.py::TestSetExtra::test_key_in_extra_body_skips 
+[gw18] [ 12%] PASSED tests/providers/test_cerebras.py::test_init 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_include_stop_str_in_output_not_sent 
+[gw83] [ 13%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_include_stop_str_in_output_not_sent 
+[gw85] [ 13%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_tool_schema_boolean_subschemas_are_removed_without_mutating_request 
+[gw75] [ 14%] PASSED tests/providers/test_nvidia_nim_request.py::TestSetIfNotNone::test_value_not_none_sets 
+tests/providers/test_open_router.py::test_stream_response_drops_redacted_thinking_when_disabled 
+[gw56] [ 15%] PASSED tests/providers/test_nvidia_nim.py::test_init 
+[gw12] [ 16%] PASSED tests/contracts/test_import_boundaries.py::test_anthropic_stream_engine_owns_provider_stream_state 
+tests/providers/test_open_router.py::test_stream_response_error_path 
+tests/providers/test_nvidia_nim.py::test_stream_response_thinking_reasoning_content 
+[gw29] [ 17%] PASSED tests/providers/test_gemini.py::test_default_base_url_constant 
+[gw42] [ 18%] PASSED tests/providers/test_groq.py::test_init 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_reasoning_params_in_extra_body 
+[gw90] [ 18%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_reasoning_params_in_extra_body 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_clone_body_without_chat_template 
+[gw91] [ 19%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_clone_body_without_chat_template 
+[gw88] [ 20%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_nested_schema_keyword_properties_are_aliased_without_mutating_request 
+tests/contracts/test_import_boundaries.py::test_messaging_does_not_import_disallowed_modules 
+tests/providers/test_open_router.py::test_build_request_body_strips_unsigned_thinking_history 
+[gw14] [ 21%] PASSED tests/contracts/test_import_boundaries.py::test_admin_config_uses_package_owners_and_catalog_manifest 
+tests/providers/test_open_router.py::test_build_request_body_is_native_anthropic 
+[gw44] [ 22%] PASSED tests/providers/test_groq.py::test_build_request_body_basic 
+[gw59] [ 22%] PASSED tests/providers/test_nvidia_nim.py::test_build_request_body_omits_reasoning_when_globally_disabled 
+tests/contracts/test_import_boundaries.py::test_messaging_platforms_use_shared_outbox_and_voice_flow 
+[gw16] [ 23%] PASSED tests/contracts/test_import_boundaries.py::test_messaging_platforms_use_shared_outbox_and_voice_flow 
+tests/providers/test_open_router.py::test_openrouter_extra_body_rejects_overriding_reserved_fields 
+[gw103] [ 24%] PASSED tests/providers/test_open_router.py::test_openrouter_extra_body_rejects_overriding_reserved_fields 
+tests/providers/test_nvidia_nim.py::test_init_uses_configurable_timeouts 
+tests/providers/test_nvidia_nim.py::test_stream_response_does_not_retry_unrelated_bad_request 
+[gw41] [ 25%] PASSED tests/providers/test_gemini.py::test_cleanup 
+[gw23] [ 26%] PASSED tests/providers/test_cerebras.py::test_build_request_body_prefers_existing_max_completion_tokens 
+[gw5] [ 27%] PASSED tests/contracts/test_import_boundaries.py::test_config_does_not_import_non_config_packages 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_clone_body_without_reasoning_content 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_chat_template_fields_present_for_mistral_model 
+[gw21] [ 27%] PASSED tests/providers/test_cerebras.py::test_build_request_body_global_disable_blocks_reasoning_mapping 
+[gw11] [ 28%] FAILED tests/contracts/test_import_boundaries.py::test_provider_request_policy_lives_with_transport_families 
+[gw24] [ 29%] PASSED tests/providers/test_cerebras.py::test_build_request_body_preserves_caller_extra_body 
+[gw20] [ 30%] PASSED tests/providers/test_cerebras.py::test_build_request_body_basic 
+[gw53] [ 31%] PASSED tests/providers/test_nim_request_clone.py::test_clone_body_without_reasoning_budget_returns_none_when_unchanged 
+[gw17] [ 31%] PASSED tests/contracts/test_import_boundaries.py::test_cli_surfaces_are_explicit_launchers_and_managed_claude 
+[gw60] [ 32%] PASSED tests/providers/test_nvidia_nim.py::test_build_request_body_omits_reasoning_when_request_disables_thinking 
+[gw106] [ 33%] PASSED tests/providers/test_open_router.py::test_build_request_body_omits_reasoning_when_request_disables_thinking 
+[gw104] [ 34%] PASSED tests/providers/test_open_router.py::test_openrouter_extra_body_allows_openrouter_only_keys 
+[gw28] [ 35%] PASSED tests/providers/test_gemini.py::test_init 
+[gw58] [ 36%] PASSED tests/providers/test_nvidia_nim.py::test_init_uses_configurable_timeouts 
+[gw33] [ 36%] PASSED tests/providers/test_gemini.py::test_build_request_body_preserves_caller_extra_body 
+[gw116] [ 37%] PASSED tests/providers/test_open_router.py::test_stream_response_preserves_redacted_thinking_when_enabled 
+tests/providers/test_groq.py::test_build_request_body_sanitizes_and_remaps_via_mock_converter 
+[gw46] [ 38%] PASSED tests/providers/test_groq.py::test_build_request_body_sanitizes_and_remaps_via_mock_converter 
+[gw35] [ 39%] PASSED tests/providers/test_gemini.py::test_build_request_body_preserves_tool_call_extra_content 
+tests/providers/test_open_router.py::test_stream_response_suppresses_native_thinking_when_disabled 
+tests/providers/test_open_router.py::test_stream_response_closes_overlapping_thinking_before_text 
+[gw120] [ 40%] PASSED tests/providers/test_open_router.py::test_stream_response_closes_overlapping_thinking_before_text 
+[gw2] [ 40%] PASSED tests/contracts/test_import_boundaries.py::test_core_does_not_import_product_packages 
+[gw114] [ 41%] PASSED tests/providers/test_open_router.py::test_stream_response_passes_native_sse_events 
+[gw112] [ 42%] PASSED tests/providers/test_open_router.py::test_build_request_body_preserves_signed_thinking_history 
+[gw82] [ 43%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_presence_penalty_included_when_nonzero 
+tests/providers/test_nvidia_nim_request.py::TestSetExtra::test_value_set_when_valid 
+[gw1] [ 44%] PASSED tests/contracts/test_import_boundaries.py::test_provider_adapters_do_not_import_runtime_layers 
+[gw61] [ 45%] PASSED tests/providers/test_nvidia_nim.py::test_preflight_and_build_request_issue_206_post_tool_text 
+[gw9] [ 45%] PASSED tests/contracts/test_import_boundaries.py::test_removed_openrouter_rollback_transport_stays_removed 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_max_tokens_capped_by_nim 
+[gw118] [ 46%] PASSED tests/providers/test_open_router.py::test_stream_response_reopens_interleaved_thinking_after_text 
+[gw80] [ 47%] PASSED tests/providers/test_nvidia_nim_request.py::TestSetExtra::test_value_set_when_valid 
+[gw81] [ 48%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_max_tokens_capped_by_nim 
+[gw117] [ 49%] PASSED tests/providers/test_open_router.py::test_stream_response_drops_redacted_thinking_when_disabled 
+[gw115] [ 50%] PASSED tests/providers/test_open_router.py::test_stream_response_suppresses_native_thinking_when_disabled 
+[gw32] [ 50%] PASSED tests/providers/test_gemini.py::test_build_request_body_global_disable_sets_reasoning_none 
+[gw13] [ 51%] PASSED tests/contracts/test_import_boundaries.py::test_openai_responses_uses_adapter_boundary 
+[gw37] [ 52%] PASSED tests/providers/test_gemini.py::test_build_request_body_adds_gemini3_current_turn_fallback_signature 
+[gw98] [ 53%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_clone_body_without_reasoning_content 
+[gw110] [ 54%] PASSED tests/providers/test_open_router.py::test_build_request_body_strips_unsigned_thinking_history 
+[gw107] [ 54%] PASSED tests/providers/test_open_router.py::test_build_request_body_omits_reasoning_when_native_thinking_disabled 
+tests/providers/test_open_router.py::test_init_uses_configurable_timeouts 
+[gw113] [ 55%] PASSED tests/providers/test_open_router.py::test_build_request_body_flattens_system_blocks 
+[gw105] [ 56%] PASSED tests/providers/test_open_router.py::test_build_request_body_omits_reasoning_when_globally_disabled 
+[gw94] [ 57%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_chat_template_fields_present_for_mistral_model 
+[gw3] [ 58%] PASSED tests/contracts/test_import_boundaries.py::test_provider_catalog_is_single_source_for_supported_ids 
+[gw0] [ 59%] PASSED tests/contracts/test_import_boundaries.py::test_api_and_messaging_do_not_import_provider_common 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_clone_body_without_reasoning_content_returns_none_when_unchanged 
+[gw99] [ 59%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_clone_body_without_reasoning_content_returns_none_when_unchanged 
+[gw7] [ 60%] PASSED tests/contracts/test_import_boundaries.py::test_messaging_does_not_import_disallowed_modules 
+[gw34] [ 61%] PASSED tests/providers/test_gemini.py::test_build_request_body_merges_caller_nested_google 
+tests/providers/test_open_router.py::test_build_request_body_maps_thinking_budget_to_reasoning_max_tokens 
+[gw48] [ 62%] PASSED tests/providers/test_groq.py::test_build_request_body_preserves_caller_extra_body 
+[gw27] [ 63%] PASSED tests/providers/test_cerebras.py::test_cleanup 
+[gw108] [ 63%] PASSED tests/providers/test_open_router.py::test_build_request_body_maps_thinking_budget_to_reasoning_max_tokens 
+[gw51] [ 64%] PASSED tests/providers/test_groq.py::test_cleanup 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_reasoning_budget_respects_existing_chat_template_kwargs 
+[gw93] [ 65%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_reasoning_budget_respects_existing_chat_template_kwargs 
+[gw79] [ 66%] PASSED tests/providers/test_nvidia_nim_request.py::TestSetExtra::test_value_equals_ignore_value_skips 
+[gw45] [ 67%] PASSED tests/providers/test_groq.py::test_build_request_body_global_disable_blocks_reasoning_mapping 
+[gw57] [ 68%] PASSED tests/providers/test_nvidia_nim.py::test_build_request_body 
+tests/providers/test_open_router.py::test_init 
+[gw31] [ 68%] PASSED tests/providers/test_gemini.py::test_build_request_body_sdk_wire_json_has_literal_extra_body 
+[gw36] [ 69%] PASSED tests/providers/test_gemini.py::test_build_request_body_uses_cached_tool_call_signature 
+[gw8] [ 70%] PASSED tests/contracts/test_import_boundaries.py::test_api_may_only_import_narrow_provider_facade 
+[gw101] [ 71%] PASSED tests/providers/test_open_router.py::test_init_uses_configurable_timeouts 
+tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_grep_schema_type_parameter_is_aliased_without_mutating_request 
+[gw86] [ 72%] PASSED tests/providers/test_nvidia_nim_request.py::TestBuildRequestBody::test_grep_schema_type_parameter_is_aliased_without_mutating_request 
+[gw19] [ 72%] PASSED tests/providers/test_cerebras.py::test_default_base_url_constant 
+tests/providers/test_groq.py::test_stream_response_text 
+[gw22] [ 73%] PASSED tests/providers/test_cerebras.py::test_build_request_body_remaps_max_tokens_preserves_message_name 
+tests/providers/test_open_router.py::test_build_request_body_strips_redacted_when_thinking_disabled 
+[gw100] [ 74%] PASSED tests/providers/test_open_router.py::test_init 
+[gw47] [ 75%] PASSED tests/providers/test_groq.py::test_build_request_body_prefers_existing_max_completion_tokens 
+[gw111] [ 76%] PASSED tests/providers/test_open_router.py::test_build_request_body_strips_redacted_when_thinking_disabled 
+[gw55] [ 77%] PASSED tests/providers/test_nim_request_clone.py::test_clone_body_drops_empty_extra_body_after_strip 
+[gw109] [ 77%] FAILED tests/providers/test_open_router.py::test_build_request_body_default_max_tokens 
+[gw30] [ 78%] PASSED tests/providers/test_gemini.py::test_build_request_body_basic 
+[gw121] [ 79%] PASSED tests/providers/test_open_router.py::test_stream_response_error_path 
+[gw102] [ 80%] PASSED tests/providers/test_open_router.py::test_build_request_body_is_native_anthropic 
+[gw119] [ 81%] PASSED tests/providers/test_open_router.py::test_stream_response_reopened_tool_use_preserves_tool_identity 
+[gw4] [ 81%] PASSED tests/contracts/test_import_boundaries.py::test_provider_runtime_replaces_old_registry_module 
+[gw10] [ 82%] PASSED tests/contracts/test_import_boundaries.py::test_provider_transports_live_under_transport_family_packages 
+[gw67] [ 83%] PASSED tests/providers/test_nvidia_nim.py::test_tool_call_stream 
+[gw25] [ 84%] PASSED tests/providers/test_cerebras.py::test_stream_response_text 
+[gw49] [ 85%] PASSED tests/providers/test_groq.py::test_stream_response_text 
+[gw66] [ 86%] PASSED tests/providers/test_nvidia_nim.py::test_stream_response_does_not_retry_unrelated_bad_request 
+[gw62] [ 86%] PASSED tests/providers/test_nvidia_nim.py::test_stream_response_text 
+[gw15] [ 87%] PASSED tests/contracts/test_import_boundaries.py::test_messaging_workflow_uses_split_runtime_owners 
+[gw65] [ 88%] PASSED tests/providers/test_nvidia_nim.py::test_stream_response_retries_without_chat_template 
+[gw39] [ 89%] PASSED tests/providers/test_gemini.py::test_stream_response_preserves_tool_call_extra_content 
+[gw68] [ 90%] PASSED tests/providers/test_nvidia_nim.py::test_stream_response_restores_aliased_tool_arguments 
+[gw26] [ 90%] PASSED tests/providers/test_cerebras.py::test_stream_response_reasoning_content 
+[gw73] [ 91%] PASSED tests/providers/test_nvidia_nim.py::test_stream_response_retries_without_reasoning_content 
+[gw74] [ 92%] PASSED tests/providers/test_nvidia_nim.py::test_stream_response_bad_request_without_reasoning_budget_does_not_retry 
+[gw50] [ 93%] PASSED tests/providers/test_groq.py::test_stream_response_reasoning_content 
+[gw71] [ 94%] PASSED tests/providers/test_nvidia_nim.py::test_stream_response_task_tool_still_forces_background_false 
+[gw40] [ 95%] PASSED tests/providers/test_gemini.py::test_stream_response_reasoning_content 
+[gw38] [ 95%] PASSED tests/providers/test_gemini.py::test_stream_response_text 
+[gw72] [ 96%] PASSED tests/providers/test_nvidia_nim.py::test_stream_response_retries_without_reasoning_budget 
+[gw70] [ 97%] PASSED tests/providers/test_nvidia_nim.py::test_stream_response_restores_nested_aliased_tool_arguments 
+[gw63] [ 98%] PASSED tests/providers/test_nvidia_nim.py::test_stream_response_thinking_reasoning_content 
+[gw69] [ 99%] PASSED tests/providers/test_nvidia_nim.py::test_stream_response_buffers_chunked_aliased_tool_arguments 
+[gw64] [100%] PASSED tests/providers/test_nvidia_nim.py::test_stream_response_suppresses_thinking_when_disabled 
+
+=================================== FAILURES ===================================
+__________ test_provider_request_policy_lives_with_transport_families __________
+[gw11] linux -- Python 3.14.0 /testbed/.venv/bin/python
+tests/contracts/test_import_boundaries.py:215: in test_provider_request_policy_lives_with_transport_families
+    assert (
+E   AssertionError: assert False
+E    +  where False = exists()
+E    +    where exists = (((PosixPath('/testbed/providers') / 'transports') / 'openai_chat') / 'request_policy.py').exists
+__________________ test_build_request_body_default_max_tokens __________________
+[gw109] linux -- Python 3.14.0 /testbed/.venv/bin/python
+tests/providers/test_open_router.py:214: in test_build_request_body_default_max_tokens
+    assert body["max_tokens"] == ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS
+                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   NameError: name 'ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS' is not defined
+----------------------------- Captured stderr call -----------------------------
+2026-10-02 06:32:16.319 | DEBUG    | providers.transports.anthropic_messages.request:build_openrouter_request_body:105 - OPENROUTER_REQUEST: conversion start model=moonshotai/kimi-k2.6:free msgs=1
+2026-10-02 06:32:16.319 | DEBUG    | providers.transports.anthropic_messages.request:build_openrouter_request_body:120 - OPENROUTER_REQUEST: conversion done model=moonshotai/kimi-k2.6:free msgs=1 tools=0
+=========================== short test summary info ============================
+FAILED tests/contracts/test_import_boundaries.py::test_provider_request_policy_lives_with_transport_families
+FAILED tests/providers/test_open_router.py::test_build_request_body_default_max_tokens
+=================== 2 failed, 120 passed in 83.55s (0:01:23) ===================
+OMNIGRIL_EXIT_CODE=1

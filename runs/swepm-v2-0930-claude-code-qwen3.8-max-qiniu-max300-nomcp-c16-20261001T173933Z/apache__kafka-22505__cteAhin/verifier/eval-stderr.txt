@@ -1,0 +1,279 @@
+Checking patch raft/src/main/java/org/apache/kafka/raft/CandidateState.java...
+error: while searching for:
+import org.slf4j.Logger;
+
+import java.util.Optional;
+
+public class CandidateState implements NomineeState {
+    private final int localId;
+    private final Uuid localDirectoryId;
+    private final int epoch;
+
+error: patch failed: raft/src/main/java/org/apache/kafka/raft/CandidateState.java:25
+error: raft/src/main/java/org/apache/kafka/raft/CandidateState.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaNetworkChannelTest.java...
+error: while searching for:
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
+
+
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/KafkaNetworkChannelTest.java:62
+error: raft/src/test/java/org/apache/kafka/raft/KafkaNetworkChannelTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientAutoJoinTest.java...
+error: while searching for:
+            )
+        );
+        // poll kraft to update the replica's voter set
+        context.client.poll();
+    }
+
+    private int randomReplicaId() {
+
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientAutoJoinTest.java:314
+error: raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientAutoJoinTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientFetchTest.java...
+error: while searching for:
+            context.fetchResponse(epoch, electedLeader.id(), records, 0L, Errors.NONE)
+        );
+
+        context.client.poll();
+
+        assertEquals(oldLogEndOffset, context.log.endOffset().offset());
+    }
+
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientFetchTest.java:91
+error: raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientFetchTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientPreVoteTest.java...
+error: while searching for:
+            .withRaftProtocol(KIP_996_PROTOCOL)
+            .build();
+        // unattached will send fetch request before transitioning to follower, proactively clear the mock sent queue
+        context.client.poll();
+        context.assertSentFetchRequest();
+
+        context.deliverRequest(context.beginEpochRequest(epoch, votedCandidateKey.id(), voters.listeners(votedCandidateKey.id())));
+
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientPreVoteTest.java:116
+error: raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientPreVoteTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientReconfigTest.java...
+error: while searching for:
+        }
+
+        // follower applies the bootstrap records, registering follower2 as a new voter
+        context.client.poll();
+        assertTrue(context.client.quorum().isVoter(follower));
+    }
+
+
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientReconfigTest.java:314
+error: raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientReconfigTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientSnapshotTest.java...
+error: while searching for:
+
+        RaftClientTestContext.MockListener secondListener = new RaftClientTestContext.MockListener(OptionalInt.of(localId));
+        context.client.register(secondListener);
+        context.client.poll();
+
+        // Check that the second listener was notified of the new snapshot
+        try (SnapshotReader<String> snapshot = secondListener.drainHandledSnapshot().get()) {
+
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientSnapshotTest.java:234
+error: raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientSnapshotTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientTest.java...
+error: while searching for:
+import java.util.OptionalInt;
+import java.util.OptionalLong;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeoutException;
+import java.util.stream.Stream;
+
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientTest.java:59
+error: raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/RaftEventSimulationTest.java...
+error: while searching for:
+            cluster.nodeIfRunning(destination.id()).ifPresent(node -> {
+                inflight.put(correlationId, new InflightRequest(senderId, destination));
+
+                inbound.completion.whenComplete((response, exception) -> {
+                    if (response != null && filters.get(destination.id()).acceptOutbound(response)) {
+                        deliver(response);
+                    }
+                });
+
+                node.client.handle(inbound);
+            });
+        }
+
+
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/RaftEventSimulationTest.java:1405
+error: raft/src/test/java/org/apache/kafka/raft/RaftEventSimulationTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/internals/BlockingMessageQueueTest.java...
+error: while searching for:
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class BlockingMessageQueueTest {
+
+    @Test
+    public void testOfferAndPoll() {
+        BlockingMessageQueue queue = new BlockingMessageQueue();
+        assertTrue(queue.isEmpty());
+        assertNull(queue.poll(0));
+
+        RaftMessage message1 = Mockito.mock(RaftMessage.class);
+        queue.add(message1);
+        assertFalse(queue.isEmpty());
+        assertEquals(message1, queue.poll(0));
+        assertTrue(queue.isEmpty());
+
+        RaftMessage message2 = Mockito.mock(RaftMessage.class);
+        RaftMessage message3 = Mockito.mock(RaftMessage.class);
+        queue.add(message2);
+        queue.add(message3);
+        assertFalse(queue.isEmpty());
+        assertEquals(message2, queue.poll(0));
+        assertEquals(message3, queue.poll(0));
+
+    }
+
+    @Test
+    public void testWakeupFromPoll() {
+        BlockingMessageQueue queue = new BlockingMessageQueue();
+        queue.wakeup();
+        assertNull(queue.poll(Long.MAX_VALUE));
+    }
+
+}
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/internals/BlockingMessageQueueTest.java:21
+error: raft/src/test/java/org/apache/kafka/raft/internals/BlockingMessageQueueTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/internals/ChangeVoterHandlerStateTest.java...
+error: raft/src/test/java/org/apache/kafka/raft/internals/ChangeVoterHandlerStateTest.java: already exists in working directory
+Checking patch raft/src/test/java/org/apache/kafka/raft/internals/ThresholdPurgatoryTest.java...
+error: while searching for:
+
+import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.CompletableFuture;
+
+import static org.apache.kafka.test.TestUtils.assertFutureThrows;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/internals/ThresholdPurgatoryTest.java:23
+error: raft/src/test/java/org/apache/kafka/raft/internals/ThresholdPurgatoryTest.java: patch does not apply
+Checking patch raft/src/testFixtures/java/org/apache/kafka/raft/MockMessageQueue.java...
+error: while searching for:
+package org.apache.kafka.raft;
+
+import java.util.ArrayDeque;
+import java.util.OptionalLong;
+import java.util.Queue;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * Mocked implementation which does not block in {@link #poll(long)}..
+ */
+public class MockMessageQueue implements RaftMessageQueue {
+    private final Queue<RaftMessage> messages = new ArrayDeque<>();
+    private final AtomicBoolean wakeupRequested = new AtomicBoolean(false);
+    private final AtomicLong lastPollTimeout = new AtomicLong(-1);
+
+    @Override
+    public RaftMessage poll(long timeoutMs) {
+        wakeupRequested.set(false);
+        lastPollTimeout.set(timeoutMs);
+        return messages.poll();
+    }
+
+    @Override
+    public void add(RaftMessage message) {
+        messages.offer(message);
+    }
+
+    public OptionalLong lastPollTimeoutMs() {
+
+error: patch failed: raft/src/testFixtures/java/org/apache/kafka/raft/MockMessageQueue.java:17
+error: raft/src/testFixtures/java/org/apache/kafka/raft/MockMessageQueue.java: patch does not apply
+Checking patch raft/src/testFixtures/java/org/apache/kafka/raft/MockNetworkChannel.java...
+error: while searching for:
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public class MockNetworkChannel implements NetworkChannel {
+    public static final ListenerName LISTENER_NAME = VoterSetTestUtil.DEFAULT_LISTENER_NAME;
+
+    private final AtomicInteger correlationIdCounter;
+    private final List<RaftRequest.Outbound> sendQueue = new ArrayList<>();
+    private final Map<Integer, RaftRequest.Outbound> awaitingResponse = new HashMap<>();
+
+    public MockNetworkChannel(AtomicInteger correlationIdCounter) {
+        this.correlationIdCounter = correlationIdCounter;
+
+error: patch failed: raft/src/testFixtures/java/org/apache/kafka/raft/MockNetworkChannel.java:21
+error: raft/src/testFixtures/java/org/apache/kafka/raft/MockNetworkChannel.java: patch does not apply
+Checking patch raft/src/testFixtures/java/org/apache/kafka/raft/RaftClientTestContext.java...
+error: while searching for:
+    final boolean canBecomeVoter;
+
+    private final List<RaftResponse.Outbound> sentResponses = new ArrayList<>();
+
+    private static final int NUMBER_FETCH_TIMEOUTS_IN_UPDATE_VOTER_SET_PERIOD = 1;
+
+
+error: patch failed: raft/src/testFixtures/java/org/apache/kafka/raft/RaftClientTestContext.java:148
+error: raft/src/testFixtures/java/org/apache/kafka/raft/RaftClientTestContext.java: patch does not apply
+/testbed/raft/src/main/java/org/apache/kafka/raft/CandidateState.java:29: error: sealed, non-sealed or final modifiers expected
+public class CandidateState implements NomineeState {
+       ^
+1 error
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':raft:compileJava'.
+> Compilation failed; see the compiler output below.
+  /testbed/raft/src/main/java/org/apache/kafka/raft/CandidateState.java:29: error: sealed, non-sealed or final modifiers expected
+  public class CandidateState implements NomineeState {
+         ^
+  1 error
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+
+BUILD FAILED in 12s
+/testbed/raft/src/main/java/org/apache/kafka/raft/CandidateState.java:29: error: sealed, non-sealed or final modifiers expected
+public class CandidateState implements NomineeState {
+       ^
+1 error
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':raft:compileJava'.
+> Compilation failed; see the compiler output below.
+  /testbed/raft/src/main/java/org/apache/kafka/raft/CandidateState.java:29: error: sealed, non-sealed or final modifiers expected
+  public class CandidateState implements NomineeState {
+         ^
+  1 error
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+
+BUILD FAILED in 14s

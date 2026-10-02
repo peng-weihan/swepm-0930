@@ -1,0 +1,80 @@
+{
+  "instance_id": "aldinokemal__go-whatsapp-web-multidevice-710",
+  "overall_quality": "questionable",
+  "test_scope": "balanced",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch is a massive feature implementation (23 files changed, 3 new files, ~2000+ lines of Go code) adding per-device Chatwoot configuration with CRUD REST endpoints, a client registry, URL validation with SSRF protection, per-device webhooks, account-scoped message links, sync service management, and documentation. It comprehensively addresses the issue requirements including storage, REST API, SSRF validation, legacy fallback logic, registry invalidation, retry handling, and OpenAPI docs.",
+  "base_vs_gold_expectation": "The base code would definitively fail the tests. The test patch introduces new test files referencing types (ChatwootDeviceConfig, ClientRegistry, ResolvedConfig), functions (NewClientRegistry, CanonicalizeChatwootURL, ValidateChatwootURL, GetSyncServiceForDevice), and variables (ErrClientRegistryUnavailable, getChatwootClientFn, lookupIP) that do not exist in the base repository. Additionally, the test patch modifies existing test files to use new function signatures: MarkMessageAsSent(acc, id) vs MarkMessageAsSent(id), GetLatestChatwootMessageLinkByConversation(4 args) vs (1 arg), resolveChatwootWebhookRoute(payload, nil) vs (payload), buildChatwootForwardMessageLink(6 args) vs (4 args). The base code cannot compile with the test patch. The gold patch should pass all tests as the tests were written against it.",
+  "too_narrow_risks": [
+    "No test for the Fiber request parameter string-copy requirement mentioned in the issue (device IDs used as config/registry/sync keys must be copied from request buffers)",
+    "No test for JID stamping on device connect/re-pair via the event handler path (only the repository method UpdateChatwootDeviceConfigJID is tested directly)",
+    "No test for the contact attribute override (gowa_device_id) scoping in per-device mode",
+    "No test for legacy link account-0 wildcard behavior in config-scoped lookup",
+    "No test verifying the enabled field defaults to true on create or preserves existing value on update when omitted"
+  ],
+  "too_broad_risks": [
+    "Task categorized as 'debugging' in task.toml but is actually a major feature implementation spanning 23 files",
+    "The 7200-second agent timeout reflects the massive scope but the task is extremely challenging even for that timeframe"
+  ],
+  "implementation_coupling": [
+    "Tests reference exact unexported struct fields: s.configID, s.allowPgImport, s.client, s.progressMu, s.progressMap — any alternative implementation must use identical field names",
+    "Tests reference unexported package-level variables: getChatwootClientFn, lookupIP, legacySyncServiceKey — must exist with exact names and types",
+    "Tests call unexported function ssrfGuardedTransport() — must exist with that exact name",
+    "Tests require exact exported function names: NewClientFromConfig, NewClientRegistry, InitClientRegistry, GetClientRegistry, CanonicalizeChatwootURL, ValidateChatwootURL, GetSyncServiceForDevice, LookupSyncServiceForDevice, CloseAllSyncServices, SyncServiceKeyFor",
+    "Tests require exact exported types with specific fields: ResolvedConfig{ConfigID, Client, DeviceID}, ClientRegistry with Resolve/ResolveByInbox/Invalidate methods",
+    "Tests require ChatwootHandler to have DeviceManager and ChatStorageRepo fields and specific method names (HandleDeviceWebhook, ListChatwootConfigs, GetChatwootConfig, UpsertChatwootConfig, DeleteChatwootConfig)",
+    "Tests require exact signatures: MarkMessageAsSent(accountID, messageID), IsMessageSentByUs(accountID, messageID), buildChatwootForwardMessageLink(deviceID, configID, accountID, data, opts, result), syncPayloadToChatwoot(ctx, payload, eventName, deviceID, linkRepo), resolveChatwootWebhookRoute(payload, registry)",
+    "Tests require exact exported error variable ErrClientRegistryUnavailable and specific sentinel behavior",
+    "Tests access SyncService.allowPgImport field directly and require pgImporterForSync method",
+    "Tests require NewSyncProgress and specific SyncProgress methods (SetRunning, SetCompleted) and SyncService methods (IsRunning, GetProgress)"
+  ],
+  "environment_risks": [
+    "Tests use in-memory SQLite and httptest servers, so no external network dependencies — low risk",
+    "DNS is stubbed via lookupIP variable in URL validation tests — hermetic",
+    "SSRF guard connect test creates a loopback httptest server — should work in Docker containers"
+  ],
+  "mismatches": [
+    "task.toml categorizes this as 'debugging' but it is a major feature implementation (per-device Chatwoot routing with 23-file gold patch)",
+    "The instruction says 'Add persistent per-device Chatwoot configuration storage and CRUD behavior' which is a feature request, not a debugging task"
+  ],
+  "evidence": [
+    {
+      "file": "task.toml",
+      "detail": "category = 'debugging' but the issue is a feature implementation"
+    },
+    {
+      "file": "solution/solve.sh",
+      "detail": "Gold patch modifies 23 files, creates 3 new Go source files, totaling ~2000+ lines of implementation code"
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "Test patch references ChatwootDeviceConfig type which does not exist in base code (confirmed via grep)"
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "Test patch references ErrClientRegistryUnavailable, getChatwootClientFn, lookupIP, legacySyncServiceKey — none exist in base"
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "Test patch modifies existing tests to use new signatures: MarkMessageAsSent(acc, id) vs base MarkMessageAsSent(id), GetLatestChatwootMessageLinkByConversation(4 params) vs base (1 param)"
+    },
+    {
+      "file": "src/infrastructure/chatwoot/client.go:89",
+      "detail": "Base signature MarkMessageAsSent(messageID int) must change to MarkMessageAsSent(accountID, messageID int)"
+    },
+    {
+      "file": "src/domains/chatstorage/interfaces.go:42",
+      "detail": "Base signature GetLatestChatwootMessageLinkByConversation(conversationID int) must change to (conversationID, accountID int, allowLegacyZero bool, configID int64)"
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "sync_perdevice_test.go accesses unexported struct fields (s.configID, s.allowPgImport, s.client, s.progressMu, s.progressMap) requiring exact internal struct layout"
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "15 test files span 6 packages: chatstorage, chatwoot, whatsapp, rest — comprehensive but heavily coupled"
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "This instance implements a large per-device Chatwoot routing feature (23 files, ~2000+ lines) mislabeled as 'debugging'. The tests are comprehensive in covering core requirements (CRUD, SSRF, registry, routing, retry) and would correctly fail the base code (compile errors from missing types and changed signatures). However, the tests are extremely tightly coupled to the gold implementation's internal structure: they access unexported fields (s.configID, s.progressMu), reference unexported variables (getChatwootClientFn, lookupIP), and require exact function names, type names, and method signatures throughout. Any reasonable alternative implementation achieving the same observable behavior would fail unless it mirrors the gold implementation's exact API surface and internal naming. The tests should be revised to test behavior through exported/public interfaces rather than internal struct fields, and to be less prescriptive about exact naming to allow alternative implementations."
+}

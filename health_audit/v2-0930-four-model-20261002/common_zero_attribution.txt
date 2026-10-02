@@ -1,0 +1,171 @@
+之前四组主批次共同reward=0的55题，网络恢复结果已合并；排除32GiB补跑以及55题之外的案例。
+逐题读取220份verifier结果/错误摘要；重点因果案例对照原始工具轨迹、输入test_patch与eval.sh；未逐题重新执行、未认证最终工作树。
+6/13/1/6等是已确认现象的保守下界，类别可重叠，不是55题互斥根因分区。52题补丁标记是风险筛查，不等于52题的所有零分均为verifier所致。 原始自动标记可能漏报；例如微软题Luna的补丁拒绝已在人工复核发现，原始patch_flag_models保留原扫描结果。
+
+{"直接verifier破坏证据": 13, "实现或测试契约待区分": 22, "环境或运行器异常": 6, "agent终止异常": 12, "agent只规划或澄清": 6, "外部依赖网络失败": 1}
+
+0xPlaygrounds__rig-2301 [直接verifier破坏证据]
+四组均反向恢复serde_policy_allowlist.txt的两条旧记录，driver_adoption随后仅因stale allowlist失败；属于直接可追踪的verifier改坏测试辅助数据。
+
+777genius__agent-teams-ai-246 [实现或测试契约待区分]
+四组实际执行约1250个测试，56/67/66/69个失败；Luna补丁干净仍有行为断言失败，其他三组叠加补丁问题。优先核对实现与测试行为契约，不是缺依赖的证据。
+
+777genius__agent-teams-ai-c_1ccc143 [实现或测试契约待区分]
+Luna干净应用补丁后49过1败：用户顶层MCP配置未按测试合并；GLM/Kimi另有createdDirs未定义且补丁部分拒绝。实现/测试混合，非外部API限流。
+
+Alishahryar1__free-claude-code-883 [环境或运行器异常；agent终止异常]
+Qwen/GLM/Luna verifier发生pytest-xdist/execnet INTERNALERROR、worker异常退出；Kimi agent曾OOM、verifier exit137。测试运行器/资源执行失败，不能按正常断言失败解释。
+
+Alishahryar1__free-claude-code-929 [环境或运行器异常；agent终止异常]
+三组Claude agent曾OOM；四组verifier均发生pytest-xdist worker崩溃或内部错误。Luna日志明确created192/192workers，最终no tests ran、exit3。
+
+CherryHQ__cherry-studio-13430 [实现或测试契约待区分]
+失败包括db.delete非函数、迁移日志形状、UI元素断言；Qwen/GLM另有补丁拒绝。Kimi主轨迹主要探索且无记录Edit/Write，但仅凭此不能证明shell没有改代码。
+
+CherryHQ__cherry-studio-13587 [实现或测试契约待区分]
+四组有测试补丁反向/拒绝；随后BackupManager路径安全和resolveAndValidatePath断言失败。不是系统文件权限故障的直接证据，需对照被改动后的测试。
+
+DeepLabCut__DeepLabCut-3303 [直接verifier破坏证据]
+Qwen/GLM verifier反向删除新测试文件，pytest无法找到目标；Kimi/Luna真正执行34例、33过1败（空扩展名未发弃用警告）。同题四个零分不同原因。
+
+EvoScientist__EvoScientist-152 [直接verifier破坏证据]
+Qwen反向补丁后目标tests/test_context_window.py丢失；GLM测试中auto_approve重复参数；Kimi/Luna缺项目内EvoScientist.llm.context_window。后者可能实现布局/测试契约不匹配，不是pip依赖缺失。
+
+EvoScientist__EvoScientist-171 [直接verifier破坏证据]
+Qwen反向应用后目标test_agent_loader.py丢失；GLM/Kimi执行150余例仅_MAX_CONCURRENT_CONNECTIONS相关失败；Luna缺项目内cli._agent_loader。
+
+EvoScientist__EvoScientist-307 [直接verifier破坏证据]
+git apply报patch with only garbage但GNU patch fallback继续；Kimi反向删除test_gateway_background_runs.py，其余缺项目内gateway.background_runs。存在测试安装与实现布局两类问题。
+
+EvoScientist__EvoScientist-376 [直接verifier破坏证据]
+Kimi反向删除test_channel_sends.py；其余三组缺项目内EvoScientist.runtime。不是外部Python包缺失，需核对题面是否约束内部模块布局。
+
+Hans-Halverson__brimstone-412 [实现或测试契约待区分]
+三组Claude主要为bytecode snapshot失败，Luna是Rust trait编译错误；四组均有补丁异常。快照/实现/补丁污染待分离，没有外部网络阻断证据。
+
+Mrmayman__quantumlauncher-c_fb3452c [实现或测试契约待区分]
+四组有补丁拒绝；Claude组测试二进制类型不匹配，Luna库代码类型不匹配。更接近API/实现或被混合的测试问题，未证实缺系统依赖。
+
+RakuenSoftware__aimee-2499 [实现或测试契约待区分]
+四组CMake构建有_GNU_SOURCE重定义、sandbox.h/rules.h/db2头文件缺失，同时Go断言失败；agent使用Make构建有通过记录。优先检查verifier构建目标与include配置，不能把项目头文件缺失简单算第三方依赖。
+
+RakuenSoftware__aimee-2570 [agent只规划或澄清]
+Kimi在/go找不到仓库后只请求澄清；Qwen也缺少明显实现操作但未认证最终diff。GLM/Luna测试要求的PromptAllowsWrites/DelegateMayWrite未提供，部分CMake build目录无Makefile。
+
+RakuenSoftware__aimee-2581 [agent终止异常]
+GLM到300轮；其他组undefined RouteFilterResult/RouteAgent/flag等、部分Makefile缺失。题目实现接口和构建路径均需审查，现有日志不能指定唯一原因。
+
+RakuenSoftware__aimee-c_1c60c9c [agent只规划或澄清]
+Qwen只写plans文件并ExitPlanMode等待审批，未交付实现；其他组经济统计接口常量/类型未定义，叠加补丁异常。
+
+RakuenSoftware__aimee-c_b59e070 [实现或测试契约待区分]
+四组Go测试中SeatRequest、roundtablecfg.Run/Store等项目符号未定义；部分补丁拒绝。实现/内部API契约不匹配，未证实环境依赖缺失。
+
+RakuenSoftware__aimee-c_d9e4faf [agent只规划或澄清]
+GLM只写计划并等待审批；四组存在CMake重新生成失败和Go接口缺失/重复测试声明。混合构建、实现及测试安装问题。
+
+aldinokemal__go-whatsapp-web-multidevice-710 [agent终止异常]
+Qwen7200秒超时；四组测试要求的NewClientRegistry/ResolvedConfig/InitClientRegistry等项目接口缺失。未见补丁应用异常；重点是内部API契约是否充分说明，而非镜像缺包。
+
+apache__devlake-8877 [环境或运行器异常；agent终止异常]
+四组缺E2E_DB_URL，两个E2E包被跳过；任务测试另有私有helper签名不匹配，GLM/Kimi自建测试与注入测试同名。Qwen agent曾OOM。缺数据库不能单独解释四个零分。
+
+apache__kafka-22505 [直接verifier破坏证据]
+test.patch包含业务源码CandidateState.java；三组Claude反向应用去掉final后直接违反sealed类型约束；Luna也有该文件补丁混合/override错误。明确verifier修改业务实现。
+
+apache__pinot-18208 [实现或测试契约待区分]
+Claude组先被Checkstyle拦截，Luna执行GroovyStaticAnalyzerConfigTest后5例失败；四组补丁有反向/拒绝。非明确网络/系统依赖故障。
+
+babarot__afx-69 [直接verifier破坏证据]
+四组verifier恢复基线测试后因重命名旧路径不存在，git apply失败却继续；测试保留旧pkg/config导入，与题目要求移到internal冲突。明确verifier setup失败。
+
+basicmachines-co__basic-memory-1102 [直接verifier破坏证据]
+Qwen/Kimi反向删除新测试test_accepted_note_atomicity.py；GLM/Luna缺项目内services.note_preparation模块。分开处理verifier破坏与实现布局契约。
+
+cmu-phil__tetrad-c_5a3d308 [直接verifier破坏证据]
+test.patch包含DirichletEstimator等业务源码；反向恢复getColumn等已移除API，随后cannot find symbol。明确verifier改动了提交后的业务代码。
+
+cmu-phil__tetrad-c_d0e10cd [外部依赖网络失败；agent终止异常]
+GLM/Kimi/Luna Maven Central依赖下载429；另有测试/业务helper API编译错误和反向补丁；GLM到300轮。网络故障为部分模型的直接阻断，不能解释全部四组。
+
+crabtalk__crabtalk-116 [agent终止异常]
+三组Claude测试函数参数数量不匹配，Luna协议类型缺失；四组补丁反向/拒绝，GLM到300轮。以接口/补丁污染待核为主。
+
+dream-num__univer-6921 [实现或测试契约待区分]
+Claude三组相同8败16过且反向补丁；Luna7败21过，无补丁异常标记。UI props/过滤排序行为不符，不能单凭同分判环境失败。
+
+duckdb__duckdb-21978 [agent终止异常]
+四组补丁反向/部分拒绝，随后const写入等编译错误；GLM/Kimi/Luna另有cc1plus被杀，GLM超时。agent部分构建成功；需要分离测试回退、编译资源和代码错误。
+
+get-bb__bb-c_c88c518 [实现或测试契约待区分]
+四组实际执行的15至23例均通过，但两测试文件加载失败（@/components/ui等）；四组有补丁异常。项目模块/别名或测试重构契约问题，非确定第三方依赖缺失。
+
+get-bb__bb-c_cd3c6ef [实现或测试契约待区分]
+四组233至235例通过、13至15例失败，包含queued-thread-messages.js项目模块缺失及queue preview断言；均叠加补丁异常。
+
+github__spec-kit-2389 [直接verifier破坏证据；agent终止异常]
+GLM反向删除test_integration_state.py；Kimi/Luna缺项目内integration_state模块；Qwen超时且测试有symlink报错文案断言失败。
+
+google-gemini__gemini-cli-21776 [agent终止异常]
+三组Claude agent曾OOM；verifier有反向补丁、项目keyMatchers路径缺失/重复mock声明，部分组已执行的测试全过但suite加载失败。资源异常和测试污染并存。
+
+iced-rs__iced-3278 [agent终止异常]
+Qwen超时；其他组有LoadFont/Action API不匹配、重复导入/声明，叠加反向/部分补丁。编译错误本身不能证明镜像缺依赖。
+
+jhao104__proxy_pool-c_9dc9bed [实现或测试契约待区分]
+Qwen/Kimi是ConfigHandler.fetchers属性断言失败；GLM/Luna缺新fetcher模块。项目内部接口和模块名称不匹配，不能按pip缺包处理。
+
+katspaugh__wavesurfer.js-4340 [实现或测试契约待区分]
+Kimi用上游修复后，verifier反向恢复已删除旧测试；159执行例全过但6suite加载失败。其他模型另有行为断言失败；源码/测试重构契约与污染混合。
+
+kubb-labs__kubb-3715 [实现或测试契约待区分]
+四组多数测试通过，resolver.baseName、generator事件与CLI断言失败；四组有补丁异常。实现/测试API匹配问题待核。
+
+kubb-labs__kubb-3795 [实现或测试契约待区分]
+四组均缺项目内adapter-oas/emit/discriminator/propagate.ts，GLM/Kimi/Luna补丁无异常标记；需要核对实现文件布局及测试是否过窄，未见系统依赖故障。
+
+langchain-ai__openwiki-c_60f7877 [直接verifier破坏证据]
+Qwen verifier反向还原旧telemetry测试，期待字符串agent_error但新题面要求对象；其他组有新行为断言失败。明确至少一组测试契约被回退。
+
+lerd-env__lerd-471 [实现或测试契约待区分]
+四组唯一关键断言都是horizon而非horizon:listen。四组实现resolveWorkerCommand(workerName,sitePath,...)，测试按(sitePath,workerName,...)调用；题面未明确该内部签名。属于接口契约歧义，不是缺chokidar（测试自行创建目录）。
+
+letta-ai__letta-code-2798 [实现或测试契约待区分]
+四组补丁反向/拒绝后测试仍导入旧extensions路径，但题目要求改mods；混合重命名后的测试/实现路径，非外部依赖未安装。
+
+letta-ai__letta-code-3687 [agent只规划或澄清]
+GLM只写计划等待审批；Qwen/Kimi反向补丁后旧导出缺失，Luna缺新runtime模块/导出；部分自测基线失败也能在旧commit复现。不能统一归因网络。
+
+lucianodato__libspecbleach-81 [agent只规划或澄清]
+GLM未执行工具就请求仓库位置；Qwen/Kimi补丁反向恢复已删除Louizou测试，Luna测试源码重定义。入口行为及verifier问题混合。
+
+lucianodato__libspecbleach-86 [环境或运行器异常]
+四组verifier均拒绝读取Meson build.dat（工具版本/构建缓存不兼容）；Qwen/Luna agent阶段实际Meson测试24过。明确agent与verifier构建环境状态不一致；未证明镜像出厂即坏。
+
+lucianodato__libspecbleach-90 [环境或运行器异常]
+三个Claude组在verifier遇到Meson build.dat不兼容；Qwen agent自测25过。Luna则到达编译并因参数数量等失败。不能把四组零分全归一种原因。
+
+microsoft__agent-framework-go-110 [直接verifier破坏证据]
+三个Claude组恢复基线测试后git apply因旧重命名源不存在而失败，残留旧agentopt导入；Luna也有otel_test.go补丁拒绝，最终agent_test.go编译报[]middleware.Middleware不能用作[]agent.Middleware。均涉及测试安装/接口混合，非第三方Go依赖缺失。
+
+monkeytypegame__monkeytype-8134 [环境或运行器异常]
+四组production构建均缺RECAPTCHA_SITE_KEY；之后还继续测试并出现旧keymap配置断言失败，四组有补丁反向/拒绝。环境缺配置属实，但不是唯一失败原因。
+
+netease-youdao__LobsterAI-1091 [实现或测试契约待区分]
+多个scheduled-task项目内模块未实现或布局不同，Kimi还有policies.get类型错误；部分suite实际执行通过。需要对照测试契约而非安装第三方依赖。
+
+netease-youdao__LobsterAI-2080 [agent只规划或澄清]
+GLM只写计划等待审批；Qwen实际操作少且无记录编辑，尚未认证diff；Kimi/Luna已有实现但safeUrlTransform/selectedKitContextPrompt接口不符。
+
+openmemind__memind-2 [实现或测试契约待区分]
+Qwen未见补丁异常但被Spotless格式检查拦截；GLM/Luna补丁后测试重复import；Kimi测试API缺失。格式和测试污染/实现问题，非已知网络故障。
+
+openmemind__memind-43 [实现或测试契约待区分]
+Qwen执行到测试报错，GLM/Kimi/Luna测试编译缺MemindServerCorsConfiguration相关符号；四组有补丁拒绝/反向。接口契约与测试污染需分离。
+
+openmemind__memind-c_3f347c2 [实现或测试契约待区分]
+Qwen/GLM测试API符号缺失，Kimi测试UnusedImports，Luna缺DefaultMemoryContext相关符号；以实现/内部API及补丁污染待核，非明确环境依赖错误。
+
+teng-lin__notebooklm-py-1557 [agent终止异常]
+Qwen/Kimi超时；其余测试导入MIND_MAP_LEAF_ABSENT/unwrap_artifact_rows等项目内部符号失败。需核对题面与测试耦合，不是notebooklm第三方包未安装。
+

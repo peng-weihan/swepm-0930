@@ -1,0 +1,80 @@
+{
+  "instance_id": "kubb-labs__kubb-3715",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.88,
+  "gold_patch_assessment": "The gold patch (68 files) far exceeds the scope of the stated issue. The issue focuses on resolver API consistency: exposing core namespace as default, making name/file helpers top-level, supporting setResolver overrides, and exporting createResolver/Resolver from @kubb/kit. The gold patch does all of this but also merges FileProcessor into FileManager, removes streaming from adapter/renderer/KubbDriver, moves Url.ts to internals/utils, changes batch write behavior, removes constants (GENERATE_FLUSH_EVERY, STREAM_FLUSH_EVERY), and includes major refactoring across the monorepo. The resolver-specific changes correctly address the issue, but the patch bundles many unrelated changes.",
+  "base_vs_gold_expectation": "The test patch imports from createResolver.ts (which doesn't exist in the base) and uses new APIs like resolver.name(), resolver.default.path(), etc. The base would fail to compile/import these, so tests would reliably fail on the unmodified base. With the gold patch applied, all source files and APIs exist, so tests should pass. The differentiation mechanism works correctly.",
+  "too_narrow_risks": [
+    "The @kubb/kit exports of createResolver and Resolver (explicitly required by the issue) are not verified by any test - only the @kubb/core imports are tested",
+    "No test verifies that ctx.resolver.name('pet schema') and ctx.resolver.file(...) work in actual generator context (the definePlugin tests use ctx.resolver.name but not ctx.resolver.file in generator context)"
+  ],
+  "too_broad_risks": [
+    "12 of 14 test files test changes unrelated to the stated issue (FileProcessor merge into FileManager, streaming removal, Url.ts relocation, batch write behavior, timer.clear removal, etc.)",
+    "FileManager.test.ts requires parse() and write() methods on FileManager, which is about the FileProcessor merger not the resolver API",
+    "createKubb.test.ts expects specific batch sizes ([2] and [count]) that depend on the FileProcessor merge, not the resolver API",
+    "adapter.test.ts requires adapter.parse() instead of adapter.stream(), which is about streaming removal not resolver API",
+    "KubbDriver.test.ts, jsxRenderer.test.tsx: tests for streaming removal (not in issue)",
+    "Transform.test.ts: removes size/get tests (not related to resolver API)",
+    "loggers/utils.test.ts: removes timer.clear test (not related to resolver API)",
+    "runners/validate/run.test.ts: changes mock loading approach (not related to resolver API)",
+    "runners/generate/utils.test.ts: moves getConfigs tests (not related to resolver API)"
+  ],
+  "implementation_coupling": [
+    "Tests require FileProcessor to be merged into FileManager (FileManager must have parse/write methods) - this is an implementation choice not required by the issue",
+    "Tests require streaming to be removed from adapter, renderer, and KubbDriver - this is an implementation choice not required by the issue",
+    "Tests require Url.ts to be moved from packages/core/src to internals/utils/src - this is an implementation choice not required by the issue",
+    "Tests require specific batch write behavior (single batch after all plugins) vs the base per-plugin flushing - this is an implementation choice not required by the issue",
+    "Tests require GENERATE_FLUSH_EVERY and STREAM_FLUSH_EVERY constants to be removed - not required by the issue"
+  ],
+  "environment_risks": [
+    "The --coverage flag in eval.sh collects coverage data but no thresholds are configured, so it shouldn't cause spurious failures",
+    "The test patch deletes 3 test files (stream.test.ts, getConfigs.test.ts, FileProcessor.test.ts) which are correctly excluded from eval.sh's test list",
+    "Large timeout (3600s verifier, 7200s agent) should be sufficient for the 14-file test run"
+  ],
+  "mismatches": [
+    "Major scope mismatch: the issue describes a focused resolver API change, but the gold patch includes 68 files of broader refactoring (FileProcessor merge, streaming removal, Url relocation, etc.)",
+    "The test suite requires all of these unrelated changes, meaning a correct implementation of just the stated issue would fail the tests",
+    "The issue says 'old ctx.resolver.default(...) style should no longer be the expected API' but the gold patch actually keeps resolver.default as a namespace (resolver.default.name, resolver.default.path, etc.) - it's repurposed rather than removed"
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/kubb-labs__kubb-3715/instruction.md",
+      "detail": "Issue focuses on resolver API consistency: expose core namespace as default, top-level name/file helpers, setResolver overrides, @kubb/kit exports"
+    },
+    {
+      "file": "/audit_tasks/kubb-labs__kubb-3715/solution/solve.sh",
+      "detail": "Gold patch modifies 68 files including FileProcessor merger, streaming removal, Url relocation, and many other unrelated changes"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch modifies 17 files; only createResolver.test.ts and definePlugin.test.ts (2/14 run files) directly test the stated issue"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "FileManager.test.ts adds parse/write tests requiring FileProcessor merger (lines 764-987)"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "createKubb.test.ts expects batches=[2] and batches=[count] requiring changed flush behavior (lines 1484-1577)"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "adapter.test.ts uses adapter.parse instead of adapter.stream requiring streaming removal (lines 7-89)"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "createResolver.test.ts tests new resolver API: resolver.name(), resolver.default.path(), Resolver.merge(), this-binding in namespaces (lines 1590-1970)"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "definePlugin.test.ts tests setResolver with name() override and ctx.resolver.name() in generator context (lines 2055-2125)"
+    },
+    {
+      "file": "/testbed/configs/vitest.config.ts",
+      "detail": "No coverage thresholds configured - --coverage flag won't cause spurious failures"
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch is massively over-scoped: it changes 68 files for an issue that only requires resolver API changes. The test suite requires not just the resolver API change but also FileProcessor-to-FileManager merger, streaming removal from adapters/renderers, Url.ts relocation, and changed batch-write behavior. Only 2 of 14 test files directly test the stated issue. A candidate that correctly solves the resolver API issue but doesn't perform the unrelated refactoring would fail 12 of 14 test files. The tests should be scoped to only verify the resolver API changes described in the issue, or the issue description should be expanded to cover all the changes in the gold patch."
+}

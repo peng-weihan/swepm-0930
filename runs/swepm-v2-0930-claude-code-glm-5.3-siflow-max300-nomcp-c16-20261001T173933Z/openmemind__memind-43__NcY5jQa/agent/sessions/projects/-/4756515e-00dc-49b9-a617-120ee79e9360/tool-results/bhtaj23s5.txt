@@ -1,0 +1,849 @@
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/controller/admin/dashboard/AdminDashboardController.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.controller.admin.dashboard;
+
+import com.openmemind.ai.memory.server.domain.common.ApiResult;
+import com.openmemind.ai.memory.server.domain.dashboard.view.AdminDashboardView;
+import com.openmemind.ai.memory.server.service.dashboard.DashboardQueryService;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@Validated
+@RestController
+@RequestMapping("/admin/v1/dashboard")
+public class AdminDashboardController {
+
+    private final DashboardQueryService queryService;
+
+    public AdminDashboardController(DashboardQueryService queryService) {
+        this.queryService = queryService;
+    }
+
+    @GetMapping
+    public ApiResult<AdminDashboardView> get(
+            @RequestParam(required = false) String memoryId,
+            @RequestParam(defaultValue = "7") @Min(1) @Max(30) int days) {
+        if (days < 1 || days > 30) {
+            throw new IllegalArgumentException("days must be between 1 and 30");
+        }
+        return ApiResult.success(queryService.getDashboard(memoryId, days));
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/controller/admin/itemgraph/AdminItemGraphController.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.controller.admin.itemgraph;
+
+import com.openmemind.ai.memory.server.domain.common.ApiResult;
+import com.openmemind.ai.memory.server.domain.common.BatchDeleteResult;
+import com.openmemind.ai.memory.server.domain.common.PageResult;
+import com.openmemind.ai.memory.server.domain.itemgraph.query.ItemGraphPageQueries;
+import com.openmemind.ai.memory.server.domain.itemgraph.request.GraphEntityDeleteRequest;
+import com.openmemind.ai.memory.server.domain.itemgraph.request.GraphIdsRequest;
+import com.openmemind.ai.memory.server.domain.itemgraph.view.AdminGraphEntityDeleteResult;
+import com.openmemind.ai.memory.server.domain.itemgraph.view.GraphEntityDetailView;
+import com.openmemind.ai.memory.server.domain.itemgraph.view.ItemGraphViews;
+import com.openmemind.ai.memory.server.service.itemgraph.ItemGraphManagementService;
+import com.openmemind.ai.memory.server.service.itemgraph.ItemGraphQueryService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@Validated
+@RestController
+@RequestMapping("/admin/v1/item-graph")
+public class AdminItemGraphController {
+
+    private final ItemGraphQueryService queryService;
+    private final ItemGraphManagementService managementService;
+
+    public AdminItemGraphController(
+            ItemGraphQueryService queryService, ItemGraphManagementService managementService) {
+        this.queryService = queryService;
+        this.managementService = managementService;
+    }
+
+    @GetMapping("/summary")
+    public ApiResult<ItemGraphViews.SummaryView> summary(
+            @RequestParam(required = false) String memoryId) {
+        return ApiResult.success(queryService.summary(memoryId));
+    }
+
+    @GetMapping("/entities")
+    public ApiResult<PageResult<ItemGraphViews.EntityView>> entities(
+            @RequestParam(defaultValue = "1") @Min(1) int pageNo,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize,
+            @RequestParam(required = false) String memoryId,
+            @RequestParam(required = false) String entityType,
+            @RequestParam(required = false) String q) {
+        return ApiResult.success(
+                PageResult.from(
+                        queryService.listEntities(
+                                new ItemGraphPageQueries.EntityPageQuery(
+                                        pageNo, pageSize, memoryId, entityType, q))));
+    }
+
+    @GetMapping("/entities/{id}")
+    public ApiResult<GraphEntityDetailView> entityDetail(@PathVariable Integer id) {
+        return ApiResult.success(queryService.getEntity(id));
+    }
+
+    @DeleteMapping("/entities")
+    public ApiResult<AdminGraphEntityDeleteResult> deleteEntities(
+            @Valid @RequestBody GraphEntityDeleteRequest request) {
+        return ApiResult.success(
+                managementService.deleteEntities(request.memoryId(), request.entityKeys()));
+    }
+
+    @GetMapping("/aliases")
+    public ApiResult<PageResult<ItemGraphViews.AliasView>> aliases(
+            @RequestParam(defaultValue = "1") @Min(1) int pageNo,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize,
+            @RequestParam(required = false) String memoryId,
+            @RequestParam(required = false) String entityKey,
+            @RequestParam(required = false) String q) {
+        return ApiResult.success(
+                PageResult.from(
+                        queryService.listAliases(
+                                new ItemGraphPageQueries.AliasPageQuery(
+                                        pageNo, pageSize, memoryId, entityKey, q))));
+    }
+
+    @DeleteMapping("/aliases")
+    public ApiResult<BatchDeleteResult> deleteAliases(@Valid @RequestBody GraphIdsRequest request) {
+        return ApiResult.success(managementService.deleteAliases(request.ids()));
+    }
+
+    @GetMapping("/mentions")
+    public ApiResult<PageResult<ItemGraphViews.MentionView>> mentions(
+            @RequestParam(defaultValue = "1") @Min(1) int pageNo,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize,
+            @RequestParam(required = false) String memoryId,
+            @RequestParam(required = false) Long itemId,
+            @RequestParam(required = false) String entityKey) {
+        return ApiResult.success(
+                PageResult.from(
+                        queryService.listMentions(
+                                new ItemGraphPageQueries.MentionPageQuery(
+                                        pageNo, pageSize, memoryId, itemId, entityKey))));
+    }
+
+    @DeleteMapping("/mentions")
+    public ApiResult<BatchDeleteResult> deleteMentions(
+            @Valid @RequestBody GraphIdsRequest request) {
+        return ApiResult.success(managementService.deleteMentions(request.ids()));
+    }
+
+    @GetMapping("/item-links")
+    public ApiResult<PageResult<ItemGraphViews.ItemLinkView>> itemLinks(
+            @RequestParam(defaultValue = "1") @Min(1) int pageNo,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize,
+            @RequestParam(required = false) String memoryId,
+            @RequestParam(required = false) Long itemId,
+            @RequestParam(required = false) String linkType,
+            @RequestParam(required = false) String evidenceSource) {
+        return ApiResult.success(
+                PageResult.from(
+                        queryService.listItemLinks(
+                                new ItemGraphPageQueries.ItemLinkPageQuery(
+                                        pageNo,
+                                        pageSize,
+                                        memoryId,
+                                        itemId,
+                                        linkType,
+                                        evidenceSource))));
+    }
+
+    @DeleteMapping("/item-links")
+    public ApiResult<BatchDeleteResult> deleteItemLinks(
+            @Valid @RequestBody GraphIdsRequest request) {
+        return ApiResult.success(managementService.deleteItemLinks(request.ids()));
+    }
+
+    @GetMapping("/cooccurrences")
+    public ApiResult<PageResult<ItemGraphViews.CooccurrenceView>> cooccurrences(
+            @RequestParam(defaultValue = "1") @Min(1) int pageNo,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize,
+            @RequestParam(required = false) String memoryId,
+            @RequestParam(required = false) String entityKey) {
+        return ApiResult.success(
+                PageResult.from(
+                        queryService.listCooccurrences(
+                                new ItemGraphPageQueries.CooccurrencePageQuery(
+                                        pageNo, pageSize, memoryId, entityKey))));
+    }
+
+    @DeleteMapping("/cooccurrences")
+    public ApiResult<BatchDeleteResult> deleteCooccurrences(
+            @Valid @RequestBody GraphIdsRequest request) {
+        return ApiResult.success(managementService.deleteCooccurrences(request.ids()));
+    }
+
+    @GetMapping("/batches")
+    public ApiResult<PageResult<ItemGraphViews.BatchView>> batches(
+            @RequestParam(defaultValue = "1") @Min(1) int pageNo,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize,
+            @RequestParam(required = false) String memoryId,
+            @RequestParam(required = false) String state) {
+        return ApiResult.success(
+                PageResult.from(
+                        queryService.listBatches(
+                                new ItemGraphPageQueries.BatchPageQuery(
+                                        pageNo, pageSize, memoryId, state))));
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/controller/admin/insight/AdminInsightController.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.controller.admin.insight;
+
+import com.openmemind.ai.memory.server.domain.common.ApiResult;
+import com.openmemind.ai.memory.server.domain.common.BatchDeleteResult;
+import com.openmemind.ai.memory.server.domain.common.PageResult;
+import com.openmemind.ai.memory.server.domain.insight.query.InsightPageQuery;
+import com.openmemind.ai.memory.server.domain.insight.request.InsightDeleteRequest;
+import com.openmemind.ai.memory.server.domain.insight.view.AdminInsightView;
+import com.openmemind.ai.memory.server.service.insight.InsightDeleteService;
+import com.openmemind.ai.memory.server.service.insight.InsightQueryService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@Validated
+@RestController
+@RequestMapping("/admin/v1/insights")
+public class AdminInsightController {
+
+    private final InsightQueryService queryService;
+    private final InsightDeleteService deleteService;
+
+    public AdminInsightController(
+            InsightQueryService queryService, InsightDeleteService deleteService) {
+        this.queryService = queryService;
+        this.deleteService = deleteService;
+    }
+
+    @GetMapping
+    public ApiResult<PageResult<AdminInsightView>> page(
+            @RequestParam(defaultValue = "1") @Min(1) int pageNo,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize,
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String agentId,
+            @RequestParam(required = false) String scope,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String tier) {
+        return ApiResult.success(
+                PageResult.from(
+                        queryService.listInsights(
+                                InsightPageQuery.of(
+                                        pageNo, pageSize, userId, agentId, scope, type, tier))));
+    }
+
+    @GetMapping("/{insightId}")
+    public ApiResult<AdminInsightView> detail(@PathVariable Long insightId) {
+        return ApiResult.success(queryService.getInsight(insightId));
+    }
+
+    @DeleteMapping
+    public ApiResult<BatchDeleteResult> delete(@Valid @RequestBody InsightDeleteRequest request) {
+        return ApiResult.success(deleteService.deleteInsights(request.insightIds()));
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/controller/admin/rawdata/AdminRawDataController.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.controller.admin.rawdata;
+
+import com.openmemind.ai.memory.server.domain.common.ApiResult;
+import com.openmemind.ai.memory.server.domain.common.PageResult;
+import com.openmemind.ai.memory.server.domain.rawdata.query.RawDataPageQuery;
+import com.openmemind.ai.memory.server.domain.rawdata.request.RawDataDeleteRequest;
+import com.openmemind.ai.memory.server.domain.rawdata.response.RawDataDeleteResult;
+import com.openmemind.ai.memory.server.domain.rawdata.view.AdminRawDataView;
+import com.openmemind.ai.memory.server.service.rawdata.RawDataDeleteService;
+import com.openmemind.ai.memory.server.service.rawdata.RawDataQueryService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import java.time.Instant;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@Validated
+@RestController
+@RequestMapping("/admin/v1/raw-data")
+public class AdminRawDataController {
+
+    private final RawDataQueryService queryService;
+    private final RawDataDeleteService deleteService;
+
+    public AdminRawDataController(
+            RawDataQueryService queryService, RawDataDeleteService deleteService) {
+        this.queryService = queryService;
+        this.deleteService = deleteService;
+    }
+
+    @GetMapping
+    public ApiResult<PageResult<AdminRawDataView>> page(
+            @RequestParam(defaultValue = "1") @Min(1) int pageNo,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize,
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String agentId,
+            @RequestParam(required = false) Instant startTimeFrom,
+            @RequestParam(required = false) Instant startTimeTo) {
+        return ApiResult.success(
+                PageResult.from(
+                        queryService.listRawData(
+                                RawDataPageQuery.of(
+                                        pageNo,
+                                        pageSize,
+                                        userId,
+                                        agentId,
+                                        startTimeFrom,
+                                        startTimeTo))));
+    }
+
+    @GetMapping("/{rawDataId}")
+    public ApiResult<AdminRawDataView> detail(@PathVariable String rawDataId) {
+        return ApiResult.success(queryService.getRawData(rawDataId));
+    }
+
+    @DeleteMapping
+    public ApiResult<RawDataDeleteResult> delete(@Valid @RequestBody RawDataDeleteRequest request) {
+        return ApiResult.success(deleteService.deleteRawData(request.rawDataIds()));
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferController.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.controller.admin.buffer;
+
+import com.openmemind.ai.memory.server.domain.buffer.query.ConversationBufferPageQuery;
+import com.openmemind.ai.memory.server.domain.buffer.query.InsightBufferPageQuery;
+import com.openmemind.ai.memory.server.domain.buffer.request.AdminIdsRequest;
+import com.openmemind.ai.memory.server.domain.buffer.request.AdminLongIdsRequest;
+import com.openmemind.ai.memory.server.domain.buffer.request.InsightBufferBuiltUpdateRequest;
+import com.openmemind.ai.memory.server.domain.buffer.request.InsightBufferGroupUpdateRequest;
+import com.openmemind.ai.memory.server.domain.buffer.view.ConversationBufferView;
+import com.openmemind.ai.memory.server.domain.buffer.view.InsightBufferGroupView;
+import com.openmemind.ai.memory.server.domain.buffer.view.InsightBufferView;
+import com.openmemind.ai.memory.server.domain.common.AdminUpdateResult;
+import com.openmemind.ai.memory.server.domain.common.ApiResult;
+import com.openmemind.ai.memory.server.domain.common.BatchDeleteResult;
+import com.openmemind.ai.memory.server.domain.common.PageResult;
+import com.openmemind.ai.memory.server.service.buffer.BufferManagementService;
+import com.openmemind.ai.memory.server.service.buffer.BufferQueryService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import java.util.List;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@Validated
+@RestController
+@RequestMapping("/admin/v1/buffers")
+public class AdminBufferController {
+
+    private final BufferQueryService queryService;
+    private final BufferManagementService managementService;
+
+    public AdminBufferController(
+            BufferQueryService queryService, BufferManagementService managementService) {
+        this.queryService = queryService;
+        this.managementService = managementService;
+    }
+
+    @GetMapping("/conversations")
+    public ApiResult<PageResult<ConversationBufferView>> conversations(
+            @RequestParam(defaultValue = "1") @Min(1) int pageNo,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize,
+            @RequestParam(required = false) String memoryId,
+            @RequestParam(required = false) String sessionId,
+            @RequestParam(defaultValue = "pending") String state) {
+        return ApiResult.success(
+                PageResult.from(
+                        queryService.listConversations(
+                                ConversationBufferPageQuery.of(
+                                        pageNo, pageSize, memoryId, sessionId, state))));
+    }
+
+    @GetMapping("/conversations/{id}")
+    public ApiResult<ConversationBufferView> conversationDetail(@PathVariable Long id) {
+        return ApiResult.success(queryService.getConversation(id));
+    }
+
+    @PatchMapping("/conversations/extracted")
+    public ApiResult<AdminUpdateResult> markConversationsExtracted(
+            @Valid @RequestBody AdminLongIdsRequest request) {
+        return ApiResult.success(managementService.markConversationsExtracted(request.ids()));
+    }
+
+    @DeleteMapping("/conversations")
+    public ApiResult<BatchDeleteResult> deleteConversations(
+            @Valid @RequestBody AdminLongIdsRequest request) {
+        return ApiResult.success(managementService.deleteConversations(request.ids()));
+    }
+
+    @GetMapping("/insights")
+    public ApiResult<PageResult<InsightBufferView>> insights(
+            @RequestParam(defaultValue = "1") @Min(1) int pageNo,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize,
+            @RequestParam(required = false) String memoryId,
+            @RequestParam(required = false) String insightTypeName,
+            @RequestParam(defaultValue = "unbuilt") String state) {
+        return ApiResult.success(
+                PageResult.from(
+                        queryService.listInsights(
+                                InsightBufferPageQuery.of(
+                                        pageNo, pageSize, memoryId, insightTypeName, state))));
+    }
+
+    @GetMapping("/insights/groups")
+    public ApiResult<List<InsightBufferGroupView>> insightGroups(
+            @RequestParam(required = false) String memoryId,
+            @RequestParam(required = false) String insightTypeName) {
+        return ApiResult.success(queryService.listInsightGroups(memoryId, insightTypeName));
+    }
+
+    @PatchMapping("/insights/group")
+    public ApiResult<AdminUpdateResult> updateInsightGroup(
+            @Valid @RequestBody InsightBufferGroupUpdateRequest request) {
+        return ApiResult.success(
+                managementService.updateInsightGroup(request.ids(), request.groupName()));
+    }
+
+    @PatchMapping("/insights/built")
+    public ApiResult<AdminUpdateResult> updateInsightBuilt(
+            @Valid @RequestBody InsightBufferBuiltUpdateRequest request) {
+        return ApiResult.success(
+                managementService.updateInsightBuilt(request.ids(), request.built()));
+    }
+
+    @DeleteMapping("/insights")
+    public ApiResult<BatchDeleteResult> deleteInsights(
+            @Valid @RequestBody AdminIdsRequest request) {
+        return ApiResult.success(managementService.deleteInsightBuffers(request.ids()));
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemController.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.controller.admin.item;
+
+import com.openmemind.ai.memory.server.domain.common.ApiResult;
+import com.openmemind.ai.memory.server.domain.common.BatchDeleteResult;
+import com.openmemind.ai.memory.server.domain.common.PageResult;
+import com.openmemind.ai.memory.server.domain.item.query.ItemPageQuery;
+import com.openmemind.ai.memory.server.domain.item.request.ItemDeleteRequest;
+import com.openmemind.ai.memory.server.domain.item.view.AdminItemView;
+import com.openmemind.ai.memory.server.domain.memorythread.view.AdminItemMemoryThreadView;
+import com.openmemind.ai.memory.server.service.item.ItemDeleteService;
+import com.openmemind.ai.memory.server.service.item.ItemQueryService;
+import com.openmemind.ai.memory.server.service.memorythread.MemoryThreadQueryService;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@Validated
+@RestController
+@RequestMapping("/admin/v1/items")
+public class AdminItemController {
+
+    private final ItemQueryService queryService;
+    private final ItemDeleteService deleteService;
+    private final MemoryThreadQueryService memoryThreadQueryService;
+
+    public AdminItemController(
+            ItemQueryService queryService,
+            ItemDeleteService deleteService,
+            MemoryThreadQueryService memoryThreadQueryService) {
+        this.queryService = queryService;
+        this.deleteService = deleteService;
+        this.memoryThreadQueryService = memoryThreadQueryService;
+    }
+
+    @GetMapping
+    public ApiResult<PageResult<AdminItemView>> page(
+            @RequestParam(defaultValue = "1") @Min(1) int pageNo,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize,
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String agentId,
+            @RequestParam(required = false) String scope,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) String rawDataId) {
+        return ApiResult.success(
+                PageResult.from(
+                        queryService.listItems(
+                                ItemPageQuery.of(
+                                        pageNo, pageSize, userId, agentId, scope, category, type,
+                                        rawDataId))));
+    }
+
+    @GetMapping("/{itemId}")
+    public ApiResult<AdminItemView> detail(@PathVariable Long itemId) {
+        return ApiResult.success(queryService.getItem(itemId));
+    }
+
+    @GetMapping("/{itemId}/memory-threads")
+    public ApiResult<java.util.List<AdminItemMemoryThreadView>> itemThreads(
+            @PathVariable Long itemId,
+            @RequestParam String userId,
+            @RequestParam(required = false) String agentId) {
+        return ApiResult.success(
+                memoryThreadQueryService.listThreadsByItemId(userId, agentId, itemId));
+    }
+
+    @DeleteMapping
+    public ApiResult<BatchDeleteResult> delete(@Valid @RequestBody ItemDeleteRequest request) {
+        return ApiResult.success(deleteService.deleteItems(request.itemIds()));
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsController.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.controller.admin.memoryoption;
+
+import com.openmemind.ai.memory.server.domain.common.ApiResult;
+import com.openmemind.ai.memory.server.domain.config.request.MemoryOptionsPutRequest;
+import com.openmemind.ai.memory.server.domain.config.response.MemoryOptionsGetResponse;
+import com.openmemind.ai.memory.server.service.config.MemoryOptionService;
+import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/admin/v1/config/memory-options")
+public class MemoryOptionsController {
+
+    private final MemoryOptionService memoryOptionService;
+
+    public MemoryOptionsController(MemoryOptionService memoryOptionService) {
+        this.memoryOptionService = memoryOptionService;
+    }
+
+    @GetMapping
+    public ApiResult<MemoryOptionsGetResponse> get() {
+        var snapshot = memoryOptionService.getCurrent();
+        return ApiResult.success(
+                new MemoryOptionsGetResponse(snapshot.version(), snapshot.config()));
+    }
+
+    @PutMapping
+    public ApiResult<MemoryOptionsGetResponse> update(
+            @Valid @RequestBody MemoryOptionsPutRequest request) {
+        var snapshot = memoryOptionService.update(request.expectedVersion(), request.config());
+        return ApiResult.success(
+                new MemoryOptionsGetResponse(snapshot.version(), snapshot.config()));
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadController.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.controller.admin.memorythread;
+
+import com.openmemind.ai.memory.server.domain.common.ApiResult;
+import com.openmemind.ai.memory.server.domain.common.PageResult;
+import com.openmemind.ai.memory.server.domain.memorythread.query.MemoryThreadPageQuery;
+import com.openmemind.ai.memory.server.domain.memorythread.view.AdminMemoryThreadItemView;
+import com.openmemind.ai.memory.server.domain.memorythread.view.AdminMemoryThreadStatusView;
+import com.openmemind.ai.memory.server.domain.memorythread.view.AdminMemoryThreadView;
+import com.openmemind.ai.memory.server.service.memorythread.MemoryThreadQueryService;
+import com.openmemind.ai.memory.server.service.memorythread.MemoryThreadRebuildService;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import java.util.List;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+@Validated
+@RestController
+@RequestMapping("/admin/v1/memory-threads")
+public class AdminMemoryThreadController {
+
+    private final MemoryThreadQueryService queryService;
+    private final MemoryThreadRebuildService rebuildService;
+
+    public AdminMemoryThreadController(
+            MemoryThreadQueryService queryService, MemoryThreadRebuildService rebuildService) {
+        this.queryService = queryService;
+        this.rebuildService = rebuildService;
+    }
+
+    @GetMapping
+    public ApiResult<PageResult<AdminMemoryThreadView>> page(
+            @RequestParam(defaultValue = "1") @Min(1) int pageNo,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize,
+            @RequestParam(required = false) String userId,
+            @RequestParam(required = false) String agentId,
+            @RequestParam(required = false) String status) {
+        return ApiResult.success(
+                PageResult.from(
+                        queryService.listThreads(
+                                MemoryThreadPageQuery.of(
+                                        pageNo, pageSize, userId, agentId, status))));
+    }
+
+    @GetMapping("/{threadKey}")
+    public ApiResult<AdminMemoryThreadView> detail(
+            @PathVariable String threadKey,
+            @RequestParam String userId,
+            @RequestParam(required = false) String agentId) {
+        return ApiResult.success(queryService.getThread(userId, agentId, threadKey));
+    }
+
+    @GetMapping("/{threadKey}/items")
+    public ApiResult<List<AdminMemoryThreadItemView>> items(
+            @PathVariable String threadKey,
+            @RequestParam String userId,
+            @RequestParam(required = false) String agentId) {
+        return ApiResult.success(queryService.listThreadItems(userId, agentId, threadKey));
+    }
+
+    @GetMapping("/status")
+    public ApiResult<AdminMemoryThreadStatusView> status(
+            @RequestParam String userId, @RequestParam(required = false) String agentId) {
+        return ApiResult.success(queryService.getStatus(userId, agentId));
+    }
+
+    @PostMapping("/rebuild")
+    public ApiResult<Integer> rebuild(
+            @RequestParam String userId, @RequestParam(required = false) String agentId) {
+        return ApiResult.success(rebuildService.rebuild(userId, agentId));
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/controller/openapi/OpenHealthController.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.controller.openapi;
+
+import com.openmemind.ai.memory.server.domain.common.ApiResult;
+import com.openmemind.ai.memory.server.domain.memory.response.OpenMemoryHealthResponse;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+@RestController
+@RequestMapping("/open/v1")
+public class OpenHealthController {
+
+    @GetMapping("/health")
+    public ApiResult<OpenMemoryHealthResponse> health() {
+        return ApiResult.success(new OpenMemoryHealthResponse("UP", "memind-server"));
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/controller/openapi/OpenMemoryController.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.controller.openapi;
+
+import com.openmemind.ai.memory.server.domain.common.ApiResult;
+import com.openmemind.ai.memory.server.domain.memory.request.AddMessageRequest;
+import com.openmemind.ai.memory.server.domain.memory.request.CommitMemoryRequest;
+import com.openmemind.ai.memory.server.domain.memory.request.ExtractMemoryRequest;
+import com.openmemind.ai.memory.server.domain.memory.request.RetrieveMemoryRequest;
+import com.openmemind.ai.memory.server.domain.memory.response.RetrieveMemoryResponse;
+import com.openmemind.ai.memory.server.service.memory.OpenMemoryApplicationService;
+import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Mono;
+
+@RestController
+@RequestMapping("/open/v1/memory")
+public class OpenMemoryController {
+
+    private final OpenMemoryApplicationService service;
+
+    public OpenMemoryController(OpenMemoryApplicationService service) {
+        this.service = service;
+    }
+
+    @PostMapping("/extract")
+    public Mono<ApiResult<Void>> extract(@Valid @RequestBody ExtractMemoryRequest request) {
+        service.extractAsync(request);
+        return Mono.just(ApiResult.ok());
+    }
+
+    @PostMapping("/add-message")
+    public Mono<ApiResult<Void>> addMessage(@Valid @RequestBody AddMessageRequest request) {
+        service.addMessageAsync(request);
+        return Mono.just(ApiResult.ok());
+    }
+
+    @PostMapping("/commit")
+    public Mono<ApiResult<Void>> commit(@Valid @RequestBody CommitMemoryRequest request) {
+        service.commitAsync(request);
+        return Mono.just(ApiResult.ok());
+    }
+
+    @PostMapping("/retrieve")
+    public ApiResult<RetrieveMemoryResponse> retrieve(
+            @Valid @RequestBody RetrieveMemoryRequest request) {
+        return ApiResult.success(service.retrieve(request));
+    }
+}

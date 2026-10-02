@@ -1,0 +1,35 @@
+Traceback (most recent call last):
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/trial/single_step.py", line 77, in _run_agent
+    await self._run_agent_phase(
+    ...<5 lines>...
+    )
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/trial/trial.py", line 554, in _run_agent_phase
+    await asyncio.wait_for(
+    ...<6 lines>...
+    )
+  File "/home/mlei/.local/share/uv/python/cpython-3.13.8-linux-x86_64-gnu/lib/python3.13/asyncio/tasks.py", line 507, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 186, in wrapper
+    return await fn(self, instruction, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/agents/installed/claude_code.py", line 1891, in run
+    await self.exec_as_agent(
+    ...<14 lines>...
+    )
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 1006, in exec_as_agent
+    return await self._exec(
+           ^^^^^^^^^^^^^^^^^
+        environment, command, env=env, cwd=cwd, timeout_sec=timeout_sec
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 973, in _exec
+    raise self._classify_exec_error(command, result)
+harbor.agents.installed.base.NonZeroAgentExitCodeError: Command failed (exit 137): export PATH="$HOME/.local/bin:$PATH"; harbor_claude_code_instruction_fd4dbd4d8d1b4b628a8f5a016be3bd8c="$HARBOR_CLAUDE_CODE_INSTRUCTION_FD4DBD4D8D1B4B628A8F5A016BE3BD8C"; unset HARBOR_CLAUDE_CODE_INSTRUCTION_FD4DBD4D8D1B4B628A8F5A016BE3BD8C; printf "%s" "$harbor_claude_code_instruction_fd4dbd4d8d1b4b628a8f5a016be3bd8c" | claude --verbose --output-format=stream-json --settings /tmp/claude-code-settings/settings.json --max-turns 300 --effort max --permission-mode=bypassPermissions --strict-mcp-config --mcp-config '{"mcpServers":{}}' --disallowedTools 'mcp__*' --print 2>&1 | tee /logs/agent/claude-code.txt
+stdout: {"type":"system","subtype":"init","cwd":"/","session_id":"44bd90c7-793a-4865-b1d6-8a5c6af9df90","tools":["Task","AskUserQuestion","Bash","CronCreate","CronDelete","CronList","Edit","EnterPlanMode","EnterWorktree","ExitPlanMode","ExitWorktree","Glob", ... [1234649 chars truncated] ...  packages/cli/src/ui/key/keyBindings.test.ts.bak\nkeyBindings.test.ts\nkeyBindings.test.ts.bak\nkeyBindings.ts\nkeyMatchers.test.ts\nkeyMatchers.ts\nkeybindingUtils.test.ts\nkeybindingUtils.ts","stderr":"","interrupted":false,"isImage":false,"noOutputExpected":false}}
+bash: line 1:    49 Done                    printf "%s" "$harbor_claude_code_instruction_fd4dbd4d8d1b4b628a8f5a016be3bd8c"
+        50 Killed                  | claude --verbose --output-format=stream-json --settings /tmp/claude-code-settings/settings.json --max-turns 300 --effort max --permission-mode=bypassPermissions --strict-mcp-config --mcp-config '{"mcpServers":{}}' --disallowedTools 'mcp__*' --print 2>&1
+        51                       | tee /logs/agent/claude-code.txt
+
+stderr: None

@@ -1,0 +1,32 @@
+Traceback (most recent call last):
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/trial/single_step.py", line 77, in _run_agent
+    await self._run_agent_phase(
+    ...<5 lines>...
+    )
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/trial/trial.py", line 554, in _run_agent_phase
+    await asyncio.wait_for(
+    ...<6 lines>...
+    )
+  File "/home/mlei/.local/share/uv/python/cpython-3.13.8-linux-x86_64-gnu/lib/python3.13/asyncio/tasks.py", line 507, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 186, in wrapper
+    return await fn(self, instruction, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/agents/installed/claude_code.py", line 1891, in run
+    await self.exec_as_agent(
+    ...<14 lines>...
+    )
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 1006, in exec_as_agent
+    return await self._exec(
+           ^^^^^^^^^^^^^^^^^
+        environment, command, env=env, cwd=cwd, timeout_sec=timeout_sec
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/agents/installed/base.py", line 973, in _exec
+    raise self._classify_exec_error(command, result)
+harbor.agents.installed.base.NonZeroAgentExitCodeError: Command failed (exit 1): export PATH="$HOME/.local/bin:$PATH"; harbor_claude_code_instruction_f22dfcb3801e481794c95fa96b62a055="$HARBOR_CLAUDE_CODE_INSTRUCTION_F22DFCB3801E481794C95FA96B62A055"; unset HARBOR_CLAUDE_CODE_INSTRUCTION_F22DFCB3801E481794C95FA96B62A055; printf "%s" "$harbor_claude_code_instruction_f22dfcb3801e481794c95fa96b62a055" | claude --verbose --output-format=stream-json --settings /tmp/claude-code-settings/settings.json --max-turns 300 --effort max --permission-mode=bypassPermissions --strict-mcp-config --mcp-config '{"mcpServers":{}}' --disallowedTools 'mcp__*' --print 2>&1 | tee /logs/agent/claude-code.txt
+stdout: {"type":"system","subtype":"init","cwd":"/","session_id":"f37700c8-4427-4276-aace-307c88a49f7e","tools":["Task","AskUserQuestion","Bash","CronCreate","CronDelete","CronList","Edit","EnterPlanMode","EnterWorktree","ExitPlanMode","ExitWorktree","Glob", ... [4263758 chars truncated] ... 99,"usage":{"input_tokens":27931698,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":56665,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"inference_geo":"","iterations":[],"speed":"standard"},"modelUsage":{"glm-5.3-siflow":{"inputTokens":30801085,"outputTokens":85116,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"webSearchRequests":0,"costUSD":156.1333249999999,"contextWindow":200000,"maxOutputTokens":32000}},"permission_denials":[],"terminal_reason":"max_turns","fast_mode_state":"off","uuid":"b5aa23cd-6a21-4889-80f4-101980187c56","errors":["Reached maximum number of turns (300)"]}
+
+stderr: None

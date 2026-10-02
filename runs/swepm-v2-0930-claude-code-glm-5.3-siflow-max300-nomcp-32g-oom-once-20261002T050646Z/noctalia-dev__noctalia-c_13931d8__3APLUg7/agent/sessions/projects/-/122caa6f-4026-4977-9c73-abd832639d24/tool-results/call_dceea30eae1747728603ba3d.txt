@@ -1,0 +1,252 @@
+testbed/src/config/schema/engine.h:66:  Field<Parent> namedMap(
+testbed/src/config/schema/engine.h-67-      std::vector<Elem> Parent::* member, std::string_view key, const Schema<Elem>& subSchema,
+testbed/src/config/schema/engine.h-68-      std::function<void(Elem&, std::string_view name)> setName, std::function<std::string(const Elem&)> getName,
+/testbed/src/config/schema/engine.h-69-      bool readSkipEmptyName = false
+/testbed/src/config/schema/engine.h-70-  ) {
+/testbed/src/config/schema/engine.h-71-    return Field<Parent>{
+/testbed/src/config/schema/engine.h-72-        key,
+/testbed/src/config/schema/engine.h-73-        [member, key, &subSchema, setName, getName,
+testbed/src/config/schema/engine.h-74-         readSkipEmptyName](const toml::table& tbl, Parent& out, std::string_view parentPath, Diagnostics& diag) {
+/testbed/src/config/schema/engine.h-75-          auto* map = tbl[key].as_table();
+/testbed/src/config/schema/engine.h-76-          if (map == nullptr) {
+/testbed/src/config/schema/engine.h-77-            return;
+/testbed/src/config/schema/engine.h-78-          }
+testbed/src/config/schema/engine.h-79-          for (const auto& [name, node] : *map) {
+/testbed/src/config/schema/engine.h-80-            const auto* sub = node.as_table();
+/testbed/src/config/schema/engine.h-81-            if (sub == nullptr) {
+/testbed/src/config/schema/engine.h-82-              continue;
+/testbed/src/config/schema/engine.h-83-            }
+/testbed/src/config/schema/engine.h-84-            Elem elem{};
+/testbed/src/config/schema/engine.h-85-            setName(elem, name.str());
+/testbed/src/config/schema/engine.h-86-            readInto(*sub, elem, subSchema, joinPath(joinPath(parentPath, key), name.str()), diag);
+/testbed/src/config/schema/engine.h-87-            if (readSkipEmptyName && getName(elem).empty()) {
+/testbed/src/config/schema/engine.h-88-              continue;
+/testbed/src/config/schema/engine.h-89-            }
+testbed/src/config/schema/engine.h-90-            (out.*member).push_back(std::move(elem));
+/testbed/src/config/schema/engine.h-91-          }
+/testbed/src/config/schema/engine.h-92-        },
+testbed/src/config/schema/engine.h-93-        [member, key, &subSchema, getName](toml::table& tbl, const Parent& in) {
+/testbed/src/config/schema/engine.h-94-          if ((in.*member).empty()) {
+/testbed/src/config/schema/engine.h-95-            return;
+/testbed/src/config/schema/engine.h-96-          }
+testbed/src/config/schema/engine.h-97-          toml::table map;
+testbed/src/config/schema/engine.h-98-          for (const auto& elem : in.*member) {
+testbed/src/config/schema/engine.h-99-            const std::string name = getName(elem);
+/testbed/src/config/schema/engine.h-100-            if (name.empty()) {
+/testbed/src/config/schema/engine.h-101-              continue;
+/testbed/src/config/schema/engine.h-102-            }
+/testbed/src/config/schema/engine.h-103-            map.insert_or_assign(name, writeTable(elem, subSchema));
+/testbed/src/config/schema/engine.h-104-          }
+testbed/src/config/schema/engine.h-105-          tbl.insert_or_assign(key, std::move(map));
+/testbed/src/config/schema/engine.h-106-        },
+--
+testbed/src/config/schema/config_schema.cpp:280:        namedMap<NotificationConfig, NotificationFilterConfig>(
+testbed/src/config/schema/config_schema.cpp-281-            &NotificationConfig::filters, "filter", notificationFilterSchema(),
+testbed/src/config/schema/config_schema.cpp-282-            [](NotificationFilterConfig& filter, std::string_view name) { filter.name = std::string(name); },
+/testbed/src/config/schema/config_schema.cpp-283-            [](const NotificationFilterConfig& filter) { return filter.name; }
+/testbed/src/config/schema/config_schema.cpp-284-        ),
+/testbed/src/config/schema/config_schema.cpp-285-        custom<NotificationConfig>(
+/testbed/src/config/schema/config_schema.cpp-286-            "",
+testbed/src/config/schema/config_schema.cpp-287-            [](const toml::table& tbl, NotificationConfig& out, std::string_view, Diagnostics&) {
+/testbed/src/config/schema/config_schema.cpp-288-              if (const auto* arr = tbl["allowed_urgencies"].as_array()) {
+testbed/src/config/schema/config_schema.cpp-289-                std::vector<std::string> global;
+testbed/src/config/schema/config_schema.cpp-290-                for (const auto& node : *arr) {
+testbed/src/config/schema/config_schema.cpp-291-                  if (auto value = node.value<std::string>()) {
+/testbed/src/config/schema/config_schema.cpp-292-                    global.push_back(*value);
+/testbed/src/config/schema/config_schema.cpp-293-                  }
+/testbed/src/config/schema/config_schema.cpp-294-                }
+testbed/src/config/schema/config_schema.cpp-295-                global = normalizeFilterAllowedUrgencyStrings(std::move(global));
+/testbed/src/config/schema/config_schema.cpp-296-                if (!global.empty()) {
+testbed/src/config/schema/config_schema.cpp-297-                  for (auto& filter : out.filters) {
+/testbed/src/config/schema/config_schema.cpp-298-                    if (filter.allowedUrgencies.empty()) {
+/testbed/src/config/schema/config_schema.cpp-299-                      filter.allowedUrgencies = global;
+/testbed/src/config/schema/config_schema.cpp-300-                    }
+/testbed/src/config/schema/config_schema.cpp-301-                  }
+/testbed/src/config/schema/config_schema.cpp-302-                }
+/testbed/src/config/schema/config_schema.cpp-303-              }
+/testbed/src/config/schema/config_schema.cpp-304-
+/testbed/src/config/schema/config_schema.cpp-305-              const auto* orderArr = tbl["filter_order"].as_array();
+/testbed/src/config/schema/config_schema.cpp-306-              if (orderArr == nullptr || out.filters.empty()) {
+/testbed/src/config/schema/config_schema.cpp-307-                normalizeNotificationFilterNames(out.filters);
+/testbed/src/config/schema/config_schema.cpp-308-                return;
+/testbed/src/config/schema/config_schema.cpp-309-              }
+/testbed/src/config/schema/config_schema.cpp-310-
+testbed/src/config/schema/config_schema.cpp-311-              std::unordered_map<std::string, NotificationFilterConfig> byName;
+/testbed/src/config/schema/config_schema.cpp-312-              byName.reserve(out.filters.size());
+testbed/src/config/schema/config_schema.cpp-313-              for (auto& filter : out.filters) {
+/testbed/src/config/schema/config_schema.cpp-314-                if (!filter.name.empty()) {
+testbed/src/config/schema/config_schema.cpp-315-                  byName.emplace(filter.name, std::move(filter));
+/testbed/src/config/schema/config_schema.cpp-316-                }
+/testbed/src/config/schema/config_schema.cpp-317-              }
+/testbed/src/config/schema/config_schema.cpp-318-
+testbed/src/config/schema/config_schema.cpp-319-              std::vector<NotificationFilterConfig> ordered;
+/testbed/src/config/schema/config_schema.cpp-320-              ordered.reserve(byName.size());
+--
+testbed/src/config/schema/config_schema.cpp:453:        namedMap<BrightnessConfig, BrightnessMonitorOverride>(
+testbed/src/config/schema/config_schema.cpp-454-            &BrightnessConfig::monitorOverrides, "monitor", brightnessMonitorSchema(),
+testbed/src/config/schema/config_schema.cpp-455-            [](BrightnessMonitorOverride& o, std::string_view name) { o.match = std::string(name); },
+/testbed/src/config/schema/config_schema.cpp-456-            [](const BrightnessMonitorOverride& o) { return o.match; }
+/testbed/src/config/schema/config_schema.cpp-457-        ),
+/testbed/src/config/schema/config_schema.cpp-458-    };
+/testbed/src/config/schema/config_schema.cpp-459-    return s;
+/testbed/src/config/schema/config_schema.cpp-460-  }
+/testbed/src/config/schema/config_schema.cpp-461-
+/testbed/src/config/schema/config_schema.cpp-462-  const Schema<BatteryConfig>& batterySchema() {
+/testbed/src/config/schema/config_schema.cpp-463-    static const Schema<BatteryConfig> s = {
+testbed/src/config/schema/config_schema.cpp-464-        field(&BatteryConfig::warningThreshold, "warning_threshold", kBatteryWarningThresholdRange),
+/testbed/src/config/schema/config_schema.cpp-465-        // selector comes only from the map key; empty selectors are dropped.
+testbed/src/config/schema/config_schema.cpp:466:        namedMap<BatteryConfig, BatteryDeviceWarningThreshold>(
+testbed/src/config/schema/config_schema.cpp-467-            &BatteryConfig::deviceThresholds, "device", batteryDeviceSchema(),
+testbed/src/config/schema/config_schema.cpp-468-            [](BatteryDeviceWarningThreshold& d, std::string_view name) { d.selector = std::string(name); },
+/testbed/src/config/schema/config_schema.cpp-469-            [](const BatteryDeviceWarningThreshold& d) { return d.selector; }, /*readSkipEmptyName=*/true
+/testbed/src/config/schema/config_schema.cpp-470-        ),
+/testbed/src/config/schema/config_schema.cpp-471-    };
+/testbed/src/config/schema/config_schema.cpp-472-    return s;
+/testbed/src/config/schema/config_schema.cpp-473-  }
+/testbed/src/config/schema/config_schema.cpp-474-
+/testbed/src/config/schema/config_schema.cpp-475-  namespace {
+/testbed/src/config/schema/config_schema.cpp-476-    const Schema<ShortcutConfig>& shortcutSchema() {
+testbed/src/config/schema/config_schema.cpp-477-      static const Schema<ShortcutConfig> s = {field(&ShortcutConfig::type, "type")};
+/testbed/src/config/schema/config_schema.cpp-478-      return s;
+/testbed/src/config/schema/config_schema.cpp-479-    }
+/testbed/src/config/schema/config_schema.cpp-480-  } // namespace
+/testbed/src/config/schema/config_schema.cpp-481-
+/testbed/src/config/schema/config_schema.cpp-482-  const Schema<ControlCenterConfig>& controlCenterSchema() {
+/testbed/src/config/schema/config_schema.cpp-483-    static const Schema<ControlCenterConfig> s = {
+testbed/src/config/schema/config_schema.cpp-484-        enumField(&ControlCenterConfig::sidebarMode, "sidebar", kControlCenterSidebarModes),
+testbed/src/config/schema/config_schema.cpp-485-        enumField(&ControlCenterConfig::sidebarSectionMode, "sidebar_section", kControlCenterSidebarModes),
+testbed/src/config/schema/config_schema.cpp-486-        field(&ControlCenterConfig::width, "width", kControlCenterWidthRange),
+/testbed/src/config/schema/config_schema.cpp-487-        arrayOf<ControlCenterConfig, ShortcutConfig>(
+testbed/src/config/schema/config_schema.cpp-488-            &ControlCenterConfig::shortcuts, "shortcuts", shortcutSchema(),
+/testbed/src/config/schema/config_schema.cpp-489-            [](const ShortcutConfig& sc) { return !sc.type.empty(); }
+/testbed/src/config/schema/config_schema.cpp-490-        ),
+/testbed/src/config/schema/config_schema.cpp-491-    };
+/testbed/src/config/schema/config_schema.cpp-492-    return s;
+/testbed/src/config/schema/config_schema.cpp-493-  }
+/testbed/src/config/schema/config_schema.cpp-494-
+/testbed/src/config/schema/config_schema.cpp-495-  namespace {
+/testbed/src/config/schema/config_schema.cpp-496-    const Schema<PluginSourceConfig>& pluginSourceSchema() {
+/testbed/src/config/schema/config_schema.cpp-497-      static const Schema<PluginSourceConfig> s = {
+testbed/src/config/schema/config_schema.cpp-498-          field(&PluginSourceConfig::name, "name"),
+testbed/src/config/schema/config_schema.cpp-499-          enumField(&PluginSourceConfig::kind, "kind", kPluginSourceKinds),
+testbed/src/config/schema/config_schema.cpp-500-          field(&PluginSourceConfig::location, "location"),
+testbed/src/config/schema/config_schema.cpp-501-          field(&PluginSourceConfig::autoUpdate, "auto_update"),
+testbed/src/config/schema/config_schema.cpp-502-          field(&PluginSourceConfig::enabled, "enabled"),
+testbed/src/config/schema/config_schema.cpp-503-          finalize<PluginSourceConfig>([](PluginSourceConfig& src, std::string_view parentPath, Diagnostics& diag) {
+/testbed/src/config/schema/config_schema.cpp-504-            if (!src.name.empty() && !isValidPluginSourceName(src.name)) {
+/testbed/src/config/schema/config_schema.cpp-505-              diag.warn(
+/testbed/src/config/schema/config_schema.cpp-506-                  joinPath(parentPath, "name"),
+--
+testbed/src/config/schema/config_schema.cpp:864:        namedMap<IdleConfig, IdleBehaviorConfig>(
+testbed/src/config/schema/config_schema.cpp-865-            &IdleConfig::behaviors, "behavior", idleBehaviorSchema(),
+testbed/src/config/schema/config_schema.cpp-866-            [](IdleBehaviorConfig& b, std::string_view name) { b.name = std::string(name); },
+/testbed/src/config/schema/config_schema.cpp-867-            [](const IdleBehaviorConfig& b) { return b.name; }
+/testbed/src/config/schema/config_schema.cpp-868-        ),
+testbed/src/config/schema/config_schema.cpp-869-        / Keyless finalizer: reorder behaviors to match behavior_order, leaving
+/testbed/src/config/schema/config_schema.cpp-870-        // any unlisted behaviors in their original relative order at the end.
+/testbed/src/config/schema/config_schema.cpp-871-        custom<IdleConfig>(
+/testbed/src/config/schema/config_schema.cpp-872-            "",
+testbed/src/config/schema/config_schema.cpp-873-            [](const toml::table& tbl, IdleConfig& out, std::string_view, Diagnostics&) {
+/testbed/src/config/schema/config_schema.cpp-874-              const auto* orderArr = tbl["behavior_order"].as_array();
+/testbed/src/config/schema/config_schema.cpp-875-              if (orderArr == nullptr || out.behaviors.empty()) {
+/testbed/src/config/schema/config_schema.cpp-876-                return;
+/testbed/src/config/schema/config_schema.cpp-877-              }
+testbed/src/config/schema/config_schema.cpp-878-              std::vector<std::string> orderedNames;
+testbed/src/config/schema/config_schema.cpp-879-              for (const auto& item : *orderArr) {
+testbed/src/config/schema/config_schema.cpp-880-                if (auto name = item.value<std::string>(); name && !name->empty()) {
+/testbed/src/config/schema/config_schema.cpp-881-                  orderedNames.push_back(*name);
+/testbed/src/config/schema/config_schema.cpp-882-                }
+/testbed/src/config/schema/config_schema.cpp-883-              }
+/testbed/src/config/schema/config_schema.cpp-884-              if (orderedNames.empty()) {
+/testbed/src/config/schema/config_schema.cpp-885-                return;
+/testbed/src/config/schema/config_schema.cpp-886-              }
+testbed/src/config/schema/config_schema.cpp-887-              std::unordered_map<std::string, IdleBehaviorConfig> byName;
+testbed/src/config/schema/config_schema.cpp-888-              for (auto& b : out.behaviors) {
+testbed/src/config/schema/config_schema.cpp-889-                byName.insert_or_assign(b.name, std::move(b));
+/testbed/src/config/schema/config_schema.cpp-890-              }
+testbed/src/config/schema/config_schema.cpp-891-              std::vector<IdleBehaviorConfig> ordered;
+/testbed/src/config/schema/config_schema.cpp-892-              ordered.reserve(byName.size());
+testbed/src/config/schema/config_schema.cpp-893-              for (const auto& name : orderedNames) {
+/testbed/src/config/schema/config_schema.cpp-894-                auto it = byName.find(name);
+/testbed/src/config/schema/config_schema.cpp-895-                if (it == byName.end()) {
+/testbed/src/config/schema/config_schema.cpp-896-                  continue;
+/testbed/src/config/schema/config_schema.cpp-897-                }
+testbed/src/config/schema/config_schema.cpp-898-                ordered.push_back(std::move(it->second));
+/testbed/src/config/schema/config_schema.cpp-899-                byName.erase(it);
+/testbed/src/config/schema/config_schema.cpp-900-              }
+testbed/src/config/schema/config_schema.cpp-901-              for (auto& [name, b] : byName) {
+/testbed/src/config/schema/config_schema.cpp-902-                (void)name;
+testbed/src/config/schema/config_schema.cpp-903-                ordered.push_back(std::move(b));
+/testbed/src/config/schema/config_schema.cpp-904-              }
+--
+testbed/src/config/schema/config_schema.cpp:1069:          namedMap<ThemeConfig::TemplatesConfig, UserTemplate>(
+testbed/src/config/schema/config_schema.cpp-1070-              &ThemeConfig::TemplatesConfig::userTemplates, "user", userTemplateSchema(),
+testbed/src/config/schema/config_schema.cpp-1071-              [](UserTemplate& t, std::string_view name) { t.id = std::string(name); },
+/testbed/src/config/schema/config_schema.cpp-1072-              [](const UserTemplate& t) { return t.id; }, /*readSkipEmptyName=*/true
+/testbed/src/config/schema/config_schema.cpp-1073-          ),
+/testbed/src/config/schema/config_schema.cpp-1074-      };
+/testbed/src/config/schema/config_schema.cpp-1075-      return s;
+/testbed/src/config/schema/config_schema.cpp-1076-    }
+/testbed/src/config/schema/config_schema.cpp-1077-  } // namespace
+/testbed/src/config/schema/config_schema.cpp-1078-
+/testbed/src/config/schema/config_schema.cpp-1079-  const Schema<ThemeConfig>& themeSchema() {
+/testbed/src/config/schema/config_schema.cpp-1080-    static const Schema<ThemeConfig> s = {
+testbed/src/config/schema/config_schema.cpp-1081-        enumField(&ThemeConfig::source, "source", kPaletteSources),
+testbed/src/config/schema/config_schema.cpp-1082-        field(&ThemeConfig::builtinPalette, "builtin"),
+testbed/src/config/schema/config_schema.cpp-1083-        field(&ThemeConfig::communityPalette, "community_palette"),
+testbed/src/config/schema/config_schema.cpp-1084-        field(&ThemeConfig::customPalette, "custom_palette"),
+testbed/src/config/schema/config_schema.cpp-1085-        field(&ThemeConfig::wallpaperScheme, "wallpaper_scheme"),
+testbed/src/config/schema/config_schema.cpp-1086-        enumField(&ThemeConfig::mode, "mode", kThemeModes),
+testbed/src/config/schema/config_schema.cpp-1087-        subTable(&ThemeConfig::templates, "templates", templatesSchema()),
+/testbed/src/config/schema/config_schema.cpp-1088-    };
+/testbed/src/config/schema/config_schema.cpp-1089-    return s;
+/testbed/src/config/schema/config_schema.cpp-1090-  }
+/testbed/src/config/schema/config_schema.cpp-1091-
+/testbed/src/config/schema/config_schema.cpp-1092-  namespace {
+/testbed/src/config/schema/config_schema.cpp-1093-    // Plain string, but emitted only when non-empty (shell.lang).
+testbed/src/config/schema/config_schema.cpp-1094-    template <typename Struct> Field<Struct> stringIfNonEmptyField(std::string Struct::* member, std::string_view key) {
+/testbed/src/config/schema/config_schema.cpp-1095-      return custom<Struct>(
+/testbed/src/config/schema/config_schema.cpp-1096-          key,
+testbed/src/config/schema/config_schema.cpp-1097-          [member, key](const toml::table& tbl, Struct& out, std::string_view, Diagnostics&) {
+testbed/src/config/schema/config_schema.cpp-1098-            if (auto v = tbl[key].value<std::string>()) {
+/testbed/src/config/schema/config_schema.cpp-1099-              out.*member = *v;
+/testbed/src/config/schema/config_schema.cpp-1100-            }
+/testbed/src/config/schema/config_schema.cpp-1101-          },
+testbed/src/config/schema/config_schema.cpp-1102-          [member, key](toml::table& tbl, const Struct& in) {
+/testbed/src/config/schema/config_schema.cpp-1103-            if (!(in.*member).empty()) {
+/testbed/src/config/schema/config_schema.cpp-1104-              tbl.insert_or_assign(key, in.*member);
+/testbed/src/config/schema/config_schema.cpp-1105-            }
+/testbed/src/config/schema/config_schema.cpp-1106-          }
+/testbed/src/config/schema/config_schema.cpp-1107-      );
+/testbed/src/config/schema/config_schema.cpp-1108-    }
+/testbed/src/config/schema/config_schema.cpp-1109-
+--
+testbed/src/config/schema/config_schema.cpp:1356:        namedMap<WallpaperConfig, WallpaperMonitorOverride>(
+testbed/src/config/schema/config_schema.cpp-1357-            &WallpaperConfig::monitorOverrides, "monitor", wallpaperMonitorSchema(),
+testbed/src/config/schema/config_schema.cpp-1358-            [](WallpaperMonitorOverride& o, std::string_view name) { o.match = std::string(name); },
+/testbed/src/config/schema/config_schema.cpp-1359-            [](const WallpaperMonitorOverride& o) { return o.match; }
+/testbed/src/config/schema/config_schema.cpp-1360-        ),
+/testbed/src/config/schema/config_schema.cpp-1361-    };
+/testbed/src/config/schema/config_schema.cpp-1362-    return s;
+/testbed/src/config/schema/config_schema.cpp-1363-  }
+/testbed/src/config/schema/config_schema.cpp-1364-
+/testbed/src/config/schema/config_schema.cpp-1365-  const Schema<HooksConfig>& hooksSchema() {
+/testbed/src/config/schema/config_schema.cpp-1366-    // One field per HookKind, keyed by its canonical name. A value may be a single
+/testbed/src/config/schema/config_schema.cpp-1367-    // command string or an array; empty entries are dropped (matching the legacy
+/testbed/src/config/schema/config_schema.cpp-1368-    // setHookCommandsFromNode). Every kind is always emitted, even when empty.
+/testbed/src/config/schema/config_schema.cpp-1369-    static const Schema<HooksConfig> s = [] {
+/testbed/src/config/schema/config_schema.cpp-1370-      Schema<HooksConfig> fields;
+testbed/src/config/schema/config_schema.cpp-1371-      for (std::size_t i = 0; i < static_cast<std::size_t>(HookKind::Count); ++i) {
+testbed/src/config/schema/config_schema.cpp-1372-        const std::string_view key = hookKindKey(static_cast<HookKind>(i));
+/testbed/src/config/schema/config_schema.cpp-1373-        fields.push_back(
+/testbed/src/config/schema/config_schema.cpp-1374-            custom<HooksConfig>(
+/testbed/src/config/schema/config_schema.cpp-1375-                key,
+testbed/src/config/schema/config_schema.cpp-1376-                [i, key](const toml::table& tbl, HooksConfig& out, std::string_view, Diagnostics&) {
+/testbed/src/config/schema/config_schema.cpp-1377-                  auto& vec = out.commands[i];
+/testbed/src/config/schema/config_schema.cpp-1378-                  vec.clear();
+/testbed/src/config/schema/config_schema.cpp-1379-                  const auto* node = tbl.get(key);
+/testbed/src/config/schema/config_schema.cpp-1380-                  if (node == nullptr) {
+/testbed/src/config/schema/config_schema.cpp-1381-                    return;
+/testbed/src/config/schema/config_schema.cpp-1382-                  }
+
+[Showing results with pagination = limit: 250]

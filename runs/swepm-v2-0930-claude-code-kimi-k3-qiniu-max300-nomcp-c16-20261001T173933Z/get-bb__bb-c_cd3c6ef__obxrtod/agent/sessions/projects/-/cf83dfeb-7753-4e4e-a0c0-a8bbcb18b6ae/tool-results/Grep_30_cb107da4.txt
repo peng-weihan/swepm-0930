@@ -1,0 +1,252 @@
+testbed/apps/app/src/hooks/mutation-cache-effects.ts:13:  threadDraftsQueryKey,
+testbed/apps/app/src/hooks/mutation-cache-effects.ts:148:  queryClient.invalidateQueries({ queryKey: threadDraftsQueryKey(threadId) });
+testbed/apps/app/src/hooks/mutation-cache-effects.ts:154:export function invalidateThreadDraftSendQueries({
+testbed/apps/app/src/hooks/mutation-cache-effects.ts:222:  queryClient.removeQueries({ queryKey: threadDraftsQueryKey(threadId) });
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:5:import { usePromptDraftStorage } from "./usePromptDraftStorage";
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:17:describe("usePromptDraftStorage", () => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:18:  it("clears the draft when it still matches the submitted snapshot", () => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:20:      usePromptDraftStorage(PROJECT_DRAFT_SCOPE),
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:27:    const submittedDraft = result.current.getCurrent();
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:31:      didClear = result.current.clearIfCurrentMatches(submittedDraft);
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:43:      usePromptDraftStorage(PROJECT_DRAFT_SCOPE),
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:50:    const submittedDraft = result.current.getCurrent();
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:59:      didClear = result.current.clearIfCurrentMatches(submittedDraft);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:3:  PromptDraftAttachment,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:4:  PromptDraftState,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:5:} from "@/lib/prompt-draft";
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:7:  arePromptDraftStatesEqual,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:8:  emptyPromptDraftState,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:9:  isPromptDraftEmpty,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:10:  parsePromptDraftStorage,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:11:  serializePromptDraftStorage,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:12:} from "@/lib/prompt-draft";
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:17:interface PromptDraftScope {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:22:interface PromptDraftCacheEntry {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:24:  draft: PromptDraftState;
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:27:type PromptDraftListener = () => void;
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:29:const EMPTY_PROMPT_DRAFT = emptyPromptDraftState();
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:30:const promptDraftCache = new Map<string, PromptDraftCacheEntry>();
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:31:const promptDraftSubscribers = new Map<string, Set<PromptDraftListener>>();
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:32:let promptDraftStorageObserverInitialized = false;
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:38:function readPromptDraft(storageKey: string | null): PromptDraftState {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:44:  const cachedEntry = promptDraftCache.get(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:46:    return cachedEntry.draft;
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:49:  const draft = parsePromptDraftStorage(rawValue);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:50:  promptDraftCache.set(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:52:    draft,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:54:  return draft;
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:57:function emitPromptDraftChange(storageKey: string): void {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:58:  const listeners = promptDraftSubscribers.get(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:66:function ensurePromptDraftStorageObserver(): void {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:67:  if (promptDraftStorageObserverInitialized || typeof window === "undefined") {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:71:  promptDraftStorageObserverInitialized = true;
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:74:    promptDraftCache.delete(event.key);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:75:    emitPromptDraftChange(event.key);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:79:function subscribePromptDraft(
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:81:  listener: PromptDraftListener,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:87:  ensurePromptDraftStorageObserver();
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:89:  let listeners = promptDraftSubscribers.get(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:92:    promptDraftSubscribers.set(storageKey, listeners);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:97:    const existingListeners = promptDraftSubscribers.get(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:102:      promptDraftSubscribers.delete(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:107:function writePromptDraft(
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:109:  value: PromptDraftState,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:115:  const serialized = serializePromptDraftStorage(value);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:118:    promptDraftCache.set(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:120:      draft: EMPTY_PROMPT_DRAFT,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:122:    emitPromptDraftChange(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:127:  promptDraftCache.set(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:129:    draft: value,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:131:  emitPromptDraftChange(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:134:function restorePromptDraftIfEmpty(
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:136:  value: PromptDraftState,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:141:    isPromptDraftEmpty(value)
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:146:  if (!isPromptDraftEmpty(readPromptDraft(storageKey))) {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:150:  writePromptDraft(storageKey, value);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:154:function getPromptDraftStorageKey({
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:157:}: PromptDraftScope): string | null {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:164:  return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:167:export function usePromptDraftStorage(scope: PromptDraftScope) {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:170:      getPromptDraftStorageKey({
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:176:  const draft = useSyncExternalStore(
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:178:      (listener) => subscribePromptDraft(storageKey, listener),
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:181:    useCallback(() => readPromptDraft(storageKey), [storageKey]),
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:185:  const setDraftAndPersist = useCallback(
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:186:    (nextDraft: PromptDraftState) => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:187:      writePromptDraft(storageKey, nextDraft);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:192:  const getCurrent = useCallback((): PromptDraftState => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:193:    return readPromptDraft(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:198:      writePromptDraft(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:199:        ...readPromptDraft(storageKey),
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:211:      const currentDraft = readPromptDraft(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:212:      const trimmedCurrent = currentDraft.text.trimEnd();
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:217:      writePromptDraft(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:218:        ...currentDraft,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:226:    (attachment: PromptDraftAttachment) => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:227:      const currentDraft = readPromptDraft(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:228:      const alreadyExists = currentDraft.attachments.some(
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:233:      writePromptDraft(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:234:        ...currentDraft,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:235:        attachments: [...currentDraft.attachments, attachment],
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:243:      const currentDraft = readPromptDraft(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:244:      const nextAttachments = currentDraft.attachments.filter(
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:247:      if (nextAttachments.length === currentDraft.attachments.length) {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:251:      writePromptDraft(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:252:        ...currentDraft,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:260:    setDraftAndPersist(EMPTY_PROMPT_DRAFT);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:261:  }, [setDraftAndPersist]);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:264:    (expectedDraft: PromptDraftState): boolean => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:266:        !arePromptDraftStatesEqual(readPromptDraft(storageKey), expectedDraft)
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:271:      setDraftAndPersist(EMPTY_PROMPT_DRAFT);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:274:    [setDraftAndPersist, storageKey],
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:278:    (attachments: PromptDraftAttachment[]) => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:279:      writePromptDraft(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:280:        ...readPromptDraft(storageKey),
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:288:    (nextDraft: PromptDraftState) => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:289:      restorePromptDraftIfEmpty(storageKey, nextDraft);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:297:    value: draft.text,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:298:    text: draft.text,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:299:    attachments: draft.attachments,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:300:    setDraft: setDraftAndPersist,
+testbed/apps/app/src/hooks/system-cache-effects.test.ts:55:      drafts: [],
+testbed/apps/app/src/hooks/system-cache-effects.test.ts:86:      drafts: [],
+testbed/apps/app/src/hooks/realtime-cache-effects.test.ts:18:  threadDraftsQueryKey,
+testbed/apps/app/src/hooks/realtime-cache-effects.test.ts:424:  it("invalidates drafts and prompt history but not thread detail for queue changes", () => {
+testbed/apps/app/src/hooks/realtime-cache-effects.test.ts:428:    const draftsKey = threadDraftsQueryKey("thr_1");
+testbed/apps/app/src/hooks/realtime-cache-effects.test.ts:431:    queryClient.setQueryData(draftsKey, []);
+testbed/apps/app/src/hooks/realtime-cache-effects.test.ts:443:    expect(queryClient.getQueryState(draftsKey)?.isInvalidated).toBe(true);
+testbed/apps/app/src/hooks/system-cache-effects.ts:13:  allThreadDraftsQueryKeyPrefix,
+testbed/apps/app/src/hooks/system-cache-effects.ts:108:    allThreadDraftsQueryKeyPrefix(),
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:18:  useThreadDrafts,
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:27:  threadDraftsQueryKey,
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:245:    const drafts = [
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:247:        id: "draft-1",
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:306:            drafts,
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:321:        pathname: "/api/v1/threads/thread-1/drafts",
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:324:          return jsonResponse(drafts);
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:370:        const draftList = useThreadDrafts("thread-1", {
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:397:          draftList,
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:408:      expect(result.current.draftList.data).toEqual(drafts);
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:424:    expect(queryClient.getQueryData(threadDraftsQueryKey("thread-1"))).toEqual(
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:425:      drafts,
+testbed/apps/app/src/hooks/queries/query-keys.ts:25:export const THREAD_DRAFTS_QUERY_KEY = "threadDrafts";
+testbed/apps/app/src/hooks/queries/query-keys.ts:161:export type ThreadDraftsQueryKeyPrefix = readonly [
+testbed/apps/app/src/hooks/queries/query-keys.ts:164:export type ThreadDraftsQueryKey = readonly [
+testbed/apps/app/src/hooks/queries/query-keys.ts:495:export function threadDraftsQueryKey(threadId: string): ThreadDraftsQueryKey {
+testbed/apps/app/src/hooks/queries/query-keys.ts:499:export function allThreadDraftsQueryKeyPrefix(): ThreadDraftsQueryKeyPrefix {
+testbed/apps/app/src/hooks/queries/thread-queries.ts:15:  ThreadDraftListResponse,
+testbed/apps/app/src/hooks/queries/thread-queries.ts:44:  threadDraftsQueryKey,
+testbed/apps/app/src/hooks/queries/thread-queries.ts:268:      queryClient.setQueryData(threadDraftsQueryKey(id), bootstrap.drafts);
+testbed/apps/app/src/hooks/queries/thread-queries.ts:310:export function useThreadDrafts(id: string, options?: QueryOptions) {
+testbed/apps/app/src/hooks/queries/thread-queries.ts:311:  return useQuery<ThreadDraftListResponse>({
+testbed/apps/app/src/hooks/queries/thread-queries.ts:312:    queryKey: threadDraftsQueryKey(id),
+testbed/apps/app/src/hooks/queries/thread-queries.ts:313:    queryFn: () => api.listThreadDrafts(requireThreadId(id, "useThreadDrafts")),
+testbed/apps/app/src/hooks/realtime-cache-registry.ts:25:  allThreadDraftsQueryKeyPrefix,
+testbed/apps/app/src/hooks/realtime-cache-registry.ts:38:  threadDraftsQueryKey,
+testbed/apps/app/src/hooks/realtime-cache-registry.ts:99:      dirtyThreadDraftQueries, // Composer queue reads drafts directly.
+testbed/apps/app/src/hooks/realtime-cache-registry.ts:100:      dirtyThreadPromptHistoryQueries, // Composer recall includes queued drafts.
+testbed/apps/app/src/hooks/realtime-cache-registry.ts:348:function dirtyThreadDraftQueries({
+testbed/apps/app/src/hooks/realtime-cache-registry.ts:352:    ? [threadDraftsQueryKey(threadId)]
+testbed/apps/app/src/hooks/realtime-cache-registry.ts:353:    : [allThreadDraftsQueryKeyPrefix()];
+testbed/apps/app/src/hooks/environment-cache-effects.test.ts:66:      drafts: [],
+testbed/apps/app/src/hooks/environment-cache-effects.test.ts:73:      drafts: [],
+testbed/apps/app/src/hooks/environment-cache-effects.test.ts:94:      drafts: [],
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:10:  CreateDraftRequest,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:11:  SendDraftMode,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:12:  SendDraftResponse,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:43:  invalidateThreadDraftSendQueries,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:50:interface CreateThreadDraftMutationRequest extends CreateDraftRequest {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:54:interface SendThreadDraftMutationRequest {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:56:  mode: SendDraftMode;
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:60:interface DeleteThreadDraftMutationRequest {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:98:    id: `draft:${queuedMessage.id}`,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:385:export function useCreateThreadDraft() {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:400:    }: CreateThreadDraftMutationRequest): Promise<ThreadQueuedMessage> =>
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:401:      api.createThreadDraft(id, {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:419:export function useSendThreadDraft() {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:431:    }: SendThreadDraftMutationRequest): Promise<SendDraftResponse> =>
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:432:      api.sendThreadDraft(id, queuedMessageId, { mode }),
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:434:      invalidateThreadDraftSendQueries({ queryClient, threadId: variables.id });
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:439:export function useDeleteThreadDraft() {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:447:    mutationFn: ({ id, queuedMessageId }: DeleteThreadDraftMutationRequest) =>
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:448:      api.deleteThreadDraft(id, queuedMessageId),
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:8:  SendDraftResponse,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:22:  useCreateThreadDraft,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:23:  useSendThreadDraft,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:31:  createThreadDraft: vi.fn(),
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:32:  sendThreadDraft: vi.fn(),
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:52:} satisfies SendDraftResponse["queuedMessage"];
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:680:  it("adds queued follow-up history immediately after draft creation succeeds", async () => {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:681:    vi.mocked(api.createThreadDraft).mockResolvedValue(queuedMessage);
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:683:    const { result } = renderHook(() => useCreateThreadDraft(), { wrapper });
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:698:        id: "draft:queued-1",
+testbed/apps/app/src/lib/prompt-history.test.ts:5:  promptHistoryEntriesToDrafts,
+testbed/apps/app/src/lib/prompt-history.test.ts:9:  it("drops entries that cannot be edited back into a prompt draft", () => {
+testbed/apps/app/src/lib/prompt-history.test.ts:10:    const drafts = promptHistoryEntriesToDrafts([
+testbed/apps/app/src/lib/prompt-history.test.ts:23:    expect(drafts).toEqual([
+testbed/apps/app/src/lib/prompt-history.test.ts:31:  it("collapses consecutive history entries that map to the same editable draft", () => {
+testbed/apps/app/src/lib/prompt-history.test.ts:32:    const drafts = promptHistoryEntriesToDrafts([
+testbed/apps/app/src/lib/prompt-history.test.ts:48:    expect(drafts).toEqual([
+testbed/apps/app/src/lib/api.ts:27:  CreateDraftRequest,
+testbed/apps/app/src/lib/api.ts:39:  SendDraftRequest,
+testbed/apps/app/src/lib/api.ts:40:  SendDraftResponse,
+testbed/apps/app/src/lib/api.ts:52:  ThreadDraftListResponse,
+testbed/apps/app/src/lib/api.ts:783:export async function createThreadDraft(
+testbed/apps/app/src/lib/api.ts:785:  req: CreateDraftRequest,
+testbed/apps/app/src/lib/api.ts:788:    apiClient.threads[":id"].drafts.$post({ param: { id }, json: req }),
+testbed/apps/app/src/lib/api.ts:800:export async function listThreadDrafts(
+testbed/apps/app/src/lib/api.ts:802:): Promise<ThreadDraftListResponse> {
+testbed/apps/app/src/lib/api.ts:803:  return request<ThreadDraftListResponse>(
+testbed/apps/app/src/lib/api.ts:804:    apiClient.threads[":id"].drafts.$get({ param: { id } }),
+testbed/apps/app/src/lib/api.ts:820:export async function sendThreadDraft(
+testbed/apps/app/src/lib/api.ts:823:  req: SendDraftRequest,
+testbed/apps/app/src/lib/api.ts:824:): Promise<SendDraftResponse> {
+testbed/apps/app/src/lib/api.ts:825:  return request<SendDraftResponse>(
+testbed/apps/app/src/lib/api.ts:826:    apiClient.threads[":id"].drafts[":draftId"].send.$post({
+testbed/apps/app/src/lib/api.ts:827:      param: { id, draftId: queuedMessageId },
+testbed/apps/app/src/lib/api.ts:833:export async function deleteThreadDraft(
+testbed/apps/app/src/lib/api.ts:838:    apiClient.threads[":id"].drafts[":draftId"].$delete({
+testbed/apps/app/src/lib/api.ts:839:      param: { id, draftId: queuedMessageId },
+testbed/apps/app/src/lib/prompt-history.ts:7:  arePromptDraftStatesEqual,
+testbed/apps/app/src/lib/prompt-history.ts:8:  isPromptDraftEmpty,
+testbed/apps/app/src/lib/prompt-history.ts:9:  promptInputToDraft,
+testbed/apps/app/src/lib/prompt-history.ts:10:  type PromptDraftState,
+testbed/apps/app/src/lib/prompt-history.ts:11:} from "./prompt-draft";
+testbed/apps/app/src/lib/prompt-history.ts:13:export function promptHistoryEntriesToDrafts(
+testbed/apps/app/src/lib/prompt-history.ts:15:): PromptDraftState[] {
+testbed/apps/app/src/lib/prompt-history.ts:16:  const drafts: PromptDraftState[] = [];
+testbed/apps/app/src/lib/prompt-history.ts:19:    const draft = promptInputToDraft(entry.input);
+testbed/apps/app/src/lib/prompt-history.ts:20:    if (isPromptDraftEmpty(draft)) {
+testbed/apps/app/src/lib/prompt-history.ts:24:    const previousDraft = drafts[drafts.length - 1];
+testbed/apps/app/src/lib/prompt-history.ts:25:    if (previousDraft && arePromptDraftStatesEqual(previousDraft, draft)) {
+testbed/apps/app/src/lib/prompt-history.ts:29:    drafts.push(draft);
+testbed/apps/app/src/lib/prompt-history.ts:32:  return drafts;
+testbed/apps/app/src/lib/prompt-draft.ts:8:export type PromptDraftAttachment = UploadedPromptAttachment;
+testbed/apps/app/src/lib/prompt-draft.ts:10:export interface PromptDraftState {
+testbed/apps/app/src/lib/prompt-draft.ts:12:  attachments: PromptDraftAttachment[];
+testbed/apps/app/src/lib/prompt-draft.ts:15:const promptDraftStorageSchema = z.object({
+testbed/apps/app/src/lib/prompt-draft.ts:28:export function emptyPromptDraftState(): PromptDraftState {
+testbed/apps/app/src/lib/prompt-draft.ts:35:export function isPromptDraftEmpty(draft: PromptDraftState): boolean {
+testbed/apps/app/src/lib/prompt-draft.ts:36:  return draft.text.length === 0 && draft.attachments.length === 0;
+testbed/apps/app/src/lib/prompt-draft.ts:39:export function parsePromptDraftStorage(
+testbed/apps/app/src/lib/prompt-draft.ts:41:): PromptDraftState {
+testbed/apps/app/src/lib/prompt-draft.ts:42:  if (!rawValue) return emptyPromptDraftState();
+testbed/apps/app/src/lib/prompt-draft.ts:46:    const result = promptDraftStorageSchema.safeParse(parsed);
+testbed/apps/app/src/lib/prompt-draft.ts:47:    return result.success ? result.data : emptyPromptDraftState();
+testbed/apps/app/src/lib/prompt-draft.ts:49:    return emptyPromptDraftState();
+testbed/apps/app/src/lib/prompt-draft.ts:53:export function serializePromptDraftStorage(
+testbed/apps/app/src/lib/prompt-draft.ts:54:  draft: PromptDraftState,
+testbed/apps/app/src/lib/prompt-draft.ts:56:  const text = draft.text;
+testbed/apps/app/src/lib/prompt-draft.ts:57:  const attachments = draft.attachments;
+testbed/apps/app/src/lib/prompt-draft.ts:58:  if (isPromptDraftEmpty(draft)) {
+testbed/apps/app/src/lib/prompt-draft.ts:67:export function arePromptDraftStatesEqual(
+testbed/apps/app/src/lib/prompt-draft.ts:68:  left: PromptDraftState,
+testbed/apps/app/src/lib/prompt-draft.ts:69:  right: PromptDraftState,
+testbed/apps/app/src/lib/prompt-draft.ts:72:    serializePromptDraftStorage(left) === serializePromptDraftStorage(right)
+testbed/apps/app/src/lib/prompt-draft.ts:87:export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
+testbed/apps/app/src/lib/prompt-draft.ts:89:  const text = draft.text.trim();
+testbed/apps/app/src/lib/prompt-draft.ts:94:  for (const attachment of draft.attachments) {
+testbed/apps/app/src/lib/prompt-draft.ts:115:export function promptInputToDraft(
+testbed/apps/app/src/lib/prompt-draft.ts:117:): PromptDraftState {
+
+[Showing results with pagination = limit: 250]

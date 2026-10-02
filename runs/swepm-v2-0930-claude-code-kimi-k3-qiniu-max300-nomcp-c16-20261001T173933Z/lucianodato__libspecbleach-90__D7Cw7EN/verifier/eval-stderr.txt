@@ -1,0 +1,60 @@
+Checking patch tests/generate_reference_files.sh...
+error: while searching for:
+    --whitening 50.0 \
+    --smoothing 0.0 \
+    --masking-depth 0.5 \
+    --masking-elasticity 0.1 \
+    tests/test_data/Speech.wav tests/test_data/Speech_denoised.wav
+
+echo "Generating adaptive denoiser reference..."
+
+error: patch failed: tests/generate_reference_files.sh:36
+error: tests/generate_reference_files.sh: patch does not apply
+Checking patch tests/test_adaptive_noise_estimator.c...
+error: while searching for:
+
+  // Noise Floor Manager
+  noise_floor_manager_free(NULL);
+  NoiseFloorManager* nfm =
+      noise_floor_manager_initialize(fft_size, sample_rate, hop);
+  noise_floor_manager_free(nfm);
+
+  // Spectral Whitening
+
+error: patch failed: tests/test_adaptive_noise_estimator.c:94
+error: tests/test_adaptive_noise_estimator.c: patch does not apply
+Checking patch tests/test_nlm_filter.c...
+error: while searching for:
+#include <stdlib.h>
+#include <string.h>
+
+#include "shared/denoiser_logic/processing/nlm_filter.h"
+
+#define TEST_ASSERT(condition, message)                                        \
+  do {                                                                         \
+
+error: patch failed: tests/test_nlm_filter.c:7
+error: tests/test_nlm_filter.c: patch does not apply
+Checking patch tests/test_noise_floor_manager.c...
+error: while searching for:
+void test_noise_floor_manager_lifecycle(void) {
+  printf("Testing Noise Floor Manager lifecycle...\n");
+
+  NoiseFloorManager* nfm = noise_floor_manager_initialize(1024, 44100, 256);
+  TEST_ASSERT(nfm != NULL, "Initialization should succeed");
+
+  noise_floor_manager_free(NULL); // Coverage: free NULL
+
+error: patch failed: tests/test_noise_floor_manager.c:23
+error: tests/test_noise_floor_manager.c: patch does not apply
+Checking patch tests/test_shared_utils.c...
+error: while searching for:
+#include "shared/utils/absolute_hearing_thresholds.h"
+#include "shared/utils/critical_bands.h"
+#include "shared/utils/masking_estimator.h"
+#include "shared/utils/spectral_smoother.h"
+#include "shared/utils/transient_detector.h"
+
+
+error: patch failed: tests/test_shared_utils.c:10
+error: tests/test_shared_utils.c: patch does not apply

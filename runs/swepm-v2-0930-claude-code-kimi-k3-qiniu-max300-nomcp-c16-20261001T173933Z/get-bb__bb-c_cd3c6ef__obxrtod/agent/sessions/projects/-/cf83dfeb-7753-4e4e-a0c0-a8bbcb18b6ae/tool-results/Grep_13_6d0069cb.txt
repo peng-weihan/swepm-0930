@@ -1,0 +1,302 @@
+testbed/apps/app/src/hooks/mutation-cache-effects.ts:13:  threadDraftsQueryKey,
+testbed/apps/app/src/hooks/mutation-cache-effects.ts:148:  queryClient.invalidateQueries({ queryKey: threadDraftsQueryKey(threadId) });
+testbed/apps/app/src/hooks/mutation-cache-effects.ts:154:export function invalidateThreadDraftSendQueries({
+testbed/apps/app/src/hooks/mutation-cache-effects.ts:222:  queryClient.removeQueries({ queryKey: threadDraftsQueryKey(threadId) });
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:5:import { usePromptDraftStorage } from "./usePromptDraftStorage";
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:17:describe("usePromptDraftStorage", () => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:18:  it("clears the draft when it still matches the submitted snapshot", () => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:20:      usePromptDraftStorage(PROJECT_DRAFT_SCOPE),
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:27:    const submittedDraft = result.current.getCurrent();
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:31:      didClear = result.current.clearIfCurrentMatches(submittedDraft);
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:43:      usePromptDraftStorage(PROJECT_DRAFT_SCOPE),
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:50:    const submittedDraft = result.current.getCurrent();
+testbed/apps/app/src/hooks/usePromptDraftStorage.test.tsx:59:      didClear = result.current.clearIfCurrentMatches(submittedDraft);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:3:  PromptDraftAttachment,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:4:  PromptDraftState,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:5:} from "@/lib/prompt-draft";
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:7:  arePromptDraftStatesEqual,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:8:  emptyPromptDraftState,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:9:  isPromptDraftEmpty,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:10:  parsePromptDraftStorage,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:11:  serializePromptDraftStorage,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:12:} from "@/lib/prompt-draft";
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:17:interface PromptDraftScope {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:22:interface PromptDraftCacheEntry {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:24:  draft: PromptDraftState;
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:27:type PromptDraftListener = () => void;
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:29:const EMPTY_PROMPT_DRAFT = emptyPromptDraftState();
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:30:const promptDraftCache = new Map<string, PromptDraftCacheEntry>();
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:31:const promptDraftSubscribers = new Map<string, Set<PromptDraftListener>>();
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:32:let promptDraftStorageObserverInitialized = false;
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:38:function readPromptDraft(storageKey: string | null): PromptDraftState {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:44:  const cachedEntry = promptDraftCache.get(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:46:    return cachedEntry.draft;
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:49:  const draft = parsePromptDraftStorage(rawValue);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:50:  promptDraftCache.set(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:52:    draft,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:54:  return draft;
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:57:function emitPromptDraftChange(storageKey: string): void {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:58:  const listeners = promptDraftSubscribers.get(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:66:function ensurePromptDraftStorageObserver(): void {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:67:  if (promptDraftStorageObserverInitialized || typeof window === "undefined") {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:71:  promptDraftStorageObserverInitialized = true;
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:74:    promptDraftCache.delete(event.key);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:75:    emitPromptDraftChange(event.key);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:79:function subscribePromptDraft(
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:81:  listener: PromptDraftListener,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:87:  ensurePromptDraftStorageObserver();
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:89:  let listeners = promptDraftSubscribers.get(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:92:    promptDraftSubscribers.set(storageKey, listeners);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:97:    const existingListeners = promptDraftSubscribers.get(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:102:      promptDraftSubscribers.delete(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:107:function writePromptDraft(
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:109:  value: PromptDraftState,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:115:  const serialized = serializePromptDraftStorage(value);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:118:    promptDraftCache.set(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:120:      draft: EMPTY_PROMPT_DRAFT,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:122:    emitPromptDraftChange(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:127:  promptDraftCache.set(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:129:    draft: value,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:131:  emitPromptDraftChange(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:134:function restorePromptDraftIfEmpty(
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:136:  value: PromptDraftState,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:141:    isPromptDraftEmpty(value)
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:146:  if (!isPromptDraftEmpty(readPromptDraft(storageKey))) {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:150:  writePromptDraft(storageKey, value);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:154:function getPromptDraftStorageKey({
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:157:}: PromptDraftScope): string | null {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:164:  return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:167:export function usePromptDraftStorage(scope: PromptDraftScope) {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:170:      getPromptDraftStorageKey({
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:176:  const draft = useSyncExternalStore(
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:178:      (listener) => subscribePromptDraft(storageKey, listener),
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:181:    useCallback(() => readPromptDraft(storageKey), [storageKey]),
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:185:  const setDraftAndPersist = useCallback(
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:186:    (nextDraft: PromptDraftState) => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:187:      writePromptDraft(storageKey, nextDraft);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:192:  const getCurrent = useCallback((): PromptDraftState => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:193:    return readPromptDraft(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:198:      writePromptDraft(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:199:        ...readPromptDraft(storageKey),
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:211:      const currentDraft = readPromptDraft(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:212:      const trimmedCurrent = currentDraft.text.trimEnd();
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:217:      writePromptDraft(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:218:        ...currentDraft,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:226:    (attachment: PromptDraftAttachment) => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:227:      const currentDraft = readPromptDraft(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:228:      const alreadyExists = currentDraft.attachments.some(
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:233:      writePromptDraft(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:234:        ...currentDraft,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:235:        attachments: [...currentDraft.attachments, attachment],
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:243:      const currentDraft = readPromptDraft(storageKey);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:244:      const nextAttachments = currentDraft.attachments.filter(
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:247:      if (nextAttachments.length === currentDraft.attachments.length) {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:251:      writePromptDraft(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:252:        ...currentDraft,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:260:    setDraftAndPersist(EMPTY_PROMPT_DRAFT);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:261:  }, [setDraftAndPersist]);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:264:    (expectedDraft: PromptDraftState): boolean => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:266:        !arePromptDraftStatesEqual(readPromptDraft(storageKey), expectedDraft)
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:271:      setDraftAndPersist(EMPTY_PROMPT_DRAFT);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:274:    [setDraftAndPersist, storageKey],
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:278:    (attachments: PromptDraftAttachment[]) => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:279:      writePromptDraft(storageKey, {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:280:        ...readPromptDraft(storageKey),
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:288:    (nextDraft: PromptDraftState) => {
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:289:      restorePromptDraftIfEmpty(storageKey, nextDraft);
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:297:    value: draft.text,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:298:    text: draft.text,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:299:    attachments: draft.attachments,
+testbed/apps/app/src/hooks/usePromptDraftStorage.ts:300:    setDraft: setDraftAndPersist,
+testbed/apps/app/src/hooks/system-cache-effects.test.ts:55:      drafts: [],
+testbed/apps/app/src/hooks/system-cache-effects.test.ts:86:      drafts: [],
+testbed/apps/app/src/hooks/realtime-cache-effects.test.ts:18:  threadDraftsQueryKey,
+testbed/apps/app/src/hooks/realtime-cache-effects.test.ts:424:  it("invalidates drafts and prompt history but not thread detail for queue changes", () => {
+testbed/apps/app/src/hooks/realtime-cache-effects.test.ts:428:    const draftsKey = threadDraftsQueryKey("thr_1");
+testbed/apps/app/src/hooks/realtime-cache-effects.test.ts:431:    queryClient.setQueryData(draftsKey, []);
+testbed/apps/app/src/hooks/realtime-cache-effects.test.ts:443:    expect(queryClient.getQueryState(draftsKey)?.isInvalidated).toBe(true);
+testbed/apps/app/src/hooks/system-cache-effects.ts:13:  allThreadDraftsQueryKeyPrefix,
+testbed/apps/app/src/hooks/system-cache-effects.ts:108:    allThreadDraftsQueryKeyPrefix(),
+testbed/pnpm-lock.yaml:2796:  '@open-draft/deferred-promise@2.2.0':
+testbed/pnpm-lock.yaml:2799:  '@open-draft/logger@0.3.0':
+testbed/pnpm-lock.yaml:2802:  '@open-draft/until@2.1.0':
+testbed/pnpm-lock.yaml:8983:      '@open-draft/deferred-promise': 2.2.0
+testbed/pnpm-lock.yaml:8984:      '@open-draft/logger': 0.3.0
+testbed/pnpm-lock.yaml:8985:      '@open-draft/until': 2.1.0
+testbed/pnpm-lock.yaml:9013:  '@open-draft/deferred-promise@2.2.0': {}
+testbed/pnpm-lock.yaml:9015:  '@open-draft/logger@0.3.0':
+testbed/pnpm-lock.yaml:9020:  '@open-draft/until@2.1.0': {}
+testbed/pnpm-lock.yaml:12614:      '@open-draft/deferred-promise': 2.2.0
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:18:  useThreadDrafts,
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:27:  threadDraftsQueryKey,
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:245:    const drafts = [
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:247:        id: "draft-1",
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:306:            drafts,
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:321:        pathname: "/api/v1/threads/thread-1/drafts",
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:324:          return jsonResponse(drafts);
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:370:        const draftList = useThreadDrafts("thread-1", {
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:397:          draftList,
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:408:      expect(result.current.draftList.data).toEqual(drafts);
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:424:    expect(queryClient.getQueryData(threadDraftsQueryKey("thread-1"))).toEqual(
+testbed/apps/app/src/hooks/queries/thread-queries.test.tsx:425:      drafts,
+testbed/apps/app/src/hooks/queries/query-keys.ts:25:export const THREAD_DRAFTS_QUERY_KEY = "threadDrafts";
+testbed/apps/app/src/hooks/queries/query-keys.ts:161:export type ThreadDraftsQueryKeyPrefix = readonly [
+testbed/apps/app/src/hooks/queries/query-keys.ts:164:export type ThreadDraftsQueryKey = readonly [
+testbed/apps/app/src/hooks/queries/query-keys.ts:495:export function threadDraftsQueryKey(threadId: string): ThreadDraftsQueryKey {
+testbed/apps/app/src/hooks/queries/query-keys.ts:499:export function allThreadDraftsQueryKeyPrefix(): ThreadDraftsQueryKeyPrefix {
+testbed/apps/app/src/hooks/queries/thread-queries.ts:15:  ThreadDraftListResponse,
+testbed/apps/app/src/hooks/queries/thread-queries.ts:44:  threadDraftsQueryKey,
+testbed/apps/app/src/hooks/queries/thread-queries.ts:268:      queryClient.setQueryData(threadDraftsQueryKey(id), bootstrap.drafts);
+testbed/apps/app/src/hooks/queries/thread-queries.ts:310:export function useThreadDrafts(id: string, options?: QueryOptions) {
+testbed/apps/app/src/hooks/queries/thread-queries.ts:311:  return useQuery<ThreadDraftListResponse>({
+testbed/apps/app/src/hooks/queries/thread-queries.ts:312:    queryKey: threadDraftsQueryKey(id),
+testbed/apps/app/src/hooks/queries/thread-queries.ts:313:    queryFn: () => api.listThreadDrafts(requireThreadId(id, "useThreadDrafts")),
+testbed/apps/app/src/hooks/realtime-cache-registry.ts:25:  allThreadDraftsQueryKeyPrefix,
+testbed/apps/app/src/hooks/realtime-cache-registry.ts:38:  threadDraftsQueryKey,
+testbed/apps/app/src/hooks/realtime-cache-registry.ts:99:      dirtyThreadDraftQueries, // Composer queue reads drafts directly.
+testbed/apps/app/src/hooks/realtime-cache-registry.ts:100:      dirtyThreadPromptHistoryQueries, // Composer recall includes queued drafts.
+testbed/apps/app/src/hooks/realtime-cache-registry.ts:348:function dirtyThreadDraftQueries({
+testbed/apps/app/src/hooks/realtime-cache-registry.ts:352:    ? [threadDraftsQueryKey(threadId)]
+testbed/apps/app/src/hooks/realtime-cache-registry.ts:353:    : [allThreadDraftsQueryKeyPrefix()];
+testbed/apps/app/src/hooks/environment-cache-effects.test.ts:66:      drafts: [],
+testbed/apps/app/src/hooks/environment-cache-effects.test.ts:73:      drafts: [],
+testbed/apps/app/src/hooks/environment-cache-effects.test.ts:94:      drafts: [],
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:10:  CreateDraftRequest,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:11:  SendDraftMode,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:12:  SendDraftResponse,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:43:  invalidateThreadDraftSendQueries,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:50:interface CreateThreadDraftMutationRequest extends CreateDraftRequest {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:54:interface SendThreadDraftMutationRequest {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:56:  mode: SendDraftMode;
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:60:interface DeleteThreadDraftMutationRequest {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:98:    id: `draft:${queuedMessage.id}`,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:385:export function useCreateThreadDraft() {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:400:    }: CreateThreadDraftMutationRequest): Promise<ThreadQueuedMessage> =>
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:401:      api.createThreadDraft(id, {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:419:export function useSendThreadDraft() {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:431:    }: SendThreadDraftMutationRequest): Promise<SendDraftResponse> =>
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:432:      api.sendThreadDraft(id, queuedMessageId, { mode }),
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:434:      invalidateThreadDraftSendQueries({ queryClient, threadId: variables.id });
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:439:export function useDeleteThreadDraft() {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:447:    mutationFn: ({ id, queuedMessageId }: DeleteThreadDraftMutationRequest) =>
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.ts:448:      api.deleteThreadDraft(id, queuedMessageId),
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:8:  SendDraftResponse,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:22:  useCreateThreadDraft,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:23:  useSendThreadDraft,
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:31:  createThreadDraft: vi.fn(),
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:32:  sendThreadDraft: vi.fn(),
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:52:} satisfies SendDraftResponse["queuedMessage"];
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:680:  it("adds queued follow-up history immediately after draft creation succeeds", async () => {
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:681:    vi.mocked(api.createThreadDraft).mockResolvedValue(queuedMessage);
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:683:    const { result } = renderHook(() => useCreateThreadDraft(), { wrapper });
+testbed/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:698:        id: "draft:queued-1",
+testbed/packages/fuzzy-match/test/index.test.ts:45:      "apps/app/src/hooks/usePromptDraftStorage.ts",
+testbed/packages/server-contract/src/public-api.ts:22:  PathThreadAndDraft,
+testbed/packages/server-contract/src/public-api.ts:34:  CreateDraftRequest,
+testbed/packages/server-contract/src/public-api.ts:62:  SendDraftRequest,
+testbed/packages/server-contract/src/public-api.ts:63:  SendDraftResponse,
+testbed/packages/server-contract/src/public-api.ts:68:  ThreadDraftListResponse,
+testbed/packages/server-contract/src/public-api.ts:376:     * Draft routes intentionally omit it because drafts are stored queued messages,
+testbed/packages/server-contract/src/public-api.ts:385:  "/threads/:id/drafts": {
+testbed/packages/server-contract/src/public-api.ts:386:    $get: Endpoint<PathId, ThreadDraftListResponse>;
+testbed/packages/server-contract/src/public-api.ts:387:    /** Create a queued draft. Use /threads/:id/send for immediate agent-to-agent messages. */
+testbed/packages/server-contract/src/public-api.ts:389:      PathId & { json: CreateDraftRequest },
+testbed/packages/server-contract/src/public-api.ts:394:  "/threads/:id/drafts/:draftId/send": {
+testbed/packages/server-contract/src/public-api.ts:395:    /** Send a previously created queued draft in the requested mode, then delete the draft. */
+testbed/packages/server-contract/src/public-api.ts:397:      PathThreadAndDraft & { json: SendDraftRequest },
+testbed/packages/server-contract/src/public-api.ts:398:      SendDraftResponse
+testbed/packages/server-contract/src/public-api.ts:407:  "/threads/:id/drafts/:draftId": {
+testbed/packages/server-contract/src/public-api.ts:408:    $delete: Endpoint<PathThreadAndDraft, { ok: true }>;
+testbed/packages/server-contract/src/api-types.ts:354:export const sendDraftModeSchema = z.enum(["auto", "steer"]);
+testbed/packages/server-contract/src/api-types.ts:355:export type SendDraftMode = z.infer<typeof sendDraftModeSchema>;
+testbed/packages/server-contract/src/api-types.ts:357:export const createDraftRequestSchema = z.object({
+testbed/packages/server-contract/src/api-types.ts:364:export type CreateDraftRequest = z.infer<typeof createDraftRequestSchema>;
+testbed/packages/server-contract/src/api-types.ts:366:export const sendDraftRequestSchema = z.object({
+testbed/packages/server-contract/src/api-types.ts:367:  mode: sendDraftModeSchema,
+testbed/packages/server-contract/src/api-types.ts:369:export type SendDraftRequest = z.infer<typeof sendDraftRequestSchema>;
+testbed/packages/server-contract/src/api-types.ts:371:export const sendDraftResponseSchema = z.object({
+testbed/packages/server-contract/src/api-types.ts:375:export type SendDraftResponse = z.infer<typeof sendDraftResponseSchema>;
+testbed/packages/server-contract/src/api-types.ts:423:export const threadDraftListResponseSchema = z.array(threadQueuedMessageSchema);
+testbed/packages/server-contract/src/api-types.ts:424:export type ThreadDraftListResponse = z.infer<
+testbed/packages/server-contract/src/api-types.ts:425:  typeof threadDraftListResponseSchema
+testbed/packages/server-contract/src/api-types.ts:691:  drafts: threadDraftListResponseSchema,
+testbed/packages/server-contract/src/common.ts:10:export type PathThreadAndDraft = { param: { id: string; draftId: string } };
+testbed/packages/server-contract/src/index.ts:9:  PathThreadAndDraft,
+testbed/packages/server-contract/src/index.ts:114:  createDraftRequestSchema,
+testbed/packages/server-contract/src/index.ts:155:  sendDraftRequestSchema,
+testbed/packages/server-contract/src/index.ts:156:  sendDraftModeSchema,
+testbed/packages/server-contract/src/index.ts:157:  sendDraftResponseSchema,
+testbed/packages/server-contract/src/index.ts:174:  threadDraftListResponseSchema,
+testbed/packages/server-contract/src/index.ts:243:  CreateDraftRequest,
+testbed/packages/server-contract/src/index.ts:285:  SendDraftRequest,
+testbed/packages/server-contract/src/index.ts:286:  SendDraftMode,
+testbed/packages/server-contract/src/index.ts:287:  SendDraftResponse,
+testbed/packages/server-contract/src/index.ts:308:  ThreadDraftListResponse,
+testbed/packages/server-contract/test/contract.test.ts:14:  createDraftRequestSchema,
+testbed/packages/server-contract/test/contract.test.ts:23:  sendDraftRequestSchema,
+testbed/packages/server-contract/test/contract.test.ts:56:  "createDraftRequestSchema.model":
+testbed/packages/server-contract/test/contract.test.ts:57:    "Queued drafts may inherit the thread's default model.",
+testbed/packages/server-contract/test/contract.test.ts:58:  "createDraftRequestSchema.reasoningLevel":
+testbed/packages/server-contract/test/contract.test.ts:59:    "Queued drafts may inherit the thread's default reasoning level.",
+testbed/packages/server-contract/test/contract.test.ts:60:  "createDraftRequestSchema.permissionMode":
+testbed/packages/server-contract/test/contract.test.ts:61:    "Queued drafts may inherit the thread's default permission mode.",
+testbed/packages/server-contract/test/contract.test.ts:62:  "createDraftRequestSchema.serviceTier":
+testbed/packages/server-contract/test/contract.test.ts:63:    "Queued drafts may inherit the thread's default service tier.",
+testbed/packages/server-contract/test/contract.test.ts:131:    "Immediate agent-to-agent CLI sends include the current thread; user-originated sends and queued drafts omit live sender context.",
+testbed/packages/server-contract/test/contract.test.ts:471:    expect(sendDraftRequestSchema.parse({ mode: "auto" })).toEqual({
+testbed/packages/server-contract/test/contract.test.ts:474:    expect(() => sendDraftRequestSchema.parse({})).toThrow();
+testbed/packages/server-contract/test/contract.test.ts:719:      createDraftRequestSchema.parse({
+testbed/packages/server-contract/test/contract.test.ts:769:      publicClient.threads[":id"].drafts.$url({ param: { id: "thr_123" } })
+testbed/packages/server-contract/test/contract.test.ts:771:    ).toBe("/api/v1/threads/thr_123/drafts");
+testbed/packages/server-contract/test/contract.test.ts:940:      createDraftRequestSchema: contract.createDraftRequestSchema,
+testbed/packages/server-contract/test/contract.test.ts:950:      sendDraftRequestSchema: contract.sendDraftRequestSchema,
+testbed/packages/server-contract/test/contract.test.ts:951:      sendDraftResponseSchema: contract.sendDraftResponseSchema,
+testbed/packages/db/drizzle/meta/_journal.json:16:      "tag": "0001_draft_claim_tokens",
+testbed/packages/thread-view/src/provisioning-helpers.ts:8:// --- Helpers used by build-event-projection.ts (event -> draft projection) ---
+testbed/packages/db/src/data/drafts.ts:6:import { createDraftClaimToken, createDraftId } from "../ids.js";
+testbed/packages/db/src/data/drafts.ts:8:export interface CreateDraftInput {
+testbed/packages/db/src/data/drafts.ts:17:export type DraftRow = typeof queuedThreadMessages.$inferSelect;
+testbed/packages/db/src/data/drafts.ts:19:export interface ClaimedDraftRow extends DraftRow {
+testbed/packages/db/src/data/drafts.ts:24:export interface QueuedDraftThreadRow {
+testbed/packages/db/src/data/drafts.ts:25:  oldestDraftCreatedAt: number | null;
+testbed/packages/db/src/data/drafts.ts:29:export interface DeleteDraftInTransactionArgs {
+testbed/packages/db/src/data/drafts.ts:33:export interface ClaimedDraftMutationArgs {
+testbed/packages/db/src/data/drafts.ts:38:export type DeleteClaimedDraftInTransactionArgs = ClaimedDraftMutationArgs;
+testbed/packages/db/src/data/drafts.ts:40:export type DeleteClaimedDraftArgs = ClaimedDraftMutationArgs;
+testbed/packages/db/src/data/drafts.ts:42:export interface ReleaseStaleDraftClaimsArgs {
+testbed/packages/db/src/data/drafts.ts:46:export type ReleaseDraftClaimArgs = ClaimedDraftMutationArgs;
+testbed/packages/db/src/data/drafts.ts:48:function requireClaimedDraft(row: DraftRow | null): ClaimedDraftRow | null {
+testbed/packages/db/src/data/drafts.ts:59:export function createDraft(
+testbed/packages/db/src/data/drafts.ts:62:  input: CreateDraftInput,
+testbed/packages/db/src/data/drafts.ts:65:  const id = createDraftId();
+testbed/packages/db/src/data/drafts.ts:87:export function getDraft(db: DbConnection, id: string) {
+testbed/packages/db/src/data/drafts.ts:97:export function listDrafts(db: DbConnection, threadId: string) {
+testbed/packages/db/src/data/drafts.ts:112:export function listIdleThreadsWithQueuedDrafts(
+testbed/packages/db/src/data/drafts.ts:114:): QueuedDraftThreadRow[] {
+testbed/packages/db/src/data/drafts.ts:118:      oldestDraftCreatedAt: min(queuedThreadMessages.createdAt),
+testbed/packages/db/src/data/drafts.ts:138:export function claimDraft(
+testbed/packages/db/src/data/drafts.ts:142:): ClaimedDraftRow | null {
+testbed/packages/db/src/data/drafts.ts:143:  const claimedDraft = db.transaction(
+testbed/packages/db/src/data/drafts.ts:155:      const claimToken = createDraftClaimToken();
+testbed/packages/db/src/data/drafts.ts:169:      return requireClaimedDraft(updated ?? null);
+testbed/packages/db/src/data/drafts.ts:174:  if (claimedDraft) {
+testbed/packages/db/src/data/drafts.ts:175:    notifier.notifyThread(claimedDraft.threadId, ["queue-changed"]);
+testbed/packages/db/src/data/drafts.ts:177:  return claimedDraft;
+testbed/packages/db/src/data/drafts.ts:180:export function claimNextDraft(
+testbed/packages/db/src/data/drafts.ts:184:): ClaimedDraftRow | null {
+testbed/packages/db/src/data/drafts.ts:185:  const claimedDraft = db.transaction(
+testbed/packages/db/src/data/drafts.ts:187:      const nextDraft = tx
+testbed/packages/db/src/data/drafts.ts:203:      if (!nextDraft) {
+testbed/packages/db/src/data/drafts.ts:208:      const claimToken = createDraftClaimToken();
+testbed/packages/db/src/data/drafts.ts:214:            eq(queuedThreadMessages.id, nextDraft.id),
+testbed/packages/db/src/data/drafts.ts:222:      return requireClaimedDraft(updated ?? null);
+testbed/packages/db/src/data/drafts.ts:227:  if (claimedDraft) {
+testbed/packages/db/src/data/drafts.ts:228:    notifier.notifyThread(claimedDraft.threadId, ["queue-changed"]);
+testbed/packages/db/src/data/drafts.ts:230:  return claimedDraft;
+testbed/packages/db/src/data/drafts.ts:233:export function releaseDraftClaim(
+testbed/packages/db/src/data/drafts.ts:236:  args: ReleaseDraftClaimArgs,
+testbed/packages/db/src/data/drafts.ts:271:export function releaseStaleDraftClaims(
+testbed/packages/db/src/data/drafts.ts:274:  args: ReleaseStaleDraftClaimsArgs,
+testbed/packages/db/src/data/drafts.ts:312:export function deleteClaimedDraftInTransaction(
+
+[Showing results with pagination = limit: 300]

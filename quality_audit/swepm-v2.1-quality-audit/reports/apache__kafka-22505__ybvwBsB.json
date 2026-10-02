@@ -1,0 +1,68 @@
+{
+  "instance_id": "apache__kafka-22505",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.72,
+  "gold_patch_assessment": "The gold patch addresses all the stated issue requirements: removing CompletableFuture completion fields from RaftRequest.Inbound/Outbound, making NetworkChannel.send() return CompletionStage<RaftResponse.Inbound>, making KafkaRaftClient.handle() return CompletionStage<RaftResponse.Outbound>, refactoring RaftMessageQueue with QueueEntry/Optional/CompletionStage, and changing RaftManager.handleRequest() to return CompletionStage<ApiMessage>. However, the gold patch also includes significant additional refactoring not mentioned in the instruction: (1) making EpochState a sealed interface, (2) adding leaderAndEpoch() abstract method to EpochState with implementations in all subclasses, (3) extracting ChangeVoterHandlerState from LeaderState, (4) changing highWatermarkUpdated() signatures to pass long offset instead of using LeaderState.highWatermark(), (5) removing localId parameter from UpdateVoterHandler. These extras go beyond the stated scope of making async completion explicit through return values.",
+  "base_vs_gold_expectation": "The base code without the gold patch will fail when the test patch is applied. The test patch modifies mock implementations (MockNetworkChannel, MockMessageQueue) and test fixtures (RaftClientTestContext) to use the new API signatures (CompletionStage returns, Optional<QueueEntry> polling). Since the interfaces (NetworkChannel, RaftMessageQueue) retain their old void/nullable signatures on the base, the mocks won't satisfy the interface contracts and compilation will fail at the testClasses step. Additionally, the test patch adds @Override leaderAndEpoch() to CandidateState, which requires EpochState to declare that method (only introduced by the gold patch). The test patch also creates ChangeVoterHandlerStateTest.java which imports ChangeVoterHandlerState (a new class only in the gold patch). With the gold patch applied, all interface signatures match and compilation should succeed.",
+  "too_narrow_risks": [
+    "Only 3 of ~12 modified test classes are actually executed at runtime: KafkaNetworkChannelTest, KafkaRaftClientAutoJoinTest, KafkaRaftClientFetchTest. Tests for AddVoter, RemoveVoter, UpdateVoter handler changes (in KafkaRaftClientReconfigTest) are not run.",
+    "The new ChangeVoterHandlerStateTest class is compiled but never executed, so the extracted ChangeVoterHandlerState's behavioral correctness is only verified through compilation.",
+    "BlockingMessageQueueTest and ThresholdPurgatoryTest are modified but not executed, so the new Optional/CompletionStage queue semantics are only indirectly tested.",
+    "RaftEventSimulationTest, which tests end-to-end simulation of the raft protocol with the new API, is not executed.",
+    "No tests specifically verify that the CompletionStage returned by handle() or send() completes with the correct response data in error scenarios beyond what KafkaNetworkChannelTest covers."
+  ],
+  "too_broad_risks": [
+    "The test patch requires changes beyond the stated issue scope: EpochState.leaderAndEpoch() (sealed interface), ChangeVoterHandlerState extraction, and related refactoring. An alternative implementation that correctly addresses only the CompletionStage API refactoring would fail compilation.",
+    "The testClasses compilation step compiles ALL test files (15 modified), creating hard compile-time dependencies on the gold patch's extra refactoring choices (sealed interfaces, method extractions) that are not part of the stated issue.",
+    "CandidateState.java in the test patch has @Override on leaderAndEpoch(), forcing any solution to also add this method to the EpochState interface - an orthogonal change to the async API refactoring."
+  ],
+  "implementation_coupling": [
+    "The test patch creates ChangeVoterHandlerStateTest.java which directly instantiates ChangeVoterHandlerState - a new class specific to the gold patch's decomposition. An alternative that refactors voter state differently would fail compilation.",
+    "CandidateState.leaderAndEpoch() with @Override requires the gold patch's addition of leaderAndEpoch() to EpochState interface. This is architectural coupling to a specific design choice not described in the issue.",
+    "The test patch's MockNetworkChannel uses a RequestEntry record pattern matching the gold patch's internal approach of pairing requests with futures, coupling to the gold implementation's specific async plumbing strategy.",
+    "The highWatermarkUpdated() signature change (passing long offset instead of using LeaderState methods) is tested indirectly through compilation but couples to the gold patch's specific refactoring of the AddVoterHandler/RemoveVoterHandler."
+  ],
+  "environment_risks": [
+    "The evaluation has a 3600s timeout for a Gradle build + test run on a large Java project (Kafka). Gradle daemon is disabled (--no-daemon), increasing build times. With 24GB RAM and 4 CPUs this should be adequate but tight.",
+    "The testClasses pre-build step compiles ALL raft test code before running the 3 target tests. If any of the 15 modified test files fail to compile (even those not being tested), the entire evaluation fails.",
+    "The test patch applies to many test files that may be sensitive to other concurrent changes in the Kafka codebase at this commit."
+  ],
+  "mismatches": [
+    "The instruction describes only the async CompletionStage API refactoring, but the gold patch also includes: sealed EpochState interface, leaderAndEpoch() method on EpochState, ChangeVoterHandlerState extraction from LeaderState, highWatermarkUpdated signature changes, UpdateVoterHandler.localId removal. The test patch requires all of these.",
+    "The instruction says 'This is intended as an internal refactoring only' but the gold patch changes public API signatures (RaftClient.shutdown, RaftManager.handleRequest, NetworkChannel interface) from CompletableFuture to CompletionStage, which is an API change.",
+    "The eval script runs only 3 test classes (KafkaNetworkChannelTest, KafkaRaftClientAutoJoinTest, KafkaRaftClientFetchTest) but the test patch modifies 12 test classes plus 3 test fixtures, creating a significant gap between what's changed and what's verified at runtime."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/apache__kafka-22505/instruction.md",
+      "detail": "Issue describes CompletionStage API refactoring for RaftRequest, RaftResponse, NetworkChannel, KafkaRaftClient, RaftMessageQueue, and RaftManager. Does not mention sealed interfaces, leaderAndEpoch(), or ChangeVoterHandlerState extraction."
+    },
+    {
+      "file": "/audit_tasks/apache__kafka-22505/solution/solve.sh",
+      "detail": "Gold patch spans ~1800 lines across 28 files. Includes CompletionStage changes plus: sealed EpochState (line 57), leaderAndEpoch() on EpochState (line 69), ChangeVoterHandlerState new file (line 1205), sealed NomineeState (line 716)."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch modifies 15 files. CandidateState.java (main source) adds @Override leaderAndEpoch() (line 19-21) requiring EpochState to have this method. ChangeVoterHandlerStateTest.java (line 2268) imports gold-patch-only class."
+    },
+    {
+      "file": "/audit_tasks/apache__kafka-22505/tests/eval.sh",
+      "detail": "Runs testClasses (compiles ALL test code) then only executes 3 test classes: KafkaNetworkChannelTest, KafkaRaftClientAutoJoinTest, KafkaRaftClientFetchTest."
+    },
+    {
+      "file": "/testbed/raft/src/main/java/org/apache/kafka/raft/RaftRequest.java",
+      "detail": "Base code has 'public final CompletableFuture<RaftResponse.Outbound> completion = new CompletableFuture<>()' on Inbound (line 54) and similar on Outbound (line 93), confirming pre-patch state."
+    },
+    {
+      "file": "/testbed/raft/src/main/java/org/apache/kafka/raft/NetworkChannel.java",
+      "detail": "Base code has 'void send(RaftRequest.Outbound request)' at line 37, confirming the test patch's MockNetworkChannel changes would not compile against this interface."
+    },
+    {
+      "file": "/testbed/raft/src/main/java/org/apache/kafka/raft/EpochState.java",
+      "detail": "Base code does not have leaderAndEpoch() method or sealed modifier, confirming @Override in test patch's CandidateState would fail without gold patch."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch correctly implements the stated CompletionStage API refactoring but also includes significant additional changes (sealed interfaces, leaderAndEpoch(), ChangeVoterHandlerState extraction) not described in the issue. The test patch requires ALL of these extra changes for compilation to succeed, meaning alternative valid implementations that only address the stated async API refactoring would fail. Only 3 of 12 modified test classes are actually executed, though compilation of all test code provides structural verification. The instance is questionable because it couples test success to specific gold-patch implementation choices beyond the issue scope, potentially rejecting correct alternative solutions."
+}

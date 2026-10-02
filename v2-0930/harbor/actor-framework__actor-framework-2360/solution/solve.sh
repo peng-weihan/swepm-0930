@@ -1,0 +1,2256 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/libcaf_core/caf/async/batch.hpp b/libcaf_core/caf/async/batch.hpp
+--- a/libcaf_core/caf/async/batch.hpp
++++ b/libcaf_core/caf/async/batch.hpp
+@@ -197,14 +197,14 @@ class CAF_CORE_EXPORT batch {
+ 
+ template <class Inspector>
+   requires(!Inspector::is_loading)
+-auto inspect(Inspector& f, batch& x) -> decltype(x.save(f)) {
+-  return x.save(f);
++auto inspect(Inspector& f, batch& x) -> decltype(x.save(f.as_serializer())) {
++  return x.save(f.as_serializer());
+ }
+ 
+ template <class Inspector>
+   requires Inspector::is_loading
+-auto inspect(Inspector& f, batch& x) -> decltype(x.load(f)) {
+-  return x.load(f);
++auto inspect(Inspector& f, batch& x) -> decltype(x.load(f.as_deserializer())) {
++  return x.load(f.as_deserializer());
+ }
+ 
+ template <class List>
+diff --git a/libcaf_core/caf/binary_deserializer.cpp b/libcaf_core/caf/binary_deserializer.cpp
+--- a/libcaf_core/caf/binary_deserializer.cpp
++++ b/libcaf_core/caf/binary_deserializer.cpp
+@@ -276,10 +276,9 @@ class binary_deserializer_impl : public byte_reader {
+ 
+   bool value(long double& x) override {
+     // TODO: Our IEEE-754 conversion currently does not work for long double.
+-    // The
+-    //       standard does not guarantee a fixed representation for this type,
+-    //       but on X86 we can usually rely on 80-bit precision. For now, we
+-    //       fall back to string conversion.
++    //       The standard does not guarantee a fixed representation for this
++    //       type, but on X86 we can usually rely on 80-bit precision. For now,
++    //       we fall back to string conversion.
+     std::string tmp;
+     if (!value(tmp))
+       return false;
+@@ -350,6 +349,61 @@ class binary_deserializer_impl : public byte_reader {
+     return end_sequence();
+   }
+ 
++  bool value(std::vector<bool>& what) override {
++    what.clear();
++    size_t len = 0;
++    if (!begin_sequence(len))
++      return false;
++    if (len == 0)
++      return end_sequence();
++    size_t blocks = len / 8;
++    for (size_t block = 0; block < blocks; ++block) {
++      uint8_t tmp = 0;
++      if (!value(tmp))
++        return false;
++      what.emplace_back((tmp & 0b1000'0000) != 0);
++      what.emplace_back((tmp & 0b0100'0000) != 0);
++      what.emplace_back((tmp & 0b0010'0000) != 0);
++      what.emplace_back((tmp & 0b0001'0000) != 0);
++      what.emplace_back((tmp & 0b0000'1000) != 0);
++      what.emplace_back((tmp & 0b0000'0100) != 0);
++      what.emplace_back((tmp & 0b0000'0010) != 0);
++      what.emplace_back((tmp & 0b0000'0001) != 0);
++    }
++    auto trailing_block_size = len % 8;
++    if (trailing_block_size > 0) {
++      uint8_t tmp = 0;
++      if (!value(tmp))
++        return false;
++      switch (trailing_block_size) {
++        case 7:
++          what.emplace_back((tmp & 0b0100'0000) != 0);
++          [[fallthrough]];
++        case 6:
++          what.emplace_back((tmp & 0b0010'0000) != 0);
++          [[fallthrough]];
++        case 5:
++          what.emplace_back((tmp & 0b0001'0000) != 0);
++          [[fallthrough]];
++        case 4:
++          what.emplace_back((tmp & 0b0000'1000) != 0);
++          [[fallthrough]];
++        case 3:
++          what.emplace_back((tmp & 0b0000'0100) != 0);
++          [[fallthrough]];
++        case 2:
++          what.emplace_back((tmp & 0b0000'0010) != 0);
++          [[fallthrough]];
++        case 1:
++          what.emplace_back((tmp & 0b0000'0001) != 0);
++          [[fallthrough]];
++        default:
++          break;
++      }
++    }
++    return end_sequence();
++  }
++
+ private:
+   /// Checks whether we can read `read_size` more bytes.
+   bool range_check(size_t read_size) const noexcept {
+@@ -403,85 +457,20 @@ class binary_deserializer_impl : public byte_reader {
+ 
+ binary_deserializer::binary_deserializer(
+   const_byte_span input, caf::actor_handle_codec* codec) noexcept
+-  : impl_(new(impl_storage_)
++  : super(new(impl_storage_)
+             binary_deserializer_impl(input.data(), input.size(), codec)) {
+   static_assert(sizeof(binary_deserializer_impl) <= impl_storage_size);
+ }
+ 
+ binary_deserializer::binary_deserializer(
+   const void* buf, size_t size, caf::actor_handle_codec* codec) noexcept
+-  : impl_(new(impl_storage_) binary_deserializer_impl(
++  : super(new(impl_storage_) binary_deserializer_impl(
+       reinterpret_cast<const std::byte*>(buf), size, codec)) {
+-  static_assert(sizeof(binary_deserializer_impl) <= impl_storage_size);
++  // nop
+ }
+ 
+ binary_deserializer::~binary_deserializer() noexcept {
+   // nop
+ }
+ 
+-// -- interface functions ----------------------------------------------------
+-
+-void binary_deserializer::set_error(error stop_reason) {
+-  impl_->set_error(std::move(stop_reason));
+-}
+-
+-error& binary_deserializer::get_error() noexcept {
+-  return impl_->get_error();
+-}
+-
+-bool binary_deserializer::value(std::vector<bool>& what) {
+-  what.clear();
+-  size_t len = 0;
+-  if (!begin_sequence(len))
+-    return false;
+-  if (len == 0)
+-    return end_sequence();
+-  size_t blocks = len / 8;
+-  for (size_t block = 0; block < blocks; ++block) {
+-    uint8_t tmp = 0;
+-    if (!value(tmp))
+-      return false;
+-    what.emplace_back((tmp & 0b1000'0000) != 0);
+-    what.emplace_back((tmp & 0b0100'0000) != 0);
+-    what.emplace_back((tmp & 0b0010'0000) != 0);
+-    what.emplace_back((tmp & 0b0001'0000) != 0);
+-    what.emplace_back((tmp & 0b0000'1000) != 0);
+-    what.emplace_back((tmp & 0b0000'0100) != 0);
+-    what.emplace_back((tmp & 0b0000'0010) != 0);
+-    what.emplace_back((tmp & 0b0000'0001) != 0);
+-  }
+-  auto trailing_block_size = len % 8;
+-  if (trailing_block_size > 0) {
+-    uint8_t tmp = 0;
+-    if (!value(tmp))
+-      return false;
+-    switch (trailing_block_size) {
+-      case 7:
+-        what.emplace_back((tmp & 0b0100'0000) != 0);
+-        [[fallthrough]];
+-      case 6:
+-        what.emplace_back((tmp & 0b0010'0000) != 0);
+-        [[fallthrough]];
+-      case 5:
+-        what.emplace_back((tmp & 0b0001'0000) != 0);
+-        [[fallthrough]];
+-      case 4:
+-        what.emplace_back((tmp & 0b0000'1000) != 0);
+-        [[fallthrough]];
+-      case 3:
+-        what.emplace_back((tmp & 0b0000'0100) != 0);
+-        [[fallthrough]];
+-      case 2:
+-        what.emplace_back((tmp & 0b0000'0010) != 0);
+-        [[fallthrough]];
+-      case 1:
+-        what.emplace_back((tmp & 0b0000'0001) != 0);
+-        [[fallthrough]];
+-      default:
+-        break;
+-    }
+-  }
+-  return end_sequence();
+-}
+-
+ } // namespace caf
+diff --git a/libcaf_core/caf/binary_deserializer.hpp b/libcaf_core/caf/binary_deserializer.hpp
+--- a/libcaf_core/caf/binary_deserializer.hpp
++++ b/libcaf_core/caf/binary_deserializer.hpp
+@@ -8,21 +8,20 @@
+ #include "caf/byte_reader.hpp"
+ #include "caf/detail/core_export.hpp"
+ #include "caf/fwd.hpp"
+-#include "caf/placement_ptr.hpp"
+ 
+-#include <concepts>
+ #include <cstddef>
+-#include <span>
+ 
+ namespace caf {
+ 
+ /// Deserializes C++ objects from sequence of bytes. Does not perform
+ /// run-time type checks.
+ class CAF_CORE_EXPORT binary_deserializer final
+-  : public load_inspector_base<binary_deserializer> {
++  : public load_inspector_base<binary_deserializer, byte_reader> {
+ public:
+   // -- constructors, destructors, and assignment operators --------------------
+ 
++  using super = load_inspector_base<binary_deserializer, byte_reader>;
++
+   explicit binary_deserializer(const_byte_span input,
+                                caf::actor_handle_codec* codec
+                                = nullptr) noexcept;
+@@ -36,184 +35,17 @@ class CAF_CORE_EXPORT binary_deserializer final
+ 
+   binary_deserializer& operator=(const binary_deserializer&) = delete;
+ 
+-  // -- byte_reader overrides --------------------------------------------------
+-
+-  [[nodiscard]] bool load_bytes(const_byte_span bytes) {
+-    return impl_->load_bytes(bytes);
+-  }
+-
+   [[nodiscard]] bool has_human_readable_format() const noexcept {
+     return false;
+   }
+ 
+-  // -- overridden member functions --------------------------------------------
+-
+-  void set_error(error stop_reason) override;
+-
+-  error& get_error() noexcept final;
+-
+-  bool fetch_next_object_type(type_id_t& type) noexcept {
+-    return impl_->fetch_next_object_type(type);
+-  }
+-
+-  bool begin_object(type_id_t type, std::string_view name) noexcept {
+-    return impl_->begin_object(type, name);
+-  }
+-
+-  bool end_object() noexcept {
+-    return impl_->end_object();
+-  }
+-
+-  bool begin_field(std::string_view name) noexcept {
+-    return impl_->begin_field(name);
+-  }
+-
+-  bool begin_field(std::string_view name, bool& is_present) noexcept {
+-    return impl_->begin_field(name, is_present);
+-  }
+-
+-  bool begin_field(std::string_view name, std::span<const type_id_t> types,
+-                   size_t& index) noexcept {
+-    return impl_->begin_field(name, types, index);
+-  }
+-
+-  bool begin_field(std::string_view name, bool& is_present,
+-                   std::span<const type_id_t> types, size_t& index) noexcept {
+-    return impl_->begin_field(name, is_present, types, index);
+-  }
+-
+-  bool end_field() {
+-    return impl_->end_field();
+-  }
+-
+-  bool begin_tuple(size_t size) noexcept {
+-    return impl_->begin_tuple(size);
+-  }
+-
+-  bool end_tuple() noexcept {
+-    return impl_->end_tuple();
+-  }
+-
+-  bool begin_key_value_pair() noexcept {
+-    return impl_->begin_key_value_pair();
+-  }
+-
+-  bool end_key_value_pair() noexcept {
+-    return impl_->end_key_value_pair();
+-  }
+-
+-  bool begin_sequence(size_t& list_size) noexcept {
+-    return impl_->begin_sequence(list_size);
+-  }
+-
+-  bool end_sequence() noexcept {
+-    return impl_->end_sequence();
+-  }
+-
+-  bool begin_associative_array(size_t& size) noexcept {
+-    return impl_->begin_associative_array(size);
+-  }
+-
+-  bool end_associative_array() noexcept {
+-    return impl_->end_associative_array();
+-  }
+-
+-  bool value(bool& what) noexcept {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(std::byte& what) noexcept {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(uint8_t& what) noexcept {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(int8_t& what) noexcept {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(int16_t& what) noexcept {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(uint16_t& what) noexcept {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(int32_t& what) noexcept {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(uint32_t& what) noexcept {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(int64_t& what) noexcept {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(uint64_t& what) noexcept {
+-    return impl_->value(what);
+-  }
+-
+-  template <std::integral T>
+-  bool value(T& what) noexcept {
+-    auto tmp = detail::squashed_int_t<T>{0};
+-    if (impl_->value(tmp)) {
+-      what = static_cast<T>(tmp);
+-      return true;
+-    } else {
+-      return false;
+-    }
+-  }
+-
+-  template <std::floating_point T>
+-  bool value(T& what) noexcept {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(strong_actor_ptr& what) {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(weak_actor_ptr& what) {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(std::string& what) {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(std::u16string& what) {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(std::u32string& what) {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(byte_span what) noexcept {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(std::vector<bool>& what);
+-
+-  caf::actor_handle_codec* actor_handle_codec() {
+-    return impl_->actor_handle_codec();
+-  }
+-
+-  byte_reader& as_deserializer() noexcept {
+-    return *impl_;
++  [[nodiscard]] bool load_bytes(const_byte_span bytes) {
++    return impl_->load_bytes(bytes);
+   }
+ 
+ private:
+   static constexpr size_t impl_storage_size = 48;
+ 
+-  /// Pointer to the implementation object.
+-  placement_ptr<byte_reader> impl_;
+-
+   /// Storage for the implementation object.
+   alignas(std::max_align_t) std::byte impl_storage_[impl_storage_size];
+ };
+diff --git a/libcaf_core/caf/binary_serializer.cpp b/libcaf_core/caf/binary_serializer.cpp
+--- a/libcaf_core/caf/binary_serializer.cpp
++++ b/libcaf_core/caf/binary_serializer.cpp
+@@ -270,10 +270,9 @@ class binary_serializer_impl : public byte_writer {
+ 
+   bool value(long double x) override {
+     // TODO: Our IEEE-754 conversion currently does not work for long double.
+-    // The
+-    //       standard does not guarantee a fixed representation for this type,
+-    //       but on X86 we can usually rely on 80-bit precision. For now, we
+-    //       fall back to string conversion.
++    //       The standard does not guarantee a fixed representation for this
++    //       type, but on X86 we can usually rely on 80-bit precision. For now,
++    //       we fall back to string conversion.
+     std::ostringstream oss;
+     oss << std::setprecision(std::numeric_limits<long double>::digits) << x;
+     auto tmp = oss.str();
+@@ -307,6 +306,78 @@ class binary_serializer_impl : public byte_writer {
+     return end_sequence();
+   }
+ 
++  bool value(const std::vector<bool>& what) override {
++    auto len = what.size();
++    if (!begin_sequence(len))
++      return false;
++    if (len == 0)
++      return end_sequence();
++    size_t pos = 0;
++    size_t blocks = len / 8;
++    for (size_t block = 0; block < blocks; ++block) {
++      uint8_t tmp = 0;
++      if (what[pos++])
++        tmp |= 0b1000'0000;
++      if (what[pos++])
++        tmp |= 0b0100'0000;
++      if (what[pos++])
++        tmp |= 0b0010'0000;
++      if (what[pos++])
++        tmp |= 0b0001'0000;
++      if (what[pos++])
++        tmp |= 0b0000'1000;
++      if (what[pos++])
++        tmp |= 0b0000'0100;
++      if (what[pos++])
++        tmp |= 0b0000'0010;
++      if (what[pos++])
++        tmp |= 0b0000'0001;
++      if (!value(tmp)) {
++        return false;
++      }
++    }
++    auto trailing_block_size = len % 8;
++    if (trailing_block_size > 0) {
++      uint8_t tmp = 0;
++      switch (trailing_block_size) {
++        case 7:
++          if (what[pos++])
++            tmp |= 0b0100'0000;
++          [[fallthrough]];
++        case 6:
++          if (what[pos++])
++            tmp |= 0b0010'0000;
++          [[fallthrough]];
++        case 5:
++          if (what[pos++])
++            tmp |= 0b0001'0000;
++          [[fallthrough]];
++        case 4:
++          if (what[pos++])
++            tmp |= 0b0000'1000;
++          [[fallthrough]];
++        case 3:
++          if (what[pos++])
++            tmp |= 0b0000'0100;
++          [[fallthrough]];
++        case 2:
++          if (what[pos++])
++            tmp |= 0b0000'0010;
++          [[fallthrough]];
++        case 1:
++          if (what[pos++])
++            tmp |= 0b0000'0001;
++          [[fallthrough]];
++        default:
++          break;
++      }
++      if (!value(tmp)) {
++        return false;
++      }
++    }
++    return end_sequence();
++  }
++
+ private:
+   template <class T>
+   bool int_value(T x) {
+@@ -330,88 +401,12 @@ class binary_serializer_impl : public byte_writer {
+ 
+ binary_serializer::binary_serializer(byte_buffer& buf,
+                                      caf::actor_handle_codec* codec) noexcept
+-  : impl_(new(impl_storage_) binary_serializer_impl(buf, codec)) {
++  : super(new(impl_storage_) binary_serializer_impl(buf, codec)) {
+   static_assert(sizeof(binary_serializer_impl) <= impl_storage_size);
+ }
+ 
+ binary_serializer::~binary_serializer() noexcept {
+   // nop
+ }
+ 
+-void binary_serializer::set_error(error stop_reason) {
+-  impl_->set_error(std::move(stop_reason));
+-}
+-
+-error& binary_serializer::get_error() noexcept {
+-  return impl_->get_error();
+-}
+-
+-bool binary_serializer::value(const std::vector<bool>& what) {
+-  auto len = what.size();
+-  if (!begin_sequence(len))
+-    return false;
+-  if (len == 0)
+-    return end_sequence();
+-  size_t pos = 0;
+-  size_t blocks = len / 8;
+-  for (size_t block = 0; block < blocks; ++block) {
+-    uint8_t tmp = 0;
+-    if (what[pos++])
+-      tmp |= 0b1000'0000;
+-    if (what[pos++])
+-      tmp |= 0b0100'0000;
+-    if (what[pos++])
+-      tmp |= 0b0010'0000;
+-    if (what[pos++])
+-      tmp |= 0b0001'0000;
+-    if (what[pos++])
+-      tmp |= 0b0000'1000;
+-    if (what[pos++])
+-      tmp |= 0b0000'0100;
+-    if (what[pos++])
+-      tmp |= 0b0000'0010;
+-    if (what[pos++])
+-      tmp |= 0b0000'0001;
+-    value(tmp);
+-  }
+-  auto trailing_block_size = len % 8;
+-  if (trailing_block_size > 0) {
+-    uint8_t tmp = 0;
+-    switch (trailing_block_size) {
+-      case 7:
+-        if (what[pos++])
+-          tmp |= 0b0100'0000;
+-        [[fallthrough]];
+-      case 6:
+-        if (what[pos++])
+-          tmp |= 0b0010'0000;
+-        [[fallthrough]];
+-      case 5:
+-        if (what[pos++])
+-          tmp |= 0b0001'0000;
+-        [[fallthrough]];
+-      case 4:
+-        if (what[pos++])
+-          tmp |= 0b0000'1000;
+-        [[fallthrough]];
+-      case 3:
+-        if (what[pos++])
+-          tmp |= 0b0000'0100;
+-        [[fallthrough]];
+-      case 2:
+-        if (what[pos++])
+-          tmp |= 0b0000'0010;
+-        [[fallthrough]];
+-      case 1:
+-        if (what[pos++])
+-          tmp |= 0b0000'0001;
+-        [[fallthrough]];
+-      default:
+-        break;
+-    }
+-    value(tmp);
+-  }
+-  return end_sequence();
+-}
+-
+ } // namespace caf
+diff --git a/libcaf_core/caf/binary_serializer.hpp b/libcaf_core/caf/binary_serializer.hpp
+--- a/libcaf_core/caf/binary_serializer.hpp
++++ b/libcaf_core/caf/binary_serializer.hpp
+@@ -8,9 +8,7 @@
+ #include "caf/byte_writer.hpp"
+ #include "caf/detail/core_export.hpp"
+ #include "caf/fwd.hpp"
+-#include "caf/placement_ptr.hpp"
+ 
+-#include <concepts>
+ #include <cstddef>
+ 
+ namespace caf {
+@@ -20,9 +18,9 @@ namespace caf {
+ ///       perform any type checking at run-time. Thus the output of this
+ ///       serializer is unsuitable for persistence layers.
+ class CAF_CORE_EXPORT binary_serializer final
+-  : public save_inspector_base<binary_serializer> {
++  : public save_inspector_base<binary_serializer, byte_writer> {
+ public:
+-  // -- constructors, destructors, and assignment operators --------------------
++  using super = save_inspector_base<binary_serializer, byte_writer>;
+ 
+   explicit binary_serializer(byte_buffer& buf,
+                              caf::actor_handle_codec* codec = nullptr) noexcept;
+@@ -33,14 +31,10 @@ class CAF_CORE_EXPORT binary_serializer final
+ 
+   binary_serializer& operator=(const binary_serializer&) = delete;
+ 
+-  // -- properties -------------------------------------------------------------
+-
+   void reset() {
+     impl_->reset();
+   }
+ 
+-  // -- byte_writer overrides --------------------------------------------------
+-
+   [[nodiscard]] const_byte_span bytes() const noexcept {
+     return impl_->bytes();
+   }
+@@ -49,8 +43,6 @@ class CAF_CORE_EXPORT binary_serializer final
+     return false;
+   }
+ 
+-  // -- position management ----------------------------------------------------
+-
+   /// Jumps `num_bytes` forward by inserting `num_bytes` zeros at the end of the
+   /// buffer.
+   /// @returns the offset where the zero-bytes were inserted.
+@@ -65,128 +57,9 @@ class CAF_CORE_EXPORT binary_serializer final
+     return impl_->update(offset, content);
+   }
+ 
+-  // -- interface functions ----------------------------------------------------
+-
+-  void set_error(error stop_reason) override;
+-
+-  error& get_error() noexcept final;
+-
+-  bool begin_object(type_id_t id, std::string_view name) noexcept {
+-    return impl_->begin_object(id, name);
+-  }
+-
+-  bool end_object() {
+-    return impl_->end_object();
+-  }
+-
+-  bool begin_field(std::string_view type_name) noexcept {
+-    return impl_->begin_field(type_name);
+-  }
+-
+-  bool begin_field(std::string_view type_name, bool is_present) {
+-    return impl_->begin_field(type_name, is_present);
+-  }
+-
+-  bool begin_field(std::string_view type_name, std::span<const type_id_t> types,
+-                   size_t index) {
+-    return impl_->begin_field(type_name, types, index);
+-  }
+-
+-  bool begin_field(std::string_view type_name, bool is_present,
+-                   std::span<const type_id_t> types, size_t index) {
+-    return impl_->begin_field(type_name, is_present, types, index);
+-  }
+-
+-  bool end_field() {
+-    return impl_->end_field();
+-  }
+-
+-  bool begin_tuple(size_t size) {
+-    return impl_->begin_tuple(size);
+-  }
+-
+-  bool end_tuple() {
+-    return impl_->end_tuple();
+-  }
+-
+-  bool begin_key_value_pair() {
+-    return impl_->begin_key_value_pair();
+-  }
+-
+-  bool end_key_value_pair() {
+-    return impl_->end_key_value_pair();
+-  }
+-
+-  bool begin_sequence(size_t list_size) {
+-    return impl_->begin_sequence(list_size);
+-  }
+-
+-  bool end_sequence() {
+-    return impl_->end_sequence();
+-  }
+-
+-  bool begin_associative_array(size_t size) {
+-    return impl_->begin_associative_array(size);
+-  }
+-
+-  bool end_associative_array() {
+-    return impl_->end_associative_array();
+-  }
+-
+-  bool value(std::byte what) {
+-    return impl_->value(what);
+-  }
+-
+-  template <std::integral T>
+-  bool value(T what) {
+-    return impl_->value(static_cast<detail::squashed_int_t<T>>(what));
+-  }
+-
+-  template <std::floating_point T>
+-  bool value(T what) {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(const strong_actor_ptr& what) {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(const weak_actor_ptr& what) {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(std::string_view what) {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(const std::u16string& what) {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(const std::u32string& what) {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(const_byte_span what) {
+-    return impl_->value(what);
+-  }
+-
+-  bool value(const std::vector<bool>& what);
+-
+-  caf::actor_handle_codec* actor_handle_codec() {
+-    return impl_->actor_handle_codec();
+-  }
+-
+-  byte_writer& as_serializer() noexcept {
+-    return *impl_;
+-  }
+-
+ private:
+   static constexpr size_t impl_storage_size = 40;
+ 
+-  /// Pointer to the implementation object.
+-  placement_ptr<byte_writer> impl_;
+-
+   /// Storage for the implementation object.
+   alignas(std::max_align_t) std::byte impl_storage_[impl_storage_size];
+ };
+diff --git a/libcaf_core/caf/deserializer.cpp b/libcaf_core/caf/deserializer.cpp
+--- a/libcaf_core/caf/deserializer.cpp
++++ b/libcaf_core/caf/deserializer.cpp
+@@ -82,7 +82,7 @@ bool deserializer::value(weak_actor_ptr& ptr) {
+   return true;
+ }
+ 
+-bool deserializer::list(std::vector<bool>& x) {
++bool deserializer::value(std::vector<bool>& x) {
+   x.clear();
+   size_t size = 0;
+   if (!begin_sequence(size))
+diff --git a/libcaf_core/caf/deserializer.hpp b/libcaf_core/caf/deserializer.hpp
+--- a/libcaf_core/caf/deserializer.hpp
++++ b/libcaf_core/caf/deserializer.hpp
+@@ -182,19 +182,20 @@ class CAF_CORE_EXPORT deserializer : public load_inspector_base<deserializer> {
+   /// @returns A non-zero error code on failure, `sec::success` otherwise.
+   virtual bool value(byte_span x) = 0;
+ 
++  /// Reads the vector of booleans from the input.
++  virtual bool value(std::vector<bool>& x);
++
++  // Announce special handling of `vector<bool>` to the inspection API.
++  bool builtin_inspect(std::vector<bool>& x) {
++    return value(x);
++  }
++
+   /// @copydoc value
+   bool value(strong_actor_ptr& ptr);
+ 
+   /// @copydoc value
+   bool value(weak_actor_ptr& ptr);
+ 
+-  using super::list;
+-
+-  /// Adds each boolean in `xs` to the output. Derived classes can override this
+-  /// member function to pack the booleans, for example to avoid using one
+-  /// byte for each value in a binary output format.
+-  virtual bool list(std::vector<bool>& xs);
+-
+   virtual caf::actor_handle_codec* actor_handle_codec() = 0;
+ 
+   /// Returns a reference to the deserializer. Convenience member function for
+diff --git a/libcaf_core/caf/inspector_access_base.hpp b/libcaf_core/caf/inspector_access_base.hpp
+--- a/libcaf_core/caf/inspector_access_base.hpp
++++ b/libcaf_core/caf/inspector_access_base.hpp
+@@ -4,7 +4,6 @@
+ 
+ #pragma once
+ 
+-#include "caf/detail/as_mutable_ref.hpp"
+ #include "caf/sec.hpp"
+ 
+ #include <string>
+diff --git a/libcaf_core/caf/inspector_access_type.hpp b/libcaf_core/caf/inspector_access_type.hpp
+--- a/libcaf_core/caf/inspector_access_type.hpp
++++ b/libcaf_core/caf/inspector_access_type.hpp
+@@ -9,9 +9,7 @@
+ #include "caf/detail/is_complete.hpp"
+ #include "caf/fwd.hpp"
+ 
+-#include <string>
+ #include <type_traits>
+-#include <vector>
+ 
+ namespace caf {
+ 
+diff --git a/libcaf_core/caf/json_reader.cpp b/libcaf_core/caf/json_reader.cpp
+--- a/libcaf_core/caf/json_reader.cpp
++++ b/libcaf_core/caf/json_reader.cpp
+@@ -97,7 +97,7 @@ std::string_view field_type(const caf::detail::json::object* obj,
+ 
+ namespace caf {
+ 
+-class json_reader::impl : public text_reader {
++class json_reader_impl : public text_reader {
+ public:
+   // -- member types -----------------------------------------------------------
+ 
+@@ -178,15 +178,15 @@ class json_reader::impl : public text_reader {
+ 
+   // -- constructors, destructors, and assignment operators --------------------
+ 
+-  explicit impl(caf::actor_handle_codec* codec) : codec_(codec) {
++  explicit json_reader_impl(caf::actor_handle_codec* codec) : codec_(codec) {
+     field_.reserve(8);
+   }
+ 
+-  impl(const json_reader&) = delete;
++  json_reader_impl(const json_reader_impl&) = delete;
+ 
+-  impl& operator=(const json_reader&) = delete;
++  json_reader_impl& operator=(const json_reader_impl&) = delete;
+ 
+-  ~impl() override {
++  ~json_reader_impl() override {
+     // nop
+   }
+ 
+@@ -224,14 +224,7 @@ class json_reader::impl : public text_reader {
+     return err_;
+   }
+ 
+-  /// Parses @p json_text into an internal representation. After loading the
+-  /// JSON input, the reader is ready for attempting to deserialize inspectable
+-  /// objects.
+-  /// @warning The internal data structure keeps pointers into @p json_text.
+-  ///          Hence, the buffer pointed to by the string view must remain valid
+-  ///          until either destroying this reader or calling `reset`.
+-  /// @note Implicitly calls `reset`.
+-  bool load(std::string_view json_text) {
++  bool load_text(std::string_view json_text) override {
+     reset();
+     string_parser_state ps{json_text.begin(), json_text.end()};
+     root_ = detail::json::parse_shallow(ps, &buf_);
+@@ -249,8 +242,7 @@ class json_reader::impl : public text_reader {
+   }
+ 
+   bool load_bytes(const_byte_span bytes) override {
+-    auto utf8 = to_string_view(bytes);
+-    return load(utf8);
++    return load_text(to_string_view(bytes));
+   }
+ 
+   /// Reads the input stream @p input and parses the content into an internal
+@@ -296,7 +288,7 @@ class json_reader::impl : public text_reader {
+   /// Reverts the state of the reader back to where it was after calling `load`.
+   /// @post The reader is ready for attempting to deserialize another
+   ///       inspectable object.
+-  void revert() {
++  void revert() override {
+     if (st_) {
+       CAF_ASSERT(root_ != nullptr);
+       err_.reset();
+@@ -307,7 +299,7 @@ class json_reader::impl : public text_reader {
+   }
+ 
+   /// Removes any loaded JSON data and reclaims memory resources.
+-  void reset() {
++  void reset() override {
+     buf_.release();
+     st_ = nullptr;
+     err_.reset();
+@@ -740,6 +732,10 @@ class json_reader::impl : public text_reader {
+     return codec_;
+   }
+ 
++  static json_reader_impl& downcast(text_reader& ptr) {
++    return static_cast<json_reader_impl&>(ptr);
++  }
++
+ private:
+   [[nodiscard]] position pos() const noexcept {
+     if (st_ == nullptr)
+@@ -895,218 +891,25 @@ class json_reader::impl : public text_reader {
+ 
+ // -- constructors, destructors, and assignment operators ----------------------
+ 
+-json_reader::json_reader(caf::actor_handle_codec* codec) {
+-  static_assert(sizeof(impl) <= impl_storage_size);
+-  impl_.reset(new (impl_storage_) impl(codec));
++json_reader::json_reader(caf::actor_handle_codec* codec) : super(nullptr) {
++  static_assert(sizeof(json_reader_impl) <= impl_storage_size);
++  impl_.reset(new (impl_storage_) json_reader_impl(codec));
+ }
+ 
+-json_reader::~json_reader() {
++json_reader::~json_reader() noexcept {
+   // nop
+ }
+ 
+-// -- properties -------------------------------------------------------------
+-
+-[[nodiscard]] std::string_view json_reader::field_type_suffix() const noexcept {
+-  return impl_->field_type_suffix();
+-}
+-
+-void json_reader::field_type_suffix(std::string_view suffix) noexcept {
+-  impl_->field_type_suffix(suffix);
+-}
+-
+-[[nodiscard]] const type_id_mapper* json_reader::mapper() const noexcept {
+-  return impl_->mapper();
+-}
+-
+-/// Changes the type ID mapper for the writer.
+-void json_reader::mapper(const type_id_mapper* ptr) noexcept {
+-  impl_->mapper(ptr);
+-}
+-
+-// -- modifiers --------------------------------------------------------------
+-
+-void json_reader::set_error(error stop_reason) {
+-  impl_->set_error(std::move(stop_reason));
+-}
+-
+-error& json_reader::get_error() noexcept {
+-  return impl_->get_error();
+-}
+-
+-bool json_reader::load(std::string_view json_text) {
+-  return impl_->load(json_text);
+-}
+-
+-bool json_reader::load_bytes(const_byte_span bytes) {
+-  return impl_->load_bytes(bytes);
+-}
+-
+ bool json_reader::load_from(std::istream& input) {
+-  return impl_->load_from(input);
++  return json_reader_impl::downcast(*impl_).load_from(input);
+ }
+ 
+ bool json_reader::load_file(const char* path) {
+-  return impl_->load_file(path);
++  return json_reader_impl::downcast(*impl_).load_file(path);
+ }
+ 
+ bool json_reader::load_file(const std::string& path) {
+-  return impl_->load_file(path);
+-}
+-
+-void json_reader::revert() {
+-  impl_->revert();
+-}
+-
+-void json_reader::reset() {
+-  impl_->reset();
+-}
+-
+-// -- interface functions ------------------------------------------------------
+-
+-bool json_reader::has_human_readable_format() const noexcept {
+-  return impl_->has_human_readable_format();
+-}
+-
+-bool json_reader::fetch_next_object_type(type_id_t& type) {
+-  return impl_->fetch_next_object_type(type);
+-}
+-
+-bool json_reader::fetch_next_object_name(std::string_view& type_name) {
+-  return impl_->fetch_next_object_name(type_name);
+-}
+-
+-bool json_reader::begin_object(type_id_t, std::string_view) {
+-  return impl_->begin_object(type_id_t{}, std::string_view{});
+-}
+-
+-bool json_reader::end_object() {
+-  return impl_->end_object();
+-}
+-
+-bool json_reader::begin_field(std::string_view name) {
+-  return impl_->begin_field(name);
+-}
+-
+-bool json_reader::begin_field(std::string_view name, bool& is_present) {
+-  return impl_->begin_field(name, is_present);
+-}
+-
+-bool json_reader::begin_field(std::string_view name,
+-                              std::span<const type_id_t> types, size_t& index) {
+-  return impl_->begin_field(name, types, index);
+-}
+-
+-bool json_reader::begin_field(std::string_view name, bool& is_present,
+-                              std::span<const type_id_t> types, size_t& index) {
+-  return impl_->begin_field(name, is_present, types, index);
+-}
+-
+-bool json_reader::end_field() {
+-  return impl_->end_field();
+-}
+-
+-bool json_reader::begin_tuple(size_t size) {
+-  return impl_->begin_tuple(size);
+-}
+-
+-bool json_reader::end_tuple() {
+-  return impl_->end_tuple();
+-}
+-
+-bool json_reader::begin_key_value_pair() {
+-  return impl_->begin_key_value_pair();
+-}
+-
+-bool json_reader::end_key_value_pair() {
+-  return impl_->end_key_value_pair();
+-}
+-
+-bool json_reader::begin_sequence(size_t& size) {
+-  return impl_->begin_sequence(size);
+-}
+-
+-bool json_reader::end_sequence() {
+-  return impl_->end_sequence();
+-}
+-
+-bool json_reader::begin_associative_array(size_t& size) {
+-  return impl_->begin_associative_array(size);
+-}
+-
+-bool json_reader::end_associative_array() {
+-  return impl_->end_associative_array();
+-}
+-
+-bool json_reader::value(std::byte& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(bool& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(int8_t& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(uint8_t& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(int16_t& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(uint16_t& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(int32_t& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(uint32_t& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(int64_t& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(uint64_t& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(float& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(double& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(long double& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(std::string& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(std::u16string& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(std::u32string& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_reader::value(byte_span x) {
+-  return impl_->value(x);
+-}
+-
+-caf::actor_handle_codec* json_reader::actor_handle_codec() {
+-  return impl_->actor_handle_codec();
++  return json_reader_impl::downcast(*impl_).load_file(path);
+ }
+ 
+ } // namespace caf
+diff --git a/libcaf_core/caf/json_reader.hpp b/libcaf_core/caf/json_reader.hpp
+--- a/libcaf_core/caf/json_reader.hpp
++++ b/libcaf_core/caf/json_reader.hpp
+@@ -4,18 +4,22 @@
+ 
+ #pragma once
+ 
++#include "caf/caf_deprecated.hpp"
+ #include "caf/detail/core_export.hpp"
+ #include "caf/fwd.hpp"
+-#include "caf/placement_ptr.hpp"
++#include "caf/load_inspector_base.hpp"
+ #include "caf/text_reader.hpp"
+ 
+ #include <cstddef>
+ 
+ namespace caf {
+ 
+ /// Deserializes an inspectable object from a JSON-formatted string.
+-class CAF_CORE_EXPORT json_reader : public text_reader {
++class CAF_CORE_EXPORT json_reader final
++  : public load_inspector_base<json_reader, text_reader> {
+ public:
++  using super = load_inspector_base<json_reader, text_reader>;
++
+   // -- constructors, destructors, and assignment operators --------------------
+ 
+   explicit json_reader(caf::actor_handle_codec* codec = nullptr);
+@@ -24,23 +28,25 @@ class CAF_CORE_EXPORT json_reader : public text_reader {
+ 
+   json_reader& operator=(const json_reader&) = delete;
+ 
+-  ~json_reader() override;
++  ~json_reader() noexcept override;
+ 
+   // -- properties -------------------------------------------------------------
+ 
+-  [[nodiscard]] std::string_view field_type_suffix() const noexcept final;
+-
+-  void field_type_suffix(std::string_view suffix) noexcept final;
+-
+-  [[nodiscard]] const type_id_mapper* mapper() const noexcept final;
++  [[nodiscard]] std::string_view field_type_suffix() const noexcept {
++    return impl_->field_type_suffix();
++  }
+ 
+-  void mapper(const type_id_mapper* ptr) noexcept final;
++  void field_type_suffix(std::string_view suffix) noexcept {
++    impl_->field_type_suffix(suffix);
++  }
+ 
+-  // -- modifiers --------------------------------------------------------------
++  [[nodiscard]] const type_id_mapper* mapper() const noexcept {
++    return impl_->mapper();
++  }
+ 
+-  void set_error(error stop_reason) final;
+-
+-  error& get_error() noexcept final;
++  void mapper(const type_id_mapper* ptr) noexcept {
++    impl_->mapper(ptr);
++  }
+ 
+   /// Parses @p json_text into an internal representation. After loading the
+   /// JSON input, the reader is ready for attempting to deserialize inspectable
+@@ -49,9 +55,16 @@ class CAF_CORE_EXPORT json_reader : public text_reader {
+   ///          Hence, the buffer pointed to by the string view must remain valid
+   ///          until either destroying this reader or calling `reset`.
+   /// @note Implicitly calls `reset`.
+-  bool load(std::string_view json_text);
++  bool load_text(std::string_view json_text) {
++    return impl_->load_text(json_text);
++  }
++
++  CAF_DEPRECATED("use load_text instead")
++  bool load(std::string_view json_text) {
++    return load_text(json_text);
++  }
+ 
+-  bool load_bytes(const_byte_span bytes) final;
++  bool load_bytes(const_byte_span bytes);
+ 
+   /// Reads the input stream @p input and parses the content into an internal
+   /// representation. After loading the JSON input, the reader is ready for
+@@ -71,98 +84,34 @@ class CAF_CORE_EXPORT json_reader : public text_reader {
+   /// Reverts the state of the reader back to where it was after calling `load`.
+   /// @post The reader is ready for attempting to deserialize another
+   ///       inspectable object.
+-  void revert();
++  void revert() {
++    impl_->revert();
++  }
+ 
+   /// Removes any loaded JSON data and reclaims memory resources.
+-  void reset();
+-
+-  // -- finals --------------------------------------------------------------
+-
+-  bool has_human_readable_format() const noexcept final;
+-
+-  bool fetch_next_object_type(type_id_t& type) final;
+-
+-  bool fetch_next_object_name(std::string_view& type_name) final;
+-
+-  bool begin_object(type_id_t type, std::string_view name) final;
+-
+-  bool end_object() final;
+-
+-  bool begin_field(std::string_view) final;
+-
+-  bool begin_field(std::string_view name, bool& is_present) final;
+-
+-  bool begin_field(std::string_view name, std::span<const type_id_t> types,
+-                   size_t& index) final;
+-
+-  bool begin_field(std::string_view name, bool& is_present,
+-                   std::span<const type_id_t> types, size_t& index) final;
+-
+-  bool end_field() final;
+-
+-  bool begin_tuple(size_t size) final;
+-
+-  bool end_tuple() final;
+-
+-  bool begin_key_value_pair() final;
+-
+-  bool end_key_value_pair() final;
+-
+-  bool begin_sequence(size_t& size) final;
++  void reset() {
++    impl_->reset();
++  }
+ 
+-  bool end_sequence() final;
++  bool fetch_next_object_name(std::string_view& type_name) {
++    return impl_->fetch_next_object_name(type_name);
++  }
+ 
+-  bool begin_associative_array(size_t& size) final;
++  bool next_object_name_matches(std::string_view type_name) {
++    return impl_->next_object_name_matches(type_name);
++  }
+ 
+-  bool end_associative_array() final;
++  bool assert_next_object_name(std::string_view type_name) {
++    return impl_->assert_next_object_name(type_name);
++  }
+ 
+-  using text_reader::value;
+-
+-  bool value(std::byte& x) final;
+-
+-  bool value(bool& x) final;
+-
+-  bool value(int8_t& x) final;
+-
+-  bool value(uint8_t& x) final;
+-
+-  bool value(int16_t& x) final;
+-
+-  bool value(uint16_t& x) final;
+-
+-  bool value(int32_t& x) final;
+-
+-  bool value(uint32_t& x) final;
+-
+-  bool value(int64_t& x) final;
+-
+-  bool value(uint64_t& x) final;
+-
+-  bool value(float& x) final;
+-
+-  bool value(double& x) final;
+-
+-  bool value(long double& x) final;
+-
+-  bool value(std::string& x) final;
+-
+-  bool value(std::u16string& x) final;
+-
+-  bool value(std::u32string& x) final;
+-
+-  bool value(byte_span x) final;
+-
+-  caf::actor_handle_codec* actor_handle_codec() final;
++  bool has_human_readable_format() const noexcept {
++    return true;
++  }
+ 
+ private:
+   static constexpr size_t impl_storage_size = 196;
+ 
+-  /// Opaque implementation class.
+-  class impl;
+-
+-  /// Pointer to the implementation object.
+-  placement_ptr<impl> impl_;
+-
+   /// Storage for the implementation object.
+   alignas(std::max_align_t) std::byte impl_storage_[impl_storage_size];
+ };
+diff --git a/libcaf_core/caf/json_writer.cpp b/libcaf_core/caf/json_writer.cpp
+--- a/libcaf_core/caf/json_writer.cpp
++++ b/libcaf_core/caf/json_writer.cpp
+@@ -40,15 +40,15 @@ char last_non_ws_char(const std::vector<char>& buf) {
+ 
+ namespace caf {
+ 
+-class json_writer::impl : public text_writer {
++class json_writer_impl : public text_writer {
+ public:
+   // -- member types -----------------------------------------------------------
+ 
+   using super = text_writer;
+ 
+   // -- constructors, destructors, and assignment operators --------------------
+ 
+-  explicit impl(caf::actor_handle_codec* codec) : codec_(codec) {
++  explicit json_writer_impl(caf::actor_handle_codec* codec) : codec_(codec) {
+     // Reserve some reasonable storage for the character buffer. JSON grows
+     // quickly, so we can start at 1kb to avoid a couple of small allocations in
+     // the beginning.
+@@ -704,217 +704,13 @@ class json_writer::impl : public text_writer {
+ 
+ // -- constructors, destructors, and assignment operators ----------------------
+ 
+-json_writer::json_writer(caf::actor_handle_codec* codec) {
+-  static_assert(sizeof(impl) <= impl_storage_size);
+-  impl_.reset(new (impl_storage_) impl(codec));
++json_writer::json_writer(caf::actor_handle_codec* codec)
++  : super(new(impl_storage_) json_writer_impl(codec)) {
++  static_assert(sizeof(json_writer_impl) <= impl_storage_size);
+ }
+ 
+-json_writer::~json_writer() {
++json_writer::~json_writer() noexcept {
+   // nop
+ }
+ 
+-// -- properties ---------------------------------------------------------------
+-
+-std::string_view json_writer::str() const noexcept {
+-  return impl_->str();
+-}
+-
+-size_t json_writer::indentation() const noexcept {
+-  return impl_->indentation();
+-}
+-
+-void json_writer::indentation(size_t factor) noexcept {
+-  impl_->indentation(factor);
+-}
+-
+-bool json_writer::compact() const noexcept {
+-  return impl_->compact();
+-}
+-
+-bool json_writer::skip_empty_fields() const noexcept {
+-  return impl_->skip_empty_fields();
+-}
+-
+-void json_writer::skip_empty_fields(bool value) noexcept {
+-  impl_->skip_empty_fields(value);
+-}
+-
+-bool json_writer::skip_object_type_annotation() const noexcept {
+-  return impl_->skip_object_type_annotation();
+-}
+-
+-void json_writer::skip_object_type_annotation(bool value) noexcept {
+-  impl_->skip_object_type_annotation(value);
+-}
+-
+-std::string_view json_writer::field_type_suffix() const noexcept {
+-  return impl_->field_type_suffix();
+-}
+-
+-void json_writer::field_type_suffix(std::string_view suffix) noexcept {
+-  impl_->field_type_suffix(suffix);
+-}
+-
+-const type_id_mapper* json_writer::mapper() const noexcept {
+-  return impl_->mapper();
+-}
+-
+-void json_writer::mapper(const type_id_mapper* ptr) noexcept {
+-  impl_->mapper(ptr);
+-}
+-
+-// -- modifiers ----------------------------------------------------------------
+-
+-void json_writer::reset() {
+-  impl_->reset();
+-}
+-
+-// -- overrides ----------------------------------------------------------------
+-
+-void json_writer::set_error(error stop_reason) {
+-  impl_->set_error(std::move(stop_reason));
+-}
+-
+-error& json_writer::get_error() noexcept {
+-  return impl_->get_error();
+-}
+-
+-bool json_writer::has_human_readable_format() const noexcept {
+-  return impl_->has_human_readable_format();
+-}
+-
+-bool json_writer::begin_object(type_id_t id, std::string_view name) {
+-  return impl_->begin_object(id, name);
+-}
+-
+-bool json_writer::end_object() {
+-  return impl_->end_object();
+-}
+-
+-bool json_writer::begin_field(std::string_view name) {
+-  return impl_->begin_field(name);
+-}
+-
+-bool json_writer::begin_field(std::string_view name, bool is_present) {
+-  return impl_->begin_field(name, is_present);
+-}
+-
+-bool json_writer::begin_field(std::string_view name,
+-                              std::span<const type_id_t> types, size_t index) {
+-  return impl_->begin_field(name, types, index);
+-}
+-
+-bool json_writer::begin_field(std::string_view name, bool is_present,
+-                              std::span<const type_id_t> types, size_t index) {
+-  return impl_->begin_field(name, is_present, types, index);
+-}
+-
+-bool json_writer::end_field() {
+-  return impl_->end_field();
+-}
+-
+-bool json_writer::begin_tuple(size_t size) {
+-  return impl_->begin_tuple(size);
+-}
+-
+-bool json_writer::end_tuple() {
+-  return impl_->end_tuple();
+-}
+-
+-bool json_writer::begin_key_value_pair() {
+-  return impl_->begin_key_value_pair();
+-}
+-
+-bool json_writer::end_key_value_pair() {
+-  return impl_->end_key_value_pair();
+-}
+-
+-bool json_writer::begin_sequence(size_t size) {
+-  return impl_->begin_sequence(size);
+-}
+-
+-bool json_writer::end_sequence() {
+-  return impl_->end_sequence();
+-}
+-
+-bool json_writer::begin_associative_array(size_t size) {
+-  return impl_->begin_associative_array(size);
+-}
+-
+-bool json_writer::end_associative_array() {
+-  return impl_->end_associative_array();
+-}
+-
+-bool json_writer::value(std::byte x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(bool x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(int8_t x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(uint8_t x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(int16_t x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(uint16_t x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(int32_t x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(uint32_t x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(int64_t x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(uint64_t x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(float x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(double x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(long double x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(std::string_view x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(const std::u16string& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(const std::u32string& x) {
+-  return impl_->value(x);
+-}
+-
+-bool json_writer::value(const_byte_span x) {
+-  return impl_->value(x);
+-}
+-
+-caf::actor_handle_codec* json_writer::actor_handle_codec() {
+-  return impl_->actor_handle_codec();
+-}
+-
+ } // namespace caf
+diff --git a/libcaf_core/caf/json_writer.hpp b/libcaf_core/caf/json_writer.hpp
+--- a/libcaf_core/caf/json_writer.hpp
++++ b/libcaf_core/caf/json_writer.hpp
+@@ -6,142 +6,89 @@
+ 
+ #include "caf/detail/core_export.hpp"
+ #include "caf/fwd.hpp"
+-#include "caf/placement_ptr.hpp"
++#include "caf/save_inspector_base.hpp"
+ #include "caf/text_writer.hpp"
+ 
+ #include <cstddef>
+ 
+ namespace caf {
+ 
+ /// Serializes an inspectable object to a JSON-formatted string.
+-class CAF_CORE_EXPORT json_writer : public text_writer {
++class CAF_CORE_EXPORT json_writer final
++  : public save_inspector_base<json_writer, text_writer> {
+ public:
+-  // -- constructors, destructors, and assignment operators --------------------
++  using super = save_inspector_base<json_writer, text_writer>;
+ 
+   explicit json_writer(caf::actor_handle_codec* codec = nullptr);
+ 
+-  ~json_writer() override;
++  ~json_writer() noexcept override;
+ 
+-  // -- properties -------------------------------------------------------------
++  json_writer(const json_writer&) = delete;
+ 
+-  [[nodiscard]] std::string_view str() const noexcept final;
++  json_writer& operator=(const json_writer&) = delete;
+ 
+-  [[nodiscard]] size_t indentation() const noexcept final;
++  [[nodiscard]] std::string_view str() const noexcept {
++    return impl_->str();
++  }
+ 
+-  void indentation(size_t factor) noexcept final;
++  [[nodiscard]] size_t indentation() const noexcept {
++    return impl_->indentation();
++  }
+ 
+-  [[nodiscard]] bool compact() const noexcept final;
++  void indentation(size_t factor) noexcept {
++    impl_->indentation(factor);
++  }
+ 
+-  [[nodiscard]] bool skip_empty_fields() const noexcept final;
++  [[nodiscard]] bool compact() const noexcept {
++    return impl_->compact();
++  }
+ 
+-  void skip_empty_fields(bool value) noexcept final;
++  [[nodiscard]] bool skip_empty_fields() const noexcept {
++    return impl_->skip_empty_fields();
++  }
+ 
+-  [[nodiscard]] bool skip_object_type_annotation() const noexcept final;
++  void skip_empty_fields(bool value) noexcept {
++    impl_->skip_empty_fields(value);
++  }
+ 
+-  void skip_object_type_annotation(bool value) noexcept final;
++  [[nodiscard]] bool skip_object_type_annotation() const noexcept {
++    return impl_->skip_object_type_annotation();
++  }
+ 
+-  [[nodiscard]] std::string_view field_type_suffix() const noexcept final;
++  void skip_object_type_annotation(bool value) noexcept {
++    impl_->skip_object_type_annotation(value);
++  }
+ 
+-  void field_type_suffix(std::string_view suffix) noexcept final;
++  [[nodiscard]] std::string_view field_type_suffix() const noexcept {
++    return impl_->field_type_suffix();
++  }
+ 
+-  [[nodiscard]] const type_id_mapper* mapper() const noexcept final;
++  void field_type_suffix(std::string_view suffix) noexcept {
++    impl_->field_type_suffix(suffix);
++  }
+ 
+-  void mapper(const type_id_mapper* ptr) noexcept final;
++  [[nodiscard]] const type_id_mapper* mapper() const noexcept {
++    return impl_->mapper();
++  }
+ 
+-  // -- modifiers --------------------------------------------------------------
++  void mapper(const type_id_mapper* ptr) noexcept {
++    impl_->mapper(ptr);
++  }
+ 
+   /// Removes all characters from the buffer and restores the writer to its
+   /// initial state.
+   /// @warning Invalidates all string views into the buffer.
+-  void reset() final;
++  void reset() {
++    impl_->reset();
++  }
+ 
+-  // -- finals --------------------------------------------------------------
+-
+-  void set_error(error stop_reason) final;
+-
+-  error& get_error() noexcept final;
+-
+-  bool has_human_readable_format() const noexcept final;
+-
+-  bool begin_object(type_id_t type, std::string_view name) final;
+-
+-  bool end_object() final;
+-
+-  bool begin_field(std::string_view) final;
+-
+-  bool begin_field(std::string_view name, bool is_present) final;
+-
+-  bool begin_field(std::string_view name, std::span<const type_id_t> types,
+-                   size_t index) final;
+-
+-  bool begin_field(std::string_view name, bool is_present,
+-                   std::span<const type_id_t> types, size_t index) final;
+-
+-  bool end_field() final;
+-
+-  bool begin_tuple(size_t size) final;
+-
+-  bool end_tuple() final;
+-
+-  bool begin_key_value_pair() final;
+-
+-  bool end_key_value_pair() final;
+-
+-  bool begin_sequence(size_t size) final;
+-
+-  bool end_sequence() final;
+-
+-  bool begin_associative_array(size_t size) final;
+-
+-  bool end_associative_array() final;
+-
+-  using text_writer::value;
+-
+-  bool value(std::byte x) final;
+-
+-  bool value(bool x) final;
+-
+-  bool value(int8_t x) final;
+-
+-  bool value(uint8_t x) final;
+-
+-  bool value(int16_t x) final;
+-
+-  bool value(uint16_t x) final;
+-
+-  bool value(int32_t x) final;
+-
+-  bool value(uint32_t x) final;
+-
+-  bool value(int64_t x) final;
+-
+-  bool value(uint64_t x) final;
+-
+-  bool value(float x) final;
+-
+-  bool value(double x) final;
+-
+-  bool value(long double x) final;
+-
+-  bool value(std::string_view x) final;
+-
+-  bool value(const std::u16string& x) final;
+-
+-  bool value(const std::u32string& x) final;
+-
+-  bool value(const_byte_span x) final;
+-
+-  caf::actor_handle_codec* actor_handle_codec() override;
++  [[nodiscard]] bool has_human_readable_format() const noexcept {
++    return true;
++  }
+ 
+ private:
+   static constexpr size_t impl_storage_size = 196;
+ 
+-  /// Opaque implementation class.
+-  class impl;
+-
+-  /// Pointer to the implementation object.
+-  placement_ptr<impl> impl_;
+-
+   /// Storage for the implementation object.
+   alignas(std::max_align_t) std::byte impl_storage_[impl_storage_size];
+ };
+diff --git a/libcaf_core/caf/load_inspector_base.hpp b/libcaf_core/caf/load_inspector_base.hpp
+--- a/libcaf_core/caf/load_inspector_base.hpp
++++ b/libcaf_core/caf/load_inspector_base.hpp
+@@ -6,16 +6,24 @@
+ 
+ #include "caf/inspector_access.hpp"
+ #include "caf/load_inspector.hpp"
++#include "caf/placement_ptr.hpp"
+ #include "caf/sec.hpp"
+ 
+-#include <array>
++#include <concepts>
++#include <cstddef>
++#include <span>
+ #include <tuple>
+ #include <utility>
++#include <vector>
+ 
+ namespace caf {
+ 
++template <class Subtype, class SubtypeInterface = void>
++class load_inspector_base;
++
++/// Adds entry points for the type inspection DSL.
+ template <class Subtype>
+-class load_inspector_base : public load_inspector {
++class load_inspector_base<Subtype, void> : public load_inspector {
+ public:
+   // -- member types -----------------------------------------------------------
+ 
+@@ -159,4 +167,188 @@ class load_inspector_base : public load_inspector {
+   }
+ };
+ 
++/// Adds entry points for the type inspection DSL and dispatches common
++/// operations to the implementation object.
++template <class Subtype, class SubtypeInterface>
++class load_inspector_base : public load_inspector_base<Subtype, void> {
++public:
++  void set_error(error stop_reason) final {
++    impl_->set_error(std::move(stop_reason));
++  }
++
++  error& get_error() noexcept final {
++    return impl_->get_error();
++  }
++
++  bool fetch_next_object_type(type_id_t& type) noexcept {
++    return impl_->fetch_next_object_type(type);
++  }
++
++  bool begin_object(type_id_t type, std::string_view name) noexcept {
++    return impl_->begin_object(type, name);
++  }
++
++  bool end_object() noexcept {
++    return impl_->end_object();
++  }
++
++  bool begin_field(std::string_view name) noexcept {
++    return impl_->begin_field(name);
++  }
++
++  bool begin_field(std::string_view name, bool& is_present) noexcept {
++    return impl_->begin_field(name, is_present);
++  }
++
++  bool begin_field(std::string_view name, std::span<const type_id_t> types,
++                   size_t& index) noexcept {
++    return impl_->begin_field(name, types, index);
++  }
++
++  bool begin_field(std::string_view name, bool& is_present,
++                   std::span<const type_id_t> types, size_t& index) noexcept {
++    return impl_->begin_field(name, is_present, types, index);
++  }
++
++  bool end_field() {
++    return impl_->end_field();
++  }
++
++  bool begin_tuple(size_t size) noexcept {
++    return impl_->begin_tuple(size);
++  }
++
++  bool end_tuple() noexcept {
++    return impl_->end_tuple();
++  }
++
++  bool begin_key_value_pair() noexcept {
++    return impl_->begin_key_value_pair();
++  }
++
++  bool end_key_value_pair() noexcept {
++    return impl_->end_key_value_pair();
++  }
++
++  bool begin_sequence(size_t& list_size) noexcept {
++    return impl_->begin_sequence(list_size);
++  }
++
++  bool end_sequence() noexcept {
++    return impl_->end_sequence();
++  }
++
++  bool begin_associative_array(size_t& size) noexcept {
++    return impl_->begin_associative_array(size);
++  }
++
++  bool end_associative_array() noexcept {
++    return impl_->end_associative_array();
++  }
++
++  bool value(bool& what) noexcept {
++    return impl_->value(what);
++  }
++
++  bool value(std::byte& what) noexcept {
++    return impl_->value(what);
++  }
++
++  bool value(uint8_t& what) noexcept {
++    return impl_->value(what);
++  }
++
++  bool value(int8_t& what) noexcept {
++    return impl_->value(what);
++  }
++
++  bool value(int16_t& what) noexcept {
++    return impl_->value(what);
++  }
++
++  bool value(uint16_t& what) noexcept {
++    return impl_->value(what);
++  }
++
++  bool value(int32_t& what) noexcept {
++    return impl_->value(what);
++  }
++
++  bool value(uint32_t& what) noexcept {
++    return impl_->value(what);
++  }
++
++  bool value(int64_t& what) noexcept {
++    return impl_->value(what);
++  }
++
++  bool value(uint64_t& what) noexcept {
++    return impl_->value(what);
++  }
++
++  template <std::integral T>
++  bool value(T& what) noexcept {
++    auto tmp = detail::squashed_int_t<T>{0};
++    if (impl_->value(tmp)) {
++      what = static_cast<T>(tmp);
++      return true;
++    } else {
++      return false;
++    }
++  }
++
++  template <std::floating_point T>
++  bool value(T& what) noexcept {
++    return impl_->value(what);
++  }
++
++  bool value(strong_actor_ptr& what) {
++    return impl_->value(what);
++  }
++
++  bool value(weak_actor_ptr& what) {
++    return impl_->value(what);
++  }
++
++  bool value(std::string& what) {
++    return impl_->value(what);
++  }
++
++  bool value(std::u16string& what) {
++    return impl_->value(what);
++  }
++
++  bool value(std::u32string& what) {
++    return impl_->value(what);
++  }
++
++  bool value(byte_span what) noexcept {
++    return impl_->value(what);
++  }
++
++  bool value(std::vector<bool>& x) {
++    return impl_->value(x);
++  }
++
++  bool builtin_inspect(std::vector<bool>& x) {
++    return value(x);
++  }
++
++  caf::actor_handle_codec* actor_handle_codec() {
++    return impl_->actor_handle_codec();
++  }
++
++  SubtypeInterface& as_deserializer() noexcept {
++    return *impl_;
++  }
++
++protected:
++  explicit load_inspector_base(SubtypeInterface* impl) noexcept : impl_(impl) {
++    // nop
++  }
++
++  /// Pointer to the implementation object.
++  placement_ptr<SubtypeInterface> impl_;
++};
++
+ } // namespace caf
+diff --git a/libcaf_core/caf/save_inspector_base.hpp b/libcaf_core/caf/save_inspector_base.hpp
+--- a/libcaf_core/caf/save_inspector_base.hpp
++++ b/libcaf_core/caf/save_inspector_base.hpp
+@@ -5,15 +5,23 @@
+ #pragma once
+ 
+ #include "caf/inspector_access.hpp"
++#include "caf/placement_ptr.hpp"
+ #include "caf/save_inspector.hpp"
+ 
+-#include <string_view>
++#include <concepts>
++#include <cstddef>
++#include <span>
+ #include <tuple>
++#include <utility>
++#include <vector>
+ 
+ namespace caf {
+ 
++template <class Subtype, class SubtypeInterface = void>
++class save_inspector_base;
++
+ template <class Subtype>
+-class save_inspector_base : public save_inspector {
++class save_inspector_base<Subtype, void> : public save_inspector {
+ public:
+   // -- member types -----------------------------------------------------------
+ 
+@@ -116,4 +124,140 @@ class save_inspector_base : public save_inspector {
+   }
+ };
+ 
++template <class Subtype, class SubtypeInterface>
++class save_inspector_base : public save_inspector_base<Subtype, void> {
++public:
++  void set_error(error stop_reason) final {
++    impl_->set_error(std::move(stop_reason));
++  }
++
++  error& get_error() noexcept final {
++    return impl_->get_error();
++  }
++
++  bool begin_object(type_id_t id, std::string_view name) noexcept {
++    return impl_->begin_object(id, name);
++  }
++
++  bool end_object() {
++    return impl_->end_object();
++  }
++
++  bool begin_field(std::string_view type_name) noexcept {
++    return impl_->begin_field(type_name);
++  }
++
++  bool begin_field(std::string_view type_name, bool is_present) {
++    return impl_->begin_field(type_name, is_present);
++  }
++
++  bool begin_field(std::string_view type_name, std::span<const type_id_t> types,
++                   size_t index) {
++    return impl_->begin_field(type_name, types, index);
++  }
++
++  bool begin_field(std::string_view type_name, bool is_present,
++                   std::span<const type_id_t> types, size_t index) {
++    return impl_->begin_field(type_name, is_present, types, index);
++  }
++
++  bool end_field() {
++    return impl_->end_field();
++  }
++
++  bool begin_tuple(size_t size) {
++    return impl_->begin_tuple(size);
++  }
++
++  bool end_tuple() {
++    return impl_->end_tuple();
++  }
++
++  bool begin_key_value_pair() {
++    return impl_->begin_key_value_pair();
++  }
++
++  bool end_key_value_pair() {
++    return impl_->end_key_value_pair();
++  }
++
++  bool begin_sequence(size_t list_size) {
++    return impl_->begin_sequence(list_size);
++  }
++
++  bool end_sequence() {
++    return impl_->end_sequence();
++  }
++
++  bool begin_associative_array(size_t size) {
++    return impl_->begin_associative_array(size);
++  }
++
++  bool end_associative_array() {
++    return impl_->end_associative_array();
++  }
++
++  bool value(std::byte what) {
++    return impl_->value(what);
++  }
++
++  template <std::integral T>
++  bool value(T what) {
++    return impl_->value(static_cast<detail::squashed_int_t<T>>(what));
++  }
++
++  template <std::floating_point T>
++  bool value(T what) {
++    return impl_->value(what);
++  }
++
++  bool value(const strong_actor_ptr& what) {
++    return impl_->value(what);
++  }
++
++  bool value(const weak_actor_ptr& what) {
++    return impl_->value(what);
++  }
++
++  bool value(std::string_view what) {
++    return impl_->value(what);
++  }
++
++  bool value(const std::u16string& what) {
++    return impl_->value(what);
++  }
++
++  bool value(const std::u32string& what) {
++    return impl_->value(what);
++  }
++
++  bool value(const_byte_span what) {
++    return impl_->value(what);
++  }
++
++  bool value(const std::vector<bool>& x) {
++    return impl_->value(x);
++  }
++
++  bool builtin_inspect(const std::vector<bool>& x) {
++    return value(x);
++  }
++
++  caf::actor_handle_codec* actor_handle_codec() {
++    return impl_->actor_handle_codec();
++  }
++
++  SubtypeInterface& as_serializer() noexcept {
++    return *impl_;
++  }
++
++protected:
++  explicit save_inspector_base(SubtypeInterface* impl) noexcept : impl_(impl) {
++    // nop
++  }
++
++  /// Pointer to the implementation object.
++  placement_ptr<SubtypeInterface> impl_;
++};
++
+ } // namespace caf
+diff --git a/libcaf_core/caf/serializer.cpp b/libcaf_core/caf/serializer.cpp
+--- a/libcaf_core/caf/serializer.cpp
++++ b/libcaf_core/caf/serializer.cpp
+@@ -6,7 +6,6 @@
+ 
+ #include "caf/actor_control_block.hpp"
+ #include "caf/actor_handle_codec.hpp"
+-#include "caf/error_code.hpp"
+ 
+ namespace caf {
+ 
+@@ -42,7 +41,7 @@ bool serializer::value(const weak_actor_ptr& ptr) {
+   return value(tmp);
+ }
+ 
+-bool serializer::list(const std::vector<bool>& xs) {
++bool serializer::value(const std::vector<bool>& xs) {
+   if (!begin_sequence(xs.size()))
+     return false;
+   for (bool x : xs)
+diff --git a/libcaf_core/caf/serializer.hpp b/libcaf_core/caf/serializer.hpp
+--- a/libcaf_core/caf/serializer.hpp
++++ b/libcaf_core/caf/serializer.hpp
+@@ -153,16 +153,17 @@ class CAF_CORE_EXPORT serializer : public save_inspector_base<serializer> {
+   /// @returns A non-zero error code on failure, `sec::success` otherwise.
+   virtual bool value(const_byte_span x) = 0;
+ 
+-  bool value(const strong_actor_ptr& ptr);
++  /// Adds the vector of booleans to the output.
++  virtual bool value(const std::vector<bool>& x);
+ 
+-  bool value(const weak_actor_ptr& ptr);
++  // Announce special handling of `vector<bool>` to the inspection API.
++  bool builtin_inspect(const std::vector<bool>& x) {
++    return value(x);
++  }
+ 
+-  using super::list;
++  bool value(const strong_actor_ptr& ptr);
+ 
+-  /// Adds each boolean in `xs` to the output. Derived classes can override this
+-  /// member function to pack the booleans, for example to avoid using one
+-  /// byte for each value in a binary output format.
+-  virtual bool list(const std::vector<bool>& xs);
++  bool value(const weak_actor_ptr& ptr);
+ 
+   virtual caf::actor_handle_codec* actor_handle_codec() = 0;
+ 
+diff --git a/libcaf_core/caf/text_reader.hpp b/libcaf_core/caf/text_reader.hpp
+--- a/libcaf_core/caf/text_reader.hpp
++++ b/libcaf_core/caf/text_reader.hpp
+@@ -16,8 +16,21 @@ class CAF_CORE_EXPORT text_reader : public deserializer {
+   ~text_reader() override;
+ 
+   /// Resets the reader and loads a sequence of bytes to deserialize from.
++  /// Usually interprets the bytes as UTF-8 encoded text.
+   virtual bool load_bytes(const_byte_span bytes) = 0;
+ 
++  /// Resets the reader and loads a string to deserialize from.
++  virtual bool load_text(std::string_view text) = 0;
++
++  /// Reverts the state of the reader back to where it was after calling
++  /// `load_bytes`.
++  /// @post The reader is ready for attempting to deserialize another
++  ///       inspectable object.
++  virtual void revert() = 0;
++
++  /// Removes any loaded data and reclaims memory resources.
++  virtual void reset() = 0;
++
+   /// Returns the suffix for generating type annotation fields for variant
+   /// fields. For example, CAF inserts field called "@foo${field_type_suffix}"
+   /// for a variant field called "foo".
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

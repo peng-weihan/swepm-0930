@@ -1,0 +1,35 @@
+Running command: test -x /usr/local/bin/codex-code-mode-host && codex --version
+Command outputs captured
+Running command: mkdir -p "$CODEX_HOME" /opt/swepm-runtime/secrets /logs/agent
+Command outputs captured
+Codex auth: using auth.json from [REDACTED]
+Running command: ln -sf /opt/swepm-runtime/secrets/auth.json "$CODEX_HOME/auth.json"
+
+Command outputs captured
+Running command: if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi; codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-6-luna --json --enable unified_exec -c model_reasoning_effort=high -- 'Kit selection in Cowork needs to be represented as a first-class capability reference instead of being flattened into user-visible skills. Today, when a user selects an installed Kit such as a design or GitHub expert kit, the send flow expands that Kit into its underlying Skill IDs and stores/renders those Skill IDs as if the user had selected them directly. This causes the user message bubble and persisted metadata to show multiple low-level Skill badges rather than the Kit the user actually chose, and it makes follow-up turns prone to accidentally reusing or merging previous Kit selections.
+
+Add a structured Kit capability model shared between renderer and main process. A selected Kit should produce a stable display reference with URI format `kit://<encoded-kit-id>@lobsterai-kits`, for example `kit://design@lobsterai-kits`, and metadata describing the Kit reference. New message metadata should be able to store `kitIds`, `kitReferences`, and `resolvedKitCapabilities` separately from `skillIds`. `metadata.skillIds` must only contain Skills directly selected by the user, not Skills expanded from Kits. Runtime or prompt-building paths may still use a separate runtime Skill list made from directly selected Skills plus Kit-expanded Skills so Kit functionality does not regress.
+
+Installed Kit records should preserve all capability groups, not only Skills. The installed record format should include `id`, `version`, `installedAt`, `skills: { skillIds: string[] } | null`, `mcpServers: unknown[]`, and `connectors: unknown[]`. Marketplace Kit fields `mcpServers` and `connectors` may be `null` or missing and should be normalized to empty arrays when stored or resolved. Existing code that reads Skill IDs from an installed Kit should read from the nested `skills.skillIds` field.
+
+When resolving selected Kits, the resolver should accept the current turn’s selected Kit IDs and installed Kit records, return all capability groups, and de-duplicate Skill IDs while preserving first-seen order. Missing or uninstalled Kit IDs should be skipped for runtime capability resolution without preventing a display reference from being built when marketplace metadata is available. Display references should use marketplace Kit metadata when available, including the localized Kit name, and should have `kind: "kit"`, `source: "lobsterai-kits"`, and a `kit://...@lobsterai-kits` URI.
+
+The prompt context for selected Kits should be generated as a concise XML-style capability index for the current turn. If no Kit is selected, no Kit context prompt should be produced. For a selected Kit, the prompt should include Kit identity such as `<id>design</id>` and `<name>Design</name>`, list Skills as lightweight entries like `<skill id="design-critique" name="/design-critique" />`, and include MCP servers and connectors such as `<mcpServer id="figma" name="Figma" description="Inspect design files." />` and `<connector id="github" name="GitHub" />`. The Kit context must not include marketplace `tryAsking` examples and must not inline or mention `SKILL.md` content. If marketplace Skill metadata is unavailable, the prompt should fall back to installed Skill IDs for both the Skill `id` and `name`.
+
+Kit and Skill selection must be scoped to the current turn. Starting a session should use only the currently active selections from the input. Continuing a session should also use only the selections made in that follow-up input. If the previous turn selected Kit A and the user now selects Kit B, the new message metadata and routing/context prompts should contain only Kit B, not a union with Kit A. If the user selects no Kit on a follow-up, no new `kitIds`, `kitReferences`, resolved Kit capabilities, or selected-Kit context should be sent for that turn. If the user selects the same Kit again, it should be treated as a new explicit selection for that turn. After successful send, the draft’s active Skill/Kit selections should not be accidentally reused by the next turn.
+
+User-visible rendering should show Kit badges for `kitReferences` alongside direct Skill badges. Kit-expanded Skills must not be shown as Skill badges on the user message. Historical messages should remain stable even if the Kit is later uninstalled or renamed by relying on persisted Kit reference metadata where present. Re-editing a message should be able to restore both direct Skill selections and Kit selections.
+
+Markdown rendering should treat `kit://...@lobsterai-kits` links as safe internal links so they can render as inline Kit references/badges inside LobsterAI. For example, `safeUrlTransform("kit://design@lobsterai-kits")` should return the same URL and `isInternalHref("kit://design@lobsterai-kits")` should be true. Unsafe protocols must still be stripped, for example `safeUrlTransform("javascript:alert(1)")` should return an empty string.
+' 2>&1 </dev/null | tee /logs/agent/codex.txt
+Command outputs captured
+Running command: mkdir -p /logs/agent
+if [ -d "$CODEX_HOME/sessions" ]; then
+  rm -rf /logs/agent/sessions
+  cp -R "$CODEX_HOME/sessions" /logs/agent/sessions
+fi
+Command outputs captured
+Running command: rm -rf /opt/swepm-runtime/secrets "$CODEX_HOME"
+Command outputs captured
+Wrote Codex trajectory to /data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-workdir-codex-gpt-6-luna-high-nomcp-c16-20261002T065111Z/netease-youdao__LobsterAI-2080__zS2NStp/agent/trajectory.json
+Collecting main service artifacts

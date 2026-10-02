@@ -1,0 +1,205 @@
+SPECBUILD_RESOLVED_PYTHON=python3
+Checking patch src/main_test/lit_file_runner_tests/runtime_regression_tests/complex_scalars.rs...
+error: while searching for:
+use super::*;
+
+#[test]
+fn complex_builtin_symbol_ids_are_stably_appended() {
+    let start = 1_u64 << 62;
+    let expected = [(C, 48), (I, 49), (RE, 50), (IMG, 51), (C_ABS, 52)];
+
+    for (name, offset) in expected {
+        let symbol = builtin_symbol_ref(name).expect("native complex name should have a symbol ID");
+        assert_eq!(symbol.id().value(), start + offset, "{name}");
+    }
+}
+
+
+error: patch failed: src/main_test/lit_file_runner_tests/runtime_regression_tests/complex_scalars.rs:1
+error: src/main_test/lit_file_runner_tests/runtime_regression_tests/complex_scalars.rs: patch does not apply
+patching file src/main_test/lit_file_runner_tests/runtime_regression_tests/complex_scalars.rs
+Hunk #1 FAILED at 1.
+Hunk #2 FAILED at 30.
+Hunk #3 succeeded at 44 with fuzz 3.
+2 out of 3 hunks FAILED -- saving rejects to file src/main_test/lit_file_runner_tests/runtime_regression_tests/complex_scalars.rs.rej
+   Compiling litex-lang v0.9.110-beta (/testbed)
+error[E0308]: mismatched types
+    --> src/verify/verify_atomic_fact_with_known_forall.rs:2218:94
+     |
+2218 |                     (NativeComplexObj::ImaginaryUnit, NativeComplexObj::ImaginaryUnit) => Ok(true),
+     |                                                                                           -- ^^^^ expected `Option<HashMap<String, Obj>>`, found `bool`
+     |                                                                                           |
+     |                                                                                           arguments to this enum variant are incorrect
+     |
+     = note: expected enum `Option<std::collections::HashMap<String, obj::obj::Obj>>`
+                found type `bool`
+help: the type constructed contains `bool` due to the type of the argument passed
+    --> src/verify/verify_atomic_fact_with_known_forall.rs:2218:91
+     |
+2218 |                     (NativeComplexObj::ImaginaryUnit, NativeComplexObj::ImaginaryUnit) => Ok(true),
+     |                                                                                           ^^^----^
+     |                                                                                              |
+     |                                                                                              this argument influences the type of `Ok`
+note: tuple variant defined here
+    --> /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/core/src/result.rs:552:5
+
+error[E0308]: mismatched types
+    --> src/verify/verify_atomic_fact_with_known_forall.rs:2226:29
+     |
+2226 |                     _ => Ok(false),
+     |                          -- ^^^^^ expected `Option<HashMap<String, Obj>>`, found `bool`
+     |                          |
+     |                          arguments to this enum variant are incorrect
+     |
+     = note: expected enum `Option<std::collections::HashMap<String, obj::obj::Obj>>`
+                found type `bool`
+help: the type constructed contains `bool` due to the type of the argument passed
+    --> src/verify/verify_atomic_fact_with_known_forall.rs:2226:26
+     |
+2226 |                     _ => Ok(false),
+     |                          ^^^-----^
+     |                             |
+     |                             this argument influences the type of `Ok`
+note: tuple variant defined here
+    --> /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/core/src/result.rs:552:5
+
+error[E0502]: cannot borrow `*tb` as mutable because it is also borrowed as immutable
+   --> src/parse/parse_obj.rs:600:13
+    |
+587 |         let tok = tb.current()?;
+    |                   -- immutable borrow occurs here
+...
+600 |             tb.skip()?;
+    |             ^^^^^^^^^ mutable borrow occurs here
+...
+605 |                         format!("{} expects 1 argument", tok),
+    |                                                          --- immutable borrow later used here
+
+error[E0502]: cannot borrow `*tb` as mutable because it is also borrowed as immutable
+   --> src/parse/parse_obj.rs:601:24
+    |
+587 |         let tok = tb.current()?;
+    |                   -- immutable borrow occurs here
+...
+601 |             let args = self.parse_braced_objs(tb)?;
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable borrow occurs here
+...
+605 |                         format!("{} expects 1 argument", tok),
+    |                                                          --- immutable borrow later used here
+
+error[E0004]: non-exhaustive patterns: `&obj::obj::Obj::NativeComplex(_)` not covered
+  --> src/verify/verify_equality_by_builtin_rules.rs:21:11
+   |
+21 |     match obj {
+   |           ^^^ pattern `&obj::obj::Obj::NativeComplex(_)` not covered
+   |
+note: `obj::obj::Obj` defined here
+  --> src/obj/obj.rs:7:10
+   |
+7  | pub enum Obj {
+   |          ^^^
+...
+18 |     NativeComplex(NativeComplexObj),
+   |     ------------- not covered
+   = note: the matched value is of type `&obj::obj::Obj`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown
+   |
+172~         Obj::Atom(AtomObj::CartIndex(p)) => p.name == id,
+173~         &obj::obj::Obj::NativeComplex(_) => todo!(),
+   |
+
+Some errors have detailed explanations: E0004, E0308, E0502.
+For more information about an error, try `rustc --explain E0004`.
+error: could not compile `litex-lang` (lib) due to 5 previous errors
+   Compiling litex-lang v0.9.110-beta (/testbed)
+error[E0308]: mismatched types
+    --> src/verify/verify_atomic_fact_with_known_forall.rs:2218:94
+     |
+2218 |                     (NativeComplexObj::ImaginaryUnit, NativeComplexObj::ImaginaryUnit) => Ok(true),
+     |                                                                                           -- ^^^^ expected `Option<HashMap<String, Obj>>`, found `bool`
+     |                                                                                           |
+     |                                                                                           arguments to this enum variant are incorrect
+     |
+     = note: expected enum `Option<std::collections::HashMap<String, obj::obj::Obj>>`
+                found type `bool`
+help: the type constructed contains `bool` due to the type of the argument passed
+    --> src/verify/verify_atomic_fact_with_known_forall.rs:2218:91
+     |
+2218 |                     (NativeComplexObj::ImaginaryUnit, NativeComplexObj::ImaginaryUnit) => Ok(true),
+     |                                                                                           ^^^----^
+     |                                                                                              |
+     |                                                                                              this argument influences the type of `Ok`
+note: tuple variant defined here
+    --> /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/core/src/result.rs:552:5
+
+error[E0308]: mismatched types
+    --> src/verify/verify_atomic_fact_with_known_forall.rs:2226:29
+     |
+2226 |                     _ => Ok(false),
+     |                          -- ^^^^^ expected `Option<HashMap<String, Obj>>`, found `bool`
+     |                          |
+     |                          arguments to this enum variant are incorrect
+     |
+     = note: expected enum `Option<std::collections::HashMap<String, obj::obj::Obj>>`
+                found type `bool`
+help: the type constructed contains `bool` due to the type of the argument passed
+    --> src/verify/verify_atomic_fact_with_known_forall.rs:2226:26
+     |
+2226 |                     _ => Ok(false),
+     |                          ^^^-----^
+     |                             |
+     |                             this argument influences the type of `Ok`
+note: tuple variant defined here
+    --> /rustc/29483883eed69d5fb4db01964cdf2af4d86e9cb2/library/core/src/result.rs:552:5
+
+error[E0502]: cannot borrow `*tb` as mutable because it is also borrowed as immutable
+   --> src/parse/parse_obj.rs:600:13
+    |
+587 |         let tok = tb.current()?;
+    |                   -- immutable borrow occurs here
+...
+600 |             tb.skip()?;
+    |             ^^^^^^^^^ mutable borrow occurs here
+...
+605 |                         format!("{} expects 1 argument", tok),
+    |                                                          --- immutable borrow later used here
+
+error[E0502]: cannot borrow `*tb` as mutable because it is also borrowed as immutable
+   --> src/parse/parse_obj.rs:601:24
+    |
+587 |         let tok = tb.current()?;
+    |                   -- immutable borrow occurs here
+...
+601 |             let args = self.parse_braced_objs(tb)?;
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^ mutable borrow occurs here
+...
+605 |                         format!("{} expects 1 argument", tok),
+    |                                                          --- immutable borrow later used here
+
+error[E0004]: non-exhaustive patterns: `&obj::obj::Obj::NativeComplex(_)` not covered
+  --> src/verify/verify_equality_by_builtin_rules.rs:21:11
+   |
+21 |     match obj {
+   |           ^^^ pattern `&obj::obj::Obj::NativeComplex(_)` not covered
+   |
+note: `obj::obj::Obj` defined here
+  --> src/obj/obj.rs:7:10
+   |
+7  | pub enum Obj {
+   |          ^^^
+...
+18 |     NativeComplex(NativeComplexObj),
+   |     ------------- not covered
+   = note: the matched value is of type `&obj::obj::Obj`
+help: ensure that all possible cases are being handled by adding a match arm with a wildcard pattern or an explicit pattern as shown
+   |
+172~         Obj::Atom(AtomObj::CartIndex(p)) => p.name == id,
+173~         &obj::obj::Obj::NativeComplex(_) => todo!(),
+   |
+
+Some errors have detailed explanations: E0004, E0308, E0502.
+For more information about an error, try `rustc --explain E0004`.
+error: could not compile `litex-lang` (lib) due to 5 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `litex-lang` (lib test) due to 5 previous errors
+OMNIGRIL_EXIT_CODE=101

@@ -1,0 +1,35 @@
+Running command: test -x /usr/local/bin/codex-code-mode-host && codex --version
+Command outputs captured
+Running command: mkdir -p "$CODEX_HOME" /opt/swepm-runtime/secrets /logs/agent
+Command outputs captured
+Codex auth: using auth.json from [REDACTED]
+Running command: ln -sf /opt/swepm-runtime/secrets/auth.json "$CODEX_HOME/auth.json"
+
+Command outputs captured
+Running command: if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi; codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-6-luna --json --enable unified_exec -c model_reasoning_effort=high -- 'Implement observation linking support for EvoMemory and tighten how memory files are written.
+
+EvoMemory should treat observations as structured records that are created through the memory tooling and then linked to related observations. Agents must not be able to create or overwrite arbitrary files under `/memories` using raw filesystem operations. The `/memories` backend should still allow reading memory files and editing existing profile notes, but raw writes and uploads anywhere under `/memories` must be rejected. Raw edits should only be allowed for existing paths under `/memories/profile/...`; edits to observation files such as `/memories/observations/projects/P-1/O-1.md` must be rejected. The error text should make the restriction clear, including messages containing “Raw writes to /memories are blocked” for raw writes/uploads and “Raw edits under /memories are limited” for disallowed edits. Expose a memory-specific backend API as `MemoryFilesystemBackend`, and provide a helper such as `build_memory_agent_backend(workspace_dir=..., memory_dir=...)` that routes normal workspace paths to a regular filesystem backend while routing `/memories/` through the guarded memory backend.
+
+The memory lifecycle should identify worker launch sources by `MemorySourceType` rather than an internal lifecycle role. Main turns should use `MemorySourceType.TURN`, subagents should use `MemorySourceType.SUBAGENT`, and async/background subagent middleware injection should preserve the correct source agent name and project id. The middleware factory `create_memory_lifecycle_middleware(...)` should accept the source type and source agent, and the resulting lifecycle middleware should expose/use `_source_type` consistently so turn and subagent workers are scheduled with the correct source context.
+
+Observation linking must be scheduled as part of the memory pipeline. When observations are recorded by turn workers, subagent workers, direct observation tools, or workers that later abort/fail after writing outputs, those observations should be queued for linking. The linker should not run when observation memory is disabled. Linking should handle project and cross-project related observations, use POSIX-style paths in observation references, tolerate malformed observation frontmatter by skipping it rather than crashing, and serialize writes so concurrent linker runs do not corrupt observation files. Relation direction matters: directional relations such as `supersedes` must be represented directionally, while bidirectional relations should use neutral prose in their reasons. Linker-written observation frontmatter should not include a `linked_by` attribute. The base bidirectional relationship name should be `complements`.
+
+Observation records should include useful provenance such as `session_id` and should avoid unused fields. Empty project observation directories should not be created when no observations are written. Unsupported worker source types should be rejected rather than silently accepted, and workers/observations should not be launched or recorded when no `thread_id` is available.
+
+The CLI and status reporting should reflect the full memory pipeline, not only worker execution. Before shutdown, one-shot CLI runs should wait for memory workers and the observation linker to become idle, with a timeout of two minutes. While waiting, the CLI should print a dim message such as “Waiting for EvoMemory <phase>...”, and it should still report saved profile edits and observations when they are completed. Streaming a new user or command message should clear completed memory activity counts, including both worker save counts and linker result counts.
+
+The interactive status bar should show distinct memory activity. It should display the existing memory worker indicator when an EvoMemory worker is running, a separate link indicator when the observation linker is running, and completed counts such as saved profile edits/observations and created memory links once those activities finish. Reason-only link updates should not be counted as newly created links.
+
+Memory tool results should include related observations where available, and the observation linker should be able to use an observations index hint when deciding relationships.
+' 2>&1 </dev/null | tee /logs/agent/codex.txt
+Command outputs captured
+Running command: mkdir -p /logs/agent
+if [ -d "$CODEX_HOME/sessions" ]; then
+  rm -rf /logs/agent/sessions
+  cp -R "$CODEX_HOME/sessions" /logs/agent/sessions
+fi
+Command outputs captured
+Running command: rm -rf /opt/swepm-runtime/secrets "$CODEX_HOME"
+Command outputs captured
+Wrote Codex trajectory to /data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-workdir-codex-gpt-6-luna-high-nomcp-c16-20261002T065111Z/EvoScientist__EvoScientist-307__dnVuHEn/agent/trajectory.json
+Collecting main service artifacts

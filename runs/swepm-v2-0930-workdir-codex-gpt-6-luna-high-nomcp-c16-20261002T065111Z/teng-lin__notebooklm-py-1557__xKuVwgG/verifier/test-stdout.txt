@@ -1,0 +1,114 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch tests/_guardrails/test_module_size_ratchet.py...
+Checking patch tests/_guardrails/test_no_raw_positional_rpc_indexing.py...
+error: while searching for:
+
+# Baseline of BELOW-FACADE feature files that open-code a *single-level*
+# integer-literal subscript (``x[i]``) of a decoded RPC payload (issue #1491).
+# Many of these reads are genuine but already-guarded inner reads -- the
+# single-level gate is a RATCHET, not an immediate ban: these files are
+# grandfathered so the gate is green on ``main``, but a single-level subscript
+# in any in-scope file NOT on this list fails the gate. Above-facade files
+# (``cli/`` / ``_app/`` / ``_auth/`` / ``utils.py`` / ``_version_check.py``)
+# are excluded from the scan entirely (see the scope constants above) and MUST
+# NOT appear here (pinned by
+# ``test_single_level_allowlist_has_no_above_facade_entries``).
+#
+# The chat wire parser (``_chat/wire.py``) and the ``suggest_reports`` row decode
+# in ``_artifacts.py`` were the largest un-adapted surfaces; ``_chat/wire.py`` is
+# fully migrated behind ``_row_adapters/chat.py`` and is DELIBERATELY ABSENT from
+# this list so the gate re-protects it. ``_artifacts.py`` keeps its remaining
+# envelope-unwrap / request-param reads (only its ``suggest_reports`` row decode
+# moved behind ``ReportSuggestionRow``), so it stays listed for now.
+# ``_types/artifacts.py`` is likewise ABSENT: ``Artifact.from_mind_map``'s last
+# inline ``[1][2][2][0]`` timestamp descent moved behind ``NoteRow.created_at``
+# (issue #1529), so the gate re-protects it.
+#
+# DO NOT add new entries to grow the debt. The burndown (drain this list by
+# migrating each file behind ``_row_adapters/`` + ``safe_index``, or binding the
+# already-guarded inner list to a named local) is a follow-up to #1491.
+SINGLE_LEVEL_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "_artifact/downloads.py",
+        "_artifact/formatters.py",
+        "_artifact/listing.py",
+        "_artifact/polling.py",
+        "_artifacts.py",
+        "_chat/api.py",
+        "_chat/notes.py",
+        "_labels.py",
+        "_mind_maps_api.py",
+        "_note_service.py",
+        "_notebooks.py",
+        "_research.py",
+        "_source/add.py",
+        "_source/content.py",
+        "_source/listing.py",
+        "_source/upload.py",
+        "_types/notebooks.py",
+        "_types/sharing.py",
+        "_types/sources.py",
+    }
+)
+
+# The enumerated facade methods that return RAW (untyped / positional) RPC
+# payloads instead of typed objects. Verified by introspection at
+
+error: patch failed: tests/_guardrails/test_no_raw_positional_rpc_indexing.py:134
+error: tests/_guardrails/test_no_raw_positional_rpc_indexing.py: patch does not apply
+Checking patch tests/unit/test_artifacts_helpers.py...
+error: while searching for:
+
+    assert headers == ["Col1", "Col2"]
+    assert rows == [["A", "B"]]
+
+error: patch failed: tests/unit/test_artifacts_helpers.py:149
+error: tests/unit/test_artifacts_helpers.py: patch does not apply
+Checking patch tests/unit/test_artifacts_row_adapter.py...
+Checking patch tests/unit/test_chat_row_adapter.py...
+Checking patch tests/unit/test_mind_maps_api.py...
+Hunk #1 succeeded at 619 (offset 9 lines).
+Checking patch tests/unit/test_research_row_adapter.py...
+Checking patch tests/unit/test_sharing_types.py...
+Checking patch tests/unit/test_sources_row_adapter.py...
+patching file tests/_guardrails/test_module_size_ratchet.py
+patching file tests/_guardrails/test_no_raw_positional_rpc_indexing.py
+Hunk #1 FAILED at 134.
+1 out of 1 hunk FAILED -- saving rejects to file tests/_guardrails/test_no_raw_positional_rpc_indexing.py.rej
+patching file tests/unit/test_artifacts_helpers.py
+Hunk #1 succeeded at 149 with fuzz 3.
+patching file tests/unit/test_artifacts_row_adapter.py
+patching file tests/unit/test_chat_row_adapter.py
+patching file tests/unit/test_mind_maps_api.py
+Hunk #1 succeeded at 619 (offset 9 lines).
+patching file tests/unit/test_research_row_adapter.py
+patching file tests/unit/test_sharing_types.py
+patching file tests/unit/test_sources_row_adapter.py
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-9.0.3, pluggy-1.6.0 -- /testbed/.venv/bin/python3
+cachedir: .pytest_cache
+rootdir: /testbed
+configfile: pyproject.toml
+plugins: asyncio-1.3.0, anyio-4.12.1, timeout-2.4.0, httpx-0.36.0, cov-7.0.0, xdist-3.8.0, rerunfailures-16.1
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=function, asyncio_default_test_loop_scope=function
+timeout: 60.0s
+timeout method: signal
+timeout func_only: False
+collecting ... collected 33 items / 1 error
+
+==================================== ERRORS ====================================
+__________ ERROR collecting tests/unit/test_artifacts_row_adapter.py ___________
+ImportError while importing test module '/testbed/tests/unit/test_artifacts_row_adapter.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/local/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/unit/test_artifacts_row_adapter.py:23: in <module>
+    from notebooklm._row_adapters.artifacts import (
+E   ImportError: cannot import name 'MIND_MAP_LEAF_ABSENT' from 'notebooklm._row_adapters.artifacts' (/testbed/src/notebooklm/_row_adapters/artifacts.py)
+=========================== short test summary info ============================
+ERROR tests/unit/test_artifacts_row_adapter.py
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+=============================== 1 error in 0.34s ===============================
+OMNIGRIL_EXIT_CODE=1

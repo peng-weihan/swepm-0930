@@ -1,0 +1,69 @@
+{
+  "instance_id": "janosmiko__lfk-578",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.88,
+  "gold_patch_assessment": "The gold patch is a massive 45-file, ~7000-line change that implements the entire which-key action panel feature, help screen rework, ctrl+space fix, dead keybinding removal, goto chord validation, icon-mode key rendering, config additions, and documentation updates. It comprehensively addresses every point in the instruction. However, its size makes this an unrealistic SWE benchmark task — it is essentially implementing a major feature branch from scratch.",
+  "base_vs_gold_expectation": "The base should fail the tests and the gold should pass, in principle. The test patch modifies existing tests (e.g., renames TestHandleKeyQuestionMarkOpensHelp to TestHandleKeyF1OpensHelp, changing the key from '?' to 'f1') which will fail against the unmodified base. New tests reference types and functions only introduced by the gold patch (whichKeyState, armWhichKeyLeader, whichKeyCatalogList, availableWhichKeyActions, WhichKeyLeader, etc.) and will not compile without it.",
+  "too_narrow_risks": [
+    "Documentation changes (README, config-example, config-reference, keybindings.md, schema) are not directly tested — only indirectly via config wiring tests that check code behavior, not doc content",
+    "No tests verify the XDG state directory whichkey_prefs.yaml persistence end-to-end across restart-like scenarios",
+    "No tests verify the actual Nerd Font keycap rendering output (only Unicode symbol rendering is spot-checked)"
+  ],
+  "too_broad_risks": [
+    "The task is enormous (45 files, ~7000 lines of gold patch) — far beyond typical SWE benchmark task scope, making it nearly impossible for an agent to solve within timeout",
+    "308 test functions across 36 test files create an extremely high bar; even a correct alternative implementation with different internal structure would fail",
+    "Tests cover auxiliary concerns like diff_cache memoization and diff_fold changes that are incidental to the stated issue but are tested because the gold patch touched them",
+    "The verifier timeout of 3600s and agent timeout of 7200s suggest awareness of the enormous scope, but this signals the task may be too large"
+  ],
+  "implementation_coupling": [
+    "Tests reference whichKeyState struct fields (armed, shown, seq, grouped, scroll, cells) 129+ times — these are internal state that only the gold patch introduces",
+    "Tests call gold-patch-specific functions (whichKeyTestModel, restoreWhichKeyGlobals, leaderKey, armWhichKeyLeader, whichKeyCells, availableWhichKeyActions, whichKeyCatalogList) 443+ times",
+    "21 entirely new test files test types, structs, and interfaces that only exist in the gold patch (whichKeyState, whichKeyCatalog, whichKeyCatalogList, whichKeyModeCatalog)",
+    "Tests directly access Model.whichKey.armed, Model.whichKey.shown, Model.whichKey.scroll — internal struct fields, not observable behavior",
+    "Config tests assert on ConfigWhichKeyGrouped, ConfigWhichKeyLeaderDelayMs, ActiveKeybindings.WhichKeyLeader — globals and struct fields only the gold patch adds",
+    "Any alternative implementation with different internal naming, struct layout, or decomposition would not compile against these tests"
+  ],
+  "environment_risks": [
+    "Go compilation depends on all test files being type-correct against the implementation — since tests reference 17 new source files from the gold patch, partial implementations will fail to compile at all",
+    "The test patch applies via git apply after restoring base-commit versions of files — if the candidate solution has different file paths or renames, the test patch may fail to apply",
+    "Large compile/test cycle: 36 test files across 2 packages with -p 1 sequential execution could be slow under resource constraints"
+  ],
+  "mismatches": [
+    "The instruction describes observable behavior requirements, but the tests verify gold-patch-specific internal implementation details (struct fields, function signatures, variable names)",
+    "The category in task.toml is 'debugging' but this is clearly a new feature implementation with substantial scope — not a debugging task",
+    "The task scope (which-key panel, help rework, keybinding changes, config additions, icon rendering, goto validation, dead binding removal, documentation) is too broad for a single benchmark instance"
+  ],
+  "evidence": [
+    {
+      "file": "task.toml",
+      "detail": "category='debugging' but this is a massive new feature implementation across 45 files"
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "308 test functions in 36 test files; 21 entirely new test files that reference gold-patch-only types"
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "Tests reference whichKeyState.armed/shown/seq/grouped/scroll 129+ times — internal struct fields introduced only by gold patch"
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "Tests call gold-patch-specific functions (armWhichKeyLeader, whichKeyCatalogList, etc.) 443+ times"
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "Existing test TestHandleKeyQuestionMarkOpensHelp renamed to TestHandleKeyF1OpensHelp with key change from '?' to 'f1' — fails without gold patch"
+    },
+    {
+      "file": "solution/solve.sh",
+      "detail": "Gold patch is ~7000 lines across 45 files including 17 new files — enormous scope for a benchmark task"
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "wiringCoveredFields map extended with which_key_leader_delay_ms and which_key_grouped — references config globals only gold patch introduces"
+    }
+  ],
+  "recommended_action": "revise_instance",
+  "summary": "This instance has severe implementation coupling: 308 tests across 36 files reference gold-patch-specific internal types, struct fields, and function names 443+ times, making it impossible for any alternative implementation to pass. The task scope (45 files, ~7000 lines, implementing a complete which-key panel system plus help rework, keybinding fixes, config additions, and documentation) is far too large for a SWE benchmark. Tests verify internal state (Model.whichKey.armed, whichKeyCatalogList) rather than observable behavior. The task is miscategorized as 'debugging' when it is a major feature implementation. The instance should be either decomposed into smaller focused tasks with behavior-oriented tests, or dropped."
+}

@@ -1,0 +1,60 @@
+{
+  "instance_id": "RakuenSoftware__aimee-c_1c60c9c",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.78,
+  "gold_patch_assessment": "The gold patch is a large, well-structured refactoring that moves the delegate-run economics rule from C (delegate_economics.c) to Go (economics.go + economics_stage.go). It adds a new stage 8 (event 6664) to the delegates module, updates the C side to use a provider pattern that calls through to Go via the bus, adds verdict_label and cost_model_label fields to the C report struct so labels travel with the verdict, and updates all callers. The C side fails closed with an 'unclear' verdict when no provider is registered. The patch is internally consistent and addresses the stated issue.",
+  "base_vs_gold_expectation": "The base should fail the Go tests because: (1) the test patch creates economics_test.go and economics_stage_test.go that import types/functions (BuildEconomicsReport, EconomicsTask, AgentTier, EconomicsVerdictText, StageEconomics, etc.) defined only in the gold patch's new economics.go and economics_stage.go files — without these files the Go package won't compile; (2) TestModuleRegistryMatchesProcessContracts expects event 6664 in the delegates module, which the base doesn't register. The gold patch should pass because it provides all the referenced types, functions, and event registrations.",
+  "too_narrow_risks": [
+    "C-side runtime behavior is never tested by the verifier: ctest -R 'coord_jobs|delegate_economics' matches zero tests because these test binaries are not registered in src/tests/CMakeLists.txt (they're only in the Makefile-based build system via src/tests/Rules.mk)",
+    "The provider pattern (delegate_register_economics_provider / g_economics_provider callback) is untested at runtime — a candidate could botch the C provider wiring and still pass",
+    "The 'fails closed' behavior (empty report with 'unclear' verdict when no provider is registered) is not verified by any executed test",
+    "Changes to callers (cmd_job.c, server_mcp.c) that switched from delegate_economics_verdict_text()/cost_model_label() to report struct fields are only compilation-checked, not runtime-tested",
+    "The baselines/refactor/index.json SHA changes in the test patch are never validated by any test command"
+  ],
+  "too_broad_risks": [
+    "The cmake build step (cmake -S . -B build && cmake --build build -j) builds the entire project, not just the affected code — unrelated build failures could cause false negatives"
+  ],
+  "implementation_coupling": [
+    "The Go tests test exported functions (BuildEconomicsReport, EconomicsVerdictText) and types (EconomicsReport, EconomicsTask, AgentTier) by name, which couples to the gold patch's API design — alternative implementations must match these exact type/function names",
+    "TestEconomicsStageRoundTrip compares wire-protocol output against BuildEconomicsReport, coupling the stage test to the in-process function's output rather than independently specifying expected values",
+    "TestModuleRegistryMatchesProcessContracts hardcodes the exact list of event IDs {6657..6664}, requiring the stage numbering to match exactly"
+  ],
+  "environment_risks": [
+    "The cmake build requires libpq-dev which is not installed in the current audit environment — the Docker image specified in task.toml must provide it, but this is a fragile dependency",
+    "Go 1.25.0 is required (per go.mod) — environment must provide this exact or compatible version",
+    "The full cmake build of this large C project runs before tests, adding significant build time risk within the 3600s verifier timeout"
+  ],
+  "mismatches": [
+    "The eval.sh runs ctest -R 'coord_jobs|delegate_economics' but neither test_coord_jobs nor test_delegate_economics is registered as a CTest target in src/tests/CMakeLists.txt — the command always matches zero tests and returns exit 0, making the C test portion of the verifier a no-op",
+    "The test patch modifies src/tests/test_coord_jobs.c and src/tests/test_delegate_economics.c, but these modifications are never exercised by the verifier commands"
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/RakuenSoftware__aimee-c_1c60c9c/tests/eval.sh",
+      "detail": "Line 49: ctest command uses -R 'coord_jobs|delegate_economics' which matches zero CMake-registered tests"
+    },
+    {
+      "file": "/testbed/src/tests/CMakeLists.txt",
+      "detail": "File does not contain any reference to coord_jobs or delegate_economics — these tests are only in src/tests/Rules.mk (Makefile build)"
+    },
+    {
+      "file": "/testbed/src/tests/Rules.mk",
+      "detail": "Lines 4220 and 4895 define unit-test-coord-jobs and unit-test-delegate-economics as Make targets, not CTest targets"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch creates economics_test.go (214 lines, 10+ test cases) and economics_stage_test.go (107 lines, 3 test cases) that comprehensively test the Go-side economics logic"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch modifies test_coord_jobs.c and test_delegate_economics.c but these changes are never run by the verifier"
+    },
+    {
+      "file": "/audit_tasks/RakuenSoftware__aimee-c_1c60c9c/tests/eval.sh",
+      "detail": "Lines 44-45: cmake build runs under set -euo pipefail, so C compilation failures DO block the tests — providing structural verification of C changes"
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch correctly refactors delegate-run economics from C to Go and the Go-side test coverage is thorough (10+ test cases covering verdicts, tiers, handoffs, tokens, edge cases). However, the verifier's ctest command (ctest -R 'coord_jobs|delegate_economics') matches zero tests because these C test binaries are registered only in the Makefile build system, not in CMakeLists.txt. This makes the C-side runtime tests a complete no-op in the verifier. The cmake full-project build does gate on C compilation correctness, so structural errors would be caught, but behavioral correctness of the C provider pattern, fail-closed behavior, and caller updates is unverified. Recommend either registering the C tests in CMakeLists.txt or switching to the Make-based test runner for C tests."
+}

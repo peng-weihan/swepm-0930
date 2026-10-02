@@ -1,0 +1,65 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+The next patch would create the file test/main/services/team/ChangeExtractorService.test.ts,
+which already exists!  Assuming -R.
+patching file test/main/services/team/ChangeExtractorService.test.ts
+Hunk #1 FAILED at 1.
+Not deleting file test/main/services/team/ChangeExtractorService.test.ts as content differs from patch
+1 out of 1 hunk FAILED -- saving rejects to file test/main/services/team/ChangeExtractorService.test.ts.rej
+patching file test/main/services/team/TaskBoundaryParser.test.ts
+Hunk #1 succeeded at 272 with fuzz 2 (offset 162 lines).
+patching file test/main/services/team/TeamMcpConfigBuilder.test.ts
+Hunk #1 FAILED at 1.
+Hunk #2 succeeded at 38 with fuzz 2 (offset 24 lines).
+Hunk #3 succeeded at 168 with fuzz 2 (offset 123 lines).
+1 out of 3 hunks FAILED -- saving rejects to file test/main/services/team/TeamMcpConfigBuilder.test.ts.rej
+The next patch would create the file test/renderer/store/changeReviewSlice.test.ts,
+which already exists!  Assuming -R.
+patching file test/renderer/store/changeReviewSlice.test.ts
+Hunk #1 FAILED at 1.
+Not deleting file test/renderer/store/changeReviewSlice.test.ts as content differs from patch
+1 out of 1 hunk FAILED -- saving rejects to file test/renderer/store/changeReviewSlice.test.ts.rej
+patching file test/renderer/store/extensionsSlice.test.ts
+Hunk #1 succeeded at 36 with fuzz 1.
+patching file test/renderer/utils/taskChangeRequest.test.ts
+patching file test/shared/utils/extensionNormalizers.test.ts
+Hunk #1 succeeded at 39 with fuzz 1.
+
+ RUN  v3.2.4 /testbed
+
+ ✓ test/shared/utils/extensionNormalizers.test.ts (22 tests) 9ms
+ ✓ test/main/services/team/TaskBoundaryParser.test.ts (7 tests) 20ms
+ ❯ test/main/services/team/TeamMcpConfigBuilder.test.ts (10 tests | 10 failed) 472ms
+   × TeamMcpConfigBuilder > prefers the source MCP entry when workspace source is available 12ms
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > does not include user servers when ~/.claude.json is missing 2ms
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > merges valid user MCP servers from ~/.claude.json 54ms
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > lets the generated agent-teams server take precedence over a user entry with the same name 98ms
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > skips malformed entries and tolerates broken user config files 101ms
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > still generates the config when ~/.claude.json contains invalid JSON 198ms
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > merges top-level user MCP with generated agent-teams config 1ms
+     → createdDirs is not defined
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > does not inline project MCP config to preserve native Claude precedence 1ms
+     → createdDirs is not defined
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > generated agent-teams server overrides same-named user MCP entry 1ms
+     → createdDirs is not defined
+     → createdDirs is not defined
+   × TeamMcpConfigBuilder > ignores malformed user MCP file 1ms
+     → createdDirs is not defined
+     → createdDirs is not defined
+ ✓ test/main/services/team/ChangeExtractorService.test.ts (4 tests) 31ms
+ ✓ test/renderer/store/changeReviewSlice.test.ts (8 tests) 19ms
+ ✓ test/renderer/store/extensionsSlice.test.ts (15 tests) 105ms
+
+ Test Files  2 failed | 5 passed (7)
+      Tests  10 failed | 56 passed (66)
+   Start at  20:06:01
+   Duration  8.81s (transform 1.45s, setup 81ms, collect 4.29s, tests 656ms, environment 4.79s, prepare 5.85s)
+
+OMNIGRIL_EXIT_CODE=1

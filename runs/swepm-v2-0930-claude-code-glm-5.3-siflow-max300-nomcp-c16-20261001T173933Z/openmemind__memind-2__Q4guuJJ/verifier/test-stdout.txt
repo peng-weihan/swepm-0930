@@ -1,0 +1,411 @@
+SPECBUILD_RESOLVED_PYTHON=python3
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java...
+error: while searching for:
+import com.openmemind.ai.memory.core.retrieval.RetrievalResult;
+import com.openmemind.ai.memory.core.stats.ToolStatsService;
+import com.openmemind.ai.memory.core.store.MemoryStore;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java:36
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/group/InsightGroupRouterTest.java...
+error: while searching for:
+
+    private MemoryInsightType createInsightType() {
+        return new MemoryInsightType(
+                1L,
+                "test-memory",
+                "test",
+                "desc",
+                null,
+                List.of(),
+                400,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/group/InsightGroupRouterTest.java:103
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/group/InsightGroupRouterTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java...
+error: while searching for:
+        void shouldLinkLeafButNotResummarizeBelowThreshold() {
+            var leaf = createLeaf(1L, "The user likes coffee");
+
+            when(store.getInsightsByTypeId(memoryId, TYPE_NAME)).thenReturn(List.of(leaf));
+            when(store.getBranchByType(memoryId, TYPE_NAME)).thenReturn(Optional.empty());
+            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH)).thenReturn(List.of());
+            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of());
+
+            reorganizer.onLeafUpdated(memoryId, TYPE_NAME, createInsightType(), leaf, config);
+
+            // BRANCH should be created and linked (through saveInsights)
+            verify(store, atLeastOnce())
+                    .saveInsights(
+                            eq(memoryId),
+                            argThat(
+                                    list ->
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java:92
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/dedup/SemanticDeduplicatorTest.java...
+error: while searching for:
+    void batchLoadsMatchedItemsByVectorIdsWithoutScanningAllItems() {
+        var store = new TrackingMemoryStore();
+        var matchedItem = memoryItem(1L, "v-1", "existing item");
+        store.addItem(memoryId, matchedItem);
+
+        var vector = new StubMemoryVector();
+        vector.register("first", new VectorSearchResult("v-1", "existing item", 0.95f, Map.of()));
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/dedup/SemanticDeduplicatorTest.java:42
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/dedup/SemanticDeduplicatorTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPromptsTest.java...
+error: while searching for:
+
+    private static MemoryInsightType createInsightType(String name, List<String> categories) {
+        return new MemoryInsightType(
+                null,
+                null,
+                name,
+                null,
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPromptsTest.java:50
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPromptsTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPromptsTest.java...
+error: while searching for:
+
+    private static MemoryInsightType createInsightType(String name, List<String> categories) {
+        return new MemoryInsightType(
+                null,
+                null,
+                name,
+                null,
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPromptsTest.java:114
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPromptsTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetrieverTest.java...
+error: while searching for:
+            String name, String description, InsightAnalysisMode mode, MemoryScope scope) {
+        return new MemoryInsightType(
+                1L,
+                null,
+                name,
+                description,
+                null,
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetrieverTest.java:109
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetrieverTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/store/InMemoryMemoryStoreTest.java...
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGeneratorTest.java...
+error: while searching for:
+
+    private static MemoryInsightType insightType() {
+        return new MemoryInsightType(
+                null,
+                null,
+                "test-type",
+                null,
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGeneratorTest.java:41
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGeneratorTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGroupClassifierTest.java...
+error: while searching for:
+                            null, null);
+            var insightType =
+                    new MemoryInsightType(
+                            1L, "m1", "PROFILE", "desc", null, List.of(), 400, null, null, null,
+                            null, null, null, null, null);
+            var result = Map.of("group1", List.of(item));
+            var items = List.of(item);
+            var existingGroupNames = List.of("group1");
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGroupClassifierTest.java:50
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGroupClassifierTest.java: patch does not apply
+Checking patch memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStoreBatchOperationsTest.java...
+error: while searching for:
+    }
+
+    @Test
+    @DisplayName("updateItems prefetches existing rows once and updates only existing items")
+    void updateItemsPrefetchesExistingRowsOnce() {
+        newContextRunner(tempDir.resolve("update-items.db"))
+                .run(
+                        context -> {
+                            MemoryStore store = context.getBean(MemoryStore.class);
+                            MapperMethodCounter counter =
+                                    context.getBean(MapperMethodCounter.class);
+
+                            store.addItem(MEMORY_ID, memoryItem(1L, "original content"));
+                            counter.reset();
+
+                            store.updateItems(
+                                    MEMORY_ID,
+                                    List.of(
+                                            memoryItem(1L, "updated content"),
+                                            memoryItem(2L, "missing content")));
+
+                            assertThat(counter.count(MemoryItemMapper.class, "selectOne")).isZero();
+                            assertThat(counter.count(MemoryItemMapper.class, "selectList"))
+                                    .isEqualTo(1);
+                            assertThat(store.getAllItems(MEMORY_ID)).hasSize(1);
+                            assertThat(store.getItem(MEMORY_ID, 1L))
+                                    .get()
+                                    .extracting(MemoryItem::content)
+                                    .isEqualTo("updated content");
+                        });
+    }
+
+
+error: patch failed: memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStoreBatchOperationsTest.java:99
+error: memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStoreBatchOperationsTest.java: patch does not apply
+Checking patch memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/converter/InsightTypeConverterTest.java...
+Checking patch memind-plugin/memind-plugin-tracing-opentelemetry/src/test/java/com/openmemind/ai/memory/plugin/tracing/otel/InsightPipelineTracingTest.java...
+error: while searching for:
+    private static MemoryInsightType testInsightType(String name) {
+        return new MemoryInsightType(
+                1L,
+                "test-memory-1",
+                name,
+                "Test insight type",
+                null,
+
+error: patch failed: memind-plugin/memind-plugin-tracing-opentelemetry/src/test/java/com/openmemind/ai/memory/plugin/tracing/otel/InsightPipelineTracingTest.java:100
+error: memind-plugin/memind-plugin-tracing-opentelemetry/src/test/java/com/openmemind/ai/memory/plugin/tracing/otel/InsightPipelineTracingTest.java: patch does not apply
+Checking patch memind-plugin/memind-plugin-tracing-opentelemetry/src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker...
+Checking patch memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java...
+error: while searching for:
+import com.openmemind.ai.memory.core.extraction.MemoryExtractor;
+import com.openmemind.ai.memory.core.retrieval.MemoryRetriever;
+import com.openmemind.ai.memory.core.store.MemoryStore;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+error: patch failed: memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java:20
+error: memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java: patch does not apply
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java
+Hunk #2 succeeded at 42 with fuzz 3.
+Hunk #3 succeeded at 53 (offset 1 line).
+Hunk #4 FAILED at 65.
+Hunk #5 succeeded at 133 (offset 2 lines).
+Hunk #6 succeeded at 331 (offset 2 lines).
+1 out of 6 hunks FAILED -- saving rejects to file memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java.rej
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/group/InsightGroupRouterTest.java
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java
+Hunk #1 FAILED at 92.
+Hunk #2 FAILED at 115.
+Hunk #3 FAILED at 139.
+Hunk #4 FAILED at 167.
+Hunk #5 FAILED at 199.
+Hunk #6 FAILED at 225.
+Hunk #7 FAILED at 268.
+Hunk #8 FAILED at 306.
+Hunk #9 FAILED at 335.
+Hunk #10 FAILED at 351.
+Hunk #11 FAILED at 374.
+Hunk #12 FAILED at 397.
+Hunk #13 FAILED at 411.
+Hunk #14 FAILED at 468.
+Hunk #15 FAILED at 519.
+Hunk #16 FAILED at 588.
+Hunk #17 succeeded at 759 with fuzz 3 (offset -18 lines).
+Hunk #18 FAILED at 799.
+Hunk #19 FAILED at 825.
+Hunk #20 FAILED at 856.
+19 out of 20 hunks FAILED -- saving rejects to file memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java.rej
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/dedup/SemanticDeduplicatorTest.java
+Hunk #1 FAILED at 42.
+Hunk #2 FAILED at 70.
+Hunk #3 FAILED at 94.
+3 out of 4 hunks FAILED -- saving rejects to file memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/dedup/SemanticDeduplicatorTest.java.rej
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPromptsTest.java
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPromptsTest.java
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetrieverTest.java
+Reversed (or previously applied) patch detected!  Assuming -R.
+Hunk #2 FAILED at 149.
+Hunk #3 FAILED at 200.
+Hunk #4 FAILED at 256.
+Hunk #5 FAILED at 297.
+Hunk #6 FAILED at 337.
+Hunk #7 FAILED at 391.
+Hunk #8 FAILED at 432.
+Hunk #9 FAILED at 487.
+Hunk #10 FAILED at 527.
+Hunk #11 FAILED at 545.
+Hunk #12 FAILED at 555.
+Hunk #13 FAILED at 575.
+Hunk #14 FAILED at 606.
+Hunk #15 FAILED at 641.
+14 out of 15 hunks FAILED -- saving rejects to file memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetrieverTest.java.rej
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/store/InMemoryMemoryStoreTest.java
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGeneratorTest.java
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGroupClassifierTest.java
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStoreBatchOperationsTest.java
+Hunk #3 FAILED at 103.
+Hunk #4 succeeded at 147 (offset 5 lines).
+Hunk #5 FAILED at 174.
+Hunk #6 FAILED at 185.
+Hunk #7 succeeded at 199 (offset 5 lines).
+3 out of 7 hunks FAILED -- saving rejects to file memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStoreBatchOperationsTest.java.rej
+patching file memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/converter/InsightTypeConverterTest.java
+patching file memind-plugin/memind-plugin-tracing-opentelemetry/src/test/java/com/openmemind/ai/memory/plugin/tracing/otel/InsightPipelineTracingTest.java
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file memind-plugin/memind-plugin-tracing-opentelemetry/src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker
+patching file memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java
+Reversed (or previously applied) patch detected!  Assuming -R.
+Hunk #2 FAILED at 45.
+Hunk #3 FAILED at 76.
+Hunk #4 FAILED at 88.
+Hunk #5 FAILED at 110.
+4 out of 5 hunks FAILED -- saving rejects to file memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java.rej
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] Memind - Parent                                                    [pom]
+[INFO] Memind - Core                                                      [jar]
+[INFO] Memind - Plugins                                                   [pom]
+[INFO] Memind - OpenTelemetry Tracing Plugin                              [jar]
+[INFO] Memind - MyBatis-Plus Store Plugin                                 [jar]
+[INFO] Memind - Spring Boot Starter                                       [jar]
+[INFO] 
+[INFO] ----------------------< com.openmemind.ai:memind >----------------------
+[INFO] Building Memind - Parent 0.0.1-SNAPSHOT                            [1/6]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-validation) @ memind ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- jacoco:0.8.14:prepare-agent (prepare-agent) @ memind ---
+[INFO] argLine set to -javaagent:/root/.m2/repository/org/jacoco/org.jacoco.agent/0.8.14/org.jacoco.agent-0.8.14-runtime.jar=destfile=/testbed/target/jacoco.exec
+[INFO] 
+[INFO] --- license:4.1:check (default) @ memind ---
+[WARNING]  Parameter 'legacyConfigExcludes' (user property 'license.excludes') is deprecated: use {@link LicenseSet#excludes}
+[WARNING]  Parameter 'legacyConfigHeader' (user property 'license.header') is deprecated: use {@link LicenseSet#header}
+[INFO] Checking licenses...
+[INFO] 
+[INFO] --- flatten:1.7.3:flatten (flatten) @ memind ---
+[INFO] Generating flattened POM of project com.openmemind.ai:memind:pom:0.0.1-SNAPSHOT...
+[INFO] 
+[INFO] --- spotless:3.2.1:check (default) @ memind ---
+[INFO] 
+[INFO] --- jacoco:0.8.14:report (report) @ memind ---
+[INFO] Skipping JaCoCo execution due to missing execution data file.
+[INFO] 
+[INFO] -------------------< com.openmemind.ai:memind-core >--------------------
+[INFO] Building Memind - Core 0.0.1-SNAPSHOT                              [2/6]
+[INFO]   from memind-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-validation) @ memind-core ---
+[INFO] Starting audit...
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/retrieval/tier/ItemTierRetriever.java:346: Line is longer than 120 characters (found 132). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/vector/MemoryVector.java:111: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/vector/MemoryVector.java:131: Line is longer than 120 characters (found 142). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/InsightLayer.java:44: Line is longer than 120 characters (found 127). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/InsightLayer.java:127: Line is longer than 120 characters (found 136). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/buffer/InsightBufferStore.java:73: Line is longer than 120 characters (found 139). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/group/EmbeddingClusterer.java:34: Line is longer than 120 characters (found 138). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/group/InsightGroupClassifier.java:25: Line is longer than 120 characters (found 129). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizer.java:180: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizer.java:181: Line is longer than 120 characters (found 141). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizer.java:288: Line is longer than 120 characters (found 135). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/BubbleTrackerStore.java:19: Line is longer than 120 characters (found 127). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/BubbleTrackerStore.java:22: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/BubbleTracker.java:23: Line is longer than 120 characters (found 125). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeContext.java:27: Line is longer than 120 characters (found 145). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/scheduler/PointOperationApplier.java:25: Line is longer than 120 characters (found 161). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/scheduler/InsightBuildScheduler.java:262: Line is longer than 120 characters (found 144). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/rawdata/chunk/LlmConversationChunker.java:37: Line is longer than 120 characters (found 169). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/rawdata/chunk/LlmConversationChunker.java:120: Line is longer than 120 characters (found 134). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/step/SegmentProcessor.java:25: Line is longer than 120 characters (found 121). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/item/support/ExtractedMemoryEntry.java:32: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/streaming/ConversationBufferStore.java:23: Line is longer than 120 characters (found 126). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/MemoryExtractor.java:203: Line is longer than 120 characters (found 143). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/Memory.java:152: Line is longer than 120 characters (found 121). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/data/enums/MemoryCategory.java:89: Line is longer than 120 characters (found 143). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/data/enums/MemoryCategory.java:90: Line is longer than 120 characters (found 223). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/data/DefaultInsightTypes.java:23: Line is longer than 120 characters (found 133). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/data/MemoryRawData.java:54: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightLeafPrompts.java:162: Line is longer than 120 characters (found 161). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightLeafPrompts.java:169: Line is longer than 120 characters (found 168). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InteractionGuideSynthesisPrompts.java:184: Line is longer than 120 characters (found 284). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/RootSynthesisPrompts.java:183: Line is longer than 120 characters (found 211). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/BranchAggregationPrompts.java:155: Line is longer than 120 characters (found 161). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/BranchAggregationPrompts.java:162: Line is longer than 120 characters (found 175). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/rawdata/BoundaryDetectionPrompts.java:137: Line is longer than 120 characters (found 144). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/rawdata/BoundaryDetectionPrompts.java:154: Line is longer than 120 characters (found 170). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/rawdata/BoundaryDetectionPrompts.java:170: Line is longer than 120 characters (found 134). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/rawdata/CaptionPrompts.java:90: Line is longer than 120 characters (found 123). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:120: Line is longer than 120 characters (found 133). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:171: Line is longer than 120 characters (found 236). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:172: Line is longer than 120 characters (found 207). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:197: Line is longer than 120 characters (found 124). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:305: Line is longer than 120 characters (found 179). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:313: Line is longer than 120 characters (found 134). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:351: Line is longer than 120 characters (found 130). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:112: Line is longer than 120 characters (found 132). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:138: Line is longer than 120 characters (found 167). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:145: Line is longer than 120 characters (found 177). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:151: Line is longer than 120 characters (found 122). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:159: Line is longer than 120 characters (found 121). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:167: Line is longer than 120 characters (found 191). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:170: Line is longer than 120 characters (found 247). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:176: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:194: Line is longer than 120 characters (found 193). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/store/MemoryStore.java:74: Line is longer than 120 characters (found 134). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/store/MemoryStore.java:75: Line is longer than 120 characters (found 195). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/store/MemoryStore.java:89: Line is longer than 120 characters (found 158). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/store/MemoryStore.java:90: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/rawdata/chunk/HeadingAwareTextChunkerTest.java:169: Line is longer than 120 characters (found 149). [LineLength]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/rawdata/chunk/HeadingAwareTextChunkerTest.java:172: Line is longer than 120 characters (found 130). [LineLength]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java:46:1: Duplicate import to line 45 - com.openmemind.ai.memory.core.vector.MemoryVector. [RedundantImport]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java:254: Line is longer than 120 characters (found 125). [LineLength]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/SelfVerificationStepTest.java:54: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/SelfVerificationStepTest.java:55: Line is longer than 120 characters (found 130). [LineLength]
+Audit done.
+[INFO] There is 1 error reported by Checkstyle 9.3 with etc/checkstyle.xml ruleset.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java:[46,1] (imports) RedundantImport: Duplicate import to line 45 - com.openmemind.ai.memory.core.vector.MemoryVector.
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for Memind - Parent 0.0.1-SNAPSHOT:
+[INFO] 
+[INFO] Memind - Parent .................................... SUCCESS [  1.713 s]
+[INFO] Memind - Core ...................................... FAILURE [  2.789 s]
+[INFO] Memind - Plugins ................................... SKIPPED
+[INFO] Memind - OpenTelemetry Tracing Plugin .............. SKIPPED
+[INFO] Memind - MyBatis-Plus Store Plugin ................. SKIPPED
+[INFO] Memind - Spring Boot Starter ....................... SKIPPED
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  4.704 s
+[INFO] Finished at: 2026-10-01T18:26:37Z
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-checkstyle-plugin:3.6.0:check (checkstyle-validation) on project memind-core: You have 1 Checkstyle violation. -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :memind-core
+OMNIGRIL_EXIT_CODE=1

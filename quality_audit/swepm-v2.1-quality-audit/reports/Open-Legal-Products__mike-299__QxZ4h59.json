@@ -1,0 +1,52 @@
+{
+  "instance_id": "Open-Legal-Products__mike-299",
+  "overall_quality": "good",
+  "test_scope": "balanced",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch addresses all 7 requirements from the issue: (1) removes raw document text from the system prompt by deleting buildWordDocumentContextPrompt and simplifying buildWordChatSystemPrompt to take no args; (2) exposes the active document as an available document with doc_id 'active-word-document' and filename 'Active Word document' via constants and docStore registration in wordChat.ts; (3) adds inline_text support to DocStore type and readDocumentContent so read_document can return request-scoped text with proper lifecycle events; (4) blocks find_in_document on inline documents in toolDispatcher.ts with proper error and next_required_action; (5) updates read_document tool schema description to refer to 'available documents' rather than 'attachments'; (6) disables CourtListener/legal research in Word chats by passing includeResearchTools: false and removing courtlistener key; (7) updates system prompt instructions to guide the model to use read_document. The patch is very large (40 files) with extensive word-addin frontend/e2e changes, but the core backend logic changes are well-targeted.",
+  "base_vs_gold_expectation": "The tests should fail on the unpatched base and pass with the gold patch. On the base: (a) the test patch imports ACTIVE_WORD_DOCUMENT_LABEL and ACTIVE_WORD_DOCUMENT_FILENAME from wordPrompt.ts, which don't exist in the base — this causes a compile/import error; (b) even if imports were resolved, the base system prompt contains the raw document text (GOVERNED BY DELAWARE LAW) which the tests assert must NOT be present; (c) the DocStore type doesn't have inline_text in the base. After the gold patch, all exports exist, the system prompt excludes raw text, inline_text is supported, and CourtListener is disabled.",
+  "too_narrow_risks": [
+    "The read_document tool schema description update (referring to 'available documents' generally and documenting 'active-word-document' as a valid ID) is not directly tested — only the tool's runtime behavior is tested.",
+    "The test for the find_in_document block does not verify that no doc_search or doc_read events are emitted (the writes array check only confirms it's empty, which is indirect).",
+    "No test verifies behavior when document_context is absent/undefined — only the case where it IS provided is tested for the new tool-readable path.",
+    "The nonce-fencing test for inline text goes through runToolCalls which has many parameters passed as undefined/never — fragile if the function signature changes, but acceptable for the specific test purpose."
+  ],
+  "too_broad_risks": [
+    "The gold patch modifies 40 files including extensive word-addin frontend and e2e changes, but the tests only cover 2 backend test files. This is appropriate since the test scope matches the issue's backend requirements, but a candidate that correctly implements the backend without the frontend changes would still pass."
+  ],
+  "implementation_coupling": [
+    "Tests check docStore.get('active-word-document')?.inline_text directly, coupling to the specific field name 'inline_text' on the DocStore type rather than testing purely through read_document's return value.",
+    "Tests check buildMessagesCall[4] by positional index to verify legalResearchUs is false, which is coupled to the exact parameter position in the buildMessages function signature.",
+    "Tests import ACTIVE_WORD_DOCUMENT_LABEL and ACTIVE_WORD_DOCUMENT_FILENAME from wordPrompt.ts, requiring these exact export names. An alternative implementation using different constant names or inline strings would fail."
+  ],
+  "environment_risks": [
+    "The eval.sh test runner resolves Python before running TypeScript tests, which is unnecessary but harmless — the actual test command uses npx vitest.",
+    "The test patch must be applied via git apply or patch before running tests. If the base checkout is dirty or the patch context doesn't match, this could fail independently of the candidate solution.",
+    "vitest.config.mts sets testTimeout to 20000ms which should be adequate, but the overall verifier timeout is 3600s which is very generous."
+  ],
+  "mismatches": [],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch modifies 2 files: chat.routes.test.ts (integration tests for /word-chat endpoint) and documentContext.test.ts (unit tests for document context handling). Tests cover: system prompt exclusion of raw text, active document availability, inline_text in docStore, read_document lifecycle events, nonce-fencing of inline text, find_in_document blocking, and CourtListener disablement."
+    },
+    {
+      "file": "/testbed/backend/src/lib/chat/wordPrompt.ts",
+      "detail": "Base exports buildWordChatSystemPrompt(documentContext, nonce) with 2 params. Gold patch changes it to buildWordChatSystemPrompt() with 0 params and adds ACTIVE_WORD_DOCUMENT_LABEL and ACTIVE_WORD_DOCUMENT_FILENAME exports. Tests import these new exports, ensuring the base would fail."
+    },
+    {
+      "file": "/testbed/backend/src/lib/chat/types.ts",
+      "detail": "Base DocStore type lacks inline_text field. Gold patch adds optional inline_text?: string. Test patch creates DocStore entries with inline_text, which TypeScript would reject on the base type."
+    },
+    {
+      "file": "/testbed/backend/src/__tests__/integration/chat.routes.test.ts:634",
+      "detail": "Base test named 'adds document_context to the server-only Word system prompt' checks that the system prompt CONTAINS the nonce-fenced document text. The test patch renames it and reverses the assertion: 'makes document_context tool-readable without adding it to the system prompt' checks the system prompt does NOT contain the raw text."
+    },
+    {
+      "file": "/audit_tasks/Open-Legal-Products__mike-299/tests/eval.sh",
+      "detail": "eval.sh runs: cd backend && npx vitest run src/__tests__/integration/chat.routes.test.ts src/lib/__tests__/documentContext.test.ts --reporter=verbose. This correctly targets the two test files affected by the test patch."
+    }
+  ],
+  "recommended_action": "keep",
+  "summary": "Well-constructed instance. The gold patch correctly implements all 7 requirements from the issue across the backend (removing raw document injection into system prompts, exposing the active document as a tool-readable resource, blocking find_in_document bypass, and disabling CourtListener for Word chats). The test patch covers the core behavioral requirements with 6 focused test cases across 2 files. Tests would fail on the unpatched base (due to missing exports and reversed assertions) and pass with the gold patch. The tests have moderate implementation coupling (checking inline_text field names and positional buildMessages arguments) but this is reasonable for integration-level backend tests. The main gap is that the gold patch's 40-file scope far exceeds the test's 2-file scope, meaning frontend-only regressions wouldn't be caught, but the tests properly cover the issue's core backend requirements."
+}

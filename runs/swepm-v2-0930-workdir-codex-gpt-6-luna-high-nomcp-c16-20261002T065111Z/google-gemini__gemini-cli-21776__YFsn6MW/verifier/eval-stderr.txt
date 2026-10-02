@@ -1,0 +1,167 @@
+Checking patch packages/cli/src/config/keyBindings.test.ts...
+error: packages/cli/src/config/keyBindings.test.ts: No such file or directory
+Checking patch packages/cli/src/ui/components/ExitPlanModeDialog.test.tsx...
+error: while searching for:
+import { waitFor } from '../../test-utils/async.js';
+import { ExitPlanModeDialog } from './ExitPlanModeDialog.js';
+import { useKeypress } from '../hooks/useKeypress.js';
+import { Command } from '../keyMatchers.js';
+import {
+  ApprovalMode,
+  validatePlanContent,
+
+error: patch failed: packages/cli/src/ui/components/ExitPlanModeDialog.test.tsx:10
+error: packages/cli/src/ui/components/ExitPlanModeDialog.test.tsx: patch does not apply
+Checking patch packages/cli/src/ui/components/InputPrompt.test.tsx...
+error: while searching for:
+import type { UIState } from '../contexts/UIStateContext.js';
+import { isLowColorDepth } from '../utils/terminalUtils.js';
+import { cpLen } from '../utils/textUtils.js';
+import { defaultKeyMatchers, Command } from '../keyMatchers.js';
+import type { Key } from '../hooks/useKeypress.js';
+import {
+  appEvents,
+
+error: patch failed: packages/cli/src/ui/components/InputPrompt.test.tsx:44
+error: packages/cli/src/ui/components/InputPrompt.test.tsx: patch does not apply
+Checking patch packages/cli/src/ui/hooks/useSuspend.test.ts...
+error: while searching for:
+  cleanupTerminalOnExit,
+  terminalCapabilityManager,
+} from '../utils/terminalCapabilityManager.js';
+import { formatCommand } from '../utils/keybindingUtils.js';
+import { Command } from '../../config/keyBindings.js';
+
+vi.mock('@google/gemini-cli-core', async () => {
+  const actual = await vi.importActual('@google/gemini-cli-core');
+
+error: patch failed: packages/cli/src/ui/hooks/useSuspend.test.ts:29
+error: packages/cli/src/ui/hooks/useSuspend.test.ts: patch does not apply
+Checking patch packages/cli/src/ui/hooks/useTabbedNavigation.test.ts...
+Checking patch packages/cli/src/ui/key/keyBindings.test.ts...
+error: packages/cli/src/ui/key/keyBindings.test.ts: already exists in working directory
+Checking patch packages/cli/src/ui/keyMatchers.test.ts => packages/cli/src/ui/key/keyMatchers.test.ts...
+error: while searching for:
+  Command,
+  createKeyMatchers,
+} from './keyMatchers.js';
+import type { KeyBindingConfig } from '../config/keyBindings.js';
+import { defaultKeyBindings } from '../config/keyBindings.js';
+import type { Key } from './hooks/useKeypress.js';
+
+describe('keyMatchers', () => {
+  const createKey = (name: string, mods: Partial<Key> = {}): Key => ({
+
+error: patch failed: packages/cli/src/ui/keyMatchers.test.ts:10
+error: packages/cli/src/ui/keyMatchers.test.ts: patch does not apply
+Checking patch packages/cli/src/ui/utils/keybindingUtils.test.ts => packages/cli/src/ui/key/keybindingUtils.test.ts...
+error: while searching for:
+
+import { describe, it, expect } from 'vitest';
+import { formatKeyBinding, formatCommand } from './keybindingUtils.js';
+import { Command } from '../../config/keyBindings.js';
+import type { KeyBinding } from '../../config/keyBindings.js';
+
+describe('keybindingUtils', () => {
+  describe('formatKeyBinding', () => {
+
+error: patch failed: packages/cli/src/ui/utils/keybindingUtils.test.ts:6
+error: packages/cli/src/ui/utils/keybindingUtils.test.ts: patch does not apply
+node:internal/errors:984
+  const err = new Error(message);
+              ^
+
+Error: Command failed: tsc --build
+    at genericNodeError (node:internal/errors:984:15)
+    at wrappedFn (node:internal/errors:538:14)
+    at checkExecSyncError (node:child_process:891:11)
+    at execSync (node:child_process:963:15)
+    at file:///testbed/scripts/build_package.js:32:1
+    at ModuleJob.run (node:internal/modules/esm/module_job:325:25)
+    at async ModuleLoader.import (node:internal/modules/esm/loader:606:24)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5) {
+  status: 2,
+  signal: null,
+  output: [ null, null, null ],
+  pid: 592,
+  stdout: null,
+  stderr: null
+}
+
+Node.js v20.20.2
+npm error Lifecycle script `build` failed with error:
+npm error code 1
+npm error path /testbed/packages/cli
+npm error workspace @google/gemini-cli@0.34.0-nightly.20260304.28af4e127
+npm error location /testbed/packages/cli
+npm error command failed
+npm error command sh -c node ../../scripts/build_package.js
+
+node:internal/errors:984
+  const err = new Error(message);
+              ^
+
+Error: Command failed: npm run build --workspaces
+    at genericNodeError (node:internal/errors:984:15)
+    at wrappedFn (node:internal/errors:538:14)
+    at checkExecSyncError (node:child_process:891:11)
+    at execSync (node:child_process:963:15)
+    at file:///testbed/scripts/build.js:35:1
+    at ModuleJob.run (node:internal/modules/esm/module_job:325:25)
+    at async ModuleLoader.import (node:internal/modules/esm/loader:606:24)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5) {
+  status: 1,
+  signal: null,
+  output: [ null, null, null ],
+  pid: 536,
+  stdout: null,
+  stderr: null
+}
+
+Node.js v20.20.2
+[?25h[?25h(node:1001) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 update listeners added to [UiTelemetryService]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit
+(Use `node --trace-warnings ...` to show where the warning was created)
+[?25h[?25h
+⎯⎯⎯⎯⎯⎯ Failed Suites 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/ui/key/keyMatchers.test.ts [ src/ui/key/keyMatchers.test.ts ]
+Error: Cannot find module './keyMatchers.js' imported from '/testbed/packages/cli/src/ui/key/keyMatchers.test.ts'
+ ❯ src/ui/key/keyMatchers.test.ts:8:1
+      6| 
+      7| import { describe, it, expect } from 'vitest';
+      8| import { defaultKeyMatchers, createKeyMatchers } from './keyMatchers.j…
+       | ^
+      9| import {
+     10|   Command,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'ERR_MODULE_NOT_FOUND' }
+Caused by: Error: Failed to load url ./keyMatchers.js (resolved id: ./keyMatchers.js) in /testbed/packages/cli/src/ui/key/keyMatchers.test.ts. Does the file exist?
+ ❯ loadAndTransform ../../node_modules/vite/dist/node/chunks/config.js:23280:33
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  src/ui/key/keybindingUtils.test.ts [ src/ui/key/keybindingUtils.test.ts ]
+Error: Cannot find module './keybindingUtils.js' imported from '/testbed/packages/cli/src/ui/key/keybindingUtils.test.ts'
+ ❯ src/ui/key/keybindingUtils.test.ts:8:1
+      6| 
+      7| import { describe, it, expect } from 'vitest';
+      8| import { formatKeyBinding, formatCommand } from './keybindingUtils.js';
+       | ^
+      9| import { Command, KeyBinding } from '../key/keyBindings.js';
+     10| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'ERR_MODULE_NOT_FOUND' }
+Caused by: Error: Failed to load url ./keybindingUtils.js (resolved id: ./keybindingUtils.js) in /testbed/packages/cli/src/ui/key/keybindingUtils.test.ts. Does the file exist?
+ ❯ loadAndTransform ../../node_modules/vite/dist/node/chunks/config.js:23280:33
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+npm error Lifecycle script `test` failed with error:
+npm error code 1
+npm error path /testbed/packages/cli
+npm error workspace @google/gemini-cli@0.34.0-nightly.20260304.28af4e127
+npm error location /testbed/packages/cli
+npm error command failed
+npm error command sh -c vitest run src/ui/key/keyBindings.test.ts src/ui/key/keyMatchers.test.ts src/ui/key/keybindingUtils.test.ts src/ui/hooks/useSuspend.test.ts src/ui/hooks/useTabbedNavigation.test.ts src/ui/components/InputPrompt.test.tsx src/ui/components/ExitPlanModeDialog.test.tsx --reporter=verbose

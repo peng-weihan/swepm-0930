@@ -1,0 +1,193 @@
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java...
+error: while searching for:
+import com.openmemind.ai.memory.core.retrieval.RetrievalResult;
+import com.openmemind.ai.memory.core.stats.ToolStatsService;
+import com.openmemind.ai.memory.core.store.MemoryStore;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java:36
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/group/InsightGroupRouterTest.java...
+error: while searching for:
+
+    private MemoryInsightType createInsightType() {
+        return new MemoryInsightType(
+                1L,
+                "test-memory",
+                "test",
+                "desc",
+                null,
+                List.of(),
+                400,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+    }
+
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/group/InsightGroupRouterTest.java:103
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/group/InsightGroupRouterTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java...
+error: while searching for:
+        void shouldLinkLeafButNotResummarizeBelowThreshold() {
+            var leaf = createLeaf(1L, "The user likes coffee");
+
+            when(store.getInsightsByTypeId(memoryId, TYPE_NAME)).thenReturn(List.of(leaf));
+            when(store.getBranchByType(memoryId, TYPE_NAME)).thenReturn(Optional.empty());
+            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH)).thenReturn(List.of());
+            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of());
+
+            reorganizer.onLeafUpdated(memoryId, TYPE_NAME, createInsightType(), leaf, config);
+
+            // BRANCH should be created and linked (through saveInsights)
+            verify(store, atLeastOnce())
+                    .saveInsights(
+                            eq(memoryId),
+                            argThat(
+                                    list ->
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java:92
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/dedup/SemanticDeduplicatorTest.java...
+error: while searching for:
+    void batchLoadsMatchedItemsByVectorIdsWithoutScanningAllItems() {
+        var store = new TrackingMemoryStore();
+        var matchedItem = memoryItem(1L, "v-1", "existing item");
+        store.addItem(memoryId, matchedItem);
+
+        var vector = new StubMemoryVector();
+        vector.register("first", new VectorSearchResult("v-1", "existing item", 0.95f, Map.of()));
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/dedup/SemanticDeduplicatorTest.java:42
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/dedup/SemanticDeduplicatorTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPromptsTest.java...
+error: while searching for:
+
+    private static MemoryInsightType createInsightType(String name, List<String> categories) {
+        return new MemoryInsightType(
+                null,
+                null,
+                name,
+                null,
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPromptsTest.java:50
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPromptsTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPromptsTest.java...
+error: while searching for:
+
+    private static MemoryInsightType createInsightType(String name, List<String> categories) {
+        return new MemoryInsightType(
+                null,
+                null,
+                name,
+                null,
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPromptsTest.java:114
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPromptsTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetrieverTest.java...
+error: while searching for:
+            String name, String description, InsightAnalysisMode mode, MemoryScope scope) {
+        return new MemoryInsightType(
+                1L,
+                null,
+                name,
+                description,
+                null,
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetrieverTest.java:109
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetrieverTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/store/InMemoryMemoryStoreTest.java...
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGeneratorTest.java...
+error: while searching for:
+
+    private static MemoryInsightType insightType() {
+        return new MemoryInsightType(
+                null,
+                null,
+                "test-type",
+                null,
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGeneratorTest.java:41
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGeneratorTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGroupClassifierTest.java...
+error: while searching for:
+                            null, null);
+            var insightType =
+                    new MemoryInsightType(
+                            1L, "m1", "PROFILE", "desc", null, List.of(), 400, null, null, null,
+                            null, null, null, null, null);
+            var result = Map.of("group1", List.of(item));
+            var items = List.of(item);
+            var existingGroupNames = List.of("group1");
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGroupClassifierTest.java:50
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGroupClassifierTest.java: patch does not apply
+Checking patch memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStoreBatchOperationsTest.java...
+error: while searching for:
+    }
+
+    @Test
+    @DisplayName("updateItems prefetches existing rows once and updates only existing items")
+    void updateItemsPrefetchesExistingRowsOnce() {
+        newContextRunner(tempDir.resolve("update-items.db"))
+                .run(
+                        context -> {
+                            MemoryStore store = context.getBean(MemoryStore.class);
+                            MapperMethodCounter counter =
+                                    context.getBean(MapperMethodCounter.class);
+
+                            store.addItem(MEMORY_ID, memoryItem(1L, "original content"));
+                            counter.reset();
+
+                            store.updateItems(
+                                    MEMORY_ID,
+                                    List.of(
+                                            memoryItem(1L, "updated content"),
+                                            memoryItem(2L, "missing content")));
+
+                            assertThat(counter.count(MemoryItemMapper.class, "selectOne")).isZero();
+                            assertThat(counter.count(MemoryItemMapper.class, "selectList"))
+                                    .isEqualTo(1);
+                            assertThat(store.getAllItems(MEMORY_ID)).hasSize(1);
+                            assertThat(store.getItem(MEMORY_ID, 1L))
+                                    .get()
+                                    .extracting(MemoryItem::content)
+                                    .isEqualTo("updated content");
+                        });
+    }
+
+
+error: patch failed: memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStoreBatchOperationsTest.java:99
+error: memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStoreBatchOperationsTest.java: patch does not apply
+Checking patch memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/converter/InsightTypeConverterTest.java...
+Checking patch memind-plugin/memind-plugin-tracing-opentelemetry/src/test/java/com/openmemind/ai/memory/plugin/tracing/otel/InsightPipelineTracingTest.java...
+error: while searching for:
+    private static MemoryInsightType testInsightType(String name) {
+        return new MemoryInsightType(
+                1L,
+                "test-memory-1",
+                name,
+                "Test insight type",
+                null,
+
+error: patch failed: memind-plugin/memind-plugin-tracing-opentelemetry/src/test/java/com/openmemind/ai/memory/plugin/tracing/otel/InsightPipelineTracingTest.java:100
+error: memind-plugin/memind-plugin-tracing-opentelemetry/src/test/java/com/openmemind/ai/memory/plugin/tracing/otel/InsightPipelineTracingTest.java: patch does not apply
+Checking patch memind-plugin/memind-plugin-tracing-opentelemetry/src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker...
+Checking patch memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java...
+error: while searching for:
+import com.openmemind.ai.memory.core.extraction.MemoryExtractor;
+import com.openmemind.ai.memory.core.retrieval.MemoryRetriever;
+import com.openmemind.ai.memory.core.store.MemoryStore;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+
+error: patch failed: memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java:20
+error: memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java: patch does not apply

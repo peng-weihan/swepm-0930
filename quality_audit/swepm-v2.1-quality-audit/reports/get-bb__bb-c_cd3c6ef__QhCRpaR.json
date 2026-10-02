@@ -1,0 +1,58 @@
+{
+  "instance_id": "get-bb__bb-c_cd3c6ef",
+  "overall_quality": "good",
+  "test_scope": "balanced",
+  "confidence": 0.85,
+  "gold_patch_assessment": "The gold patch comprehensively renames 'draft' terminology to 'queued message' across 30 files spanning the full stack: API routes (/drafts → /queued-messages), request/response schemas (CreateDraftRequest → CreateQueuedMessageRequest, SendDraftResponse → SendQueuedMessageResponse), React hooks (useThreadDrafts → useThreadQueuedMessages, useCreateThreadDraft → useCreateThreadQueuedMessage), query keys (threadDraftsQueryKey → threadQueuedMessagesQueryKey), DB helpers (createDraft → createQueuedThreadMessage, drafts.ts → queued-thread-messages.ts), IDs (draft_ → qmsg_, dclaim_ → qclaim_), UI labels ('Queued follow-up messages' → 'Queued messages', formatQueuedFollowUpPreview → formatQueuedMessagePreview), and adds a planning document distinguishing composer drafts from queued messages. This directly and thoroughly addresses the stated issue.",
+  "base_vs_gold_expectation": "The tests will fail on the unpatched base because: (1) the test patch imports renamed modules (e.g., queued-messages.js, queued-thread-messages.js) that don't exist in the base, (2) tests reference renamed functions/types (createQueuedThreadMessage, threadQueuedMessagesQueryKey, etc.) that don't exist in base exports, (3) tests assert new ID prefixes (qmsg_, qclaim_, queued-message:) and new API endpoints (/queued-messages). With the gold patch applied, all renamed modules/exports exist, so the tests should pass.",
+  "too_narrow_risks": [
+    "The test patch does not directly verify the new planning document at plans/server-backed-composer-drafts.md exists or has correct content — a candidate could skip that file and still pass all tests.",
+    "UI aria-label change ('Queued follow-up messages' → 'Queued messages') in QueuedMessagesList.tsx is not tested by any of the test files (it's a component render test that would require DOM rendering).",
+    "Story file hint text changes ('one queued follow-up' → 'one queued message') are not verified by tests since Storybook stories don't run in vitest.",
+    "The FileChange.stories.tsx comment rename (QueuedFollowUpItem → QueuedMessageItem) is cosmetic and untestable."
+  ],
+  "too_broad_risks": [
+    "The test suite runs 20+ test files across the entire app/server/db/contract stack. While all are relevant to the renaming, some tests (e.g., timeline-service.test.ts) only have minor description changes and could create flakiness risk from unrelated test failures in those large files.",
+    "Server integration tests (public-thread-data, public-thread-interactions, etc.) stand up real app harnesses with databases, which increases execution time and environmental sensitivity."
+  ],
+  "implementation_coupling": [
+    "Tests are tightly coupled to exact function/module names (createQueuedThreadMessage, sendQueuedMessage, threadQueuedMessagesQueryKey, etc.), which is inherent and appropriate for a renaming task — the whole point is to verify the new names exist.",
+    "Tests check exact ID prefixes (qmsg_, qclaim_) and prompt history ID format (queued-message:), coupling to the gold patch's specific prefix choices. An alternative like 'queuedmsg_' would fail.",
+    "API endpoint paths (/queued-messages) are hardcoded in test assertions, which is appropriate since the issue specifies these exact paths.",
+    "The error code 'queued_message_claim_lost' in periodic-sweeps test is coupled to the specific error code string in the implementation."
+  ],
+  "environment_risks": [
+    "The eval.sh depends on vitest-real being available (confirmed present in the Docker image).",
+    "Server integration tests require SQLite in-memory databases and full app harness setup, which is environment-dependent but standard for this repo.",
+    "The 3600-second test timeout should be adequate for 20 test files, but server integration tests can be slow."
+  ],
+  "mismatches": [],
+  "evidence": [
+    {
+      "file": "/audit_tasks/get-bb__bb-c_cd3c6ef/instruction.md",
+      "detail": "Issue specifies renaming 'drafts' to 'queued messages' across API endpoints, schemas, types, hooks, DB helpers, IDs, UI labels, and adding a plans document."
+    },
+    {
+      "file": "/audit_tasks/get-bb__bb-c_cd3c6ef/solution/solve.sh",
+      "detail": "Gold patch modifies 30 files covering all layers: API routes, schemas, React hooks, query keys, DB data layer, ID generators, UI components, stories, and creates plans/server-backed-composer-drafts.md."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch modifies 22 test files (20 updated, 1 deleted, 1 created) verifying the rename across all layers: DB operations (qmsg_ prefix), API endpoints (/queued-messages), hook names, query keys, schema names, error codes, and prompt history ID format."
+    },
+    {
+      "file": "/audit_tasks/get-bb__bb-c_cd3c6ef/tests/eval.sh",
+      "detail": "Eval script runs all 20 test files listed in the test patch via vitest-real with the project's vitest.config.ts."
+    },
+    {
+      "file": "/testbed/packages/db/src/data/drafts.ts",
+      "detail": "Base repo has drafts.ts which the gold patch renames to queued-thread-messages.ts; test patch imports from the renamed path, ensuring tests fail on base."
+    },
+    {
+      "file": "/testbed/packages/server-contract/src/public-api.ts",
+      "detail": "Base repo has /threads/:id/drafts and /threads/:id/drafts/:draftId routes that the gold patch renames to /queued-messages paths."
+    }
+  ],
+  "recommended_action": "keep",
+  "summary": "This is a well-constructed renaming task instance. The gold patch comprehensively renames 'draft' terminology to 'queued message' across 30 files spanning the full TypeScript stack, directly addressing the stated issue. The test patch covers all critical layers — DB operations, API endpoints, React hooks, query keys, schema types, ID prefixes, and prompt history format — across 20+ test files. Tests will correctly fail on the unmodified base (due to missing renamed modules/exports) and pass with the gold patch. Minor narrow-scope risks exist: the plans document creation and UI aria-label changes are not verified by tests, and some tests are coupled to specific prefix choices (qmsg_, qclaim_). However, this coupling is appropriate for a renaming task. The instance is valid and tests are well-scoped."
+}

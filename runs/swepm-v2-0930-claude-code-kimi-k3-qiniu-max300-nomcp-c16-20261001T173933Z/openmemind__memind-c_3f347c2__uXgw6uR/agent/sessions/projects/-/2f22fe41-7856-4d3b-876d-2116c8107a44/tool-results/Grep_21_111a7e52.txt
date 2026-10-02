@@ -1,0 +1,197 @@
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-11- * See the License for the specific language governing permissions and
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-12- * limitations under the License.
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-13- */
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-14-package com.openmemind.ai.memory.example.java.agent;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-15-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-16-import com.openmemind.ai.memory.core.Memory;
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java:17:import com.openmemind.ai.memory.core.builder.MemoryBuildOptions;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-18-import com.openmemind.ai.memory.core.data.DefaultMemoryId;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-19-import com.openmemind.ai.memory.core.extraction.ExtractionConfig;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-20-import com.openmemind.ai.memory.core.extraction.insight.scheduler.InsightBuildConfig;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-21-import com.openmemind.ai.memory.core.llm.StructuredChatClient;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-22-import com.openmemind.ai.memory.core.llm.rerank.LlmReranker;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-23-import com.openmemind.ai.memory.core.llm.rerank.Reranker;
+--
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-104-                                RetrievalRequest.agentMemory(
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-105-                                        memoryId, query, RetrievalConfig.Strategy.SIMPLE))
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-106-                        .block();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-107-        ExamplePrinter.printRetrievalResult(retrieval, System.currentTimeMillis() - startedAt);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-108-    }
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-109-
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java:110:    private static MemoryBuildOptions agentOptions() {
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java:111:        InsightBuildConfig defaults = MemoryBuildOptions.defaults().insightBuild();
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java:112:        return MemoryBuildOptions.builder()
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-113-                .insightBuild(
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-114-                        new InsightBuildConfig(2, 2, defaults.concurrency(), defaults.maxRetries()))
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-115-                .build();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-116-    }
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-117-
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java:118:    private static AgentScopeRuntime createRuntime(String scenario, MemoryBuildOptions options) {
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-119-        Path runtimeDir = resolveRuntimeDir(scenario);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-120-        String jdbcUrl = resolveJdbcUrl(runtimeDir);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-121-        prepareRuntimeLayout(runtimeDir, jdbcUrl);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-122-        StructuredChatClient chatClient = createChatClient();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-123-        EmbeddingModel embeddingModel = createEmbeddingModel();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/agent/AgentScopeMemoryExample.java-124-        JdbcMemoryAccess jdbc = createJdbcAccess(jdbcUrl);
+--
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-11- * See the License for the specific language governing permissions and
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-12- * limitations under the License.
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-13- */
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-14-package com.openmemind.ai.memory.example.java.quickstart;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-15-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-16-import com.openmemind.ai.memory.core.Memory;
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java:17:import com.openmemind.ai.memory.core.builder.MemoryBuildOptions;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-18-import com.openmemind.ai.memory.core.data.DefaultMemoryId;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-19-import com.openmemind.ai.memory.core.extraction.ExtractionConfig;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-20-import com.openmemind.ai.memory.core.llm.StructuredChatClient;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-21-import com.openmemind.ai.memory.core.llm.rerank.LlmReranker;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-22-import com.openmemind.ai.memory.core.llm.rerank.Reranker;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-23-import com.openmemind.ai.memory.core.retrieval.RetrievalConfig;
+--
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-49-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-50-    private static final Logger log = LoggerFactory.getLogger(QuickStartExample.class);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-51-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-52-    private QuickStartExample() {}
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-53-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-54-    public static void main(String[] args) {
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java:55:        run(createMemory("quickstart", MemoryBuildOptions.defaults()), new ExampleDataLoader());
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-56-    }
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-57-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-58-    private static void run(Memory memory, ExampleDataLoader loader) {
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-59-        var memoryId = DefaultMemoryId.of("user-quickstart", "memind");
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-60-        var messages = loader.loadMessages("quickstart/messages.json");
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-61-
+--
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-76-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-77-        long startedAt = System.currentTimeMillis();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-78-        var retrieval = memory.retrieve(memoryId, query, RetrievalConfig.Strategy.SIMPLE).block();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-79-        ExamplePrinter.printRetrievalResult(retrieval, System.currentTimeMillis() - startedAt);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-80-    }
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-81-
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java:82:    private static Memory createMemory(String scenario, MemoryBuildOptions options) {
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-83-        Path runtimeDir = resolveRuntimeDir(scenario);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-84-        String jdbcUrl = resolveJdbcUrl(runtimeDir);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-85-        prepareRuntimeLayout(runtimeDir, jdbcUrl);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-86-        StructuredChatClient chatClient = createChatClient();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-87-        EmbeddingModel embeddingModel = createEmbeddingModel();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/quickstart/QuickStartExample.java-88-        JdbcMemoryAccess jdbc = createJdbcAccess(jdbcUrl);
+--
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-11- * See the License for the specific language governing permissions and
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-12- * limitations under the License.
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-13- */
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-14-package com.openmemind.ai.memory.example.java.foresight;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-15-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-16-import com.openmemind.ai.memory.core.Memory;
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java:17:import com.openmemind.ai.memory.core.builder.MemoryBuildOptions;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-18-import com.openmemind.ai.memory.core.data.DefaultMemoryId;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-19-import com.openmemind.ai.memory.core.extraction.ExtractionConfig;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-20-import com.openmemind.ai.memory.core.llm.StructuredChatClient;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-21-import com.openmemind.ai.memory.core.llm.rerank.LlmReranker;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-22-import com.openmemind.ai.memory.core.llm.rerank.Reranker;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-23-import com.openmemind.ai.memory.core.retrieval.RetrievalConfig;
+--
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-49-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-50-    private static final Logger log = LoggerFactory.getLogger(ForesightExample.class);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-51-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-52-    private ForesightExample() {}
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-53-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-54-    public static void main(String[] args) {
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java:55:        run(createMemory("foresight", MemoryBuildOptions.defaults()), new ExampleDataLoader());
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-56-    }
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-57-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-58-    private static void run(Memory memory, ExampleDataLoader loader) {
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-59-        var memoryId = DefaultMemoryId.of("user-foresight", "memind");
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-60-
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-61-        ExamplePrinter.printSection("Step 1: Extract Memory — enableForesight=true");
+--
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-81-        log.info("  query: {}", query);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-82-        long startedAt = System.currentTimeMillis();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-83-        var retrieval = memory.retrieve(memoryId, query, RetrievalConfig.Strategy.SIMPLE).block();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-84-        ExamplePrinter.printRetrievalResult(retrieval, System.currentTimeMillis() - startedAt);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-85-    }
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-86-
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java:87:    private static Memory createMemory(String scenario, MemoryBuildOptions options) {
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-88-        Path runtimeDir = resolveRuntimeDir(scenario);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-89-        String jdbcUrl = resolveJdbcUrl(runtimeDir);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-90-        prepareRuntimeLayout(runtimeDir, jdbcUrl);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-91-        StructuredChatClient chatClient = createChatClient();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-92-        EmbeddingModel embeddingModel = createEmbeddingModel();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/foresight/ForesightExample.java-93-        JdbcMemoryAccess jdbc = createJdbcAccess(jdbcUrl);
+--
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-11- * See the License for the specific language governing permissions and
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-12- * limitations under the License.
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-13- */
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-14-package com.openmemind.ai.memory.example.java.tool;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-15-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-16-import com.openmemind.ai.memory.core.Memory;
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java:17:import com.openmemind.ai.memory.core.builder.MemoryBuildOptions;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-18-import com.openmemind.ai.memory.core.data.DefaultMemoryId;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-19-import com.openmemind.ai.memory.core.llm.StructuredChatClient;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-20-import com.openmemind.ai.memory.core.llm.rerank.LlmReranker;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-21-import com.openmemind.ai.memory.core.llm.rerank.Reranker;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-22-import com.openmemind.ai.memory.example.java.support.ExampleDataLoader;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-23-import com.openmemind.ai.memory.example.java.support.ExamplePrinter;
+--
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-47-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-48-    private static final Logger log = LoggerFactory.getLogger(ToolMemoryExample.class);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-49-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-50-    private ToolMemoryExample() {}
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-51-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-52-    public static void main(String[] args) {
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java:53:        run(createMemory("tool", MemoryBuildOptions.defaults()), new ExampleDataLoader());
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-54-    }
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-55-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-56-    private static void run(Memory memory, ExampleDataLoader loader) {
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-57-        var memoryId = DefaultMemoryId.of("user-tool", "memind");
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-58-
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-59-        ExamplePrinter.printSection("Step 1: Report Tool Calls — reportToolCalls()");
+--
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-69-                "grep_code", memory.getToolStats(memoryId, "grep_code").block());
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-70-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-71-        log.info("  ── all tool stats ──");
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-72-        ExamplePrinter.printAllToolStats(memory.getAllToolStats(memoryId).block());
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-73-    }
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-74-
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java:75:    private static Memory createMemory(String scenario, MemoryBuildOptions options) {
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-76-        Path runtimeDir = resolveRuntimeDir(scenario);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-77-        String jdbcUrl = resolveJdbcUrl(runtimeDir);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-78-        prepareRuntimeLayout(runtimeDir, jdbcUrl);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-79-        StructuredChatClient chatClient = createChatClient();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-80-        EmbeddingModel embeddingModel = createEmbeddingModel();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/tool/ToolMemoryExample.java-81-        JdbcMemoryAccess jdbc = createJdbcAccess(jdbcUrl);
+--
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-11- * See the License for the specific language governing permissions and
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-12- * limitations under the License.
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-13- */
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-14-package com.openmemind.ai.memory.example.java.insight;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-15-
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-16-import com.openmemind.ai.memory.core.Memory;
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java:17:import com.openmemind.ai.memory.core.builder.MemoryBuildOptions;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-18-import com.openmemind.ai.memory.core.data.DefaultMemoryId;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-19-import com.openmemind.ai.memory.core.extraction.ExtractionConfig;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-20-import com.openmemind.ai.memory.core.extraction.insight.scheduler.InsightBuildConfig;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-21-import com.openmemind.ai.memory.core.llm.StructuredChatClient;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-22-import com.openmemind.ai.memory.core.llm.rerank.LlmReranker;
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-23-import com.openmemind.ai.memory.core.llm.rerank.Reranker;
+--
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-81-        log.info("  query: {}", query);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-82-        long startedAt = System.currentTimeMillis();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-83-        var retrieval = memory.retrieve(memoryId, query, RetrievalConfig.Strategy.DEEP).block();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-84-        ExamplePrinter.printRetrievalResult(retrieval, System.currentTimeMillis() - startedAt);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-85-    }
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-86-
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java:87:    private static MemoryBuildOptions insightOptions() {
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java:88:        InsightBuildConfig defaults = MemoryBuildOptions.defaults().insightBuild();
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java:89:        return MemoryBuildOptions.builder()
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-90-                .insightBuild(
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-91-                        new InsightBuildConfig(2, 2, defaults.concurrency(), defaults.maxRetries()))
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-92-                .build();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-93-    }
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-94-
+testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java:95:    private static Memory createMemory(String scenario, MemoryBuildOptions options) {
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-96-        Path runtimeDir = resolveRuntimeDir(scenario);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-97-        String jdbcUrl = resolveJdbcUrl(runtimeDir);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-98-        prepareRuntimeLayout(runtimeDir, jdbcUrl);
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-99-        StructuredChatClient chatClient = createChatClient();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-100-        EmbeddingModel embeddingModel = createEmbeddingModel();
+/testbed/memind-examples/memind-example-java/src/main/java/com/openmemind/ai/memory/example/java/insight/InsightTreeExample.java-101-        JdbcMemoryAccess jdbc = createJdbcAccess(jdbcUrl);

@@ -1,0 +1,384 @@
+SPECBUILD_RESOLVED_PYTHON=python3
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryContextTest.java...
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java...
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java...
+error: while searching for:
+                    return INSIGHT_OPERATIONS;
+                }
+            };
+
+    @Test
+    void extractionAssemblerUsesMemoryBufferAndBoundaryOptions() {
+        CommitDetectorConfig boundaryDetector = new CommitDetectorConfig(6, 2048, 4);
+        MemoryAssemblyContext context =
+                context(
+                        Map.of(),
+                        MemoryBuildOptions.builder().boundaryDetector(boundaryDetector).build());
+
+        MemoryExtractionAssembly assembly = new MemoryExtractionAssembler().assemble(context);
+        MemoryExtractor extractor = (MemoryExtractor) assembly.pipeline();
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java:97
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryBuildOptionsTest.java...
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java...
+error: while searching for:
+import com.openmemind.ai.memory.core.buffer.InsightBuffer;
+import com.openmemind.ai.memory.core.buffer.MemoryBuffer;
+import com.openmemind.ai.memory.core.buffer.RecentConversationBuffer;
+import com.openmemind.ai.memory.core.builder.MemoryBuildOptions;
+import com.openmemind.ai.memory.core.builder.MemoryBuilder;
+import com.openmemind.ai.memory.core.data.MemoryId;
+import com.openmemind.ai.memory.core.extraction.MemoryExtractor;
+import com.openmemind.ai.memory.core.extraction.context.CommitDetectorConfig;
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:22
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/RetrievalConfigTest.java...
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/strategy/StrategyConfigTest.java...
+error: while searching for:
+        void withMethods() {
+            var config =
+                    DeepStrategyConfig.defaults()
+                            .withQueryExpansion(
+                                    new DeepStrategyConfig.QueryExpansionConfig(5, 3.0, 1.5));
+            assertThat(config.queryExpansion().maxExpandedQueries()).isEqualTo(5);
+            assertThat(config.sufficiency().itemTopK()).isEqualTo(20); // unchanged
+        }
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/strategy/StrategyConfigTest.java:68
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/strategy/StrategyConfigTest.java: patch does not apply
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryContextTest.java
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java
+Hunk #3 FAILED at 99.
+Hunk #4 FAILED at 132.
+2 out of 4 hunks FAILED -- saving rejects to file memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java.rej
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryBuildOptionsTest.java
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java
+Hunk #1 succeeded at 23 with fuzz 3 (offset 1 line).
+Hunk #2 succeeded at 44 (offset 1 line).
+Hunk #3 FAILED at 192.
+Hunk #4 FAILED at 206.
+2 out of 4 hunks FAILED -- saving rejects to file memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java.rej
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/RetrievalConfigTest.java
+patching file memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/strategy/StrategyConfigTest.java
+Reversed (or previously applied) patch detected!  Assuming -R.
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] Memind - Parent                                                    [pom]
+[INFO] Memind - Core                                                      [jar]
+[INFO] 
+[INFO] ----------------------< com.openmemind.ai:memind >----------------------
+[INFO] Building Memind - Parent 0.1.0-SNAPSHOT                            [1/2]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-validation) @ memind ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- jacoco:0.8.14:prepare-agent (prepare-agent) @ memind ---
+[INFO] argLine set to -javaagent:/root/.m2/repository/org/jacoco/org.jacoco.agent/0.8.14/org.jacoco.agent-0.8.14-runtime.jar=destfile=/testbed/target/jacoco.exec
+[INFO] 
+[INFO] --- license:4.1:check (default) @ memind ---
+[WARNING]  Parameter 'legacyConfigExcludes' (user property 'license.excludes') is deprecated: use {@link LicenseSet#excludes}
+[WARNING]  Parameter 'legacyConfigHeader' (user property 'license.header') is deprecated: use {@link LicenseSet#header}
+[INFO] Checking licenses...
+[INFO] 
+[INFO] --- flatten:1.7.3:flatten (flatten) @ memind ---
+[INFO] Generating flattened POM of project com.openmemind.ai:memind:pom:0.1.0-SNAPSHOT...
+[INFO] 
+[INFO] --- spotless:3.2.1:check (default) @ memind ---
+[INFO] 
+[INFO] -------------------< com.openmemind.ai:memind-core >--------------------
+[INFO] Building Memind - Core 0.1.0-SNAPSHOT                              [2/2]
+[INFO]   from memind-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-validation) @ memind-core ---
+[INFO] Starting audit...
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/retrieval/tier/ItemTierRetriever.java:348: Line is longer than 120 characters (found 132). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/vector/MemoryVector.java:111: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/vector/MemoryVector.java:131: Line is longer than 120 characters (found 142). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/buffer/InsightBuffer.java:73: Line is longer than 120 characters (found 139). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/buffer/ConversationBuffer.java:19: Line is longer than 120 characters (found 126). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/InsightLayer.java:44: Line is longer than 120 characters (found 127). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/InsightLayer.java:127: Line is longer than 120 characters (found 136). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/group/EmbeddingClusterer.java:34: Line is longer than 120 characters (found 138). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/group/InsightGroupClassifier.java:25: Line is longer than 120 characters (found 129). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizer.java:184: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizer.java:185: Line is longer than 120 characters (found 141). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizer.java:292: Line is longer than 120 characters (found 135). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/BubbleTrackerStore.java:19: Line is longer than 120 characters (found 127). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/BubbleTrackerStore.java:22: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/BubbleTracker.java:23: Line is longer than 120 characters (found 125). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/scheduler/PointOperationApplier.java:25: Line is longer than 120 characters (found 161). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/scheduler/InsightBuildScheduler.java:262: Line is longer than 120 characters (found 144). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/rawdata/chunk/LlmConversationChunker.java:39: Line is longer than 120 characters (found 169). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/rawdata/chunk/LlmConversationChunker.java:131: Line is longer than 120 characters (found 134). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/step/SegmentProcessor.java:25: Line is longer than 120 characters (found 121). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/item/support/ExtractedMemoryEntry.java:33: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/MemoryExtractor.java:216: Line is longer than 120 characters (found 143). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/Memory.java:200: Line is longer than 120 characters (found 121). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/data/enums/MemoryCategory.java:101: Line is longer than 120 characters (found 130). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/data/DefaultInsightTypes.java:23: Line is longer than 120 characters (found 133). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/data/MemoryRawData.java:54: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightLeafPrompts.java:154: Line is longer than 120 characters (found 161). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightLeafPrompts.java:161: Line is longer than 120 characters (found 168). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InteractionGuideSynthesisPrompts.java:176: Line is longer than 120 characters (found 284). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightGroupPrompts.java:73: Line is longer than 120 characters (found 139). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightGroupPrompts.java:172: Line is longer than 120 characters (found 123). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightGroupPrompts.java:180: Line is longer than 120 characters (found 133). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightGroupPrompts.java:185: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightGroupPrompts.java:195: Line is longer than 120 characters (found 141). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/RootSynthesisPrompts.java:174: Line is longer than 120 characters (found 211). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/BranchAggregationPrompts.java:143: Line is longer than 120 characters (found 161). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/BranchAggregationPrompts.java:150: Line is longer than 120 characters (found 175). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/rawdata/BoundaryDetectionPrompts.java:148: Line is longer than 120 characters (found 144). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/rawdata/BoundaryDetectionPrompts.java:165: Line is longer than 120 characters (found 170). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/rawdata/BoundaryDetectionPrompts.java:181: Line is longer than 120 characters (found 134). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/rawdata/CaptionPrompts.java:97: Line is longer than 120 characters (found 123). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:158: Line is longer than 120 characters (found 171). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:185: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:186: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:187: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:188: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:189: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:190: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:191: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:192: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:193: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:364: Line is longer than 120 characters (found 142). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:391: Line is longer than 120 characters (found 182). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:416: Line is longer than 120 characters (found 132). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:154: Line is longer than 120 characters (found 199). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:183: Line is longer than 120 characters (found 167). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:190: Line is longer than 120 characters (found 177). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:196: Line is longer than 120 characters (found 122). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:204: Line is longer than 120 characters (found 121). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:212: Line is longer than 120 characters (found 191). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:215: Line is longer than 120 characters (found 183). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:221: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:239: Line is longer than 120 characters (found 188). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:254: Line is longer than 120 characters (found 125). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:260: Line is longer than 120 characters (found 142). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:263: Line is longer than 120 characters (found 181). [LineLength]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/rawdata/chunk/HeadingAwareTextChunkerTest.java:169: Line is longer than 120 characters (found 149). [LineLength]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/rawdata/chunk/HeadingAwareTextChunkerTest.java:172: Line is longer than 120 characters (found 130). [LineLength]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java:257: Line is longer than 120 characters (found 125). [LineLength]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/LlmSelfVerificationStepTest.java:41: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/LlmSelfVerificationStepTest.java:42: Line is longer than 120 characters (found 130). [LineLength]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:26:8: Unused import: com.openmemind.ai.memory.core.builder.DeepRetrievalOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:27:8: Unused import: com.openmemind.ai.memory.core.builder.ExtractionCommonOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:28:1: Duplicate import to line 25 - com.openmemind.ai.memory.core.builder.ExtractionOptions. [RedundantImport]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:29:8: Unused import: com.openmemind.ai.memory.core.builder.InsightExtractionOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:30:8: Unused import: com.openmemind.ai.memory.core.builder.ItemExtractionOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:33:8: Unused import: com.openmemind.ai.memory.core.builder.RawDataExtractionOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:34:8: Unused import: com.openmemind.ai.memory.core.builder.RetrievalAdvancedOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:35:8: Unused import: com.openmemind.ai.memory.core.builder.RetrievalCommonOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:36:8: Unused import: com.openmemind.ai.memory.core.builder.RetrievalOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:37:8: Unused import: com.openmemind.ai.memory.core.builder.SimpleRetrievalOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:47:8: Unused import: com.openmemind.ai.memory.core.extraction.rawdata.chunk.ConversationChunkingConfig. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java:29:8: Unused import: com.openmemind.ai.memory.core.extraction.insight.scheduler.InsightBuildConfig. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java:38:8: Unused import: com.openmemind.ai.memory.core.extraction.rawdata.chunk.ConversationChunkingConfig. [UnusedImports]
+Audit done.
+[INFO] There are 13 errors reported by Checkstyle 9.3 with etc/checkstyle.xml ruleset.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[26,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.DeepRetrievalOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[27,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.ExtractionCommonOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[28,1] (imports) RedundantImport: Duplicate import to line 25 - com.openmemind.ai.memory.core.builder.ExtractionOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[29,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.InsightExtractionOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[30,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.ItemExtractionOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[33,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.RawDataExtractionOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[34,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.RetrievalAdvancedOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[35,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.RetrievalCommonOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[36,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.RetrievalOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[37,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.SimpleRetrievalOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[47,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.extraction.rawdata.chunk.ConversationChunkingConfig.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java:[29,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.extraction.insight.scheduler.InsightBuildConfig.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java:[38,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.extraction.rawdata.chunk.ConversationChunkingConfig.
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for Memind - Parent 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] Memind - Parent .................................... SUCCESS [  1.648 s]
+[INFO] Memind - Core ...................................... FAILURE [  2.199 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  4.070 s
+[INFO] Finished at: 2026-10-01T18:24:13Z
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-checkstyle-plugin:3.6.0:check (checkstyle-validation) on project memind-core: You have 13 Checkstyle violations. -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :memind-core
+[INFO] Scanning for projects...
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Build Order:
+[INFO] 
+[INFO] Memind - Parent                                                    [pom]
+[INFO] Memind - Core                                                      [jar]
+[INFO] 
+[INFO] ----------------------< com.openmemind.ai:memind >----------------------
+[INFO] Building Memind - Parent 0.1.0-SNAPSHOT                            [1/2]
+[INFO]   from pom.xml
+[INFO] --------------------------------[ pom ]---------------------------------
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-validation) @ memind ---
+[INFO] Starting audit...
+Audit done.
+[INFO] You have 0 Checkstyle violations.
+[INFO] 
+[INFO] --- jacoco:0.8.14:prepare-agent (prepare-agent) @ memind ---
+[INFO] argLine set to -javaagent:/root/.m2/repository/org/jacoco/org.jacoco.agent/0.8.14/org.jacoco.agent-0.8.14-runtime.jar=destfile=/testbed/target/jacoco.exec
+[INFO] 
+[INFO] --- license:4.1:check (default) @ memind ---
+[WARNING]  Parameter 'legacyConfigExcludes' (user property 'license.excludes') is deprecated: use {@link LicenseSet#excludes}
+[WARNING]  Parameter 'legacyConfigHeader' (user property 'license.header') is deprecated: use {@link LicenseSet#header}
+[INFO] Checking licenses...
+[INFO] 
+[INFO] --- flatten:1.7.3:flatten (flatten) @ memind ---
+[INFO] Generating flattened POM of project com.openmemind.ai:memind:pom:0.1.0-SNAPSHOT...
+[INFO] 
+[INFO] --- spotless:3.2.1:check (default) @ memind ---
+[INFO] 
+[INFO] --- jacoco:0.8.14:report (report) @ memind ---
+[INFO] Skipping JaCoCo execution due to missing execution data file.
+[INFO] 
+[INFO] -------------------< com.openmemind.ai:memind-core >--------------------
+[INFO] Building Memind - Core 0.1.0-SNAPSHOT                              [2/2]
+[INFO]   from memind-core/pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- checkstyle:3.6.0:check (checkstyle-validation) @ memind-core ---
+[INFO] Starting audit...
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/retrieval/tier/ItemTierRetriever.java:348: Line is longer than 120 characters (found 132). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/vector/MemoryVector.java:111: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/vector/MemoryVector.java:131: Line is longer than 120 characters (found 142). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/buffer/InsightBuffer.java:73: Line is longer than 120 characters (found 139). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/buffer/ConversationBuffer.java:19: Line is longer than 120 characters (found 126). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/InsightLayer.java:44: Line is longer than 120 characters (found 127). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/InsightLayer.java:127: Line is longer than 120 characters (found 136). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/group/EmbeddingClusterer.java:34: Line is longer than 120 characters (found 138). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/group/InsightGroupClassifier.java:25: Line is longer than 120 characters (found 129). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizer.java:184: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizer.java:185: Line is longer than 120 characters (found 141). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizer.java:292: Line is longer than 120 characters (found 135). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/BubbleTrackerStore.java:19: Line is longer than 120 characters (found 127). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/BubbleTrackerStore.java:22: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/BubbleTracker.java:23: Line is longer than 120 characters (found 125). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/scheduler/PointOperationApplier.java:25: Line is longer than 120 characters (found 161). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/scheduler/InsightBuildScheduler.java:262: Line is longer than 120 characters (found 144). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/rawdata/chunk/LlmConversationChunker.java:39: Line is longer than 120 characters (found 169). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/rawdata/chunk/LlmConversationChunker.java:131: Line is longer than 120 characters (found 134). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/step/SegmentProcessor.java:25: Line is longer than 120 characters (found 121). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/item/support/ExtractedMemoryEntry.java:33: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/MemoryExtractor.java:216: Line is longer than 120 characters (found 143). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/Memory.java:200: Line is longer than 120 characters (found 121). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/data/enums/MemoryCategory.java:101: Line is longer than 120 characters (found 130). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/data/DefaultInsightTypes.java:23: Line is longer than 120 characters (found 133). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/data/MemoryRawData.java:54: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightLeafPrompts.java:154: Line is longer than 120 characters (found 161). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightLeafPrompts.java:161: Line is longer than 120 characters (found 168). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InteractionGuideSynthesisPrompts.java:176: Line is longer than 120 characters (found 284). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightGroupPrompts.java:73: Line is longer than 120 characters (found 139). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightGroupPrompts.java:172: Line is longer than 120 characters (found 123). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightGroupPrompts.java:180: Line is longer than 120 characters (found 133). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightGroupPrompts.java:185: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/InsightGroupPrompts.java:195: Line is longer than 120 characters (found 141). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/RootSynthesisPrompts.java:174: Line is longer than 120 characters (found 211). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/BranchAggregationPrompts.java:143: Line is longer than 120 characters (found 161). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/insight/BranchAggregationPrompts.java:150: Line is longer than 120 characters (found 175). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/rawdata/BoundaryDetectionPrompts.java:148: Line is longer than 120 characters (found 144). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/rawdata/BoundaryDetectionPrompts.java:165: Line is longer than 120 characters (found 170). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/rawdata/BoundaryDetectionPrompts.java:181: Line is longer than 120 characters (found 134). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/rawdata/CaptionPrompts.java:97: Line is longer than 120 characters (found 123). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:158: Line is longer than 120 characters (found 171). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:185: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:186: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:187: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:188: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:189: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:190: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:191: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:192: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:193: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:364: Line is longer than 120 characters (found 142). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:391: Line is longer than 120 characters (found 182). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPrompts.java:416: Line is longer than 120 characters (found 132). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:154: Line is longer than 120 characters (found 199). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:183: Line is longer than 120 characters (found 167). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:190: Line is longer than 120 characters (found 177). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:196: Line is longer than 120 characters (found 122). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:204: Line is longer than 120 characters (found 121). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:212: Line is longer than 120 characters (found 191). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:215: Line is longer than 120 characters (found 183). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:221: Line is longer than 120 characters (found 131). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:239: Line is longer than 120 characters (found 188). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:254: Line is longer than 120 characters (found 125). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:260: Line is longer than 120 characters (found 142). [LineLength]
+[WARN] /testbed/memind-core/src/main/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPrompts.java:263: Line is longer than 120 characters (found 181). [LineLength]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/rawdata/chunk/HeadingAwareTextChunkerTest.java:169: Line is longer than 120 characters (found 149). [LineLength]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/rawdata/chunk/HeadingAwareTextChunkerTest.java:172: Line is longer than 120 characters (found 130). [LineLength]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java:257: Line is longer than 120 characters (found 125). [LineLength]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/LlmSelfVerificationStepTest.java:41: Line is longer than 120 characters (found 128). [LineLength]
+[WARN] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/LlmSelfVerificationStepTest.java:42: Line is longer than 120 characters (found 130). [LineLength]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:26:8: Unused import: com.openmemind.ai.memory.core.builder.DeepRetrievalOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:27:8: Unused import: com.openmemind.ai.memory.core.builder.ExtractionCommonOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:28:1: Duplicate import to line 25 - com.openmemind.ai.memory.core.builder.ExtractionOptions. [RedundantImport]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:29:8: Unused import: com.openmemind.ai.memory.core.builder.InsightExtractionOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:30:8: Unused import: com.openmemind.ai.memory.core.builder.ItemExtractionOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:33:8: Unused import: com.openmemind.ai.memory.core.builder.RawDataExtractionOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:34:8: Unused import: com.openmemind.ai.memory.core.builder.RetrievalAdvancedOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:35:8: Unused import: com.openmemind.ai.memory.core.builder.RetrievalCommonOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:36:8: Unused import: com.openmemind.ai.memory.core.builder.RetrievalOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:37:8: Unused import: com.openmemind.ai.memory.core.builder.SimpleRetrievalOptions. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:47:8: Unused import: com.openmemind.ai.memory.core.extraction.rawdata.chunk.ConversationChunkingConfig. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java:29:8: Unused import: com.openmemind.ai.memory.core.extraction.insight.scheduler.InsightBuildConfig. [UnusedImports]
+[ERROR] /testbed/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java:38:8: Unused import: com.openmemind.ai.memory.core.extraction.rawdata.chunk.ConversationChunkingConfig. [UnusedImports]
+Audit done.
+[INFO] There are 13 errors reported by Checkstyle 9.3 with etc/checkstyle.xml ruleset.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[26,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.DeepRetrievalOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[27,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.ExtractionCommonOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[28,1] (imports) RedundantImport: Duplicate import to line 25 - com.openmemind.ai.memory.core.builder.ExtractionOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[29,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.InsightExtractionOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[30,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.ItemExtractionOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[33,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.RawDataExtractionOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[34,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.RetrievalAdvancedOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[35,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.RetrievalCommonOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[36,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.RetrievalOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[37,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.builder.SimpleRetrievalOptions.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:[47,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.extraction.rawdata.chunk.ConversationChunkingConfig.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java:[29,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.extraction.insight.scheduler.InsightBuildConfig.
+[ERROR] src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java:[38,8] (imports) UnusedImports: Unused import: com.openmemind.ai.memory.core.extraction.rawdata.chunk.ConversationChunkingConfig.
+[INFO] ------------------------------------------------------------------------
+[INFO] Reactor Summary for Memind - Parent 0.1.0-SNAPSHOT:
+[INFO] 
+[INFO] Memind - Parent .................................... SUCCESS [  1.994 s]
+[INFO] Memind - Core ...................................... FAILURE [  2.215 s]
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  4.446 s
+[INFO] Finished at: 2026-10-01T18:24:18Z
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-checkstyle-plugin:3.6.0:check (checkstyle-validation) on project memind-core: You have 13 Checkstyle violations. -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+[ERROR] 
+[ERROR] After correcting the problems, you can resume the build with the command
+[ERROR]   mvn <args> -rf :memind-core
+OMNIGRIL_EXIT_CODE=1

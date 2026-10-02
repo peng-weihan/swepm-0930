@@ -1,0 +1,38 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+
+> lobsterai@2026.5.27 precompile:electron
+> electron-builder install-app-deps
+
+  • electron-builder  version=24.13.3
+  • loaded configuration  file=/testbed/electron-builder.json
+  • rebuilding native dependencies  dependencies=better-sqlite3@12.11.1, bufferutil@4.1.0, utf-8-validate@6.0.6 platform=linux arch=x64
+  • install prebuilt binary  name=better-sqlite3 version=12.11.1 platform=linux arch=x64 napi=
+
+> lobsterai@2026.5.27 compile:electron
+> tsc --project electron-tsconfig.json
+
+
+> lobsterai@2026.5.27 pretest
+> npm rebuild better-sqlite3
+
+rebuilt dependencies successfully
+
+> lobsterai@2026.5.27 test
+> vitest run src/renderer/components/MarkdownContent.test.ts src/renderer/components/cowork/selectedKitContextPrompt.test.ts src/renderer/services/kitCapability.test.ts --reporter=verbose
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/testbed[39m
+
+ [32m✓[39m src/renderer/components/MarkdownContent.test.ts[2m > [22mlarge markdown preview threshold only applies to oversized content[32m 2[2mms[22m[39m
+ [32m✓[39m src/renderer/components/MarkdownContent.test.ts[2m > [22mlarge markdown preview keeps the head and latest tail[32m 0[2mms[22m[39m
+ [31m×[39m src/renderer/components/MarkdownContent.test.ts[2m > [22mkit links are treated as safe internal links[32m 2[2mms[22m[39m
+[31m   → safeUrlTransform is not a function[39m
+ [31m×[39m src/renderer/components/MarkdownContent.test.ts[2m > [22munsafe markdown protocols are still stripped[32m 0[2mms[22m[39m
+[31m   → safeUrlTransform is not a function[39m
+
+[2m Test Files [22m [1m[31m3 failed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m2 passed[39m[22m[90m (4)[39m
+[2m   Start at [22m 19:06:14
+[2m   Duration [22m 1.75s[2m (transform 636ms, setup 0ms, import 940ms, tests 6ms, environment 0ms)[22m
+
+OMNIGRIL_EXIT_CODE=1

@@ -1,0 +1,77 @@
+Checking patch daxpay-payment/daxpay-payment-core/src/test/java/cn/daxpay/open/payment/auth/PlatformAuthServiceTest.java...
+error: daxpay-payment/daxpay-payment-core/src/test/java/cn/daxpay/open/payment/auth/PlatformAuthServiceTest.java: No such file or directory
+Checking patch daxpay-payment/daxpay-payment-core/src/test/java/cn/daxpay/open/payment/auth/AuthSessionStoreTest.java => daxpay-payment/daxpay-payment-core/src/test/java/cn/daxpay/open/payment/auth/core/AuthSessionStoreTest.java...
+error: while searching for:
+package cn.daxpay.open.payment.auth;
+
+import cn.daxpay.open.payment.unipay.result.assist.AuthResult;
+import cn.daxpay.open.platform.common.json.util.JacksonUtil;
+
+error: patch failed: daxpay-payment/daxpay-payment-core/src/test/java/cn/daxpay/open/payment/auth/AuthSessionStoreTest.java:1
+error: daxpay-payment/daxpay-payment-core/src/test/java/cn/daxpay/open/payment/auth/AuthSessionStoreTest.java: patch does not apply
+Checking patch daxpay-payment/daxpay-payment-core/src/test/java/cn/daxpay/open/payment/auth/ChannelAuthServiceTest.java => daxpay-payment/daxpay-payment-core/src/test/java/cn/daxpay/open/payment/auth/merchant/ChannelAuthServiceTest.java...
+error: while searching for:
+package cn.daxpay.open.payment.auth;
+
+import cn.daxpay.open.payment.unipay.param.assist.AuthCodeParam;
+import cn.daxpay.open.payment.unipay.param.assist.GenerateAuthUrlParam;
+import cn.daxpay.open.payment.unipay.result.assist.AuthResult;
+import cn.daxpay.open.payment.unipay.result.assist.AuthUrlResult;
+import cn.daxpay.open.platform.core.enums.unipay.ChannelAuthTypeEnum;
+import cn.daxpay.open.platform.core.exception.BizInfoException;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+/// # 通道认证服务 Facade 测试
+///
+/// 锁定 [ChannelAuthService] 的分发行为, 供后续重构(Provider 注册表)回归验证。
+/// 覆盖点:
+/// - generateAuthUrl: authType=alipay 走平台级支付宝(透传 returnPath); 其余走支付产品策略
+/// - auth: session 失效且非 alipay 抛 authSessionExpired; 四个 source 分支(alipay/mp/douyin/产品);
+///   无 session 兜底; 成功后 deleteSession 一次失效; returnPath 从 session 回填
+@ExtendWith(MockitoExtension.class)
+class ChannelAuthServiceTest {
+
+    @Mock
+    private AuthSessionStore authSessionStore;
+
+    @Mock
+    private PlatformAuthService platformAuthService;
+
+    @Mock
+    private ChannelProductAuthService channelProductAuthService;
+
+    @InjectMocks
+    private ChannelAuthService channelAuthService;
+
+    // ==================== generateAuthUrl ====================
+
+    @Test
+    @DisplayName("generateAuthUrl: authType=alipay 委托平台级支付宝, 透传 returnPath")
+    void generateAuthUrl_alipay_shouldDelegateToPlatformWithReturnPath() {
+        GenerateAuthUrlParam param = new GenerateAuthUrlParam();
+        param.setAuthType(ChannelAuthTypeEnum.ALIPAY.getCode());
+        param.setReturnPath("/cashier/ORD123/alipay");
+        AuthUrlResult expected = new AuthUrlResult().setAuthUrl("https://openauth.alipay.com/oauth/...");
+        when(platformAuthService.generateAlipayAuthUrl("/cashier/ORD123/alipay")).thenReturn(expected);
+
+        AuthUrlResult result = channelAuthService.generateAuthUrl(param);
+
+
+error: patch failed: daxpay-payment/daxpay-payment-core/src/test/java/cn/daxpay/open/payment/auth/ChannelAuthServiceTest.java:1
+error: daxpay-payment/daxpay-payment-core/src/test/java/cn/daxpay/open/payment/auth/ChannelAuthServiceTest.java: patch does not apply
+Checking patch daxpay-payment/daxpay-payment-core/src/test/java/cn/daxpay/open/payment/auth/platform/AlipayAuthProviderTest.java...
+Checking patch daxpay-payment/daxpay-payment-core/src/test/java/cn/daxpay/open/payment/auth/platform/DouyinH5AuthProviderTest.java...
+Checking patch daxpay-payment/daxpay-payment-core/src/test/java/cn/daxpay/open/payment/auth/platform/WechatMpAuthProviderTest.java...

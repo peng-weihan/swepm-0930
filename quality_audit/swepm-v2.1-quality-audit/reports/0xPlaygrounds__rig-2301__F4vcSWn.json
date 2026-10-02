@@ -1,0 +1,64 @@
+{
+  "instance_id": "0xPlaygrounds__rig-2301",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch correctly addresses the core issue: it replaces Ollama's direct serde_json::from_slice(&body) in list_all() with a call to the shared get_json() helper, and Copilot's with the new decode_json_response() helper. This eliminates the provider-local JSON parsing paths that required serde policy allowlist exceptions. However, the gold patch is massively over-scoped: it modifies 31 files across rig-core and rig-agent, removing dead code (ImageEmbeddingModel trait, Image::try_into_url, unused Message variants in deepseek, Azure embedding types, ModelListingError variants, etc.), refactoring HTTP client methods, tool dispatch, streaming assemblers, Gemini exchange types, Mira completion normalization, PDF loaders, and more. The vast majority of these changes are unrelated to the stated issue about Ollama/Copilot model listing serde policy entries.",
+  "base_vs_gold_expectation": "The test patch removes two allowlist entries from serde_policy_allowlist.txt (Ollama's and Copilot's ListModelsResponse = serde_json::from_slice(&body)). On the unpatched base, this causes the serde policy wall test (provider_streaming_modules_never_raw_parse_the_wire) to fail because the raw serde calls exist in ollama.rs and copilot/mod.rs but are no longer allowlisted. On the gold-patched code, those serde calls have been replaced with shared helper calls, so no violations or stale entries exist and the test passes. This discrimination works correctly in principle.",
+  "too_narrow_risks": [
+    "Test only verifies the serde policy allowlist mechanism, not that model listing actually works correctly after the refactor (no functional/behavioral test for Ollama or Copilot list_all).",
+    "A trivial workaround exists: a candidate could re-add the two removed allowlist entries to pass the test without actually fixing the issue.",
+    "The test patch removes only 2 lines from the allowlist. The gold patch modifies 31 files with ~1572 deletions and ~664 additions. The overwhelming majority of the gold patch (dead code removal, refactoring in rig-agent, client HTTP method consolidation, Gemini/Mira/DeepSeek/Azure changes, PDF loader refactoring, etc.) is completely untested.",
+    "Only rig-core tests are run (cargo test -p rig-core), but the gold patch makes significant changes to rig-agent (8 files) which are not tested at all.",
+    "No test verifies the observable behavior requirement from the issue: 'successful list-model responses should still deserialize into the same public ModelList/model entries'."
+  ],
+  "too_broad_risks": [
+    "The gold patch is a massive refactoring commit touching 31 files. A candidate producing the correct behavioral fix (routing Ollama/Copilot model listing through shared helpers) would need to also produce all the unrelated dead-code removal and refactoring to compile cleanly, since many of the removed items may be referenced by other removed items in a chain."
+  ],
+  "implementation_coupling": [
+    "The test is coupled to the allowlist mechanism rather than observable behavior. It checks that specific allowlist entries don't exist and that no raw serde calls remain unallowlisted, rather than testing that model listing works correctly.",
+    "The gold patch uses a specific routing approach (get_json for Ollama, decode_json_response for Copilot). An alternative valid approach (e.g., using the http_client's built-in JSON decoding, or a different shared abstraction) would also pass the test as long as it doesn't use serde_json::from_slice directly in the provider file."
+  ],
+  "environment_risks": [
+    "The test requires cargo compilation of a large Rust workspace. Build timeouts or dependency fetching issues could cause failures unrelated to the solution.",
+    "The gold patch's 31-file scope means compilation depends on many cross-crate interactions. Partial application or merge conflicts with the test patch could cause spurious failures.",
+    "cargo test -p rig-core --no-fail-fast runs the full rig-core test suite, including unrelated tests (streaming conformance, identity leak, macro hygiene). Failures in unrelated tests would cause the verifier to reject valid solutions."
+  ],
+  "mismatches": [
+    "The issue asks specifically about Ollama and Copilot model listing serde policy entries. The gold patch is a massive 31-file refactoring commit that goes far beyond this scope, removing dead code, refactoring tool dispatch, HTTP clients, PDF loaders, Gemini types, etc.",
+    "The issue mentions 'the serde policy allowlist should not contain exceptions for Ollama or Copilot list-model response decoding', but the gold patch does NOT modify serde_policy_allowlist.txt. Instead, the test patch removes the entries. This means after applying ONLY the gold patch (without test patch), the allowlist would have stale entries and the existing test would FAIL.",
+    "The issue scope is narrow (model listing in two providers) but the gold patch requires extensive unrelated changes to compile, creating an unreasonable bar for candidates."
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch removes exactly 2 lines from serde_policy_allowlist.txt: the Ollama and Copilot ListModelsResponse = serde_json::from_slice(&body) entries."
+    },
+    {
+      "file": "/audit_tasks/0xPlaygrounds__rig-2301/solution/solve.sh",
+      "detail": "Gold patch modifies 31 files with ~1572 deletions and ~664 additions, far exceeding the issue scope."
+    },
+    {
+      "file": "/testbed/crates/rig-core/tests/driver_adoption.rs",
+      "detail": "Lines 889-950: provider_streaming_modules_never_raw_parse_the_wire test checks for unallowlisted raw serde calls and stale entries. This is the test that discriminates base from gold."
+    },
+    {
+      "file": "/testbed/crates/rig-core/tests/serde_policy_allowlist.txt",
+      "detail": "Lines 37 and 42 contain the Ollama and Copilot model listing allowlist entries that would become stale after the gold patch."
+    },
+    {
+      "file": "/testbed/crates/rig-core/src/providers/ollama.rs",
+      "detail": "Line 1063: base code has serde_json::from_slice(&body) for ListModelsResponse in list_all()."
+    },
+    {
+      "file": "/testbed/crates/rig-core/src/providers/copilot/mod.rs",
+      "detail": "Line 1372: base code has serde_json::from_slice(&body) for ListModelsResponse in list_all()."
+    },
+    {
+      "file": "/audit_tasks/0xPlaygrounds__rig-2301/tests/eval.sh",
+      "detail": "Line 48: only runs cargo test -p rig-core, not rig-agent, despite gold patch touching 8 rig-agent files."
+    }
+  ],
+  "recommended_action": "revise_instance",
+  "summary": "The test mechanism (serde policy allowlist check) correctly discriminates base from gold for the narrow Ollama/Copilot model listing issue. However, the instance has serious problems: (1) the gold patch is massively over-scoped at 31 files, including extensive dead-code removal and refactoring unrelated to the issue; (2) the test only checks 2 allowlist lines, leaving the vast majority of gold patch changes untested; (3) a trivial workaround (re-adding removed allowlist entries) would pass the test; (4) the gold patch does not update the allowlist itself (relying on the test patch for that), meaning applying only the gold patch would cause test failures from stale entries; (5) rig-agent changes are not tested at all. The instance should be revised to either narrow the gold patch to only the issue-relevant changes or expand the tests to cover the broader refactoring."
+}

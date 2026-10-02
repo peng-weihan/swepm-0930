@@ -1,0 +1,426 @@
+Checking patch src/agent/send-message-stream-channel-envelope.test.ts...
+error: while searching for:
+import type { LettaStreamingResponse } from "@letta-ai/letta-client/resources/agents/messages";
+import type { MessageCreateParams } from "@letta-ai/letta-client/resources/conversations/messages";
+import type { Backend } from "@/backend";
+import { clearDynamicMessageChannelToolCache } from "@/channels/message-tool";
+import { ChannelRegistry, getChannelRegistry } from "@/channels/registry";
+import type { ChannelAdapter, InboundChannelMessage } from "@/channels/types";
+import { formatChannelNotification } from "@/channels/xml";
+import {
+  clearCapturedToolExecutionContexts,
+  clearTools,
+  prepareToolExecutionContextForModel,
+} from "@/tools/manager";
+import { sendMessageStreamWithBackend } from "./message";
+
+function createRunningSlackAdapter(): ChannelAdapter {
+  return {
+    id: "slack:acct-slack",
+    channelId: "slack",
+    accountId: "acct-slack",
+    name: "Slack",
+    start: async () => {},
+    stop: async () => {},
+    isRunning: () => true,
+    sendMessage: async () => ({ messageId: "msg-1" }),
+    sendDirectReply: async () => {},
+  };
+}
+
+describe("channel request envelope", () => {
+  afterEach(async () => {
+    const registry = getChannelRegistry();
+    if (registry) {
+      await registry.stopAll();
+    }
+    clearDynamicMessageChannelToolCache();
+    clearCapturedToolExecutionContexts();
+    clearTools();
+  });
+
+  test("sends a compact Slack reminder with reply guidance in MessageChannel", async () => {
+    const registry = new ChannelRegistry();
+    registry.registerAdapter(createRunningSlackAdapter());
+
+    const inboundMessage: InboundChannelMessage = {
+      channel: "slack",
+      accountId: "acct-slack",
+
+error: patch failed: src/agent/send-message-stream-channel-envelope.test.ts:3
+error: src/agent/send-message-stream-channel-envelope.test.ts: patch does not apply
+Checking patch src/agent/subagent-env-composition.test.ts...
+error: while searching for:
+  resolveSubagentInheritedPrimaryRoot,
+} from "@/agent/subagents/subagent-launcher";
+import { LETTA_DISABLE_MODS_ENV } from "@/mods/disable";
+import { LETTA_INHERITED_CHANNEL_CONTEXT_ENV } from "@/runtime-context";
+
+const PARENT_ID = "agent-226cd814-09bf-4436-940e-aea9d91d14cb";
+const PARENT_MEMORY_DIR = `/Users/someone/.letta/agents/${PARENT_ID}/memory`;
+
+error: patch failed: src/agent/subagent-env-composition.test.ts:6
+error: src/agent/subagent-env-composition.test.ts: patch does not apply
+Checking patch src/channels/gateway-core.test.ts...
+error: while searching for:
+    agent_id?: string;
+    conversation_id?: string;
+    mode?: string;
+    external_tools?: unknown;
+  }> = [];
+  closeCalls = 0;
+
+error: patch failed: src/channels/gateway-core.test.ts:45
+error: src/channels/gateway-core.test.ts: patch does not apply
+Checking patch src/channels/message-channel-gateway-tool.test.ts...
+error: src/channels/message-channel-gateway-tool.test.ts: already exists in working directory
+Checking patch src/channels/message-tool-schema.test.ts...
+error: while searching for:
+import {
+  buildDynamicMessageChannelSchema,
+  buildDynamicMessageChannelToolDefinition,
+  clearDynamicMessageChannelToolCache,
+} from "@/channels/message-tool";
+import { ChannelRegistry, getChannelRegistry } from "@/channels/registry";
+import type { ChannelAdapter } from "@/channels/types";
+
+error: patch failed: src/channels/message-tool-schema.test.ts:3
+error: src/channels/message-tool-schema.test.ts: patch does not apply
+Checking patch src/channels/plugin-registry.test.ts...
+error: while searching for:
+import { __testOverrideChannelsRoot } from "@/channels/config";
+import {
+  buildDynamicMessageChannelSchema,
+  clearDynamicMessageChannelToolCache,
+} from "@/channels/message-tool";
+import {
+  __testClearUserChannelPluginCache,
+
+error: patch failed: src/channels/plugin-registry.test.ts:5
+error: src/channels/plugin-registry.test.ts: patch does not apply
+Checking patch src/channels/registry-lifecycle.test.ts...
+error: while searching for:
+    ]);
+  });
+
+  test("initializeChannels throws when requested channel startup fails", async () => {
+    __testOverrideLoadChannelAccounts(() => []);
+    const logs: string[] = [];
+
+error: patch failed: src/channels/registry-lifecycle.test.ts:128
+error: src/channels/registry-lifecycle.test.ts: patch does not apply
+Checking patch src/channels/routed-runtime-registration.test.ts...
+error: src/channels/routed-runtime-registration.test.ts: already exists in working directory
+Checking patch src/channels/routing.test.ts...
+error: while searching for:
+  getRoutesForChannel,
+  removeRoute,
+  removeRoutesForScope,
+} from "@/channels/routing";
+
+describe("routing", () => {
+
+error: patch failed: src/channels/routing.test.ts:9
+error: src/channels/routing.test.ts: patch does not apply
+Checking patch src/tools/manager.test.ts...
+error: while searching for:
+afterEach(() => clearExternalTools());
+
+describe("MessageChannel architecture", () => {
+  test("exposes one shared channel tool instead of provider-specific tools", () => {
+    const toolNames = new Set(getAllLettaToolNames());
+
+    expect(toolNames.has("MessageChannel")).toBe(true);
+
+    expect(toolNames.has("MessageSlackChannel")).toBe(false);
+    expect(toolNames.has("MessageTelegramChannel")).toBe(false);
+    expect(toolNames.has("slack")).toBe(false);
+    expect(toolNames.has("telegram")).toBe(false);
+  });
+
+  test("an external MessageChannel definition shadows the built-in payload", () => {
+    registerExternalTools([
+      {
+        name: "MessageChannel",
+
+error: patch failed: src/tools/manager.test.ts:10
+error: src/tools/manager.test.ts: patch does not apply
+Checking patch src/tools/tool-execution-context.test.ts...
+error: while searching for:
+import type { Message } from "@letta-ai/letta-client/resources/agents/messages";
+import { __testSetBackend, type Backend } from "@/backend";
+import { FakeHeadlessBackend } from "@/backend/dev/fake-headless-backend";
+import {
+  __testOverrideLoadChannelAccounts,
+  __testOverrideSaveChannelAccounts,
+  clearChannelAccountStores,
+  upsertChannelAccount,
+} from "@/channels/accounts";
+import { clearDynamicMessageChannelToolCache } from "@/channels/message-tool";
+import { ChannelRegistry, getChannelRegistry } from "@/channels/registry";
+import {
+  __testOverrideLoadRoutes,
+  __testOverrideSaveRoutes,
+  clearAllRoutes,
+  setRouteInMemory,
+} from "@/channels/routing";
+import type { ChannelAdapter } from "@/channels/types";
+import {
+  clearModPermissions,
+  registerModPermission,
+
+error: patch failed: src/tools/tool-execution-context.test.ts:12
+error: src/tools/tool-execution-context.test.ts: patch does not apply
+Checking patch src/websocket/app-server-lifecycle.test.ts...
+error: while searching for:
+    expect(runtime.intentionallyClosed).toBe(false);
+  });
+
+  test("a bind failure preserves the active runtime and a later start succeeds", async () => {
+    const occupied = createServer();
+    await new Promise<void>((resolve) =>
+
+error: patch failed: src/websocket/app-server-lifecycle.test.ts:155
+error: src/websocket/app-server-lifecycle.test.ts: patch does not apply
+Checking patch src/websocket/listener/commands/runtime-start-skill-sources.test.ts...
+Hunk #1 succeeded at 120 (offset 58 lines).
+Checking patch src/websocket/listener/connection-state-sync.test.ts...
+Hunk #1 succeeded at 147 (offset 83 lines).
+Checking patch src/websocket/listener/external-tools.test.ts...
+error: while searching for:
+    setActiveRuntime(null);
+  });
+
+  test("connected listener startup installs the executor for runtime-scoped tools", async () => {
+    const runtime = createRuntime();
+    const sent: ExternalToolCallRequestMessage[] = [];
+    const transport: LocalTransport = {
+
+error: patch failed: src/websocket/listener/external-tools.test.ts:69
+error: src/websocket/listener/external-tools.test.ts: patch does not apply
+Checking patch src/websocket/listener/protocol-inbound.test.ts...
+error: while searching for:
+      cwd: "/tmp/project",
+      mode: "acceptEdits",
+      skill_sources: [],
+      client_info: { name: "test", title: "Test", version: "1.0.0" },
+      external_tools: [
+        {
+
+error: patch failed: src/websocket/listener/protocol-inbound.test.ts:109
+error: src/websocket/listener/protocol-inbound.test.ts: patch does not apply
+
+src/tools/manager.test.ts:
+11 | 
+12 | describe("MessageChannel architecture", () => {
+13 |   test("exposes one shared channel tool instead of provider-specific tools", () => {
+14 |     const toolNames = new Set(getAllLettaToolNames());
+15 | 
+16 |     expect(toolNames.has("MessageChannel")).toBe(true);
+                                                 ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: false
+
+      at <anonymous> (/testbed/src/tools/manager.test.ts:16:45)
+(fail) MessageChannel architecture > exposes one shared channel tool instead of provider-specific tools [0.97ms]
+(pass) MessageChannel architecture > an external MessageChannel definition shadows the built-in payload [2.26ms]
+
+src/tools/tool-execution-context.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+1 | })
+2 | {
+    ^
+SyntaxError: Export named 'clearDynamicMessageChannelToolCache' not found in module '/testbed/src/channels/message-tool.ts'.
+      at loadAndEvaluateModule (2:1)
+-------------------------------
+
+
+src/websocket/app-server-lifecycle.test.ts:
+(pass) app-server startup lifecycle > a shared-runtime bind failure leaves the listener runtime usable [13.42ms]
+(pass) app-server startup lifecycle > a shared App Server preserves and does not own the listener runtime [1008.77ms]
+(pass) app-server startup lifecycle > a bind failure preserves the active runtime and a later start succeeds [9.84ms]
+(pass) app-server startup lifecycle > a rejected runtime initializer is retried by the next connection [1009.01ms]
+(pass) app-server startup lifecycle > commands received before initialization are dropped after disconnect [70.47ms]
+
+src/channels/routing.test.ts:
+(pass) routing > adds and retrieves a route [0.31ms]
+(pass) routing > returns null for non-existent route [0.03ms]
+(pass) routing > returns null for disabled route [0.03ms]
+(pass) routing > removes a route [0.05ms]
+(pass) routing > removeRoutesForScope removes matching routes [0.15ms]
+(pass) routing > getRoutesForChannel returns channel-specific routes [0.10ms]
+(pass) routing > getAllRoutes returns all routes [0.04ms]
+
+src/channels/registry-lifecycle.test.ts:
+(pass) ChannelRegistry lifecycle > pause() stops delivery but keeps singleton alive [1.30ms]
+(pass) ChannelRegistry lifecycle > stopAll() destroys the singleton [0.12ms]
+(pass) ChannelRegistry lifecycle > route-derived recovery sources do not invent an originating message [0.32ms]
+Channel "telegram" not configured. Run: letta channels configure telegram
+(pass) ChannelRegistry lifecycle > initializeChannels throws when requested channel startup fails [1.84ms]
+(pass) ChannelRegistry lifecycle > startChannelAccount rejects Signal accounts sharing one daemon [1.11ms]
+Channel "slack" has no enabled accounts in local restore scope.
+(pass) ChannelRegistry lifecycle > initializeChannels does not start accounts outside the restore scope [0.46ms]
+
+src/channels/plugin-registry.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+1 | })
+2 | {
+    ^
+SyntaxError: Export named 'clearDynamicMessageChannelToolCache' not found in module '/testbed/src/channels/message-tool.ts'.
+      at loadAndEvaluateModule (2:1)
+-------------------------------
+
+
+src/channels/message-tool-schema.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+1 | })
+2 | {
+    ^
+SyntaxError: Export named 'clearDynamicMessageChannelToolCache' not found in module '/testbed/src/channels/message-tool.ts'.
+      at loadAndEvaluateModule (2:1)
+-------------------------------
+
+
+src/channels/gateway-core.test.ts:
+(pass) direct started input activates sources immediately [1.57ms]
+(pass) serializes progress and terminal hooks behind asynchronous processing [1.03ms]
+(pass) queued input activates when dequeued via update_queue [0.39ms]
+(pass) source steering does not merge sources from a new turn into an active turn [0.31ms]
+(pass) terminal turn_finished with end_turn emits finished with completed outcome [0.20ms]
+(pass) terminal turn_finished with cancelled emits finished with cancelled outcome [0.14ms]
+(pass) terminal turn_finished with error emits finished with error outcome and error message [0.14ms]
+(pass) MessageChannel external tool execution routes to hooks.executeExternalTool [11.46ms]
+(pass) approval response is forwarded via submitApprovalResponse [0.27ms]
+(pass) stale approval recovery does not retain an active turn [0.48ms]
+(pass) runtime registration happens before input submission [0.22ms]
+(pass) runtime registration is skipped when signature matches [0.15ms]
+(pass) retries with the same client message ID are idempotent [0.16ms]
+(pass) runtime registration exposes and updates model status without backend access [0.23ms]
+(pass) control request with single source dispatches to onControlRequest [0.32ms]
+(pass) control request with multiple sources does not dispatch [0.18ms]
+(pass) stream delta with stop_reason triggers turn_finished [0.26ms]
+(pass) requires_approval stop reason does not finish the turn [0.16ms]
+(pass) close disposes all listeners and clears state [0.10ms]
+
+src/agent/subagent-env-composition.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+1 | })
+2 | {
+    ^
+SyntaxError: Export named 'LETTA_INHERITED_CHANNEL_CONTEXT_ENV' not found in module '/testbed/src/runtime-context.ts'.
+      at loadAndEvaluateModule (2:1)
+-------------------------------
+
+
+src/agent/send-message-stream-channel-envelope.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+1 | })
+2 | {
+    ^
+SyntaxError: Export named 'clearDynamicMessageChannelToolCache' not found in module '/testbed/src/channels/message-tool.ts'.
+      at loadAndEvaluateModule (2:1)
+-------------------------------
+
+
+src/websocket/listener/external-tools.test.ts:
+(pass) listener runtime_start external tool bridge > connected listener startup installs the executor for runtime-scoped tools [7.57ms]
+(pass) listener runtime_start external tool bridge > registers runtime-scoped tools and executes calls over the control socket [0.68ms]
+(pass) listener runtime_start external tool bridge > keeps same tool name and scope id isolated across runtimes [0.47ms]
+(pass) listener runtime_start external tool bridge > keeps same runtime tool registrations isolated by connection [0.54ms]
+(pass) listener runtime_start external tool bridge > repeated runtime_start registration replaces tools for that runtime [0.30ms]
+(pass) listener runtime_start external tool bridge > runtime-owned external tools unregister when listener runtime stops [0.21ms]
+
+src/websocket/listener/protocol-inbound.test.ts:
+(pass) app-server protocol hard cut > rejects legacy command request_state [0.79ms]
+(pass) app-server protocol hard cut > rejects legacy command change_cwd [0.02ms]
+(pass) app-server protocol hard cut > rejects legacy command cancel_run [0.01ms]
+(pass) app-server protocol hard cut > rejects legacy command recover_pending_approvals [0.01ms]
+(pass) app-server protocol hard cut > rejects legacy command change_mode
+(pass) app-server protocol hard cut > rejects legacy command message
+(pass) input protocol-inbound validators > accepts create_message with interactive tools excluded [0.07ms]
+(pass) input protocol-inbound validators > rejects non-boolean exclude_interactive_tools [0.05ms]
+(pass) update model protocol-inbound validator > accepts explicit proxy effort and provider Default [0.03ms]
+(pass) update model protocol-inbound validator > rejects unknown effort values [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > accepts runtime_start [0.18ms]
+(pass) agent/conversation management protocol-inbound validators > accepts external_tool_call_response [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > accepts create_agent [0.04ms]
+(pass) agent/conversation management protocol-inbound validators > accepts agent_list [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > accepts agent_retrieve
+(pass) agent/conversation management protocol-inbound validators > accepts agent_create
+(pass) agent/conversation management protocol-inbound validators > accepts agent_update [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > accepts agent_delete [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_list [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_retrieve [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_create [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_update [0.05ms]
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_recompile [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_fork [0.04ms]
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_messages_list [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_compact [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid runtime_start [0.05ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid runtime_start [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid runtime_start [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid runtime_start [0.05ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid runtime_start [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid runtime_start [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid external_tool_call_response [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid create_agent [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid agent_list [0.03ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid agent_retrieve [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid agent_create [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid agent_update [0.05ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid agent_delete [0.03ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_list [0.06ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_retrieve [0.05ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_create [0.06ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_update [0.05ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_recompile [0.04ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_fork [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_fork [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_fork [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_fork [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_messages_list [0.05ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_compact [0.02ms]
+(pass) discord protocol-inbound validators > valid discord account create passes [0.13ms]
+(pass) discord protocol-inbound validators > valid discord account create with agent_id passes [0.03ms]
+(pass) discord protocol-inbound validators > valid discord account create with generic config passes [0.02ms]
+(pass) discord protocol-inbound validators > defers non-string Discord allowed_channels validation to the gateway [0.02ms]
+(pass) discord protocol-inbound validators > defers Discord permission-mode validation to the gateway [0.04ms]
+(pass) discord protocol-inbound validators > defers unknown nested Discord fields to the gateway [0.01ms]
+(pass) discord protocol-inbound validators > discord account create rejects legacy top-level plugin fields [0.02ms]
+(pass) discord protocol-inbound validators > valid discord account update passes [0.02ms]
+(pass) discord protocol-inbound validators > valid discord config set passes [0.03ms]
+(pass) discord protocol-inbound validators > valid discord config set with nested generic config passes [0.01ms]
+(pass) discord protocol-inbound validators > discord channel_id is accepted by isChannelAccountCreateCommand [0.02ms]
+
+src/websocket/listener/connection-state-sync.test.ts:
+(pass) an unsubscribed app-server connection receives no existing runtime state [8.96ms]
+(pass) keeps attached App Server connections from bypassing the startup barrier [0.55ms]
+(pass) keeps attached App Server connections from bypassing the startup barrier [0.43ms]
+
+src/websocket/listener/commands/runtime-start-skill-sources.test.ts:
+(pass) runtime_start skill sources > keeps an empty override across idle runtime eviction [53.56ms]
+(pass) runtime_start skill sources > preserves skill sources when a secondary controller updates runtime tools [43.41ms]
+(pass) runtime_start skill sources > preserves skill sources when a secondary controller updates runtime tools [49.57ms]
+(pass) runtime_start skill sources > wait_for_replay delays the response until recovery replay completes [44.46ms]
+
+6 tests failed:
+(fail) MessageChannel architecture > exposes one shared channel tool instead of provider-specific tools [0.97ms]
+
+ 112 pass
+ 6 fail
+ 5 errors
+ 207 expect() calls
+Ran 118 tests across 14 files. [2.91s]

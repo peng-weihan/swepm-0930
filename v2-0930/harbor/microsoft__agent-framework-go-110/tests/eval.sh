@@ -1,0 +1,2497 @@
+#!/bin/bash
+set -uxo pipefail
+
+cd /testbed
+# Keep local test servers from being routed through host proxy settings.
+export NO_PROXY="localhost,127.0.0.1,0.0.0.0,::1${NO_PROXY:+,$NO_PROXY}"
+export no_proxy="localhost,127.0.0.1,0.0.0.0,::1${no_proxy:+,$no_proxy}"
+echo "OMNIGRIL_LOCAL_NO_PROXY_ADDED=1"
+
+
+RUNNABLE_TEST_FILES=(
+  agent/agent_test.go
+  agent/hosting/a2ahosting/a2a_test.go
+  agent/hosting/aguihosting/agui_test.go
+  agent/internal/middleware/autocall/autocall_approval_test.go
+  agent/internal/middleware/autocall/autocall_log_test.go
+  agent/internal/middleware/autocall/autocall_test.go
+  agent/internal/middleware/contextprovider/contextprovider_test.go
+  agent/internal/middleware/middleware_test.go
+  agent/internal/middleware/structuredoutput/structuredoutput_test.go
+  agent/middleware/logger/logger_test.go
+  agent/middleware/otel/otel_test.go
+  agent/provider/a2aagent/a2a_test.go
+  agent/provider/aguiagent/agui_test.go
+  agent/provider/anthropicagent/agent_test.go
+  agent/provider/geminiagent/agent_test.go
+  agent/provider/openaichatagent/chat_test.go
+  agent/provider/openairesponsesagent/responses_test.go
+  internal/agenttest/agenttest.go
+)
+DELETED_TEST_PATCH_FILES=()
+
+BASE_SHA="543cf17875d52b11abcc664559d1c35cdcc0f4fb"
+
+# Pre-patch cleanup: restore runnable files that exist in base commit; remove those that don't.
+for f in "${RUNNABLE_TEST_FILES[@]}"; do
+  if git cat-file -e "${BASE_SHA}:$f" 2>/dev/null; then
+    git checkout "${BASE_SHA}" -- "$f"
+  else
+    rm -f "$f"
+  fi
+done
+
+# Apply test patch (content injected by harness)
+TEST_PATCH_FILE="$(mktemp)"
+cat > "$TEST_PATCH_FILE" <<'EOF_114329324912'
+diff --git a/agent/agent_test.go b/agent/agent_test.go
+--- a/agent/agent_test.go
++++ b/agent/agent_test.go
+@@ -10,11 +10,9 @@ import (
+ 	"testing"
+ 
+ 	"github.com/microsoft/agent-framework-go/agent"
+-	"github.com/microsoft/agent-framework-go/agentopt"
+ 	"github.com/microsoft/agent-framework-go/internal/agenttest"
+ 	"github.com/microsoft/agent-framework-go/memory"
+ 	"github.com/microsoft/agent-framework-go/message"
+-	"github.com/microsoft/agent-framework-go/middleware"
+ 	"github.com/microsoft/agent-framework-go/tool"
+ )
+ 
+@@ -37,9 +35,9 @@ type prependMiddleware struct {
+ 	lastSession     *memory.Session
+ }
+ 
+-func (m *prependMiddleware) Run(next middleware.RunFunc, ctx context.Context, messages []*message.Message, opts ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++func (m *prependMiddleware) Run(next agent.RunFunc, ctx context.Context, messages []*message.Message, opts ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 	m.runCalls++
+-	if session, ok := agentopt.Get(opts, agentopt.Session); ok {
++	if session, ok := agent.GetOption(opts, agent.WithSession); ok {
+ 		m.lastSession = session
+ 	}
+ 	msgForNext := make([]*message.Message, 0, len(m.prependMessages)+1+len(messages))
+@@ -60,7 +58,7 @@ type errorMiddleware struct {
+ 	err error
+ }
+ 
+-func (m *errorMiddleware) Run(_ middleware.RunFunc, _ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++func (m *errorMiddleware) Run(_ agent.RunFunc, _ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 	return func(yield func(*message.ResponseUpdate, error) bool) {
+ 		yield(nil, m.err)
+ 	}
+@@ -71,7 +69,7 @@ type trackingMiddleware struct {
+ 	lastErr  error
+ }
+ 
+-func (m *trackingMiddleware) Run(next middleware.RunFunc, ctx context.Context, messages []*message.Message, opts ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++func (m *trackingMiddleware) Run(next agent.RunFunc, ctx context.Context, messages []*message.Message, opts ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 	m.runCalls++
+ 	return func(yield func(*message.ResponseUpdate, error) bool) {
+ 		for update, err := range next(ctx, messages, opts...) {
+@@ -85,15 +83,15 @@ func (m *trackingMiddleware) Run(next middleware.RunFunc, ctx context.Context, m
+ 	}
+ }
+ 
+-func failRunFunc(runErr error) func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
+-	return func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++func failRunFunc(runErr error) func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	return func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(nil, runErr)
+ 		}
+ 	}
+ }
+ 
+-func newGenericTestAgent(runFn func(context.Context, []*message.Message, ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error], instructions string, middlewares []middleware.Middleware, runOptions ...agentopt.Option) *agent.Agent {
++func newGenericTestAgent(runFn func(context.Context, []*message.Message, ...agent.Option) iter.Seq2[*message.ResponseUpdate, error], instructions string, middlewares []agent.Middleware, runOptions ...agent.Option) *agent.Agent {
+ 	return agent.New(agent.ProviderConfig{
+ 		Run: runFn,
+ 	}, agent.Config{
+@@ -107,7 +105,7 @@ func newGenericTestAgent(runFn func(context.Context, []*message.Message, ...agen
+ func TestAgent_RunText(t *testing.T) {
+ 	var capturedMessages []*message.Message
+ 	responseBuilder := agenttest.NewResponseBuilder(
+-		func(ctx context.Context, messages []*message.Message, opts ...agentopt.Option) {
++		func(ctx context.Context, messages []*message.Message, opts ...agent.Option) {
+ 			capturedMessages = messages
+ 		},
+ 	).AddText("Hello, world!")
+@@ -158,9 +156,9 @@ func TestAgent_RunText(t *testing.T) {
+ 
+ func TestAgent_RunMessage(t *testing.T) {
+ 	var capturedMessages []*message.Message
+-	var capturedOptions []agentopt.Option
++	var capturedOptions []agent.Option
+ 	responseBuilder := agenttest.NewResponseBuilder(
+-		func(ctx context.Context, messages []*message.Message, opts ...agentopt.Option) {
++		func(ctx context.Context, messages []*message.Message, opts ...agent.Option) {
+ 			capturedMessages = messages
+ 			capturedOptions = opts
+ 		},
+@@ -170,7 +168,7 @@ func TestAgent_RunMessage(t *testing.T) {
+ 
+ 	ctx := t.Context()
+ 	inputMsg := message.NewText("input")
+-	customOption := agentopt.Stream(false)
++	customOption := agent.Stream(false)
+ 	resp, err := a.RunMessage(ctx, inputMsg, customOption).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+@@ -190,7 +188,7 @@ func TestAgent_RunMessage(t *testing.T) {
+ 		t.Fatal("expected options to be passed, got none")
+ 	}
+ 
+-	if _, ok := agentopt.Get(capturedOptions, agentopt.Stream); !ok {
++	if _, ok := agent.GetOption(capturedOptions, agent.Stream); !ok {
+ 		t.Error("expected Stream option to be present")
+ 	}
+ 
+@@ -202,7 +200,7 @@ func TestAgent_RunMessage(t *testing.T) {
+ func TestAgent_Run(t *testing.T) {
+ 	var capturedMessages []*message.Message
+ 	responseBuilder := agenttest.NewResponseBuilder(
+-		func(ctx context.Context, messages []*message.Message, opts ...agentopt.Option) {
++		func(ctx context.Context, messages []*message.Message, opts ...agent.Option) {
+ 			capturedMessages = messages
+ 		},
+ 	).AddText("response")
+@@ -232,15 +230,15 @@ func TestAgent_Run(t *testing.T) {
+ func TestAgent_Run_RejectsMessagesWithContinuationToken(t *testing.T) {
+ 	runCalled := false
+ 	responseBuilder := agenttest.NewResponseBuilder(
+-		func(ctx context.Context, messages []*message.Message, opts ...agentopt.Option) {
++		func(ctx context.Context, messages []*message.Message, opts ...agent.Option) {
+ 			runCalled = true
+ 		},
+ 	).AddText("response")
+ 
+ 	a := agenttest.New(responseBuilder.Build())
+ 
+ 	ctx := t.Context()
+-	_, err := a.RunText(ctx, "test", agentopt.ContinuationToken("token-123")).Collect()
++	_, err := a.RunText(ctx, "test", agent.WithContinuationToken("token-123")).Collect()
+ 	if err == nil {
+ 		t.Fatal("expected error when continuation token and messages are both provided")
+ 	}
+@@ -250,9 +248,9 @@ func TestAgent_Run_RejectsMessagesWithContinuationToken(t *testing.T) {
+ }
+ 
+ func TestAgent_Run_CreatesSession(t *testing.T) {
+-	var capturedOptions []agentopt.Option
++	var capturedOptions []agent.Option
+ 	responseBuilder := agenttest.NewResponseBuilder(
+-		func(ctx context.Context, messages []*message.Message, opts ...agentopt.Option) {
++		func(ctx context.Context, messages []*message.Message, opts ...agent.Option) {
+ 			capturedOptions = opts
+ 		},
+ 	).AddText("response")
+@@ -266,7 +264,7 @@ func TestAgent_Run_CreatesSession(t *testing.T) {
+ 	}
+ 
+ 	// Check that a session was created and passed
+-	session, ok := agentopt.Get(capturedOptions, agentopt.Session)
++	session, ok := agent.GetOption(capturedOptions, agent.WithSession)
+ 	if !ok {
+ 		t.Fatal("expected session to be created")
+ 	}
+@@ -279,15 +277,15 @@ func TestAgent_Run_CreatesSession(t *testing.T) {
+ func TestAgent_Run_RequiresSessionWhenAllowBackgroundResponsesEnabled(t *testing.T) {
+ 	runCalled := false
+ 	responseBuilder := agenttest.NewResponseBuilder(
+-		func(ctx context.Context, messages []*message.Message, opts ...agentopt.Option) {
++		func(ctx context.Context, messages []*message.Message, opts ...agent.Option) {
+ 			runCalled = true
+ 		},
+ 	).AddText("response")
+ 
+ 	a := agenttest.New(responseBuilder.Build())
+ 
+ 	ctx := t.Context()
+-	_, err := a.RunText(ctx, "test", agentopt.AllowBackgroundResponses(true)).Collect()
++	_, err := a.RunText(ctx, "test", agent.AllowBackgroundResponses(true)).Collect()
+ 	if err == nil {
+ 		t.Fatal("expected error when AllowBackgroundResponses is enabled without a session")
+ 	}
+@@ -300,9 +298,9 @@ func TestAgent_Run_RequiresSessionWhenAllowBackgroundResponsesEnabled(t *testing
+ }
+ 
+ func TestAgent_Run_UsesProvidedSession(t *testing.T) {
+-	var capturedOptions []agentopt.Option
++	var capturedOptions []agent.Option
+ 	responseBuilder := agenttest.NewResponseBuilder(
+-		func(ctx context.Context, messages []*message.Message, opts ...agentopt.Option) {
++		func(ctx context.Context, messages []*message.Message, opts ...agent.Option) {
+ 			capturedOptions = opts
+ 		},
+ 	).AddText("response")
+@@ -311,12 +309,12 @@ func TestAgent_Run_UsesProvidedSession(t *testing.T) {
+ 
+ 	ctx := t.Context()
+ 	providedSession := agenttest.CreateSession()
+-	_, err := a.RunText(ctx, "test", agentopt.Session(providedSession)).Collect()
++	_, err := a.RunText(ctx, "test", agent.WithSession(providedSession)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+ 
+-	session, ok := agentopt.Get(capturedOptions, agentopt.Session)
++	session, ok := agent.GetOption(capturedOptions, agent.WithSession)
+ 	if !ok {
+ 		t.Fatal("expected session to be present")
+ 	}
+@@ -327,11 +325,11 @@ func TestAgent_Run_UsesProvidedSession(t *testing.T) {
+ }
+ 
+ func TestAgent_Run_PrependsAgentOptions(t *testing.T) {
+-	var capturedOptions []agentopt.Option
++	var capturedOptions []agent.Option
+ 	runner := &agenttest.Runner{
+ 		Responses: []agenttest.Turn{{
+-			Callbacks: []func(context.Context, []*message.Message, ...agentopt.Option){
+-				func(ctx context.Context, messages []*message.Message, opts ...agentopt.Option) {
++			Callbacks: []func(context.Context, []*message.Message, ...agent.Option){
++				func(ctx context.Context, messages []*message.Message, opts ...agent.Option) {
+ 					capturedOptions = opts
+ 				},
+ 			},
+@@ -346,17 +344,17 @@ func TestAgent_Run_PrependsAgentOptions(t *testing.T) {
+ 		}},
+ 	}
+ 
+-	agentOption := agentopt.Stream(true)
++	agentOption := agent.Stream(true)
+ 	a := agent.New(agent.ProviderConfig{
+ 		Run: runner.Run,
+ 	}, agent.Config{
+ 		ID:         "test",
+ 		Name:       "test",
+-		RunOptions: []agentopt.Option{agentOption},
++		RunOptions: []agent.Option{agentOption},
+ 	})
+ 
+ 	ctx := t.Context()
+-	callOption := agentopt.Stream(false)
++	callOption := agent.Stream(false)
+ 	_, err := a.RunText(ctx, "test", callOption).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+@@ -369,11 +367,11 @@ func TestAgent_Run_PrependsAgentOptions(t *testing.T) {
+ }
+ 
+ func TestAgent_Run_AddsConfigToolsToRunOptions(t *testing.T) {
+-	var capturedOptions []agentopt.Option
++	var capturedOptions []agent.Option
+ 	runner := &agenttest.Runner{
+ 		Responses: []agenttest.Turn{{
+-			Callbacks: []func(context.Context, []*message.Message, ...agentopt.Option){
+-				func(ctx context.Context, messages []*message.Message, opts ...agentopt.Option) {
++			Callbacks: []func(context.Context, []*message.Message, ...agent.Option){
++				func(ctx context.Context, messages []*message.Message, opts ...agent.Option) {
+ 					capturedOptions = opts
+ 				},
+ 			},
+@@ -400,7 +398,7 @@ func TestAgent_Run_AddsConfigToolsToRunOptions(t *testing.T) {
+ 	}
+ 
+ 	var names []string
+-	for configuredTool := range agentopt.All(capturedOptions, agentopt.Tool) {
++	for configuredTool := range agent.AllOptions(capturedOptions, agent.WithTool) {
+ 		names = append(names, configuredTool.Name())
+ 	}
+ 
+@@ -419,7 +417,7 @@ func TestAgent_Run_StreamingResponses(t *testing.T) {
+ 
+ 	ctx := t.Context()
+ 	updates := []*message.ResponseUpdate{}
+-	for update, err := range a.RunText(ctx, "test", agentopt.Stream(true)) {
++	for update, err := range a.RunText(ctx, "test", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("unexpected error: %v", err)
+ 		}
+@@ -434,7 +432,7 @@ func TestAgent_Run_StreamingResponses(t *testing.T) {
+ func TestAgent_Run_AddsMetadataToContext(t *testing.T) {
+ 	var capturedCtx context.Context
+ 	responseBuilder := agenttest.NewResponseBuilder(
+-		func(ctx context.Context, messages []*message.Message, opts ...agentopt.Option) {
++		func(ctx context.Context, messages []*message.Message, opts ...agent.Option) {
+ 			capturedCtx = ctx
+ 		},
+ 	).AddText("response")
+@@ -463,18 +461,18 @@ func TestAgent_Run_InvokesSingleContextMiddleware(t *testing.T) {
+ 	}
+ 
+ 	var capturedMessages []*message.Message
+-	runFn := func(_ context.Context, msgs []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, msgs []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		capturedMessages = msgs
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{Role: message.RoleAssistant, Contents: []message.Content{&message.TextContent{Text: "response"}}}, nil)
+ 		}
+ 	}
+ 
+-	a := newGenericTestAgent(runFn, "", []middleware.Middleware{mw})
++	a := newGenericTestAgent(runFn, "", []agent.Middleware{mw})
+ 
+ 	ctx := t.Context()
+ 	session := agenttest.CreateSession()
+-	_, err := a.RunText(ctx, "user input", agentopt.Session(session)).Collect()
++	_, err := a.RunText(ctx, "user input", agent.WithSession(session)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -498,16 +496,16 @@ func TestAgent_Run_InvokesSingleContextMiddleware(t *testing.T) {
+ 
+ func TestAgent_Run_ContextMiddlewareReceivesSession(t *testing.T) {
+ 	mw := &prependMiddleware{}
+-	runFn := func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{Role: message.RoleAssistant, Contents: []message.Content{&message.TextContent{Text: "response"}}}, nil)
+ 		}
+ 	}
+-	a := newGenericTestAgent(runFn, "", []middleware.Middleware{mw})
++	a := newGenericTestAgent(runFn, "", []agent.Middleware{mw})
+ 
+ 	ctx := t.Context()
+ 	session := agenttest.CreateSession()
+-	_, err := a.RunText(ctx, "test", agentopt.Session(session)).Collect()
++	_, err := a.RunText(ctx, "test", agent.WithSession(session)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -519,15 +517,15 @@ func TestAgent_Run_ContextMiddlewareReceivesSession(t *testing.T) {
+ 
+ func TestAgent_Run_ContextMiddlewareCanFailBeforeRun(t *testing.T) {
+ 	invokeErr := errors.New("middleware failed")
+-	runFn := func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{Role: message.RoleAssistant, Contents: []message.Content{&message.TextContent{Text: "response"}}}, nil)
+ 		}
+ 	}
+-	a := newGenericTestAgent(runFn, "", []middleware.Middleware{&errorMiddleware{err: invokeErr}})
++	a := newGenericTestAgent(runFn, "", []agent.Middleware{&errorMiddleware{err: invokeErr}})
+ 
+ 	ctx := t.Context()
+-	_, err := a.RunText(ctx, "test", agentopt.Session(agenttest.CreateSession())).Collect()
++	_, err := a.RunText(ctx, "test", agent.WithSession(agenttest.CreateSession())).Collect()
+ 	if !errors.Is(err, invokeErr) {
+ 		t.Fatalf("expected %v, got %v", invokeErr, err)
+ 	}
+@@ -536,10 +534,10 @@ func TestAgent_Run_ContextMiddlewareCanFailBeforeRun(t *testing.T) {
+ func TestAgent_Run_MiddlewareObservesRunFailure(t *testing.T) {
+ 	runErr := errors.New("run failed")
+ 	tracker := &trackingMiddleware{}
+-	a := newGenericTestAgent(failRunFunc(runErr), "", []middleware.Middleware{tracker})
++	a := newGenericTestAgent(failRunFunc(runErr), "", []agent.Middleware{tracker})
+ 
+ 	ctx := t.Context()
+-	_, err := a.RunText(ctx, "test", agentopt.Session(agenttest.CreateSession())).Collect()
++	_, err := a.RunText(ctx, "test", agent.WithSession(agenttest.CreateSession())).Collect()
+ 	if err == nil {
+ 		t.Fatal("expected error")
+ 	}
+@@ -554,7 +552,7 @@ func TestAgent_Run_MiddlewareObservesRunFailure(t *testing.T) {
+ 
+ func TestAgent_Run_IncludesInstructions(t *testing.T) {
+ 	var capturedMessages []*message.Message
+-	runFn := func(_ context.Context, msgs []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, msgs []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		capturedMessages = msgs
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{Role: message.RoleAssistant, Contents: []message.Content{&message.TextContent{Text: "response"}}}, nil)
+@@ -563,7 +561,7 @@ func TestAgent_Run_IncludesInstructions(t *testing.T) {
+ 	a := newGenericTestAgent(runFn, "You are a helpful assistant.", nil)
+ 
+ 	ctx := t.Context()
+-	_, err := a.RunText(ctx, "hello", agentopt.Session(agenttest.CreateSession())).Collect()
++	_, err := a.RunText(ctx, "hello", agent.WithSession(agenttest.CreateSession())).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -632,7 +630,7 @@ func TestRun_All(t *testing.T) {
+ 
+ 	ctx := t.Context()
+ 	updates := []*message.ResponseUpdate{}
+-	for update, err := range a.RunText(ctx, "test", agentopt.Stream(true)) {
++	for update, err := range a.RunText(ctx, "test", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("unexpected error: %v", err)
+ 		}
+@@ -656,7 +654,7 @@ func TestRun_All_WithError(t *testing.T) {
+ 	ctx := t.Context()
+ 	updateCount := 0
+ 	var receivedErr error
+-	for _, err := range a.RunText(ctx, "test", agentopt.Stream(true)) {
++	for _, err := range a.RunText(ctx, "test", agent.Stream(true)) {
+ 		if err != nil {
+ 			receivedErr = err
+ 			break
+@@ -689,7 +687,7 @@ func TestAgent_Run_ProviderMiddleware_RunsProvidersWhenSessionHasServiceID(t *te
+ 		},
+ 	}
+ 
+-	runFn := func(_ context.Context, msgs []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, msgs []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		capturedMessages = msgs
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{Role: message.RoleAssistant, Contents: []message.Content{&message.TextContent{Text: "ok"}}}, nil)
+@@ -703,7 +701,7 @@ func TestAgent_Run_ProviderMiddleware_RunsProvidersWhenSessionHasServiceID(t *te
+ 
+ 	session := agenttest.CreateSession()
+ 	session.ServiceID = "server-managed"
+-	_, err := a.RunText(t.Context(), "input", agentopt.Session(session)).Collect()
++	_, err := a.RunText(t.Context(), "input", agent.WithSession(session)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -728,7 +726,7 @@ func TestAgent_Run_ProviderMiddleware_RunsProvidersWithContinuationToken(t *test
+ 		},
+ 	}
+ 
+-	runFn := func(_ context.Context, msgs []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, msgs []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		runCalled = true
+ 		if len(msgs) != 0 {
+ 			t.Fatalf("expected no messages with continuation token run, got %d", len(msgs))
+@@ -743,7 +741,7 @@ func TestAgent_Run_ProviderMiddleware_RunsProvidersWithContinuationToken(t *test
+ 		ContextProviders: []*memory.ContextProvider{historyProvider},
+ 	})
+ 
+-	_, err := a.Run(t.Context(), nil, agentopt.ContinuationToken("ct-1")).Collect()
++	_, err := a.Run(t.Context(), nil, agent.WithContinuationToken("ct-1")).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -768,7 +766,7 @@ func TestAgent_Run_UsesConfigContextProvider(t *testing.T) {
+ 		},
+ 	}
+ 
+-	runFn := func(_ context.Context, msgs []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, msgs []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		runCalled = true
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{Role: message.RoleAssistant, Contents: []message.Content{&message.TextContent{Text: "ok"}}}, nil)
+@@ -780,7 +778,7 @@ func TestAgent_Run_UsesConfigContextProvider(t *testing.T) {
+ 		ContextProviders: []*memory.ContextProvider{contextProvider},
+ 	})
+ 
+-	_, err := a.RunText(t.Context(), "input", agentopt.Session(agenttest.CreateSession())).Collect()
++	_, err := a.RunText(t.Context(), "input", agent.WithSession(agenttest.CreateSession())).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -803,7 +801,7 @@ func TestAgent_Run_ProviderMiddleware_PropagatesInvokingError(t *testing.T) {
+ 		},
+ 	}
+ 
+-	runFn := func(_ context.Context, msgs []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, msgs []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		runCalled = true
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {}
+ 	}
+@@ -813,7 +811,7 @@ func TestAgent_Run_ProviderMiddleware_PropagatesInvokingError(t *testing.T) {
+ 		ContextProviders: []*memory.ContextProvider{historyProvider},
+ 	})
+ 
+-	_, err := a.RunText(t.Context(), "input", agentopt.Session(agenttest.CreateSession())).Collect()
++	_, err := a.RunText(t.Context(), "input", agent.WithSession(agenttest.CreateSession())).Collect()
+ 	if !errors.Is(err, expected) {
+ 		t.Fatalf("expected %v, got %v", expected, err)
+ 	}
+@@ -834,7 +832,7 @@ func TestAgent_Run_ProviderMiddleware_RunsProvidersWhenSessionAutoCreated(t *tes
+ 		},
+ 	}
+ 
+-	runFn := func(_ context.Context, msgs []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, msgs []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		runCalled = true
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{Role: message.RoleAssistant, Contents: []message.Content{&message.TextContent{Text: "ok"}}}, nil)
+@@ -880,7 +878,7 @@ func TestAgent_Run_ProviderMiddleware_PersistsHistoryAfterSuccessfulRun(t *testi
+ 		},
+ 	}
+ 
+-	runFn := func(_ context.Context, msgs []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, msgs []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		capturedMessages = msgs
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			if !yield(&message.ResponseUpdate{Role: message.RoleAssistant, Contents: []message.Content{&message.TextContent{Text: "part1"}}}, nil) {
+@@ -895,7 +893,7 @@ func TestAgent_Run_ProviderMiddleware_PersistsHistoryAfterSuccessfulRun(t *testi
+ 		ContextProviders: []*memory.ContextProvider{historyProvider},
+ 	})
+ 
+-	_, err := a.RunMessage(t.Context(), requestMessage, agentopt.Session(agenttest.CreateSession())).Collect()
++	_, err := a.RunMessage(t.Context(), requestMessage, agent.WithSession(agenttest.CreateSession())).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -927,7 +925,7 @@ func TestAgent_Run_ProviderMiddleware_PersistsWithoutResponseMessages(t *testing
+ 		},
+ 	}
+ 
+-	runFn := func(_ context.Context, msgs []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, msgs []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(nil, nil)
+ 		}
+@@ -938,7 +936,7 @@ func TestAgent_Run_ProviderMiddleware_PersistsWithoutResponseMessages(t *testing
+ 		ContextProviders: []*memory.ContextProvider{historyProvider},
+ 	})
+ 
+-	_, err := a.RunText(t.Context(), "input", agentopt.Session(agenttest.CreateSession())).Collect()
++	_, err := a.RunText(t.Context(), "input", agent.WithSession(agenttest.CreateSession())).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -961,7 +959,7 @@ func TestAgent_Run_ProviderMiddleware_PropagatesInvokedError(t *testing.T) {
+ 		},
+ 	}
+ 
+-	runFn := func(_ context.Context, msgs []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, msgs []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{Role: message.RoleAssistant, Contents: []message.Content{&message.TextContent{Text: "response"}}}, nil)
+ 		}
+@@ -972,7 +970,7 @@ func TestAgent_Run_ProviderMiddleware_PropagatesInvokedError(t *testing.T) {
+ 		ContextProviders: []*memory.ContextProvider{historyProvider},
+ 	})
+ 
+-	_, err := a.RunText(t.Context(), "input", agentopt.Session(agenttest.CreateSession())).Collect()
++	_, err := a.RunText(t.Context(), "input", agent.WithSession(agenttest.CreateSession())).Collect()
+ 	if !errors.Is(err, expected) {
+ 		t.Fatalf("expected %v, got %v", expected, err)
+ 	}
+@@ -992,7 +990,7 @@ func TestAgent_Run_ProviderMiddleware_EarlyStopOnErrorStillStores(t *testing.T)
+ 		},
+ 	}
+ 
+-	runFn := func(_ context.Context, msgs []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, msgs []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			if !yield(&message.ResponseUpdate{Role: message.RoleAssistant, Contents: []message.Content{&message.TextContent{Text: "before error"}}}, nil) {
+ 				return
+@@ -1006,7 +1004,7 @@ func TestAgent_Run_ProviderMiddleware_EarlyStopOnErrorStillStores(t *testing.T)
+ 		ContextProviders: []*memory.ContextProvider{historyProvider},
+ 	})
+ 
+-	_, err := a.RunText(t.Context(), "input", agentopt.Session(agenttest.CreateSession())).Collect()
++	_, err := a.RunText(t.Context(), "input", agent.WithSession(agenttest.CreateSession())).Collect()
+ 	if !errors.Is(err, runErr) {
+ 		t.Fatalf("expected %v, got %v", runErr, err)
+ 	}
+@@ -1029,7 +1027,7 @@ func TestAgent_Run_ProviderMiddleware_EarlyStopWithoutErrorStillStores(t *testin
+ 		},
+ 	}
+ 
+-	runFn := func(_ context.Context, msgs []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, msgs []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			if !yield(&message.ResponseUpdate{Role: message.RoleAssistant, Contents: []message.Content{&message.TextContent{Text: "first"}}}, nil) {
+ 				return
+@@ -1043,7 +1041,7 @@ func TestAgent_Run_ProviderMiddleware_EarlyStopWithoutErrorStillStores(t *testin
+ 		ContextProviders: []*memory.ContextProvider{historyProvider},
+ 	})
+ 
+-	for _, err := range a.RunText(t.Context(), "input", agentopt.Session(agenttest.CreateSession()), agentopt.Stream(true)) {
++	for _, err := range a.RunText(t.Context(), "input", agent.WithSession(agenttest.CreateSession()), agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("unexpected error: %v", err)
+ 		}
+@@ -1080,7 +1078,7 @@ func TestAgent_Run_UsesContextProvidersInOrder(t *testing.T) {
+ 		},
+ 	}
+ 
+-	runFn := func(_ context.Context, msgs []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	runFn := func(_ context.Context, msgs []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		if len(msgs) < 3 {
+ 			t.Fatalf("expected providers to prepend messages, got %d", len(msgs))
+ 		}
+@@ -1094,7 +1092,7 @@ func TestAgent_Run_UsesContextProvidersInOrder(t *testing.T) {
+ 		ContextProviders: []*memory.ContextProvider{providerA, providerB},
+ 	})
+ 
+-	_, err := a.RunText(t.Context(), "input", agentopt.Session(agenttest.CreateSession())).Collect()
++	_, err := a.RunText(t.Context(), "input", agent.WithSession(agenttest.CreateSession())).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+diff --git a/agent/hosting/a2ahosting/a2a_test.go b/agent/hosting/a2ahosting/a2a_test.go
+--- a/agent/hosting/a2ahosting/a2a_test.go
++++ b/agent/hosting/a2ahosting/a2a_test.go
+@@ -11,11 +11,10 @@ import (
+ 	"github.com/a2aproject/a2a-go/v2/a2a"
+ 	"github.com/microsoft/agent-framework-go/agent"
+ 	"github.com/microsoft/agent-framework-go/agent/hosting/a2ahosting"
+-	"github.com/microsoft/agent-framework-go/agentopt"
+ 	"github.com/microsoft/agent-framework-go/message"
+ )
+ 
+-func newTestAgent(runFn func(context.Context, []*message.Message, ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error]) *agent.Agent {
++func newTestAgent(runFn func(context.Context, []*message.Message, ...agent.Option) iter.Seq2[*message.ResponseUpdate, error]) *agent.Agent {
+ 	return agent.New(agent.ProviderConfig{Run: runFn}, agent.Config{Name: "test-agent", ID: "test-agent-id"})
+ }
+ 
+@@ -29,7 +28,7 @@ func TestNewRequestHandler_PanicsWithoutAgent(t *testing.T) {
+ }
+ 
+ func TestRequestHandler_OnSendMessage_ReturnsMessage_WhenBackgroundDisabled(t *testing.T) {
+-	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{
+ 				MessageID: "m1",
+@@ -63,7 +62,7 @@ func TestRequestHandler_OnSendMessage_ReturnsMessage_WhenBackgroundDisabled(t *t
+ }
+ 
+ func TestRequestHandler_OnSendMessage_WithReferenceTaskIDs_ReturnsError(t *testing.T) {
+-	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{Contents: message.Contents{&message.TextContent{Text: "ignored"}}}, nil)
+ 		}
+@@ -82,7 +81,7 @@ func TestRequestHandler_OnSendMessage_WithReferenceTaskIDs_ReturnsError(t *testi
+ }
+ 
+ func TestRequestHandler_OnSendMessage_PreservesContextID(t *testing.T) {
+-	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{
+ 				MessageID: "m-context",
+@@ -109,8 +108,8 @@ func TestRequestHandler_OnSendMessage_PreservesContextID(t *testing.T) {
+ }
+ 
+ func TestRequestHandler_OnSendMessageStream_UsesTaskLifecycle_WhenContinuationTokenPresent(t *testing.T) {
+-	a := newTestAgent(func(_ context.Context, _ []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
+-		allowBackground, _ := agentopt.Get(options, agentopt.AllowBackgroundResponses)
++	a := newTestAgent(func(_ context.Context, _ []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
++		allowBackground, _ := agent.GetOption(options, agent.AllowBackgroundResponses)
+ 		if !allowBackground {
+ 			return func(yield func(*message.ResponseUpdate, error) bool) {
+ 				yield(nil, assertErr("expected AllowBackgroundResponses=true"))
+@@ -164,7 +163,7 @@ func TestRequestHandler_OnSendMessageStream_UsesTaskLifecycle_WhenContinuationTo
+ }
+ 
+ func TestRequestHandler_OnSendMessageStream_WhenContinuationTokenAndNoMessages_StatusMessageIsNil(t *testing.T) {
+-	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{ContinuationToken: "token-no-msg"}, nil)
+ 		}
+@@ -196,7 +195,7 @@ func TestRequestHandler_OnSendMessageStream_WhenContinuationTokenAndNoMessages_S
+ }
+ 
+ func TestRequestHandler_OnCancelTask_ReturnsCanceledTask(t *testing.T) {
+-	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{
+ 				MessageID:         "m-cancel",
+diff --git a/agent/hosting/aguihosting/agui_test.go b/agent/hosting/aguihosting/agui_test.go
+--- a/agent/hosting/aguihosting/agui_test.go
++++ b/agent/hosting/aguihosting/agui_test.go
+@@ -14,19 +14,18 @@ import (
+ 
+ 	"github.com/microsoft/agent-framework-go/agent"
+ 	"github.com/microsoft/agent-framework-go/agent/hosting/aguihosting"
+-	"github.com/microsoft/agent-framework-go/agentopt"
+ 	"github.com/microsoft/agent-framework-go/message"
+ )
+ 
+-func newTestAgent(runFn func(context.Context, []*message.Message, ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error]) *agent.Agent {
++func newTestAgent(runFn func(context.Context, []*message.Message, ...agent.Option) iter.Seq2[*message.ResponseUpdate, error]) *agent.Agent {
+ 	return agent.New(agent.ProviderConfig{Run: runFn}, agent.Config{Name: "test-agent", ID: "test-agent-id"})
+ }
+ 
+ func TestHandler_MethodNotAllowed(t *testing.T) {
+-	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {}
+ 	})
+-	h := aguihosting.NewHTTPHandler(aguihosting.HandlerConfig{Agent: a})
++	h := aguihosting.NewJSONHTTPHandler(aguihosting.HandlerConfig{Agent: a})
+ 
+ 	req := httptest.NewRequest(http.MethodGet, "/", nil)
+ 	rr := httptest.NewRecorder()
+@@ -38,10 +37,10 @@ func TestHandler_MethodNotAllowed(t *testing.T) {
+ }
+ 
+ func TestHandler_InvalidInput_ReturnsBadRequest(t *testing.T) {
+-	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {}
+ 	})
+-	h := aguihosting.NewHTTPHandler(aguihosting.HandlerConfig{Agent: a})
++	h := aguihosting.NewJSONHTTPHandler(aguihosting.HandlerConfig{Agent: a})
+ 
+ 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{not-json"))
+ 	rr := httptest.NewRecorder()
+@@ -53,7 +52,7 @@ func TestHandler_InvalidInput_ReturnsBadRequest(t *testing.T) {
+ }
+ 
+ func TestHandler_StreamsSSEText(t *testing.T) {
+-	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{
+ 				MessageID: "msg-1",
+@@ -62,7 +61,7 @@ func TestHandler_StreamsSSEText(t *testing.T) {
+ 			}, nil)
+ 		}
+ 	})
+-	h := aguihosting.NewHTTPHandler(aguihosting.HandlerConfig{Agent: a})
++	h := aguihosting.NewJSONHTTPHandler(aguihosting.HandlerConfig{Agent: a})
+ 
+ 	body := `{"threadId":"thread-1","runId":"run-1","messages":[{"id":"u1","role":"user","content":"ping"}]}`
+ 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+@@ -82,7 +81,7 @@ func TestHandler_StreamsSSEText(t *testing.T) {
+ }
+ 
+ func TestHandler_MixedToolInvocations_OnlyClientToolEmitted(t *testing.T) {
+-	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{
+ 				MessageID: "msg-1",
+@@ -94,7 +93,7 @@ func TestHandler_MixedToolInvocations_OnlyClientToolEmitted(t *testing.T) {
+ 			}, nil)
+ 		}
+ 	})
+-	h := aguihosting.NewHTTPHandler(aguihosting.HandlerConfig{Agent: a})
++	h := aguihosting.NewJSONHTTPHandler(aguihosting.HandlerConfig{Agent: a})
+ 
+ 	body := `{"threadId":"thread-1","runId":"run-1","messages":[{"id":"u1","role":"user","content":"ping"}],"tools":[{"name":"client_tool","description":"client","parameters":{"type":"object"}}]}`
+ 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+@@ -111,7 +110,7 @@ func TestHandler_MixedToolInvocations_OnlyClientToolEmitted(t *testing.T) {
+ }
+ 
+ func TestHandler_StateSnapshotEmitsStateEvent(t *testing.T) {
+-	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			payload := map[string]any{"counter": 42, "status": "active"}
+ 			b, _ := json.Marshal(payload)
+@@ -124,7 +123,7 @@ func TestHandler_StateSnapshotEmitsStateEvent(t *testing.T) {
+ 			}, nil)
+ 		}
+ 	})
+-	h := aguihosting.NewHTTPHandler(aguihosting.HandlerConfig{Agent: a})
++	h := aguihosting.NewJSONHTTPHandler(aguihosting.HandlerConfig{Agent: a})
+ 
+ 	body := `{"threadId":"thread-1","runId":"run-1","messages":[{"id":"u1","role":"user","content":"ping"}]}`
+ 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+@@ -138,7 +137,7 @@ func TestHandler_StateSnapshotEmitsStateEvent(t *testing.T) {
+ }
+ 
+ func TestHandler_MixedToolInvocations_SuppressesServerToolResults(t *testing.T) {
+-	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{
+ 				MessageID: "msg-1",
+@@ -158,7 +157,7 @@ func TestHandler_MixedToolInvocations_SuppressesServerToolResults(t *testing.T)
+ 			}, nil)
+ 		}
+ 	})
+-	h := aguihosting.NewHTTPHandler(aguihosting.HandlerConfig{Agent: a})
++	h := aguihosting.NewJSONHTTPHandler(aguihosting.HandlerConfig{Agent: a})
+ 
+ 	body := `{"threadId":"thread-1","runId":"run-1","messages":[{"id":"u1","role":"user","content":"ping"}],"tools":[{"name":"client_tool","description":"client","parameters":{"type":"object"}}]}`
+ 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+@@ -175,7 +174,7 @@ func TestHandler_MixedToolInvocations_SuppressesServerToolResults(t *testing.T)
+ }
+ 
+ func TestHandler_UnknownDataContent_UsesCurrentMessageLifecycle(t *testing.T) {
+-	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	a := newTestAgent(func(_ context.Context, _ []*message.Message, _ ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{
+ 				MessageID: "msg-fallback",
+@@ -187,7 +186,7 @@ func TestHandler_UnknownDataContent_UsesCurrentMessageLifecycle(t *testing.T) {
+ 			}, nil)
+ 		}
+ 	})
+-	h := aguihosting.NewHTTPHandler(aguihosting.HandlerConfig{Agent: a})
++	h := aguihosting.NewJSONHTTPHandler(aguihosting.HandlerConfig{Agent: a})
+ 
+ 	body := `{"threadId":"thread-1","runId":"run-1","messages":[{"id":"u1","role":"user","content":"ping"}]}`
+ 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+diff --git a/middleware/autocall/autocall_approval_test.go b/agent/internal/middleware/autocall/autocall_approval_test.go
+rename from middleware/autocall/autocall_approval_test.go
+rename to agent/internal/middleware/autocall/autocall_approval_test.go
+--- a/middleware/autocall/autocall_approval_test.go
++++ b/agent/internal/middleware/autocall/autocall_approval_test.go
+@@ -7,11 +7,11 @@ import (
+ 	"fmt"
+ 	"testing"
+ 
+-	"github.com/microsoft/agent-framework-go/agentopt"
++	"github.com/microsoft/agent-framework-go/agent/internal/agentopt"
++	"github.com/microsoft/agent-framework-go/agent/internal/middleware"
++	"github.com/microsoft/agent-framework-go/agent/internal/middleware/autocall"
+ 	"github.com/microsoft/agent-framework-go/internal/agenttest"
+ 	"github.com/microsoft/agent-framework-go/message"
+-	"github.com/microsoft/agent-framework-go/middleware"
+-	"github.com/microsoft/agent-framework-go/middleware/autocall"
+ 	"github.com/microsoft/agent-framework-go/tool"
+ 	"github.com/microsoft/agent-framework-go/tool/functool"
+ )
+@@ -62,7 +62,7 @@ func invokeAndAssertApprovalWithAgent(t *testing.T, next middleware.RunFunc,
+ 	// Build options
+ 	var opts []agentopt.Option
+ 	for _, tool := range tools {
+-		opts = append(opts, agentopt.Tool(tool))
++		opts = append(opts, agentopt.WithTool(tool))
+ 	}
+ 
+ 	// Collect all streaming updates into messages
+@@ -87,7 +87,7 @@ func expectApprovalError(t *testing.T, tools []tool.Tool, input []*message.Messa
+ 	// Build options
+ 	var opts []agentopt.Option
+ 	for _, tool := range tools {
+-		opts = append(opts, agentopt.Tool(tool))
++		opts = append(opts, agentopt.WithTool(tool))
+ 	}
+ 
+ 	var lastErr error
+diff --git a/middleware/autocall/autocall_log_test.go b/agent/internal/middleware/autocall/autocall_log_test.go
+rename from middleware/autocall/autocall_log_test.go
+rename to agent/internal/middleware/autocall/autocall_log_test.go
+--- a/middleware/autocall/autocall_log_test.go
++++ b/agent/internal/middleware/autocall/autocall_log_test.go
+@@ -12,8 +12,8 @@ import (
+ 	"testing"
+ 	"time"
+ 
++	"github.com/microsoft/agent-framework-go/agent/internal/middleware/autocall"
+ 	"github.com/microsoft/agent-framework-go/message"
+-	"github.com/microsoft/agent-framework-go/middleware/autocall"
+ 	"github.com/microsoft/agent-framework-go/tool"
+ 	"github.com/microsoft/agent-framework-go/tool/functool"
+ )
+diff --git a/middleware/autocall/autocall_test.go b/agent/internal/middleware/autocall/autocall_test.go
+rename from middleware/autocall/autocall_test.go
+rename to agent/internal/middleware/autocall/autocall_test.go
+--- a/middleware/autocall/autocall_test.go
++++ b/agent/internal/middleware/autocall/autocall_test.go
+@@ -11,11 +11,11 @@ import (
+ 	"testing"
+ 	"time"
+ 
+-	"github.com/microsoft/agent-framework-go/agentopt"
++	"github.com/microsoft/agent-framework-go/agent/internal/agentopt"
++	"github.com/microsoft/agent-framework-go/agent/internal/middleware/autocall"
+ 	"github.com/microsoft/agent-framework-go/internal/agenttest"
+ 	"github.com/microsoft/agent-framework-go/internal/messagetest"
+ 	"github.com/microsoft/agent-framework-go/message"
+-	"github.com/microsoft/agent-framework-go/middleware/autocall"
+ 	"github.com/microsoft/agent-framework-go/tool"
+ 	"github.com/microsoft/agent-framework-go/tool/functool"
+ )
+@@ -181,7 +181,7 @@ func invokeAndAssert(t *testing.T, tools []tool.Tool, plan []*message.Message, e
+ 	// Build options
+ 	var opts []agentopt.Option
+ 	for _, tool := range tools {
+-		opts = append(opts, agentopt.Tool(tool))
++		opts = append(opts, agentopt.WithTool(tool))
+ 	}
+ 	// Use a deterministic (empty) ID generator for test reproducibility.
+ 	// Do not use an empty ID generator in production code, as it breaks message tracking and deduplication.
+@@ -246,7 +246,7 @@ func TestFunctionInvoking_FunctionReturningFunctionResultContentWithMatchingCall
+ 
+ 	var opts []agentopt.Option
+ 	for _, tl := range tools {
+-		opts = append(opts, agentopt.Tool(tl))
++		opts = append(opts, agentopt.WithTool(tl))
+ 	}
+ 
+ 	initialMessages := []*message.Message{message.NewText("hello")}
+@@ -322,7 +322,7 @@ func TestFunctionInvoking_FunctionReturningFunctionResultContentWithMismatchedCa
+ 
+ 	var opts []agentopt.Option
+ 	for _, tl := range tools {
+-		opts = append(opts, agentopt.Tool(tl))
++		opts = append(opts, agentopt.WithTool(tl))
+ 	}
+ 
+ 	initialMessages := []*message.Message{message.NewText("hello")}
+@@ -708,7 +708,7 @@ func TestFunctionInvoking_ContinuesWithFailingCallsUntilMaximumConsecutiveErrors
+ 			// Build options
+ 			var opts []agentopt.Option
+ 			for _, tool := range tools {
+-				opts = append(opts, agentopt.Tool(tool))
++				opts = append(opts, agentopt.WithTool(tool))
+ 			}
+ 
+ 			var streamErr error
+@@ -824,7 +824,7 @@ func TestFunctionInvoking_CanFailOnFirstException(t *testing.T) {
+ 			// Build options
+ 			var opts []agentopt.Option
+ 			for _, tool := range tools {
+-				opts = append(opts, agentopt.Tool(tool))
++				opts = append(opts, agentopt.WithTool(tool))
+ 			}
+ 
+ 			var streamErr error
+@@ -1043,7 +1043,7 @@ func TestFunctionInvoking_AllResponseMessagesReturned(t *testing.T) {
+ 	initialMessages := []*message.Message{messages[0]}
+ 	var opts []agentopt.Option
+ 	for _, tool := range tools {
+-		opts = append(opts, agentopt.Tool(tool))
++		opts = append(opts, agentopt.WithTool(tool))
+ 	}
+ 
+ 	var resp message.Response
+@@ -1147,7 +1147,7 @@ func TestFunctionInvoking_NextIterationIncludesAssistantFunctionCallMessage(t *t
+ 
+ 	var opts []agentopt.Option
+ 	for _, tool := range tools {
+-		opts = append(opts, agentopt.Tool(tool))
++		opts = append(opts, agentopt.WithTool(tool))
+ 	}
+ 
+ 	autocallConfig := autocall.Config{
+diff --git a/middleware/contextprovider/contextprovider_test.go b/agent/internal/middleware/contextprovider/contextprovider_test.go
+rename from middleware/contextprovider/contextprovider_test.go
+rename to agent/internal/middleware/contextprovider/contextprovider_test.go
+--- a/middleware/contextprovider/contextprovider_test.go
++++ b/agent/internal/middleware/contextprovider/contextprovider_test.go
+@@ -9,11 +9,11 @@ import (
+ 	"slices"
+ 	"testing"
+ 
+-	"github.com/microsoft/agent-framework-go/agentopt"
++	"github.com/microsoft/agent-framework-go/agent/internal/agentopt"
++	"github.com/microsoft/agent-framework-go/agent/internal/middleware"
++	"github.com/microsoft/agent-framework-go/agent/internal/middleware/contextprovider"
+ 	"github.com/microsoft/agent-framework-go/memory"
+ 	"github.com/microsoft/agent-framework-go/message"
+-	"github.com/microsoft/agent-framework-go/middleware"
+-	"github.com/microsoft/agent-framework-go/middleware/contextprovider"
+ 	"github.com/microsoft/agent-framework-go/tool"
+ )
+ 
+@@ -56,7 +56,7 @@ func TestMiddleware_Run_SingleProvider_EnrichesMessages(t *testing.T) {
+ 		},
+ 		[]middleware.Middleware{contextprovider.New(provider)},
+ 		[]*message.Message{message.NewText("hello")},
+-		agentopt.Session(memory.NewSession("")),
++		agentopt.WithSession(memory.NewSession("")),
+ 	))
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+@@ -99,7 +99,7 @@ func TestMiddleware_Run_MultipleProviders_CalledInSequence(t *testing.T) {
+ 		},
+ 		[]middleware.Middleware{contextprovider.New(providerA, providerB)},
+ 		[]*message.Message{message.NewText("hello")},
+-		agentopt.Session(memory.NewSession("")),
++		agentopt.WithSession(memory.NewSession("")),
+ 	))
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+@@ -130,13 +130,13 @@ func TestMiddleware_Run_Provider_EnrichesTools(t *testing.T) {
+ 	_, err := collectResponse(middleware.RunChain(
+ 		context.Background(),
+ 		func(_ context.Context, _ []*message.Message, opts ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
+-			capturedTools = slices.Collect(agentopt.All(opts, agentopt.Tool))
++			capturedTools = slices.Collect(agentopt.AllOptions(opts, agentopt.WithTool))
+ 			return singleUpdate("ok")
+ 		},
+ 		[]middleware.Middleware{contextprovider.New(provider)},
+ 		[]*message.Message{message.NewText("hello")},
+-		agentopt.Session(memory.NewSession("")),
+-		agentopt.Tool(baselineTool),
++		agentopt.WithSession(memory.NewSession("")),
++		agentopt.WithTool(baselineTool),
+ 	))
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+@@ -166,7 +166,7 @@ func TestMiddleware_Run_OnSuccess_AfterRunCalled(t *testing.T) {
+ 		},
+ 		[]middleware.Middleware{contextprovider.New(provider)},
+ 		[]*message.Message{message.NewText("hello")},
+-		agentopt.Session(memory.NewSession("")),
++		agentopt.WithSession(memory.NewSession("")),
+ 	))
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+@@ -206,7 +206,7 @@ func TestMiddleware_Run_OnFailure_AfterRunCalledWithInvokeError(t *testing.T) {
+ 		},
+ 		[]middleware.Middleware{contextprovider.New(provider)},
+ 		[]*message.Message{message.NewText("hello")},
+-		agentopt.Session(memory.NewSession("")),
++		agentopt.WithSession(memory.NewSession("")),
+ 	) {
+ 		if err != nil {
+ 			if !errors.Is(err, expectedErr) {
+@@ -238,15 +238,15 @@ func TestMiddleware_Run_SharedOptions_ProviderToolsDoNotAccumulateAcrossCalls(t
+ 		},
+ 	}
+ 	sharedOptions := []agentopt.Option{
+-		agentopt.Session(memory.NewSession("")),
+-		agentopt.Tool(stubTool{name: "baseline"}),
++		agentopt.WithSession(memory.NewSession("")),
++		agentopt.WithTool(stubTool{name: "baseline"}),
+ 	}
+ 
+ 	for range 3 {
+ 		_, err := collectResponse(middleware.RunChain(
+ 			context.Background(),
+ 			func(_ context.Context, _ []*message.Message, opts ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
+-				toolCounts = append(toolCounts, len(slices.Collect(agentopt.All(opts, agentopt.Tool))))
++				toolCounts = append(toolCounts, len(slices.Collect(agentopt.AllOptions(opts, agentopt.WithTool))))
+ 				return singleUpdate("ok")
+ 			},
+ 			[]middleware.Middleware{contextprovider.New(provider)},
+@@ -272,8 +272,8 @@ func TestMiddleware_Run_SharedOptions_OriginalToolsNotMutated(t *testing.T) {
+ 		},
+ 	}
+ 	sharedOptions := []agentopt.Option{
+-		agentopt.Session(memory.NewSession("")),
+-		agentopt.Tool(baselineTool),
++		agentopt.WithSession(memory.NewSession("")),
++		agentopt.WithTool(baselineTool),
+ 	}
+ 
+ 	_, err := collectResponse(middleware.RunChain(
+@@ -289,7 +289,7 @@ func TestMiddleware_Run_SharedOptions_OriginalToolsNotMutated(t *testing.T) {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+ 
+-	originalTools := slices.Collect(agentopt.All(sharedOptions, agentopt.Tool))
++	originalTools := slices.Collect(agentopt.AllOptions(sharedOptions, agentopt.WithTool))
+ 	if len(originalTools) != 1 {
+ 		t.Fatalf("expected original shared options to keep 1 tool, got %d", len(originalTools))
+ 	}
+diff --git a/middleware/middleware_test.go b/agent/internal/middleware/middleware_test.go
+rename from middleware/middleware_test.go
+rename to agent/internal/middleware/middleware_test.go
+--- a/middleware/middleware_test.go
++++ b/agent/internal/middleware/middleware_test.go
+@@ -7,9 +7,9 @@ import (
+ 	"iter"
+ 	"testing"
+ 
+-	"github.com/microsoft/agent-framework-go/agentopt"
++	"github.com/microsoft/agent-framework-go/agent/internal/agentopt"
++	"github.com/microsoft/agent-framework-go/agent/internal/middleware"
+ 	"github.com/microsoft/agent-framework-go/message"
+-	"github.com/microsoft/agent-framework-go/middleware"
+ )
+ 
+ func TestChain(t *testing.T) {
+diff --git a/middleware/structuredoutput/structuredoutput_test.go b/agent/internal/middleware/structuredoutput/structuredoutput_test.go
+rename from middleware/structuredoutput/structuredoutput_test.go
+rename to agent/internal/middleware/structuredoutput/structuredoutput_test.go
+--- a/middleware/structuredoutput/structuredoutput_test.go
++++ b/agent/internal/middleware/structuredoutput/structuredoutput_test.go
+@@ -9,11 +9,11 @@ import (
+ 	"iter"
+ 	"testing"
+ 
+-	"github.com/microsoft/agent-framework-go/agentopt"
++	"github.com/microsoft/agent-framework-go/agent/internal/agentopt"
++	"github.com/microsoft/agent-framework-go/agent/internal/middleware"
++	"github.com/microsoft/agent-framework-go/agent/internal/middleware/structuredoutput"
+ 	"github.com/microsoft/agent-framework-go/format"
+ 	"github.com/microsoft/agent-framework-go/message"
+-	"github.com/microsoft/agent-framework-go/middleware"
+-	"github.com/microsoft/agent-framework-go/middleware/structuredoutput"
+ )
+ 
+ type testFormat struct {
+@@ -99,7 +99,7 @@ func TestStructuredOutput_NilStructuredOutputOption(t *testing.T) {
+ 	ctx := context.Background()
+ 
+ 	var updates []*message.ResponseUpdate
+-	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.StructuredOutput(nil))
++	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.WithStructuredOutput(nil))
+ 	for update, err := range seq {
+ 		if err != nil {
+ 			t.Fatalf("unexpected error: %v", err)
+@@ -139,7 +139,7 @@ func TestStructuredOutput_MissingFormat(t *testing.T) {
+ 	ctx := context.Background()
+ 	output := &struct{ Name string }{}
+ 
+-	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.StructuredOutput(output))
++	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.WithStructuredOutput(output))
+ 	for _, err := range seq {
+ 		if err == nil {
+ 			t.Fatal("expected error for missing Format")
+@@ -175,7 +175,7 @@ func TestStructuredOutput_MissingUnmarshal(t *testing.T) {
+ 	ctx := context.Background()
+ 	output := &struct{ Name string }{}
+ 
+-	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.StructuredOutput(output))
++	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.WithStructuredOutput(output))
+ 	for _, err := range seq {
+ 		if err == nil {
+ 			t.Fatal("expected error for missing Unmarshal")
+@@ -214,7 +214,7 @@ func TestStructuredOutput_FormatError(t *testing.T) {
+ 	ctx := context.Background()
+ 	output := &struct{ Name string }{}
+ 
+-	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.StructuredOutput(output))
++	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.WithStructuredOutput(output))
+ 	for _, err := range seq {
+ 		if err == nil {
+ 			t.Fatal("expected error for Format failure")
+@@ -232,7 +232,7 @@ func TestStructuredOutput_SuccessfulUnmarshal(t *testing.T) {
+ 	baseFunc := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			// Verify that ResponseFormat option was added
+-			v, ok := agentopt.Get(options, agentopt.ResponseFormat)
++			v, ok := agentopt.GetOption(options, agentopt.WithResponseFormat)
+ 			if !ok {
+ 				yield(nil, errors.New("ResponseFormat option not found"))
+ 				return
+@@ -281,7 +281,7 @@ func TestStructuredOutput_SuccessfulUnmarshal(t *testing.T) {
+ 		Age  int    `json:"age"`
+ 	}{}
+ 
+-	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.StructuredOutput(output))
++	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.WithStructuredOutput(output))
+ 	for _, err := range seq {
+ 		if err != nil {
+ 			t.Fatalf("unexpected error: %v", err)
+@@ -322,7 +322,7 @@ func TestStructuredOutput_UnmarshalError(t *testing.T) {
+ 	ctx := context.Background()
+ 	output := &struct{ Name string }{}
+ 
+-	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.StructuredOutput(output))
++	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.WithStructuredOutput(output))
+ 	for _, err := range seq {
+ 		if err == nil {
+ 			t.Fatal("expected error for Unmarshal failure")
+@@ -357,7 +357,7 @@ func TestStructuredOutput_BaseErrorPropagation(t *testing.T) {
+ 	ctx := context.Background()
+ 	output := &struct{ Name string }{}
+ 
+-	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.StructuredOutput(output))
++	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.WithStructuredOutput(output))
+ 	for _, err := range seq {
+ 		if err == nil {
+ 			t.Fatal("expected error from base function")
+@@ -407,7 +407,7 @@ func TestStructuredOutput_ComplexStructure(t *testing.T) {
+ 	ctx := context.Background()
+ 	output := &Person{}
+ 
+-	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.StructuredOutput(output))
++	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.WithStructuredOutput(output))
+ 	for _, err := range seq {
+ 		if err != nil {
+ 			t.Fatalf("unexpected error: %v", err)
+@@ -458,7 +458,7 @@ func TestStructuredOutput_EmptyResponse(t *testing.T) {
+ 	ctx := context.Background()
+ 	output := &struct{ Name string }{}
+ 
+-	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.StructuredOutput(output))
++	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.WithStructuredOutput(output))
+ 	for _, err := range seq {
+ 		if err == nil {
+ 			t.Fatal("expected error for empty response")
+@@ -516,7 +516,7 @@ func TestStructuredOutput_MultipleContentTypes(t *testing.T) {
+ 		Name string `json:"name"`
+ 	}{}
+ 
+-	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.StructuredOutput(output))
++	seq := middleware.RunChain(ctx, baseFunc, []middleware.Middleware{mw}, []*message.Message{}, agentopt.WithStructuredOutput(output))
+ 	for _, err := range seq {
+ 		if err != nil {
+ 			t.Fatalf("unexpected error: %v", err)
+diff --git a/middleware/logger/logger_test.go b/agent/middleware/logger/logger_test.go
+rename from middleware/logger/logger_test.go
+rename to agent/middleware/logger/logger_test.go
+--- a/middleware/logger/logger_test.go
++++ b/agent/middleware/logger/logger_test.go
+@@ -11,10 +11,10 @@ import (
+ 	"strings"
+ 	"testing"
+ 
+-	"github.com/microsoft/agent-framework-go/agentopt"
++	"github.com/microsoft/agent-framework-go/agent"
++	"github.com/microsoft/agent-framework-go/agent/internal/middleware"
++	"github.com/microsoft/agent-framework-go/agent/middleware/logger"
+ 	"github.com/microsoft/agent-framework-go/message"
+-	"github.com/microsoft/agent-framework-go/middleware"
+-	"github.com/microsoft/agent-framework-go/middleware/logger"
+ )
+ 
+ func TestLogger_Run_LogsDebugMessage(t *testing.T) {
+@@ -29,7 +29,7 @@ func TestLogger_Run_LogsDebugMessage(t *testing.T) {
+ 
+ 	// Create a simple next function
+ 	nextCalled := false
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		nextCalled = true
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{MessageID: "test-1"}, nil)
+@@ -72,7 +72,7 @@ func TestLogger_Run_LogsTraceWithDetails(t *testing.T) {
+ 	mw := logger.New(logger.Config{Logger: log, SensitiveData: true})
+ 
+ 	// Create a simple next function
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{MessageID: "test-1"}, nil)
+ 		}
+@@ -116,7 +116,7 @@ func TestLogger_Run_LogsErrors(t *testing.T) {
+ 
+ 	// Create a next function that returns an error
+ 	expectedError := errors.New("test error")
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(nil, expectedError)
+ 		}
+@@ -162,7 +162,7 @@ func TestLogger_Run_HandlesMultipleUpdates(t *testing.T) {
+ 	mw := logger.New(logger.Config{Logger: log, SensitiveData: true})
+ 
+ 	// Create a next function that yields multiple updates
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			if !yield(&message.ResponseUpdate{MessageID: "test-1"}, nil) {
+ 				return
+@@ -211,7 +211,7 @@ func TestLogger_Run_EarlyTermination(t *testing.T) {
+ 
+ 	// Create a next function that yields multiple updates
+ 	yieldCount := 0
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			for i := 0; i < 5; i++ {
+ 				yieldCount++
+@@ -262,7 +262,7 @@ func TestLogger_Run_PropagatesContext(t *testing.T) {
+ 	type contextKey string
+ 	key := contextKey("test-key")
+ 	var receivedCtx context.Context
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		receivedCtx = ctx
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{MessageID: "test-1"}, nil)
+@@ -308,7 +308,7 @@ func TestLogger_Run_WorksInMiddlewareChain(t *testing.T) {
+ 	}
+ 
+ 	// Base function
+-	baseFn := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	baseFn := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		order = append(order, "base")
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{MessageID: "test-1"}, nil)
+@@ -357,7 +357,7 @@ func TestLogger_Run_ContextCanceled(t *testing.T) {
+ 	mw := logger.New(logger.Config{Logger: log})
+ 
+ 	// Create a next function that checks for context cancellation
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			// Yield first update
+ 			if !yield(&message.ResponseUpdate{MessageID: "test-1"}, nil) {
+@@ -418,7 +418,7 @@ type testMiddleware struct {
+ 	onRun func(string)
+ }
+ 
+-func (tm *testMiddleware) Run(next middleware.RunFunc, ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++func (tm *testMiddleware) Run(next middleware.RunFunc, ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 	tm.onRun(tm.name)
+ 	return next(ctx, messages, options...)
+ }
+diff --git a/middleware/otel/otel_test.go b/agent/middleware/otel/otel_test.go
+rename from middleware/otel/otel_test.go
+rename to agent/middleware/otel/otel_test.go
+--- a/middleware/otel/otel_test.go
++++ b/agent/middleware/otel/otel_test.go
+@@ -9,11 +9,9 @@ import (
+ 	"testing"
+ 
+ 	"github.com/microsoft/agent-framework-go/agent"
+-	"github.com/microsoft/agent-framework-go/agentopt"
++	"github.com/microsoft/agent-framework-go/agent/middleware/otel"
+ 	"github.com/microsoft/agent-framework-go/internal/agenttest"
+ 	"github.com/microsoft/agent-framework-go/message"
+-	"github.com/microsoft/agent-framework-go/middleware"
+-	"github.com/microsoft/agent-framework-go/middleware/otel"
+ 
+ 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+ 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+@@ -44,7 +42,7 @@ func TestOtel_Run_CreatesSpan(t *testing.T) {
+ 	mw := otel.New(otel.Config{})
+ 
+ 	nextCalled := false
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		nextCalled = true
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{MessageID: "test-1"}, nil)
+@@ -74,7 +72,7 @@ func TestOtel_Run_SpanHasCorrectAttributes(t *testing.T) {
+ 
+ 	var capturedCtx context.Context
+ 	responseBuilder := agenttest.NewResponseBuilder(
+-		func(ctx context.Context, messages []*message.Message, opts ...agentopt.Option) {
++		func(ctx context.Context, messages []*message.Message, opts ...agent.Option) {
+ 			capturedCtx = ctx
+ 		},
+ 	).AddText("response")
+@@ -84,7 +82,7 @@ func TestOtel_Run_SpanHasCorrectAttributes(t *testing.T) {
+ 	// Override the agent metadata for this test
+ 	a = agent.New(agent.ProviderConfig{
+ 		ProviderName: "test-provider",
+-		Run: func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++		Run: func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 			return func(yield func(*message.ResponseUpdate, error) bool) {
+ 				capturedCtx = ctx
+ 				yield(&message.ResponseUpdate{MessageID: "test-1"}, nil)
+@@ -94,7 +92,7 @@ func TestOtel_Run_SpanHasCorrectAttributes(t *testing.T) {
+ 		ID:          "test-agent-id",
+ 		Name:        "test-agent",
+ 		Description: "A test agent",
+-		Middlewares: []middleware.Middleware{mw},
++		Middlewares: []agent.Middleware{mw},
+ 	})
+ 
+ 	// Run through agent to get metadata in context
+@@ -143,7 +141,7 @@ func TestOtel_Run_RecordsError(t *testing.T) {
+ 	mw := otel.New(otel.Config{})
+ 
+ 	testErr := errors.New("test error")
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(nil, testErr)
+ 		}
+@@ -191,7 +189,7 @@ func TestOtel_Run_CustomSourceName(t *testing.T) {
+ 	customSource := "my-custom-source"
+ 	mw := otel.New(otel.Config{SourceName: customSource})
+ 
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{}, nil)
+ 		}
+@@ -217,7 +215,7 @@ func TestOtel_Run_DefaultSourceName(t *testing.T) {
+ 
+ 	mw := otel.New(otel.Config{})
+ 
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{}, nil)
+ 		}
+@@ -244,7 +242,7 @@ func TestOtel_Run_PropagatesContext(t *testing.T) {
+ 	mw := otel.New(otel.Config{})
+ 
+ 	var capturedCtx context.Context
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		capturedCtx = ctx
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{}, nil)
+@@ -277,7 +275,7 @@ func TestOtel_Run_HandlesMultipleUpdates(t *testing.T) {
+ 	mw := otel.New(otel.Config{})
+ 
+ 	updateCount := 0
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			for i := 0; i < 5; i++ {
+ 				if !yield(&message.ResponseUpdate{MessageID: "test"}, nil) {
+@@ -308,7 +306,7 @@ func TestOtel_Run_HandlesEarlyBreak(t *testing.T) {
+ 
+ 	mw := otel.New(otel.Config{})
+ 
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			for i := 0; i < 10; i++ {
+ 				if !yield(&message.ResponseUpdate{MessageID: "test"}, nil) {
+@@ -344,7 +342,7 @@ func TestOtel_Run_UnknownProviderWhenNoMetadata(t *testing.T) {
+ 
+ 	mw := otel.New(otel.Config{})
+ 
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			yield(&message.ResponseUpdate{}, nil)
+ 		}
+@@ -380,7 +378,7 @@ func TestOtel_Run_RecordsMultipleErrors(t *testing.T) {
+ 	err2 := errors.New("second error")
+ 
+ 	callCount := 0
+-	next := func(ctx context.Context, messages []*message.Message, options ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++	next := func(ctx context.Context, messages []*message.Message, options ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 		return func(yield func(*message.ResponseUpdate, error) bool) {
+ 			if !yield(&message.ResponseUpdate{}, err1) {
+ 				return
+diff --git a/agent/provider/a2aagent/a2a_test.go b/agent/provider/a2aagent/a2a_test.go
+--- a/agent/provider/a2aagent/a2a_test.go
++++ b/agent/provider/a2aagent/a2a_test.go
+@@ -12,7 +12,6 @@ import (
+ 	"github.com/a2aproject/a2a-go/v2/a2aclient"
+ 	"github.com/microsoft/agent-framework-go/agent"
+ 	a2a1 "github.com/microsoft/agent-framework-go/agent/provider/a2aagent"
+-	"github.com/microsoft/agent-framework-go/agentopt"
+ 	"github.com/microsoft/agent-framework-go/memory"
+ 	"github.com/microsoft/agent-framework-go/message"
+ )
+@@ -261,7 +260,7 @@ func TestRunWithCreateSession(t *testing.T) {
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	_, err = a.RunText(t.Context(), "Test message", agentopt.Session(session)).Collect()
++	_, err = a.RunText(t.Context(), "Test message", agent.WithSession(session)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v, want nil", err)
+ 	}
+@@ -276,12 +275,12 @@ func TestRunWithExistingSession(t *testing.T) {
+ 	transport := &mockA2ATransport{}
+ 	a := newTestAgent(transport, agent.Config{})
+ 
+-	session, err := a.CreateSession(t.Context(), agentopt.ServiceID("existing-context-id"))
++	session, err := a.CreateSession(t.Context(), agent.WithServiceID("existing-context-id"))
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+ 
+-	_, err = a.RunText(t.Context(), "Test message", agentopt.Session(session)).Collect()
++	_, err = a.RunText(t.Context(), "Test message", agent.WithSession(session)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v, want nil", err)
+ 	}
+@@ -307,12 +306,12 @@ func TestRunWithSessionHavingDifferentContextID(t *testing.T) {
+ 	}
+ 	a := newTestAgent(transport, agent.Config{})
+ 
+-	session, err := a.CreateSession(t.Context(), agentopt.ServiceID("existing-context-id"))
++	session, err := a.CreateSession(t.Context(), agent.WithServiceID("existing-context-id"))
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+ 
+-	_, err = a.RunText(t.Context(), "Test message", agentopt.Session(session)).Collect()
++	_, err = a.RunText(t.Context(), "Test message", agent.WithSession(session)).Collect()
+ 	if err == nil {
+ 		t.Error("expected error, got nil")
+ 	}
+@@ -331,7 +330,7 @@ func TestRunStreamingWithValidUserMessage(t *testing.T) {
+ 	a := newTestAgent(transport, agent.Config{})
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "Hello, streaming!", agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "Hello, streaming!", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v, want nil", err)
+ 		}
+@@ -410,7 +409,7 @@ func TestRunStreamingWithSession(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 
+-	for _, err := range a.RunText(t.Context(), "Test streaming", agentopt.Session(session), agentopt.Stream(true)) {
++	for _, err := range a.RunText(t.Context(), "Test streaming", agent.WithSession(session), agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v, want nil", err)
+ 		}
+@@ -428,11 +427,11 @@ func TestRunStreamingWithExistingSession(t *testing.T) {
+ 	}
+ 	a := newTestAgent(transport, agent.Config{})
+ 
+-	session, err := a.CreateSession(t.Context(), agentopt.ServiceID("existing-context-id"))
++	session, err := a.CreateSession(t.Context(), agent.WithServiceID("existing-context-id"))
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+-	for _, err := range a.RunText(t.Context(), "Test streaming", agentopt.Session(session), agentopt.Stream(true)) {
++	for _, err := range a.RunText(t.Context(), "Test streaming", agent.WithSession(session), agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v, want nil", err)
+ 		}
+@@ -459,13 +458,13 @@ func TestRunStreamingWithSessionHavingDifferentContextID(t *testing.T) {
+ 	}
+ 	a := newTestAgent(transport, agent.Config{})
+ 
+-	session, err := a.CreateSession(t.Context(), agentopt.ServiceID("existing-context-id"))
++	session, err := a.CreateSession(t.Context(), agent.WithServiceID("existing-context-id"))
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+ 
+ 	gotError := false
+-	for _, err := range a.RunText(t.Context(), "Test streaming", agentopt.Session(session), agentopt.Stream(true)) {
++	for _, err := range a.RunText(t.Context(), "Test streaming", agent.WithSession(session), agent.Stream(true)) {
+ 		if err != nil {
+ 			gotError = true
+ 			break
+@@ -495,7 +494,7 @@ func TestRunStreamingAllowsNonUserRoleMessages(t *testing.T) {
+ 		{Role: message.RoleUser, Contents: []message.Content{&message.TextContent{Text: "Valid user message"}}},
+ 	}
+ 
+-	for _, err := range a.Run(t.Context(), inputMessages, agentopt.Stream(true)) {
++	for _, err := range a.Run(t.Context(), inputMessages, agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v, want nil", err)
+ 		}
+@@ -548,7 +547,7 @@ func TestRunWithContinuationTokenAndMessages(t *testing.T) {
+ 	transport := &mockA2ATransport{}
+ 	a := newTestAgent(transport, agent.Config{})
+ 
+-	_, err := a.RunText(t.Context(), "Test message", agentopt.ContinuationToken("task-123")).Collect()
++	_, err := a.RunText(t.Context(), "Test message", agent.WithContinuationToken("task-123")).Collect()
+ 	if err == nil {
+ 		t.Error("error = nil, want error when continuation token and messages are provided")
+ 	}
+@@ -564,7 +563,7 @@ func TestRunWithContinuationToken(t *testing.T) {
+ 	}
+ 	a := newTestAgent(transport, agent.Config{})
+ 
+-	_, err := a.Run(t.Context(), nil, agentopt.ContinuationToken("task-123")).Collect()
++	_, err := a.Run(t.Context(), nil, agent.WithContinuationToken("task-123")).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v, want nil", err)
+ 	}
+@@ -586,7 +585,7 @@ func TestRunWithTaskInSessionAndMessage(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 
+-	_, err = a.RunText(t.Context(), "Please make the background transparent", agentopt.Session(session)).Collect()
++	_, err = a.RunText(t.Context(), "Please make the background transparent", agent.WithSession(session)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v, want nil", err)
+ 	}
+@@ -617,7 +616,7 @@ func TestRunWithMultipleTaskIDsInSessionAndMessage(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 
+-	_, err = a.RunText(t.Context(), "Please make the background transparent", agentopt.Session(session)).Collect()
++	_, err = a.RunText(t.Context(), "Please make the background transparent", agent.WithSession(session)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v, want nil", err)
+ 	}
+@@ -655,7 +654,7 @@ func TestRunWithAgentTask(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 
+-	_, err = a.RunText(t.Context(), "Start a task", agentopt.Session(session)).Collect()
++	_, err = a.RunText(t.Context(), "Start a task", agent.WithSession(session)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v, want nil", err)
+ 	}
+@@ -689,7 +688,7 @@ func TestRunWithAgentTaskResponse(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 
+-	result, err := a.RunText(t.Context(), "Start a long-running task", agentopt.Session(session)).Collect()
++	result, err := a.RunText(t.Context(), "Start a long-running task", agent.WithSession(session)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v, want nil", err)
+ 	}
+@@ -770,7 +769,7 @@ func TestRunStreamingWithContinuationTokenAndMessages(t *testing.T) {
+ 	a := newTestAgent(transport, agent.Config{})
+ 
+ 	gotError := false
+-	for _, err := range a.RunText(t.Context(), "Test message", agentopt.ContinuationToken("task-123"), agentopt.Stream(true)) {
++	for _, err := range a.RunText(t.Context(), "Test message", agent.WithContinuationToken("task-123"), agent.Stream(true)) {
+ 		if err != nil {
+ 			gotError = true
+ 			break
+@@ -798,7 +797,7 @@ func TestRunStreamingWithTaskInSessionAndMessage(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 
+-	for _, err := range a.RunText(t.Context(), "Please make the background transparent", agentopt.Session(session), agentopt.Stream(true)) {
++	for _, err := range a.RunText(t.Context(), "Please make the background transparent", agent.WithSession(session), agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v, want nil", err)
+ 		}
+@@ -839,7 +838,7 @@ func TestRunStreamingWithAgentTaskUpdatesSession(t *testing.T) {
+ 		t.Fatal(err)
+ 	}
+ 
+-	for _, err := range a.RunText(t.Context(), "Start a task", agentopt.Session(session), agentopt.Stream(true)) {
++	for _, err := range a.RunText(t.Context(), "Start a task", agent.WithSession(session), agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v, want nil", err)
+ 		}
+@@ -867,7 +866,7 @@ func TestRunStreamingWithAgentMessage(t *testing.T) {
+ 	a := newTestAgent(transport, agent.Config{})
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "Test message", agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "Test message", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v, want nil", err)
+ 		}
+@@ -924,7 +923,7 @@ func TestRunStreamingWithAgentTaskYieldsUpdate(t *testing.T) {
+ 	}
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "Start long-running task", agentopt.Session(session), agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "Start long-running task", agent.WithSession(session), agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v, want nil", err)
+ 		}
+@@ -976,7 +975,7 @@ func TestRunStreamingWithTaskStatusUpdateEvent(t *testing.T) {
+ 	}
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "Check task status", agentopt.Session(session), agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "Check task status", agent.WithSession(session), agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v, want nil", err)
+ 		}
+@@ -1030,7 +1029,7 @@ func TestRunStreamingWithTaskArtifactUpdateEvent(t *testing.T) {
+ 	}
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "Process artifact", agentopt.Session(session), agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "Process artifact", agent.WithSession(session), agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v, want nil", err)
+ 		}
+diff --git a/agent/provider/aguiagent/agui_test.go b/agent/provider/aguiagent/agui_test.go
+--- a/agent/provider/aguiagent/agui_test.go
++++ b/agent/provider/aguiagent/agui_test.go
+@@ -15,8 +15,8 @@ import (
+ 	aguiSSEClient "github.com/ag-ui-protocol/ag-ui/sdks/community/go/pkg/client/sse"
+ 	aguiEvents "github.com/ag-ui-protocol/ag-ui/sdks/community/go/pkg/core/events"
+ 	aguiTypes "github.com/ag-ui-protocol/ag-ui/sdks/community/go/pkg/core/types"
++	"github.com/microsoft/agent-framework-go/agent"
+ 	"github.com/microsoft/agent-framework-go/agent/provider/aguiagent"
+-	"github.com/microsoft/agent-framework-go/agentopt"
+ 	"github.com/microsoft/agent-framework-go/message"
+ 	"github.com/microsoft/agent-framework-go/tool"
+ 	"github.com/microsoft/agent-framework-go/tool/functool"
+@@ -69,7 +69,7 @@ func TestAGUIAgentRun_WithEmptyEventStream_EmitsMetadataUpdate(t *testing.T) {
+ 
+ func TestAGUIAgentCreateSession_UsesServiceIDAsThreadID(t *testing.T) {
+ 	a := aguiagent.New(newTestClient("http://localhost"), aguiagent.Config{})
+-	s, err := a.CreateSession(context.Background(), agentopt.ServiceID("thread-existing"))
++	s, err := a.CreateSession(context.Background(), agent.WithServiceID("thread-existing"))
+ 	if err != nil {
+ 		t.Fatalf("create session error: %v", err)
+ 	}
+@@ -98,11 +98,11 @@ func TestAGUIAgentRun_UsesExistingSessionServiceIDAsThreadID(t *testing.T) {
+ 	defer server.Close()
+ 
+ 	a := aguiagent.New(newTestClient(server.URL), aguiagent.Config{})
+-	session, err := a.CreateSession(context.Background(), agentopt.ServiceID("thread-existing"))
++	session, err := a.CreateSession(context.Background(), agent.WithServiceID("thread-existing"))
+ 	if err != nil {
+ 		t.Fatalf("create session error: %v", err)
+ 	}
+-	_, err = a.RunText(context.Background(), "hi", agentopt.Session(session)).Collect()
++	_, err = a.RunText(context.Background(), "hi", agent.WithSession(session)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("run error: %v", err)
+ 	}
+@@ -204,7 +204,7 @@ func TestAGUIAgentRun_InvokesTools_WhenFunctionCallsReturned(t *testing.T) {
+ 		return "Sunny", nil
+ 	})
+ 
+-	resp, err := a.RunText(context.Background(), "What's the weather?", agentopt.Stream(true), agentopt.Tool(weatherTool)).Collect()
++	resp, err := a.RunText(context.Background(), "What's the weather?", agent.Stream(true), agent.WithTool(weatherTool)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("run error: %v", err)
+ 	}
+@@ -296,7 +296,7 @@ func TestAGUIAgentRun_ForwardsAllToolResults_WhenMultipleToolCallsReturned(t *te
+ 		return "12:00", nil
+ 	})
+ 
+-	_, err := a.RunText(context.Background(), "Do both", agentopt.Stream(true), agentopt.Tool(weatherTool), agentopt.Tool(timeTool)).Collect()
++	_, err := a.RunText(context.Background(), "Do both", agent.Stream(true), agent.WithTool(weatherTool), agent.WithTool(timeTool)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("run error: %v", err)
+ 	}
+diff --git a/agent/provider/anthropicagent/agent_test.go b/agent/provider/anthropicagent/agent_test.go
+--- a/agent/provider/anthropicagent/agent_test.go
++++ b/agent/provider/anthropicagent/agent_test.go
+@@ -13,7 +13,6 @@ import (
+ 	"github.com/anthropics/anthropic-sdk-go/option"
+ 	"github.com/microsoft/agent-framework-go/agent"
+ 	"github.com/microsoft/agent-framework-go/agent/provider/anthropicagent"
+-	"github.com/microsoft/agent-framework-go/agentopt"
+ )
+ 
+ // testOutput is the structured type used across structured output tests.
+@@ -120,7 +119,7 @@ func minimalStreamingResponse(payload string) string {
+ 		`data: {"type":"message_stop"}` + "\n\n"
+ }
+ 
+-// TestStructuredOutput_NonStreaming verifies that passing agentopt.StructuredOutput
++// TestStructuredOutput_NonStreaming verifies that passing agent.WithStructuredOutput
+ // with a typed struct causes the provider to:
+ //  1. Send output_config.format with type "json_schema" and a schema derived
+ //     from the Go type.
+@@ -145,7 +144,7 @@ func TestStructuredOutput_NonStreaming(t *testing.T) {
+ 	a := newTestClient(t, server)
+ 
+ 	var out testOutput
+-	for _, err := range a.RunText(t.Context(), "get user", agentopt.StructuredOutput(&out)) {
++	for _, err := range a.RunText(t.Context(), "get user", agent.WithStructuredOutput(&out)) {
+ 		if err != nil {
+ 			t.Fatalf("unexpected error: %v", err)
+ 		}
+@@ -163,7 +162,7 @@ func TestStructuredOutput_NonStreaming(t *testing.T) {
+ }
+ 
+ // TestStructuredOutput_Streaming verifies the same guarantees as
+-// TestStructuredOutput_NonStreaming but with agentopt.Stream(true).
++// TestStructuredOutput_NonStreaming but with agent.Stream(true).
+ func TestStructuredOutput_Streaming(t *testing.T) {
+ 	const payload = `{"name":"Bob","age":25}`
+ 
+@@ -184,7 +183,7 @@ func TestStructuredOutput_Streaming(t *testing.T) {
+ 	a := newTestClient(t, server)
+ 
+ 	var out testOutput
+-	for _, err := range a.RunText(t.Context(), "get user", agentopt.StructuredOutput(&out), agentopt.Stream(true)) {
++	for _, err := range a.RunText(t.Context(), "get user", agent.WithStructuredOutput(&out), agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("unexpected error: %v", err)
+ 		}
+diff --git a/agent/provider/geminiagent/agent_test.go b/agent/provider/geminiagent/agent_test.go
+--- a/agent/provider/geminiagent/agent_test.go
++++ b/agent/provider/geminiagent/agent_test.go
+@@ -12,7 +12,6 @@ import (
+ 
+ 	"github.com/microsoft/agent-framework-go/agent"
+ 	"github.com/microsoft/agent-framework-go/agent/provider/geminiagent"
+-	"github.com/microsoft/agent-framework-go/agentopt"
+ 	"github.com/microsoft/agent-framework-go/message"
+ 	"github.com/microsoft/agent-framework-go/tool"
+ 	"github.com/microsoft/agent-framework-go/tool/functool"
+@@ -154,7 +153,7 @@ func TestBasicText_Streaming(t *testing.T) {
+ 
+ 	a := newTestClient(t, server)
+ 
+-	resp, err := a.RunText(t.Context(), "hi", agentopt.Stream(true)).Collect()
++	resp, err := a.RunText(t.Context(), "hi", agent.Stream(true)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -163,7 +162,7 @@ func TestBasicText_Streaming(t *testing.T) {
+ 	}
+ }
+ 
+-// TestStructuredOutput_NonStreaming verifies that passing agentopt.StructuredOutput
++// TestStructuredOutput_NonStreaming verifies that passing agent.WithStructuredOutput
+ // causes the provider to:
+ //  1. Send generationConfig with responseMimeType "application/json" and a
+ //     responseJsonSchema derived from the Go type.
+@@ -178,7 +177,7 @@ func TestStructuredOutput_NonStreaming(t *testing.T) {
+ 	a := newTestClient(t, server)
+ 
+ 	var out testOutput
+-	for _, err := range a.RunText(t.Context(), "get user", agentopt.StructuredOutput(&out)) {
++	for _, err := range a.RunText(t.Context(), "get user", agent.WithStructuredOutput(&out)) {
+ 		if err != nil {
+ 			t.Fatalf("unexpected error: %v", err)
+ 		}
+@@ -195,7 +194,7 @@ func TestStructuredOutput_NonStreaming(t *testing.T) {
+ }
+ 
+ // TestStructuredOutput_Streaming verifies the same guarantees as
+-// TestStructuredOutput_NonStreaming but with agentopt.Stream(true).
++// TestStructuredOutput_NonStreaming but with agent.Stream(true).
+ func TestStructuredOutput_Streaming(t *testing.T) {
+ 	const payload = `{"name":"Bob","age":25}`
+ 
+@@ -206,7 +205,7 @@ func TestStructuredOutput_Streaming(t *testing.T) {
+ 	a := newTestClient(t, server)
+ 
+ 	var out testOutput
+-	for _, err := range a.RunText(t.Context(), "get user", agentopt.StructuredOutput(&out), agentopt.Stream(true)) {
++	for _, err := range a.RunText(t.Context(), "get user", agent.WithStructuredOutput(&out), agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("unexpected error: %v", err)
+ 		}
+@@ -330,7 +329,7 @@ func TestToolCall_NonStreaming(t *testing.T) {
+ 
+ 	a := newTestClient(t, server)
+ 
+-	resp, err := a.RunText(t.Context(), "what's the weather?", agentopt.Tool(weatherTool)).Collect()
++	resp, err := a.RunText(t.Context(), "what's the weather?", agent.WithTool(weatherTool)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -945,7 +944,7 @@ func TestStreamingWithFunctionCall(t *testing.T) {
+ 
+ 	a := newTestClient(t, server)
+ 
+-	resp, err := a.RunText(t.Context(), "Weather in Paris?", agentopt.Stream(true), agentopt.Tool(weatherTool)).Collect()
++	resp, err := a.RunText(t.Context(), "Weather in Paris?", agent.Stream(true), agent.WithTool(weatherTool)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -1020,7 +1019,7 @@ func TestMultiTurnWithFunctionCalls(t *testing.T) {
+ 		return `{"price": 378.91}`, nil
+ 	})
+ 
+-	resp, err := a.Run(t.Context(), messages, agentopt.Tool(stockTool)).Collect()
++	resp, err := a.Run(t.Context(), messages, agent.WithTool(stockTool)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -1100,7 +1099,7 @@ func TestParallelFunctionCalls(t *testing.T) {
+ 		return "sunny", nil
+ 	})
+ 
+-	result, err := a.Run(t.Context(), messages, agentopt.Tool(weatherTool)).Collect()
++	result, err := a.Run(t.Context(), messages, agent.WithTool(weatherTool)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -1221,7 +1220,7 @@ func TestStreamingBasicResponse(t *testing.T) {
+ 
+ 	// Iterate streaming updates and count text chunks.
+ 	var updateCount int
+-	for update, err := range a.RunText(t.Context(), "Say hello", agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "Say hello", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("unexpected error: %v", err)
+ 		}
+@@ -1236,7 +1235,7 @@ func TestStreamingBasicResponse(t *testing.T) {
+ 	}
+ 
+ 	// Verify Collect assembles the text correctly.
+-	resp, err := a.RunText(t.Context(), "Say hello", agentopt.Stream(true)).Collect()
++	resp, err := a.RunText(t.Context(), "Say hello", agent.Stream(true)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -1280,7 +1279,7 @@ func TestStreamingMultipleChunks(t *testing.T) {
+ 
+ 	a := newTestClient(t, server)
+ 
+-	resp, err := a.RunText(t.Context(), "Count to five", agentopt.Stream(true)).Collect()
++	resp, err := a.RunText(t.Context(), "Count to five", agent.Stream(true)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+@@ -1324,7 +1323,7 @@ func TestStreamingMultipleCandidatesPerChunk(t *testing.T) {
+ 
+ 	a := newTestClient(t, server)
+ 
+-	resp, err := a.RunText(t.Context(), "Pick one stream candidate", agentopt.Stream(true)).Collect()
++	resp, err := a.RunText(t.Context(), "Pick one stream candidate", agent.Stream(true)).Collect()
+ 	if err != nil {
+ 		t.Fatalf("unexpected error: %v", err)
+ 	}
+diff --git a/agent/provider/openaichatagent/chat_test.go b/agent/provider/openaichatagent/chat_test.go
+--- a/agent/provider/openaichatagent/chat_test.go
++++ b/agent/provider/openaichatagent/chat_test.go
+@@ -13,7 +13,6 @@ import (
+ 
+ 	"github.com/microsoft/agent-framework-go/agent"
+ 	"github.com/microsoft/agent-framework-go/agent/provider/openaichatagent"
+-	"github.com/microsoft/agent-framework-go/agentopt"
+ 	"github.com/microsoft/agent-framework-go/internal/messagetest"
+ 	"github.com/microsoft/agent-framework-go/message"
+ 	"github.com/microsoft/agent-framework-go/tool"
+@@ -64,7 +63,7 @@ func newTestClient(server *httptest.Server) *agent.Agent {
+ 	return openaichatagent.New(
+ 		openai.NewClient(option.WithBaseURL(server.URL)),
+ 		openaichatagent.Config{
+-			Model: "gpt-4o-mini",
++			Model:  "gpt-4o-mini",
+ 			Config: agent.Config{DisableFuncAutoCall: true},
+ 		},
+ 	)
+@@ -249,7 +248,7 @@ data: [DONE]
+ 	for update, err := range a.RunText(t.Context(), "hello", openaichatagent.ChatCompletionNewParams(openai.ChatCompletionNewParams{
+ 		MaxCompletionTokens: openai.Int(20),
+ 		Temperature:         openai.Float(0.5),
+-	}), agentopt.Stream(true)) {
++	}), agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+ 		}
+@@ -717,7 +716,7 @@ func TestChatFunctionCallContent_NonStreaming(t *testing.T) {
+ 	}, getPersonAge)
+ 
+ 	resp, err := a.RunText(t.Context(), "How old is Alice?",
+-		agentopt.Tool(tool),
++		agent.WithTool(tool),
+ 	).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v", err)
+@@ -831,7 +830,7 @@ data: [DONE]
+ 	}, getPersonAge)
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "How old is Alice?", agentopt.Tool(tool), agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "How old is Alice?", agent.WithTool(tool), agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+ 		}
+@@ -1082,7 +1081,7 @@ data: [DONE]
+ 
+ 	var updates []*message.ResponseUpdate
+ 	// Override with gpt-4o in options
+-	for update, err := range a.RunText(t.Context(), "hello", agentopt.Stream(true),
++	for update, err := range a.RunText(t.Context(), "hello", agent.Stream(true),
+ 		openaichatagent.ChatCompletionNewParams(openai.ChatCompletionNewParams{
+ 			Model:               "gpt-4o",
+ 			MaxCompletionTokens: openai.Int(20),
+@@ -1403,9 +1402,9 @@ func TestChatMultipleRequiredFunctions(t *testing.T) {
+ 	}, getTime)
+ 
+ 	resp, err := a.RunText(t.Context(), "What's the weather and time in Seattle?",
+-		agentopt.Tool(weatherTool),
+-		agentopt.Tool(timeTool),
+-		agentopt.ToolMode(tool.RequireTools("GetWeather", "GetTime")),
++		agent.WithTool(weatherTool),
++		agent.WithTool(timeTool),
++		agent.WithToolMode(tool.RequireTools("GetWeather", "GetTime")),
+ 	).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v", err)
+diff --git a/agent/provider/openairesponsesagent/responses_test.go b/agent/provider/openairesponsesagent/responses_test.go
+--- a/agent/provider/openairesponsesagent/responses_test.go
++++ b/agent/provider/openairesponsesagent/responses_test.go
+@@ -14,7 +14,6 @@ import (
+ 
+ 	"github.com/microsoft/agent-framework-go/agent"
+ 	"github.com/microsoft/agent-framework-go/agent/provider/openairesponsesagent"
+-	"github.com/microsoft/agent-framework-go/agentopt"
+ 	"github.com/microsoft/agent-framework-go/internal/messagetest"
+ 	"github.com/microsoft/agent-framework-go/message"
+ 	"github.com/microsoft/agent-framework-go/tool"
+@@ -261,7 +260,7 @@ data: {"type":"response.completed","response":{"id":"resp_67d329fbc87c81919f8952
+ 	a := newTestResponsesClient(server, "gpt-4o-mini")
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "hello", agentopt.Stream(true),
++	for update, err := range a.RunText(t.Context(), "hello", agent.Stream(true),
+ 		openairesponsesagent.ResponsesNewParams(responses.ResponseNewParams{
+ 			MaxOutputTokens: openai.Int(20),
+ 			Temperature:     openai.Float(0.5),
+@@ -440,7 +439,7 @@ data: {"type":"response.completed","sequence_number":29,"response":{"id":"resp_6
+ 	a := newTestResponsesClient(server, "o4-mini")
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "Calculate the sum of the first 5 positive integers.", agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "Calculate the sum of the first 5 positive integers.", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+ 		}
+@@ -847,7 +846,7 @@ data: {"type":"response.completed","sequence_number":14,"response":{"id":"resp_r
+ 	a := newTestResponsesClient(server, "o4-mini")
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "Solve this problem step by step.", agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "Solve this problem step by step.", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+ 		}
+@@ -975,7 +974,7 @@ data: {"type":"response.completed","response":{"id":"resp_streaming123","object"
+ 
+ 	var updates []*message.ResponseUpdate
+ 	// Override with gpt-4o in options
+-	for update, err := range a.RunText(t.Context(), "hello", agentopt.Stream(true),
++	for update, err := range a.RunText(t.Context(), "hello", agent.Stream(true),
+ 		openairesponsesagent.ResponsesNewParams(responses.ResponseNewParams{
+ 			Model:           "gpt-4o",
+ 			MaxOutputTokens: openai.Int(20),
+@@ -1299,7 +1298,7 @@ func TestResponsesFunctionCallWithResult_NonStreaming(t *testing.T) {
+ 	}, getWeather)
+ 
+ 	resp1, err := a1.RunText(t.Context(), "What's the weather in Seattle?",
+-		agentopt.Tool(tool),
++		agent.WithTool(tool),
+ 	).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v", err)
+@@ -1350,7 +1349,7 @@ func TestResponsesFunctionCallWithResult_NonStreaming(t *testing.T) {
+ 	}
+ 
+ 	resp2, err := a2.Run(t.Context(), messages,
+-		agentopt.Tool(tool),
++		agent.WithTool(tool),
+ 	).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v", err)
+@@ -1488,7 +1487,7 @@ func TestResponsesFunctionCall_UsesCallIDWhenDifferentFromID(t *testing.T) {
+ 	}, getWeather)
+ 
+ 	resp1, err := a1.RunText(t.Context(), "What's the weather in Amsterdam?",
+-		agentopt.Tool(weatherTool),
++		agent.WithTool(weatherTool),
+ 	).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v", err)
+@@ -1535,7 +1534,7 @@ func TestResponsesFunctionCall_UsesCallIDWhenDifferentFromID(t *testing.T) {
+ 	}
+ 
+ 	resp2, err := a2.Run(t.Context(), messages,
+-		agentopt.Tool(weatherTool),
++		agent.WithTool(weatherTool),
+ 	).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v", err)
+@@ -1768,7 +1767,7 @@ data: {"type":"response.completed","response":{"id":"resp_001","object":"respons
+ 	a := newTestResponsesClient(server, "gpt-4o-mini")
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "test", agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "test", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+ 		}
+@@ -1810,7 +1809,7 @@ data: {"type":"response.failed","response":{"id":"resp_001","object":"response",
+ 	a := newTestResponsesClient(server, "gpt-4o-mini")
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "test", agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "test", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+ 		}
+@@ -1855,7 +1854,7 @@ data: {"type":"response.completed","response":{"id":"resp_001","object":"respons
+ 	a := newTestResponsesClient(server, "gpt-4o-mini")
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "test", agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "test", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+ 		}
+@@ -1907,7 +1906,7 @@ data: {"type":"response.completed","response":{"id":"resp_001","object":"respons
+ 
+ 	var updates []*message.ResponseUpdate
+ 	var errorMessages []string
+-	for update, err := range a.RunText(t.Context(), "harmful request", agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "harmful request", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+ 		}
+@@ -1995,7 +1994,7 @@ func TestResponsesCodeInterpreterTool_NonStreaming(t *testing.T) {
+ 	a := newTestResponsesClient(server, "gpt-4o-mini")
+ 
+ 	resp, err := a.RunText(t.Context(), "Calculate the sum of numbers from 1 to 5",
+-		agentopt.Tool(&hostedtool.CodeInterpreter{}),
++		agent.WithTool(&hostedtool.CodeInterpreter{}),
+ 	).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v", err)
+@@ -2102,8 +2101,8 @@ data: {"type":"response.completed","response":{"id":"resp_002","object":"respons
+ 
+ 	var updates []*message.ResponseUpdate
+ 	var allText strings.Builder
+-	for update, err := range a.RunText(t.Context(), "Calculate 3+3", agentopt.Stream(true),
+-		agentopt.Tool(&hostedtool.CodeInterpreter{}),
++	for update, err := range a.RunText(t.Context(), "Calculate 3+3", agent.Stream(true),
++		agent.WithTool(&hostedtool.CodeInterpreter{}),
+ 	) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+@@ -2156,7 +2155,7 @@ data: {"type":"response.incomplete","response":{"id":"resp_001","object":"respon
+ 	a := newTestResponsesClient(server, "gpt-4o-mini")
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "test", agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "test", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+ 		}
+@@ -2264,7 +2263,7 @@ data: {"type":"response.failed","sequence_number":2,"response":{"id":"resp_001",
+ 	a := newTestResponsesClient(server, "gpt-4o-mini")
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "test", agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "test", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+ 		}
+@@ -2466,7 +2465,7 @@ data: {"type":"response.completed","response":{"id":"resp_001","object":"respons
+ 	a := newTestResponsesClient(server, "gpt-4o-mini")
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "test", agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "test", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+ 		}
+@@ -2827,7 +2826,7 @@ data: {"type":"response.failed","sequence_number":2,"response":{"id":"resp_002",
+ 
+ 	var updates []*message.ResponseUpdate
+ 	var streamErr error
+-	for update, err := range a.RunText(t.Context(), "test", agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "test", agent.Stream(true)) {
+ 		if err != nil {
+ 			// When there's an error event in the stream, the SDK returns it as a Go error
+ 			streamErr = err
+@@ -2878,7 +2877,7 @@ data: {"type":"response.failed","sequence_number":2,"response":{"id":"resp_003",
+ 	a := newTestResponsesClient(server, "gpt-4o-mini")
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "test", agentopt.Stream(true)) {
++	for update, err := range a.RunText(t.Context(), "test", agent.Stream(true)) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+ 		}
+@@ -3933,7 +3932,7 @@ func TestResponsesConversationId_AsResponseId_NonStreaming(t *testing.T) {
+ 	defer server.Close()
+ 
+ 	a := newTestResponsesClient(server, "gpt-4o-mini")
+-	session, err := a.CreateSession(t.Context(), agentopt.ServiceID("resp_12345"))
++	session, err := a.CreateSession(t.Context(), agent.WithServiceID("resp_12345"))
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -3943,7 +3942,7 @@ func TestResponsesConversationId_AsResponseId_NonStreaming(t *testing.T) {
+ 			MaxOutputTokens: openai.Int(20),
+ 			Temperature:     openai.Float(0.5),
+ 		}),
+-		agentopt.Session(session),
++		agent.WithSession(session),
+ 	).Collect()
+ 
+ 	if err != nil {
+@@ -4000,7 +3999,7 @@ func TestResponsesConversationId_AsConversationId_NonStreaming(t *testing.T) {
+ 	defer server.Close()
+ 
+ 	a := newTestResponsesClient(server, "gpt-4o-mini")
+-	session, err := a.CreateSession(t.Context(), agentopt.ServiceID("conv_12345"))
++	session, err := a.CreateSession(t.Context(), agent.WithServiceID("conv_12345"))
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -4010,7 +4009,7 @@ func TestResponsesConversationId_AsConversationId_NonStreaming(t *testing.T) {
+ 			MaxOutputTokens: openai.Int(20),
+ 			Temperature:     openai.Float(0.5),
+ 		}),
+-		agentopt.Session(session),
++		agent.WithSession(session),
+ 	).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v", err)
+@@ -4071,18 +4070,18 @@ data: {"type":"response.completed","response":{"id":"resp_67890","object":"respo
+ 	defer server.Close()
+ 
+ 	a := newTestResponsesClient(server, "gpt-4o-mini")
+-	session, err := a.CreateSession(t.Context(), agentopt.ServiceID("resp_12345"))
++	session, err := a.CreateSession(t.Context(), agent.WithServiceID("resp_12345"))
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "hello", agentopt.Stream(true),
++	for update, err := range a.RunText(t.Context(), "hello", agent.Stream(true),
+ 		openairesponsesagent.ResponsesNewParams(responses.ResponseNewParams{
+ 			MaxOutputTokens: openai.Int(20),
+ 			Temperature:     openai.Float(0.5),
+ 		}),
+-		agentopt.Session(session),
++		agent.WithSession(session),
+ 	) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+@@ -4150,18 +4149,18 @@ data: {"type":"response.completed","response":{"id":"resp_67890","object":"respo
+ 	defer server.Close()
+ 
+ 	a := newTestResponsesClient(server, "gpt-4o-mini")
+-	session, err := a.CreateSession(t.Context(), agentopt.ServiceID("conv_12345"))
++	session, err := a.CreateSession(t.Context(), agent.WithServiceID("conv_12345"))
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.RunText(t.Context(), "hello", agentopt.Stream(true),
++	for update, err := range a.RunText(t.Context(), "hello", agent.Stream(true),
+ 		openairesponsesagent.ResponsesNewParams(responses.ResponseNewParams{
+ 			MaxOutputTokens: openai.Int(20),
+ 			Temperature:     openai.Float(0.5),
+ 		}),
+-		agentopt.Session(session),
++		agent.WithSession(session),
+ 	) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+@@ -4221,8 +4220,8 @@ func TestResponsesBackgroundResponses_FirstCall(t *testing.T) {
+ 			MaxOutputTokens: openai.Int(20),
+ 			Temperature:     openai.Float(0.5),
+ 		}),
+-		agentopt.AllowBackgroundResponses(true),
+-		agentopt.Session(session),
++		agent.AllowBackgroundResponses(true),
++		agent.WithSession(session),
+ 	).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v", err)
+@@ -4297,7 +4296,7 @@ func testResponsesBackgroundPolling(t *testing.T, status string) {
+ 
+ 	a := newTestResponsesClient(server, "gpt-4o-mini")
+ 	// Create session with ConversationID to simulate a previous call (polling scenario)
+-	session, err := a.CreateSession(t.Context(), agentopt.ServiceID("resp_68d3d2c9ef7c8195863e4e2b2ec226a205007262ecbbfed8"))
++	session, err := a.CreateSession(t.Context(), agent.WithServiceID("resp_68d3d2c9ef7c8195863e4e2b2ec226a205007262ecbbfed8"))
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+@@ -4310,9 +4309,9 @@ func testResponsesBackgroundPolling(t *testing.T, status string) {
+ 	ctJSON, _ := json.Marshal(ct)
+ 
+ 	resp, err := a.Run(t.Context(), nil,
+-		agentopt.ContinuationToken(string(ctJSON)),
+-		agentopt.AllowBackgroundResponses(true),
+-		agentopt.Session(session),
++		agent.WithContinuationToken(string(ctJSON)),
++		agent.AllowBackgroundResponses(true),
++		agent.WithSession(session),
+ 	).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v", err)
+@@ -4434,9 +4433,9 @@ data: {"type":"response.completed","sequence_number":17,"response":{"id":"resp_6
+ 
+ 	var updates []*message.ResponseUpdate
+ 	var allText strings.Builder
+-	for update, err := range a.RunText(t.Context(), "hello", agentopt.Stream(true),
+-		agentopt.AllowBackgroundResponses(true),
+-		agentopt.Session(session),
++	for update, err := range a.RunText(t.Context(), "hello", agent.Stream(true),
++		agent.AllowBackgroundResponses(true),
++		agent.WithSession(session),
+ 	) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+@@ -4538,16 +4537,16 @@ data: {"type":"response.completed","sequence_number":17,"response":{"truncation"
+ 	token := `{"response_id":"resp_68d40dc671a0819cb0ee920078333451029e611c3cc4a34b","sequence_number":9}`
+ 
+ 	// Create session with ConversationID to allow continuation
+-	session, err := a.CreateSession(t.Context(), agentopt.ServiceID("resp_68d40dc671a0819cb0ee920078333451029e611c3cc4a34b"))
++	session, err := a.CreateSession(t.Context(), agent.WithServiceID("resp_68d40dc671a0819cb0ee920078333451029e611c3cc4a34b"))
+ 	if err != nil {
+ 		t.Fatal(err)
+ 	}
+ 
+ 	var updates []*message.ResponseUpdate
+-	for update, err := range a.Run(t.Context(), []*message.Message{}, agentopt.Stream(true),
+-		agentopt.AllowBackgroundResponses(true),
+-		agentopt.ContinuationToken(token),
+-		agentopt.Session(session),
++	for update, err := range a.Run(t.Context(), []*message.Message{}, agent.Stream(true),
++		agent.AllowBackgroundResponses(true),
++		agent.WithContinuationToken(token),
++		agent.WithSession(session),
+ 	) {
+ 		if err != nil {
+ 			t.Fatalf("error = %v", err)
+@@ -4614,7 +4613,7 @@ func TestResponsesGetContinuationToken_WithMessages_ThrowsException(t *testing.T
+ 
+ 	// Attempt to use continuation token with messages should error
+ 	_, err := a.RunText(t.Context(), "test",
+-		agentopt.ContinuationToken(token),
++		agent.WithContinuationToken(token),
+ 	).Collect()
+ 
+ 	if err == nil {
+@@ -4639,9 +4638,9 @@ func TestResponsesBackgroundResponses_PollingCall_WithMessages(t *testing.T) {
+ 
+ 	// A try to update a background response with new messages should fail
+ 	_, err = a.RunText(t.Context(), "Please book hotel as well",
+-		agentopt.Session(session),
+-		agentopt.ContinuationToken(token),
+-		agentopt.AllowBackgroundResponses(true),
++		agent.WithSession(session),
++		agent.WithContinuationToken(token),
++		agent.AllowBackgroundResponses(true),
+ 	).Collect()
+ 
+ 	if err == nil {
+@@ -4666,10 +4665,10 @@ func TestResponsesBackgroundResponses_StreamResumption_WithMessages(t *testing.T
+ 
+ 	// Attempt to resume stream with messages should fail
+ 	for _, err := range a.RunText(t.Context(), "Please book a hotel for me",
+-		agentopt.Session(session),
+-		agentopt.AllowBackgroundResponses(true),
+-		agentopt.ContinuationToken(token),
+-		agentopt.Stream(true)) {
++		agent.WithSession(session),
++		agent.AllowBackgroundResponses(true),
++		agent.WithContinuationToken(token),
++		agent.Stream(true)) {
+ 		if err == nil {
+ 			t.Fatal("expected error when using continuation token with messages in streaming")
+ 		}
+@@ -4815,9 +4814,9 @@ func TestResponsesMultipleRequiredFunctions(t *testing.T) {
+ 	}, getTime)
+ 
+ 	resp, err := a.RunText(t.Context(), "What's the weather and time in Seattle?",
+-		agentopt.Tool(weatherTool),
+-		agentopt.Tool(timeTool),
+-		agentopt.ToolMode(tool.RequireTools("GetWeather", "GetTime")),
++		agent.WithTool(weatherTool),
++		agent.WithTool(timeTool),
++		agent.WithToolMode(tool.RequireTools("GetWeather", "GetTime")),
+ 	).Collect()
+ 	if err != nil {
+ 		t.Fatalf("error = %v", err)
+diff --git a/internal/agenttest/agenttest.go b/internal/agenttest/agenttest.go
+--- a/internal/agenttest/agenttest.go
++++ b/internal/agenttest/agenttest.go
+@@ -8,22 +8,20 @@ import (
+ 	"iter"
+ 
+ 	"github.com/microsoft/agent-framework-go/agent"
+-	"github.com/microsoft/agent-framework-go/agentopt"
+ 	"github.com/microsoft/agent-framework-go/memory"
+ 	"github.com/microsoft/agent-framework-go/message"
+-	"github.com/microsoft/agent-framework-go/middleware"
+ )
+ 
+ type Turn struct {
+-	Callbacks []func(context.Context, []*message.Message, ...agentopt.Option)
++	Callbacks []func(context.Context, []*message.Message, ...agent.Option)
+ 	Responses []Response
+ }
+ 
+ type ResponseBuilder struct {
+ 	turns []Turn
+ }
+ 
+-func NewResponseBuilder(firstTurnCallbacks ...func(ctx context.Context, messages []*message.Message, opts ...agentopt.Option)) *ResponseBuilder {
++func NewResponseBuilder(firstTurnCallbacks ...func(ctx context.Context, messages []*message.Message, opts ...agent.Option)) *ResponseBuilder {
+ 	return &ResponseBuilder{
+ 		turns: []Turn{{
+ 			Responses: []Response{},
+@@ -32,7 +30,7 @@ func NewResponseBuilder(firstTurnCallbacks ...func(ctx context.Context, messages
+ 	}
+ }
+ 
+-func (rb *ResponseBuilder) NewTurn(callbacks ...func(ctx context.Context, messages []*message.Message, opts ...agentopt.Option)) *ResponseBuilder {
++func (rb *ResponseBuilder) NewTurn(callbacks ...func(ctx context.Context, messages []*message.Message, opts ...agent.Option)) *ResponseBuilder {
+ 	rb.turns = append(rb.turns, Turn{
+ 		Callbacks: callbacks,
+ 		Responses: []Response{},
+@@ -110,7 +108,7 @@ func New(responses []Turn) *agent.Agent {
+ 	})
+ }
+ 
+-func (a *testagent) run(ctx context.Context, messages []*message.Message, opts ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++func (a *testagent) run(ctx context.Context, messages []*message.Message, opts ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 	return func(yield func(*message.ResponseUpdate, error) bool) {
+ 		defer func() { a.currentTurn++ }()
+ 		if a.currentTurn >= len(a.responses) {
+@@ -128,7 +126,7 @@ func (a *testagent) run(ctx context.Context, messages []*message.Message, opts .
+ 	}
+ }
+ 
+-func (a *testagent) createSession(_ context.Context, opts ...agentopt.Option) (*memory.Session, error) {
++func (a *testagent) createSession(_ context.Context, opts ...agent.Option) (*memory.Session, error) {
+ 	return memory.NewSession(""), nil
+ }
+ 
+@@ -165,7 +163,7 @@ func (m *Middleware) Called() bool {
+ 	return m.called
+ }
+ 
+-func (m *Middleware) Run(next middleware.RunFunc, ctx context.Context, messages []*message.Message, opts ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++func (m *Middleware) Run(next agent.RunFunc, ctx context.Context, messages []*message.Message, opts ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 	m.called = true
+ 	return func(yield func(*message.ResponseUpdate, error) bool) {
+ 		defer func() { m.currentTurn++ }()
+@@ -199,7 +197,7 @@ type Runner struct {
+ 	currentTurn int
+ }
+ 
+-func (r *Runner) Run(ctx context.Context, messages []*message.Message, opts ...agentopt.Option) iter.Seq2[*message.ResponseUpdate, error] {
++func (r *Runner) Run(ctx context.Context, messages []*message.Message, opts ...agent.Option) iter.Seq2[*message.ResponseUpdate, error] {
+ 	return func(yield func(*message.ResponseUpdate, error) bool) {
+ 		defer func() { r.currentTurn++ }()
+ 		if r.currentTurn >= len(r.Responses) {
+EOF_114329324912
+if [ -s "$TEST_PATCH_FILE" ]; then
+  git apply -v "$TEST_PATCH_FILE"
+fi
+rm -f "$TEST_PATCH_FILE"
+
+# Verify deleted-by-patch files are absent (none in this task, but keep logic)
+for f in "${DELETED_TEST_PATCH_FILES[@]}"; do
+  rm -f "$f"
+  if [ -e "$f" ]; then
+    echo "ERROR: deleted test patch file still exists: $f"
+    exit 2
+  fi
+done
+
+# Determine target packages (directories) from runnable files that exist after patch.
+TARGET_PKGS=()
+declare -A SEEN_PKG=()
+for f in "${RUNNABLE_TEST_FILES[@]}"; do
+  if [ -f "$f" ]; then
+    d="./$(dirname "$f")"
+    if [[ -z "${SEEN_PKG[$d]+x}" ]]; then
+      TARGET_PKGS+=("$d")
+      SEEN_PKG["$d"]=1
+    fi
+  fi
+done
+
+# If no runnable targets exist after patch, run a small regression suite.
+if [ "${#TARGET_PKGS[@]}" -eq 0 ]; then
+  set +e
+  go test -p 1 ./...
+  rc=$?
+  set -e
+  echo "OMNIGRIL_EXIT_CODE=$rc"
+  exit $rc
+fi
+
+# Run tests package-by-package to avoid cross-package resource conflicts.
+# Capture per-package pass/fail and then map to per-file status.
+set +e
+PKG_RESULTS_FILE="$(mktemp)"
+: > "$PKG_RESULTS_FILE"
+rc=0
+
+for pkg in "${TARGET_PKGS[@]}"; do
+  echo "=== RUN_PACKAGE $pkg ==="
+  go test -p 1 -count=1 -json "$pkg" | tee "go-test-$(echo "$pkg" | tr '/.' '__').json"
+  pkg_rc=${PIPESTATUS[0]}
+  if [ $pkg_rc -ne 0 ]; then
+    rc=1
+  fi
+  if [ $pkg_rc -eq 0 ]; then
+    echo "$pkg PASS" >> "$PKG_RESULTS_FILE"
+  else
+    echo "$pkg FAIL" >> "$PKG_RESULTS_FILE"
+  fi
+done
+
+# Print per-file status (normalized by directory package).
+echo "=== TARGET_FILE_RESULTS ==="
+for f in "${RUNNABLE_TEST_FILES[@]}"; do
+  if [ ! -f "$f" ]; then
+    echo "$f SKIP (missing after patch)"
+    continue
+  fi
+  pkg="./$(dirname "$f")"
+  status="$(awk -v p="$pkg" '$1==p {print $2; exit}' "$PKG_RESULTS_FILE")"
+  if [ -z "$status" ]; then
+    # Should not happen, but keep deterministic output.
+    echo "$f UNKNOWN"
+  else
+    echo "$f $status"
+  fi
+done
+
+rm -f "$PKG_RESULTS_FILE"
+set -e
+
+echo "OMNIGRIL_EXIT_CODE=$rc"
+set +e
+
+# Cleanup: reset runnable files back to base commit state (or remove if not in base).
+for f in "${RUNNABLE_TEST_FILES[@]}"; do
+  if git cat-file -e "${BASE_SHA}:$f" 2>/dev/null; then
+    git checkout "${BASE_SHA}" -- "$f"
+  else
+    rm -f "$f"
+  fi
+done
+exit $rc

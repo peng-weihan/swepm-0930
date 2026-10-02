@@ -1,0 +1,191 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch test/main/services/team/ChangeExtractorService.test.ts...
+error: test/main/services/team/ChangeExtractorService.test.ts: already exists in working directory
+Checking patch test/main/services/team/TaskBoundaryParser.test.ts...
+Checking patch test/main/services/team/TeamMcpConfigBuilder.test.ts...
+Checking patch test/renderer/store/changeReviewSlice.test.ts...
+Checking patch test/renderer/store/extensionsSlice.test.ts...
+Checking patch test/renderer/utils/taskChangeRequest.test.ts...
+Checking patch test/shared/utils/extensionNormalizers.test.ts...
+The next patch would create the file test/main/services/team/ChangeExtractorService.test.ts,
+which already exists!  Assuming -R.
+patching file test/main/services/team/ChangeExtractorService.test.ts
+Hunk #1 FAILED at 1.
+Not deleting file test/main/services/team/ChangeExtractorService.test.ts as content differs from patch
+1 out of 1 hunk FAILED -- saving rejects to file test/main/services/team/ChangeExtractorService.test.ts.rej
+patching file test/main/services/team/TaskBoundaryParser.test.ts
+patching file test/main/services/team/TeamMcpConfigBuilder.test.ts
+patching file test/renderer/store/changeReviewSlice.test.ts
+patching file test/renderer/store/extensionsSlice.test.ts
+patching file test/renderer/utils/taskChangeRequest.test.ts
+patching file test/shared/utils/extensionNormalizers.test.ts
+
+ RUN  v3.2.4 /testbed
+
+8:04:40 PM [vite] warning: Duplicate key "source" in object literal
+46 |    hasHooks: false,
+47 |    isExternal: false,
+48 |    source: 'official',
+   |    ^
+49 |    installCount: 100,
+50 |    isInstalled: false,
+
+  Plugin: vite:esbuild
+  File: /testbed/test/renderer/store/extensionsSlice.test.ts
+8:04:40 PM [vite] warning: Duplicate key "source" in object literal
+49 |      hasHooks: false,
+50 |      isExternal: false,
+51 |      source: 'official',
+   |      ^
+52 |      ...overrides,
+53 |    });
+
+  Plugin: vite:esbuild
+  File: /testbed/test/shared/utils/extensionNormalizers.test.ts
+ ✓ test/shared/utils/extensionNormalizers.test.ts (22 tests) 9ms
+ ✓ test/main/services/team/TaskBoundaryParser.test.ts (3 tests) 12ms
+ ✓ test/renderer/store/changeReviewSlice.test.ts (3 tests) 65ms
+ ❯ test/main/services/team/TeamMcpConfigBuilder.test.ts (5 tests | 1 failed) 79ms
+   ✓ TeamMcpConfigBuilder > prefers the source MCP entry when workspace source is available 7ms
+   × TeamMcpConfigBuilder > merges top-level user MCP with generated agent-teams config 64ms
+     → expected [ 'agent-teams' ] to deeply equal [ 'agent-teams', …(2) ]
+   ✓ TeamMcpConfigBuilder > does not inline project MCP config to preserve native Claude precedence 2ms
+   ✓ TeamMcpConfigBuilder > generated agent-teams server overrides same-named user MCP entry 2ms
+   ✓ TeamMcpConfigBuilder > ignores malformed user MCP file 2ms
+ ❯ test/main/services/team/ChangeExtractorService.test.ts (7 tests | 4 failed) 24ms
+   × ChangeExtractorService > getTaskChanges cache scoping > does not reuse an empty result cached for a different owner 13ms
+     → expected [] to have a length of 1 but got +0
+   ✓ ChangeExtractorService > getTaskChanges cache scoping > serves identical repeated scope requests from cache 2ms
+   ✓ ChangeExtractorService > getTaskChanges cache scoping > distinguishes cache entries by since timestamp 1ms
+   ✓ ChangeExtractorService > getTaskChanges cache scoping > distinguishes cache entries by intervals and status 1ms
+   × ChangeExtractorService > getTaskChanges cache scoping > does not serve summaryOnly results for detailed requests and vice versa 2ms
+     → Target cannot be null or undefined.
+   × ChangeExtractorService > Windows path equivalence in fallback aggregation > merges equivalent paths with different separators and drive-letter casing 2ms
+     → expected [] to have a length of 1 but got +0
+   × ChangeExtractorService > Windows path equivalence in fallback aggregation > merges mixed-case drive letters within a single log file 2ms
+     → expected [] to have a length of 1 but got +0
+ ✓ test/renderer/store/extensionsSlice.test.ts (15 tests) 97ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/renderer/utils/taskChangeRequest.test.ts [ test/renderer/utils/taskChangeRequest.test.ts ]
+Error: Failed to resolve import "@renderer/utils/taskChangeRequest" from "test/renderer/utils/taskChangeRequest.test.ts". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /testbed/test/renderer/utils/taskChangeRequest.test.ts:7:7
+  4  |    buildTaskChangeRequestOptions,
+  5  |    deriveTaskSince
+  6  |  } from "@renderer/utils/taskChangeRequest";
+     |          ^
+  7  |  describe("taskChangeRequest", () => {
+  8  |    it("derives since from the earliest known task timestamp with grace window", () => {
+ ❯ TransformPluginContext._formatError node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41
+ ❯ TransformPluginContext.error node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16
+ ❯ normalizeUrl node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23
+ ❯ node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+ ❯ TransformPluginContext.transform node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7
+ ❯ PluginContainer.transform node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18
+ ❯ loadAndTransform node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/main/services/team/ChangeExtractorService.test.ts > ChangeExtractorService > getTaskChanges cache scoping > does not reuse an empty result cached for a different owner
+AssertionError: expected [] to have a length of 1 but got +0
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1[39m
+[31m+ 0[39m
+
+ ❯ test/main/services/team/ChangeExtractorService.test.ts:114:33
+    112|       // Alice must NOT receive bob's cached empty result
+    113|       const aliceResult = await service.getTaskChanges('team-a', '1', …
+    114|       expect(aliceResult.files).toHaveLength(1);
+       |                                 ^
+    115|       expect(aliceResult.files[0]?.relativePath).toBe('src/app.ts');
+    116|     });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯
+
+ FAIL  test/main/services/team/ChangeExtractorService.test.ts > ChangeExtractorService > getTaskChanges cache scoping > does not serve summaryOnly results for detailed requests and vice versa
+AssertionError: Target cannot be null or undefined.
+ ❯ test/main/services/team/ChangeExtractorService.test.ts:178:42
+    176|         summaryOnly: true,
+    177|       });
+    178|       expect(summary.files[0]?.snippets).toHaveLength(0);
+       |                                          ^
+    179|       expect(summary.files[0]?.timeline).toBeUndefined();
+    180| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯
+
+ FAIL  test/main/services/team/ChangeExtractorService.test.ts > ChangeExtractorService > Windows path equivalence in fallback aggregation > merges equivalent paths with different separators and drive-letter casing
+AssertionError: expected [] to have a length of 1 but got +0
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1[39m
+[31m+ 0[39m
+
+ ❯ test/main/services/team/ChangeExtractorService.test.ts:220:28
+    218|       const result = await service.getTaskChanges('team-a', 'task-1');
+    219| 
+    220|       expect(result.files).toHaveLength(1);
+       |                            ^
+    221|       const file = result.files[0]!;
+    222|       expect(file.relativePath).toBe('src/same.ts');
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯
+
+ FAIL  test/main/services/team/ChangeExtractorService.test.ts > ChangeExtractorService > Windows path equivalence in fallback aggregation > merges mixed-case drive letters within a single log file
+AssertionError: expected [] to have a length of 1 but got +0
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1[39m
+[31m+ 0[39m
+
+ ❯ test/main/services/team/ChangeExtractorService.test.ts:252:28
+    250|       const result = await service.getTaskChanges('team-a', 'task-1');
+    251| 
+    252|       expect(result.files).toHaveLength(1);
+       |                            ^
+    253|       expect(result.files[0]?.relativePath).toBe('src/same.ts');
+    254|       expect(result.files[0]?.snippets).toHaveLength(2);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯
+
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > merges top-level user MCP with generated agent-teams config
+AssertionError: expected [ 'agent-teams' ] to deeply equal [ 'agent-teams', …(2) ]
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[2m    "agent-teams",[22m
+[32m-   "duplicateServer",[39m
+[32m-   "globalOnly",[39m
+[2m  ][22m
+
+ ❯ test/main/services/team/TeamMcpConfigBuilder.test.ts:104:51
+    102|     };
+    103| 
+    104|     expect(Object.keys(parsed.mcpServers).sort()).toEqual([
+       |                                                   ^
+    105|       'agent-teams',
+    106|       'duplicateServer',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯
+
+
+ Test Files  3 failed | 4 passed (7)
+      Tests  5 failed | 50 passed (55)
+   Start at  20:04:34
+   Duration  6.89s (transform 1.12s, setup 193ms, collect 2.34s, tests 286ms, environment 3.77s, prepare 5.55s)
+
+OMNIGRIL_EXIT_CODE=1

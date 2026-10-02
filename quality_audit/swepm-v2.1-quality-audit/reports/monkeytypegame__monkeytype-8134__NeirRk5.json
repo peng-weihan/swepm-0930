@@ -1,0 +1,70 @@
+{
+  "instance_id": "monkeytypegame__monkeytype-8134",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.85,
+  "gold_patch_assessment": "The gold patch provides infrastructure changes: renames keymapShowTopRow to keymapKeys in schemas/configs, exports KeyLegends type from layouts schema, removes old keymap.scss/keymap.ts/event-handlers, creates modifiers.ts for centralized modifier state, updates config migration logic, and bumps tailwindcss/package versions. However, the core convertLayoutToKeymap API and keymapLayouts data—the primary deliverable described in the issue—are NOT in the gold patch. They are bundled into the test patch instead. The gold patch addresses the stated issue only partially; it handles the scaffolding and cleanup but not the main converter logic.",
+  "base_vs_gold_expectation": "The base should be rejected: (1) KeyLegends type does not exist in base schemas, so keymapConverter.ts from the test patch won't compile; (2) modifiers.ts does not exist, so test patch changes to shift-tracker.ts, Keymap.tsx, and test-logic.ts won't compile; (3) the config-metadata test expects keymapKeys with value minimal_numrow, but base still has keymapShowTopRow with value always. With the gold patch applied, these dependencies are satisfied and the test patch can apply and build cleanly.",
+  "too_narrow_risks": [
+    "The keymapConverter.spec.ts test (17 test cases, ~1127 lines) comprehensively tests convertLayoutToKeymap, but this function is provided by the TEST PATCH, not by the candidate. It validates test-patch-provided code, not candidate work.",
+    "The config-metadata.spec.ts test only verifies a small rename (keymapShowTopRow -> keymapKeys), which is a minor part of the gold patch.",
+    "No tests verify the new modifiers.ts (centralized modifier state, resetModifierState), which is a key part of the gold patch.",
+    "No tests for the layout emulator integration changes (getCharFromEvent using __nonReactive.getKeymapLayout).",
+    "No tests for the config migration logic (keymapShowTopRow values mapping to keymapKeys values).",
+    "No tests for the removal of old keymap.scss, old keymap.ts elements, or old alt-tracker.ts.",
+    "The build acting as an implicit test is the main mechanism catching missing gold-patch changes—if it compiles, most of the gold patch changes are likely present. But build success is a weak test."
+  ],
+  "too_broad_risks": [
+    "The eval.sh runs pnpm run build-fe before tests, which builds the entire frontend. Build failures from unrelated dependency issues or transient pnpm problems could cause false negatives."
+  ],
+  "implementation_coupling": [
+    "The test patch creates keymapConverter.ts, keymapLayouts.ts, and Keymap.tsx as new files. Any candidate who writes these files themselves will cause the test patch to fail to apply (git apply conflict on existing files). The fallback patch --fuzz=5 may or may not resolve this.",
+    "The test patch hardcodes the exact API shape: convertLayoutToKeymap(layout, options) returning KeyboardDefinition (array of arrays of KeyDefinition). Any alternative module structure or API design is rejected.",
+    "The keymapConverter.spec.ts tests exact object shapes with toEqual, including specific property names (legends, width, x, y, rotation, isHoming, isLayoutIndicator, height, align). Alternative data representations would fail.",
+    "The test imports specific named exports from keymapLayouts.ts (Shift, Ctrl, Alt, Meta, Hyper, HyperShort, BackspaceShort, EnterShort) which are test-patch-provided constants. This couples tests to the test patch's implementation."
+  ],
+  "environment_risks": [
+    "pnpm run build-fe must succeed, which depends on the pnpm-lock.yaml changes in the gold patch (tailwindcss 4.1.18 -> 4.3.2, @tailwindcss/vite 4.2.1 -> 4.3.2). If pnpm install or the build fails due to registry/network issues, the test fails independently of the solution.",
+    "The test patch modifies vitest.config.ts to add mock-static.ts setup file; if the vitest configuration is sensitive to execution order, tests could be flaky.",
+    "The mock-static.ts reads JSON files from the filesystem (static/layouts/*.json). If the layout files are missing or changed, tests break."
+  ],
+  "mismatches": [
+    "The issue description says candidates must 'expose and correctly use a convertLayoutToKeymap(layout, options) API', but this API is provided by the test patch, not expected from the candidate. The gold patch does not contain this function.",
+    "The issue mentions modifier tracking should 'remain correct after the refactor' and 'restarting a test must reset modifier state', but no tests verify this behavior.",
+    "The issue mentions getCharFromEvent should use the active keymap layout state, but no tests verify the layout emulator integration.",
+    "The issue says the frontend test environment should load static layout JSON during Vitest runs. This capability is provided by the test patch (mock-static.ts), not tested as a candidate deliverable.",
+    "The category in task.toml is 'debugging' but this is clearly a refactoring/feature task."
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 1531-1636: test patch creates keymapConverter.ts (100 lines of implementation code that the spec tests). Lines 1636-2161: test patch creates keymapLayouts.ts (520 lines of layout data). Lines 1232-1531: test patch creates Keymap.tsx (300 lines of UI component). Total ~920 lines of implementation in test patch."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 49-1180: keymapConverter.spec.ts with 17 test cases tests convertLayoutToKeymap from keymapConverter.ts—a file created by the test patch itself."
+    },
+    {
+      "file": "/testbed/packages/schemas/src/layouts.ts",
+      "detail": "KeyLegends type does not exist in base (grep returns empty). Gold patch adds it at line 1776 of solve.sh. Without it, test patch's keymapConverter.ts won't compile."
+    },
+    {
+      "file": "/testbed/frontend/src/ts/config/metadata.tsx",
+      "detail": "Base has keymapShowTopRow, gold patch renames to keymapKeys. Test patch's config-metadata.spec.ts expects keymapKeys."
+    },
+    {
+      "file": "/testbed/frontend/src/ts/states/modifiers.ts",
+      "detail": "Does not exist in base. Created by gold patch (solve.sh line 1603). Test patch imports getModifierState and resetModifierState from it in 3 places."
+    },
+    {
+      "file": "/audit_tasks/monkeytypegame__monkeytype-8134/tests/eval.sh",
+      "detail": "Only runs keymapConverter.spec.ts and config-metadata.spec.ts. The keymapConverter spec tests code from the test patch; config-metadata tests a small rename from the gold patch."
+    },
+    {
+      "file": "/audit_tasks/monkeytypegame__monkeytype-8134/task.toml",
+      "detail": "Category is 'debugging' but the task is clearly a refactoring/feature implementation."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The test patch bundles ~920 lines of implementation code (keymapConverter.ts, keymapLayouts.ts, Keymap.tsx) that should be candidate-written according to the issue description. The comprehensive keymapConverter.spec.ts (17 tests) validates this test-patch-provided code rather than candidate work. The actual gold-patch changes (schema type exports, config renames, modifiers.ts, old file removal) are tested only indirectly through build success and one small config-metadata test. A candidate who provides only the schema/config infrastructure changes (but NOT the converter API the issue requests) would pass. Conversely, a candidate who writes their own keymapConverter.ts would conflict with the test patch. The tests should be revised to either: (a) move the implementation files out of the test patch so candidates must provide them, or (b) add tests that directly verify gold-patch-specific behaviors (modifier state, config migration, layout emulator integration)."
+}

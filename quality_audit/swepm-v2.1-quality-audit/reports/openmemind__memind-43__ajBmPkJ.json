@@ -1,0 +1,63 @@
+{
+  "instance_id": "openmemind__memind-43",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch addresses the stated issue. It (1) adds MemindServerCorsConfiguration for open CORS on all endpoints, (2) refactors MemoryOptionsProjectionMapper to group options by UI-friendly sub-group keys (extraction.common, extraction.itemGraph, retrieval.simple, etc.) instead of flat top-level groups (extraction, retrieval), (3) changes type names from 'number'→'double', 'duration'→'string', 'enum'→'string' for frontend-editable type names, (4) removes the 'group' field from OptionDefinition in favor of a groupForKey() method, (5) adds the entire memind-ui Vite React application (~12K+ lines of frontend code), and (6) excludes memind-ui from Maven license checks in root pom.xml. All requirements from the issue are addressed.",
+  "base_vs_gold_expectation": "The test patch should correctly reject the unmodified base: (1) MemindServerCorsConfigurationTest imports MemindServerCorsConfiguration which does not exist in the base, causing compilation failure; (2) all modified test assertions expect the new group key format (e.g., 'extraction.common' instead of 'extraction') which the base code does not produce. With the gold patch applied, all tests should pass since the CORS class is created and the grouping/type changes are implemented.",
+  "too_narrow_risks": [
+    "The eval.sh only runs 5 Java/Maven test classes. The test patch includes 20 memind-ui frontend test files (vitest tests for components, hooks, api-client, etc.) that are NEVER executed by the eval.sh runner. The UI is the bulk of the issue and the gold patch (~12K of 13K lines).",
+    "No test for the memind-ui Vite application existing, building, or being functional — despite it being the primary deliverable of the issue.",
+    "No test that the pnpm-based dev server works or that Vite proxy configuration is correct.",
+    "No test for the mock API mode (VITE_MEMIND_MOCK_API=true).",
+    "No test that the pom.xml license exclusion for memind-ui actually prevents Maven license check failures on UI files.",
+    "No test for the memind-ui README.md documenting local setup and local-only/no-auth warning.",
+    "The CORS tests only test against /open/v1/health — no verification that CORS applies to /admin endpoints as well.",
+    "No test that credentials are not allowed (the unit test checks allowCredentials=false, but the preflight MockMvc test doesn't assert on Access-Control-Allow-Credentials)."
+  ],
+  "too_broad_risks": [
+    "MemindServerIntegrationTest is a broader integration test that boots the full Spring context; if unrelated test methods in this class fail for environmental reasons, it could produce false negatives."
+  ],
+  "implementation_coupling": [
+    "MemindServerCorsConfigurationTest directly calls MemindServerCorsConfiguration.openCorsConfiguration() — tightly coupled to the gold patch's exact class name and static method name. An alternative implementation using a different class name (e.g., WebCorsConfig, CorsConfig) or different internal structure (e.g., inline @Bean without a static helper) would fail this test.",
+    "MemindServerCorsConfigurationTest instantiates new MemindServerCorsConfiguration().corsFilter() — coupled to the exact bean method name and class constructor.",
+    "Test assertions for group keys (e.g., 'extraction.common', 'extraction.itemGraph') are tied to the specific groupForKey() mapping in the gold implementation. An alternative valid grouping scheme (e.g., 'extraction.graph' instead of 'extraction.itemGraph') would fail."
+  ],
+  "environment_risks": [
+    "The eval.sh compile step (mvn compile) and test step (mvn test) require all Maven dependencies to be pre-cached in the Docker image; a cold Maven cache with no network would cause build failures unrelated to the solution.",
+    "The 3600-second verifier timeout should be sufficient for Maven build+test, but a cold build on 4 CPUs with 24GB RAM could approach limits for this large Java project.",
+    "MemindServerIntegrationTest boots a full Spring context with an embedded database; environmental issues like disk space or SQLite native library availability could cause failures."
+  ],
+  "mismatches": [
+    "The issue instruction describes a full memind-ui application as the primary deliverable (paragraphs 1-2 of 5), but the eval.sh tests exclusively cover server-side Java changes (CORS, option grouping, type names). The 20 UI test files in the test patch are completely unused.",
+    "The task.toml categorizes this as 'debugging' but the issue is clearly a feature implementation (new UI + server changes)."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/openmemind__memind-43/tests/eval.sh",
+      "detail": "eval.sh line 48: only runs Java Maven tests (MemindServerIntegrationTest, MemindServerCorsConfigurationTest, MemoryOptionsControllerTest, MemoryOptionServiceTest, MemoryOptionsProjectionMapperTest). No frontend test execution."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "20 diff entries for memind-ui test files (sidebar-data.test.ts, buffers-page.test.tsx, config-page.test.tsx, dashboard-page.test.tsx, etc.) that are never run by eval.sh."
+    },
+    {
+      "file": "/audit_tasks/openmemind__memind-43/instruction.md",
+      "detail": "Paragraphs 1-2 describe the memind-ui Vite React app as the main deliverable; paragraph 3 describes CORS; paragraphs 4-5 describe option grouping and type names. Tests only cover paragraphs 3-5."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 54-82: MemindServerCorsConfigurationTest directly references gold implementation class MemindServerCorsConfiguration and its openCorsConfiguration() method."
+    },
+    {
+      "file": "/audit_tasks/openmemind__memind-43/task.toml",
+      "detail": "category is 'debugging' but the issue is a feature implementation."
+    },
+    {
+      "file": "/audit_tasks/openmemind__memind-43/solution/solve.sh",
+      "detail": "Gold patch is ~13K lines, with ~12K lines being the memind-ui React app and ~1K lines being server-side Java changes. Only the Java changes are tested."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch correctly addresses the issue, and the Java-side tests properly verify CORS configuration, option grouping changes, and type name changes. However, the eval.sh only runs Java/Maven tests, completely ignoring the 20 memind-ui frontend test files included in the test patch. Since the UI application is the primary deliverable (~90% of the gold patch by line count and the main topic of the issue), this creates a severe test coverage gap: a candidate solution that implements only the server-side changes but omits the entire React application would pass all tests. The CORS test is also tightly coupled to the gold implementation's class and method names. The task metadata incorrectly categorizes this as 'debugging'. Recommend revising tests to either execute the frontend tests or add verification that the memind-ui directory and key files exist."
+}

@@ -1,0 +1,69 @@
+{
+  "instance_id": "katspaugh__wavesurfer.js-4340",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch is a massive 3300+ line change touching 26 files. It addresses all items in the instruction: BasePlugin.destroy() idempotency and protected destroyed flag, reactive store enhancements (batch(), computed().dispose(), auto-tracking, error isolation, re-entrant settling), a new Scope disposal-tree primitive, WaveSurfer event deduplication, reactive state accuracy (zoom, peaks, audioBuffer, duration handling), createWaveSurferState().dispose(), WebAudio error events, destroy-time cleanup across 7+ plugins, and deletion of 5 unused internal modules. The patch is technically correct and comprehensive for the stated requirements.",
+  "base_vs_gold_expectation": "Tests should reliably FAIL on the unmodified base: scope.test.ts imports from '../scope.js' which does not exist, store.test.ts imports 'batch' which is not exported, base-plugin tests assert destroyed getter returns false (undefined on base), destroy idempotency tests fail because base emits destroy unconditionally, wavesurfer-state tests call dispose() which does not exist, webaudio tests check error event/property which do not exist. With the gold patch applied, all new APIs and behaviors exist and tests should pass.",
+  "too_narrow_risks": [
+    "Some plugin tests only verify a single scenario for complex behaviors (e.g., spectrogram-destroy has one async continuation test, one buffer release test, one instance-specific maxCanvasWidth test)",
+    "The re-entrant settling test (store v2) only tests depth-1 re-entrancy (v=1 sets v=2); deeper or multi-signal re-entrancy chains are not tested",
+    "No test verifies that subscriber errors are reported (console.error) - only that later subscribers still run",
+    "The event deduplication tests (wavesurfer.test.ts) only check single-event dispatch, not rapid consecutive dispatches or concurrent event types"
+  ],
+  "too_broad_risks": [
+    "The instance bundles ~15 distinct issues into one compound task spanning 26 source files and 18 test files - this is effectively an entire feature branch, not a single issue",
+    "A candidate must implement ALL changes correctly to pass: a correct fix for 14 of 15 sub-issues would still fail the test suite",
+    "The test patch deletes tests for removed modules (map, filter, debounce, throttle from event-streams) and entirely deletes 5 test files for removed modules, which constrains the solution space beyond fixing bugs - it requires the same architectural decisions about module deletion",
+    "The 18-file test suite makes partial credit impossible: any single test file failure means total failure"
+  ],
+  "implementation_coupling": [
+    "scope.test.ts is entirely coupled to the gold's Scope class API: requires Scope constructor, .add(), .child(), .dispose(), .listen(), .timeout(), .abortSignal(), .observeResize(), and .disposed getter at specific import path '../scope.js'",
+    "memory-leaks tests access (ws as any).scope and check .disposed property, coupling to the exact internal field name and Scope API",
+    "renderer.test.ts checks (renderer as any).scope.disposed, (renderer as any).scrollRenderScope.disposed, (renderer as any).delayScope.disposed - three internal field names",
+    "envelope-leaks tests access (plugin as any).polylineSubscriptions.length and (plugin as any).initPolyline() - internal method and field names",
+    "timeline tests check (plugin as any).notchElements.size and (plugin as any).currentTimeline - internal cache field names",
+    "spectrogram-windowed tests access (plugin as any).maxRetainedSegments, (plugin as any).segments, (plugin as any).buffer, (plugin as any).isProgressiveLoading, and mock (plugin as any).generateSegments",
+    "minimap test calls (plugin as any).destroyMinimap() - internal method name",
+    "regions test checks region.subscriptions.length to verify no accumulation - internal array field",
+    "wavesurfer-state test requires createWaveSurferState to return a dispose() function with that exact name"
+  ],
+  "environment_risks": [
+    "jsdom environment lacks many SVG/Canvas/Web APIs requiring extensive mocking in test setup; subtle jsdom version differences could cause failures",
+    "ts-jest with ESM preset ('ts-jest/presets/default-esm') is known for fragility with certain TypeScript configurations",
+    "Test mocks web workers via jest.mock('web-worker:./spectrogram-worker.ts') with { virtual: true } - this is a non-standard Jest mock pattern that could break with Jest version changes",
+    "Several tests override global.fetch and rely on microtask timing (queueMicrotask, Promise.resolve()) which can be environment-sensitive"
+  ],
+  "mismatches": [
+    "The test patch modifies 23 files but eval.sh only runs 18 of them; the other 5 are deleted test files (draggable, event-stream-emitter, media-event-bridge, render-scheduler, state-event-emitter) - this is intentional but means the deleted tests are never verified to have been properly removed",
+    "The instruction mentions 'reactive README should document actual batch(), disposable computed()/dispose(), auto-tracking, and Scope behavior' but no test verifies README content - this is appropriate since documentation tests would be fragile"
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/katspaugh__wavesurfer.js-4340/instruction.md",
+      "detail": "Instruction describes ~15 distinct requirements spanning core, reactive store, plugins, and new primitives - an unusually large compound issue for a single benchmark instance"
+    },
+    {
+      "file": "/audit_tasks/katspaugh__wavesurfer.js-4340/solution/solve.sh",
+      "detail": "Gold patch is 3392 lines modifying 26 files including new file src/scope.ts (124 lines), major rewrite of src/reactive/store.ts, and deletion of 5 modules"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch is 3143 lines touching 23 test files, creating 5 new test files and deleting 5 test files for removed modules"
+    },
+    {
+      "file": "/testbed/src/base-plugin.ts",
+      "detail": "Base destroy() has no idempotency guard and no unAll() call - tests for idempotent destroy and listener cleanup will correctly fail on base"
+    },
+    {
+      "file": "/testbed/src/reactive/store.ts",
+      "detail": "Base store exports no batch() function and computed() has no dispose() method - store v2 tests will fail on import or at assertion time"
+    },
+    {
+      "file": "/testbed/src/scope.ts",
+      "detail": "Does not exist in base - scope.test.ts import will fail, confirming base rejection"
+    }
+  ],
+  "recommended_action": "revise_instance",
+  "summary": "The instance bundles ~15 distinct issues (lifecycle, reactive-store, event dedup, new Scope primitive, plugin cleanup, module deletion) into one compound task requiring a 3300+ line gold patch across 26 files. While the gold patch is technically correct and tests will properly pass with gold / fail on base, the instance has two major quality concerns: (1) extreme scope makes it effectively an entire feature branch rather than a focused issue, making partial credit impossible; (2) heavy implementation coupling where tests reach into private internals via (plugin as any) accessing gold-specific field names (polylineSubscriptions, notchElements, maxRetainedSegments, scope, etc.) and requiring the exact Scope API at the exact import path. Alternative correct solutions using different internal structure or different disposal mechanisms would be rejected. Recommend splitting into 4-5 focused instances (store reactive enhancements, Scope primitive, plugin cleanup, event dedup, WebAudio errors) with tests that verify observable behavior rather than internal field names."
+}

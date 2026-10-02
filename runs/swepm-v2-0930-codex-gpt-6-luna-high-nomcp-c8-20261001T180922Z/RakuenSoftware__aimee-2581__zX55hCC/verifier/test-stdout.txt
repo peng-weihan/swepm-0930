@@ -1,0 +1,93 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch server-go/cmd/aimee-module/main_test.go...
+error: while searching for:
+		{"memory", 7, []uint32{5889, 5890, 5891, 5892, 5893, 5894}},
+		{"learning", 8, []uint32{6145}},
+		{"routing", 9, []uint32{6401}},
+		{"delegates", 10, []uint32{6657, 6658, 6659, 6660, 6661, 6662, 6663, 6664, 6665, 6666, 6667, 6668, 6669, 6670, 6671, 6672}},
+		{"tools", 11, []uint32{6913}},
+		{"workspace", 12, []uint32{7169, 7170, 7171}},
+		{"git", 13, []uint32{7425, 7426, 7427, 7428, 7429, 7430}},
+
+error: patch failed: server-go/cmd/aimee-module/main_test.go:18
+error: server-go/cmd/aimee-module/main_test.go: patch does not apply
+Checking patch server-go/modules/delegates/routefilter_stage_test.go...
+Checking patch server-go/modules/delegates/routefilter_test.go...
+Checking patch src/tests/Rules.mk...
+Checking patch src/tests/test_cmd_delegate.c...
+Hunk #1 succeeded at 86 (offset 35 lines).
+Hunk #2 succeeded at 922 (offset 35 lines).
+Hunk #3 succeeded at 1294 (offset 36 lines).
+Checking patch src/tests/test_server_compute.c...
+error: while searching for:
+   return 0;
+}
+
+int main(void)
+{
+   register_test_workspace_root();
+   delegate_register_may_write_provider(compute_test_may_write);
+   assert(delegate_backend_register(&g_fake_docker) == 0);
+   delegate_register_handoff_provider(compute_test_handoff_provider);
+   test_codex_oauth_vault_server_principal_fallback();
+
+error: patch failed: src/tests/test_server_compute.c:3693
+error: src/tests/test_server_compute.c: patch does not apply
+Checking patch tests/baselines/refactor/index.json...
+patching file server-go/cmd/aimee-module/main_test.go
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file server-go/modules/delegates/routefilter_stage_test.go
+patching file server-go/modules/delegates/routefilter_test.go
+patching file src/tests/Rules.mk
+patching file src/tests/test_cmd_delegate.c
+Hunk #1 succeeded at 86 (offset 35 lines).
+Hunk #2 succeeded at 922 (offset 35 lines).
+Hunk #3 succeeded at 1294 (offset 36 lines).
+patching file src/tests/test_server_compute.c
+Hunk #1 FAILED at 3693.
+1 out of 1 hunk FAILED -- saving rejects to file src/tests/test_server_compute.c.rej
+patching file tests/baselines/refactor/index.json
+-- The C compiler identification is GNU 12.2.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Found Python3: /testbed/.venv/bin/python3 (found version "3.11.2") found components: Interpreter 
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.20")  
+-- Found SQLite3: /usr/include (found version "3.40.1") 
+-- Checking for module 'libpq'
+--   Found libpq, version 15.19
+CMake Error at CMakeLists.txt:1377 (message):
+  zstd not found.  Install libzstd-dev (Debian/Ubuntu), libzstd-devel
+  (Fedora/RHEL), or zstd (Homebrew).
+
+
+-- Configuring incomplete, errors occurred!
+See also "/testbed/build/CMakeFiles/CMakeOutput.log".
+gmake: Makefile: No such file or directory
+gmake: *** No rule to make target 'Makefile'.  Stop.
+# github.com/JBailes/aimee/server-go/modules/delegates [github.com/JBailes/aimee/server-go/modules/delegates.test]
+modules/delegates/routefilter_stage_test.go:11:22: undefined: routeFilterReqHeaderLen
+modules/delegates/routefilter_stage_test.go:22:9: undefined: routeFilterReqHeaderLen
+modules/delegates/routefilter_stage_test.go:25:13: undefined: routeFilterFlagEnabled
+modules/delegates/routefilter_stage_test.go:27:8: a.HasRole undefined (type RouteAgent has no field or method HasRole)
+modules/delegates/routefilter_stage_test.go:28:13: undefined: routeFilterFlagHasRole
+modules/delegates/routefilter_stage_test.go:30:8: a.HaveCap undefined (type RouteAgent has no field or method HaveCap)
+modules/delegates/routefilter_stage_test.go:31:13: undefined: routeFilterFlagHaveCap
+modules/delegates/routefilter_stage_test.go:34:13: undefined: routeFilterFlagDeprecated
+modules/delegates/routefilter_stage_test.go:37:13: undefined: routeFilterFlagTools
+modules/delegates/routefilter_stage_test.go:40:51: a.CapFlags undefined (type RouteAgent has no field or method CapFlags)
+modules/delegates/routefilter_stage_test.go:40:51: too many errors
+FAIL	github.com/JBailes/aimee/server-go/modules/delegates [build failed]
+2026/10/01 19:29:44 roundtable review stage unavailable: AIMEE_HOME is unset
+2026/10/01 19:29:44 roundtable review stage unavailable: AIMEE_HOME is unset
+--- FAIL: TestAdvertisedStagesMatchTheContractFile (0.00s)
+    main_test.go:118: delegates declares delegate-route-filter (event 6673) in process-contracts.json but never advertises it: calls fail CAPABILITY_ABSENT though the module is running
+FAIL
+FAIL	github.com/JBailes/aimee/server-go/cmd/aimee-module	0.005s
+FAIL
+OMNIGRIL_EXIT_CODE=1

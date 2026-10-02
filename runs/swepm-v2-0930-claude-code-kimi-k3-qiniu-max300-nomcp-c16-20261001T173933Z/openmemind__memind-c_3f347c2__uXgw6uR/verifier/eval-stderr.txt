@@ -1,0 +1,49 @@
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryContextTest.java...
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java...
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java...
+error: while searching for:
+                    return INSIGHT_OPERATIONS;
+                }
+            };
+
+    @Test
+    void extractionAssemblerUsesMemoryBufferAndBoundaryOptions() {
+        CommitDetectorConfig boundaryDetector = new CommitDetectorConfig(6, 2048, 4);
+        MemoryAssemblyContext context =
+                context(
+                        Map.of(),
+                        MemoryBuildOptions.builder().boundaryDetector(boundaryDetector).build());
+
+        MemoryExtractionAssembly assembly = new MemoryExtractionAssembler().assemble(context);
+        MemoryExtractor extractor = (MemoryExtractor) assembly.pipeline();
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java:97
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryBuildOptionsTest.java...
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java...
+error: while searching for:
+import com.openmemind.ai.memory.core.buffer.InsightBuffer;
+import com.openmemind.ai.memory.core.buffer.MemoryBuffer;
+import com.openmemind.ai.memory.core.buffer.RecentConversationBuffer;
+import com.openmemind.ai.memory.core.builder.MemoryBuildOptions;
+import com.openmemind.ai.memory.core.builder.MemoryBuilder;
+import com.openmemind.ai.memory.core.data.MemoryId;
+import com.openmemind.ai.memory.core.extraction.MemoryExtractor;
+import com.openmemind.ai.memory.core.extraction.context.CommitDetectorConfig;
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java:22
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java: patch does not apply
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/RetrievalConfigTest.java...
+Checking patch memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/strategy/StrategyConfigTest.java...
+error: while searching for:
+        void withMethods() {
+            var config =
+                    DeepStrategyConfig.defaults()
+                            .withQueryExpansion(
+                                    new DeepStrategyConfig.QueryExpansionConfig(5, 3.0, 1.5));
+            assertThat(config.queryExpansion().maxExpandedQueries()).isEqualTo(5);
+            assertThat(config.sufficiency().itemTopK()).isEqualTo(20); // unchanged
+        }
+
+error: patch failed: memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/strategy/StrategyConfigTest.java:68
+error: memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/strategy/StrategyConfigTest.java: patch does not apply

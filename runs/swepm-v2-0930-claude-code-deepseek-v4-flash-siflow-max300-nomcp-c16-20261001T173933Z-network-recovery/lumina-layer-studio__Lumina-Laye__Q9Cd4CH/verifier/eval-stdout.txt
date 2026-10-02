@@ -1,0 +1,58 @@
+SPECBUILD_RESOLVED_PYTHON=/opt/venv/bin/python
+============================= test session starts ==============================
+platform linux -- Python 3.11.16, pytest-9.1.1, pluggy-1.6.0 -- /opt/venv/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /testbed
+plugins: hypothesis-6.167.1, anyio-4.14.2
+collecting ... collected 24 items
+
+tests/test_color_mode_propagation_properties.py::test_lut_metadata_round_trip FAILED [  4%]
+
+=================================== FAILURES ===================================
+_________________________ test_lut_metadata_round_trip _________________________
+tests/test_color_mode_propagation_properties.py:106: in test_lut_metadata_round_trip
+    @settings(max_examples=100)
+                   ^^^
+/opt/venv/lib/python3.11/site-packages/hypothesis/internal/conjecture/engine.py:1019: in run
+    self._run()
+/opt/venv/lib/python3.11/site-packages/hypothesis/internal/conjecture/engine.py:1649: in _run
+    self.generate_new_test_cases()
+/opt/venv/lib/python3.11/site-packages/hypothesis/internal/conjecture/engine.py:1200: in generate_new_test_cases
+    zero_data = self.cached_test_function((ChoiceTemplate("simplest", count=None),))
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/hypothesis/internal/conjecture/engine.py:552: in cached_test_function
+    self.test_function(data)
+/opt/venv/lib/python3.11/site-packages/hypothesis/internal/conjecture/engine.py:599: in test_function
+    self.__stoppable_test_function(data)
+/opt/venv/lib/python3.11/site-packages/hypothesis/internal/conjecture/engine.py:448: in __stoppable_test_function
+    self._test_function(data)
+/opt/venv/lib/python3.11/site-packages/hypothesis/core.py:1223: in _execute_once_for_engine
+    result = self.execute_once(data)
+             ^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/hypothesis/core.py:1161: in execute_once
+    result = self.test_runner(data, run)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/hypothesis/core.py:828: in default_executor
+    return function(data)
+           ^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/hypothesis/core.py:1063: in run
+    kw, arglabels = context.prep_args_kwargs_from_strategies(
+/opt/venv/lib/python3.11/site-packages/hypothesis/control.py:206: in prep_args_kwargs_from_strategies
+    kwargs[k] = self.data.draw(s, observe_as=f"generate:{k}")
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/hypothesis/internal/conjecture/data.py:1328: in draw
+    v = unwrapped.do_draw(self)
+        ^^^^^^^^^^^^^^^^^^^^^^^
+/opt/venv/lib/python3.11/site-packages/hypothesis/strategies/_internal/core.py:1112: in do_draw
+    obj = self.target(*args, **kwargs)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   TypeError: LUTMetadata.__init__() got an unexpected keyword argument 'color_mode'
+E   while generating 'metadata' from builds(LUTMetadata, base_channel_idx=integers(min_value=0, max_value=7), base_layers=integers(min_value=1, max_value=30), color_mode=one_of(none(), sampled_from(['BW (Black & White)', '4-Color (CMYW)', '4-Color (RYBW)', '6-Color (Smart 1296)', '6-Color (RYBW 1296)', '5-Color Extended', '8-Color Max'])), layer_height_mm=sampled_from([0.04, 0.08, 0.12, 0.16, 0.2]), layer_order=sampled_from(['Top2Bottom', 'Bottom2Top']), line_width_mm=sampled_from([0.3, 0.42, 0.5, 0.6]), max_color_layers=integers(min_value=1, max_value=10), palette=lists(builds(PaletteEntry, color=sampled_from(['White', 'Cyan', 'Magenta', 'Yellow', 'Red', 'Blue', 'Green', 'Black', 'Deep Blue']), hex_color=one_of(none(), tuples(integers(min_value=0, max_value=255), integers(min_value=0, max_value=255), integers(min_value=0, max_value=255)).map(lambda rgb: f'#{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}')), material=sampled_from(['PLA Basic', 'PLA Matte', 'PETG Basic', 'ABS', 'PLA Silk'])), max_size=8).map(_deduplicate_palette))
+---------------------------------- Hypothesis ----------------------------------
+You can reproduce this failure by adding @seed(130752953032989497795199944193148138865) to this test, or by running pytest with --hypothesis-seed=130752953032989497795199944193148138865.
+=========================== short test summary info ============================
+FAILED tests/test_color_mode_propagation_properties.py::test_lut_metadata_round_trip
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+============================== 1 failed in 4.96s ===============================
+OMNIGRIL_EXIT_CODE=1

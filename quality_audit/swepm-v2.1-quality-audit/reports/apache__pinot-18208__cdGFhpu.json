@@ -1,0 +1,56 @@
+{
+  "instance_id": "apache__pinot-18208",
+  "overall_quality": "good",
+  "test_scope": "balanced",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch correctly refactors the FunctionEvaluator interface into pinot-spi (org.apache.pinot.spi.function.FunctionEvaluator), moves the canonical implementations (InbuiltFunctionEvaluator, GroovyFunctionEvaluator, GroovyStaticAnalyzerConfig, TimeSpecFunctionEvaluator, FunctionEvaluatorFactory) into pinot-common under org.apache.pinot.common.evaluator, and converts the original classes in pinot-segment-local into deprecated shims that extend/delegate to the canonical implementations. The approach preserves backward compatibility while eliminating the tight coupling to segment-local. Groovy dependency is transitively available in pinot-common via pinot-segment-spi -> pinot-spi (which declares groovy-all as compile scope), so no POM changes are needed.",
+  "base_vs_gold_expectation": "On the unmodified base, the test patch changes all test imports to reference org.apache.pinot.common.evaluator.* and org.apache.pinot.spi.function.FunctionEvaluator, none of which exist. The test-compile step (mvnw test-compile) would fail with compilation errors for every test file. After the gold patch, these packages exist and all tests should compile and pass, including the FunctionPackageCompatibilityTest which verifies that legacy factories return instances of the canonical classes. The base-fails/gold-passes expectation is well-founded.",
+  "too_narrow_risks": [
+    "pinot-controller is not included in the test-compile or test-run lists, yet the gold patch modifies BaseControllerStarter.java and PinotClusterConfigs.java to update imports. A candidate could skip controller changes and still pass.",
+    "No test explicitly verifies the FunctionEvaluator interface contract at the SPI level (e.g., that it has getArguments, evaluate(GenericRow), evaluate(Object[])) - though compilation of dependent code implicitly checks this.",
+    "The shared Groovy static analyzer state test in FunctionPackageCompatibilityTest only calls setGroovyStaticAnalyzerConfig from the legacy path and checks it works; it does not verify that calling it from the canonical path also configures the legacy path (bidirectional state sharing)."
+  ],
+  "too_broad_risks": [
+    "The test list includes many pre-existing functional tests (ArithmeticFunctionsTest, JsonFunctionsTest, VectorFunctionsTest, etc.) that are not directly related to the refactoring - they only have import changes. If any of these have pre-existing flakiness, it could cause false negatives. However, including them does verify that the refactored classes preserve behavioral equivalence, which is reasonable."
+  ],
+  "implementation_coupling": [
+    "FunctionPackageCompatibilityTest uses instanceof checks against org.apache.pinot.common.evaluator.InbuiltFunctionEvaluator and org.apache.pinot.common.evaluator.GroovyFunctionEvaluator. This constrains implementations to use inheritance/delegation rather than duplication. However, the instruction.md explicitly requires this behavior ('should return an evaluator that is an instance of org.apache.pinot.common.evaluator.InbuiltFunctionEvaluator'), so this coupling is justified by the spec.",
+    "The test patch moves InbuiltFunctionEvaluatorTest to pinot-common with package org.apache.pinot.common.evaluator, directly coupling to the gold patch's chosen package name. Alternative valid package names would not pass."
+  ],
+  "environment_risks": [
+    "The verifier timeout is 3600s and the build involves compiling 6+ modules with their transitive dependencies. Maven compilation of a large project like Pinot could be slow depending on Docker image warmth and cached artifacts.",
+    "Memory allocation is 24GB which should be sufficient, but the build compiles multiple modules in sequence which can stress resources.",
+    "The test-compile step uses -DskipTests -DskipITs but still compiles all dependencies (-am), which is a significant amount of code."
+  ],
+  "mismatches": [
+    "Minor: the gold patch modifies pinot-controller (BaseControllerStarter.java, PinotClusterConfigs.java) but the eval.sh test list does not include pinot-controller for compilation or testing, so these changes are unverified."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/apache__pinot-18208/instruction.md",
+      "detail": "Instruction explicitly requires FunctionEvaluator interface in org.apache.pinot.spi.function, canonical implementations in org.apache.pinot.common.evaluator, and that legacy factory returns instances of canonical types."
+    },
+    {
+      "file": "/audit_tasks/apache__pinot-18208/solution/solve.sh",
+      "detail": "Gold patch creates new files in pinot-spi and pinot-common, converts segment-local classes to deprecated shims extending canonical classes. Does not modify any POM files."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch updates 13+ test files to import from new canonical packages, moves InbuiltFunctionEvaluatorTest to pinot-common, creates FunctionPackageCompatibilityTest with instanceof and behavioral assertions."
+    },
+    {
+      "file": "/audit_tasks/apache__pinot-18208/tests/eval.sh",
+      "detail": "Compiles pinot-spi,pinot-common,pinot-segment-local,pinot-core,pinot-broker,pinot-udf-test with -am. Runs 14 named test classes. Does NOT include pinot-controller."
+    },
+    {
+      "file": "/testbed/pinot-spi/pom.xml",
+      "detail": "pinot-spi declares groovy-all as compile dependency, making it transitively available in pinot-common via pinot-segment-spi -> pinot-spi chain."
+    },
+    {
+      "file": "/testbed/pinot-common/pom.xml",
+      "detail": "pinot-common depends on pinot-segment-spi which depends on pinot-spi. No direct groovy dependency needed."
+    }
+  ],
+  "recommended_action": "keep",
+  "summary": "Well-constructed refactoring benchmark instance. The gold patch correctly moves evaluator APIs to shared packages (pinot-spi/pinot-common) with backward-compatible deprecated shims in segment-local. Tests verify both compilation of new imports (via test-compile of 6 modules) and behavioral correctness (14 test classes including a dedicated FunctionPackageCompatibilityTest with instanceof and functional assertions). The base would fail at compile time; the gold patch should pass all tests. Minor gap: pinot-controller changes are unverified since that module is excluded from the test/compile list. The instanceof checks in FunctionPackageCompatibilityTest are implementation-constraining but align with explicit requirements in the instruction. Overall quality is good with balanced test scope."
+}

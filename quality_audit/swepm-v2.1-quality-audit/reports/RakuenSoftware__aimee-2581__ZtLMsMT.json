@@ -1,0 +1,56 @@
+{
+  "instance_id": "RakuenSoftware__aimee-2581",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch comprehensively implements the route-filter feature: new Go module logic (routefilter.go) with RouteFilter, AgentMeetsFilter, EffectiveContext; wire protocol stage (routefilter_stage.go); stage registration in main.go and process-contracts.json; C wire protocol definitions in module_api.h; C caller-side fact resolution and verdict application in delegate_routing.c; C provider registration/dispatch in delegate_launch_args.c and its header; and the module_stage_adapters.c adapter. The implementation correctly addresses all requirements in the issue: enabled state, role, capabilities, tools, context-window precedence, deprecation, and soft modality relaxation.",
+  "base_vs_gold_expectation": "The base will fail: the test patch adds Go test files (routefilter_test.go, routefilter_stage_test.go) that import types/functions from routefilter.go and routefilter_stage.go which do not exist in the base, causing compile errors. Additionally, main_test.go expects event 6673 in the delegates module which the base does not register. The gold patch adds all required source files and registrations, so Go tests should pass.",
+  "too_narrow_risks": [
+    "C tests (test_cmd_delegate.c, test_server_compute.c modifications) are NEVER executed: ctest --test-dir build -R 'unit-test-(cmd-delegate|server-compute)' finds zero matching tests because these are Makefile targets not CMake test targets, and ctest 3.25.1 returns exit code 0 for no matches",
+    "The C integration layer (fact resolution from model catalogs, CLI adapters, agent registry; verdict application to the fleet; no-provider fail-closed behavior) is completely untested by the evaluator",
+    "An alternative implementation that correctly implements the Go module but incorrectly wires the C side (e.g., wrong fact resolution, missing provider registration, broken wire encoding from C) would pass verification",
+    "The tests/baselines/refactor/index.json SHA256 changes in the test patch are not verified by any test command in eval.sh",
+    "~300 lines of C test code in the test patch are dead weight from the evaluator's perspective"
+  ],
+  "too_broad_risks": [
+    "The cmake build step builds the entire project as a prerequisite, so unrelated compile errors in the CMake build could fail all candidates"
+  ],
+  "implementation_coupling": [
+    "Go tests use package-internal wire constants (routeFilterRequestMagic, wireVersion, routeFilterAgentLen, etc.) in the stage tests, coupling them to specific wire encoding details rather than just observable behavior",
+    "main_test.go asserts a specific event ID list (6673) which is tightly coupled to the implementation's numeric constant choices, though this is reasonable for a registry consistency test"
+  ],
+  "environment_risks": [
+    "ctest 3.25.1 returns exit code 0 when no tests match -R regex, silently skipping all C tests. If the docker image were upgraded to cmake >= 3.26 (which defaults to --no-tests=error), ALL candidates would fail because the C test binaries are not CMake targets",
+    "Go 1.25.0 is specified in go.mod — requires a recent Go toolchain in the docker image",
+    "The cmake configure step depends on system libraries (OpenSSL, zstd, etc.) being present in the docker image; missing deps cause cmake failure before any tests run"
+  ],
+  "mismatches": [
+    "The issue explicitly requires 'Update Go and C tests' but the evaluator only exercises Go tests — the C test requirement is structurally unverifiable",
+    "The test patch modifies src/tests/Rules.mk to add delegate_launch_args.o to C test link targets, but these Makefile targets are never built by the cmake-based eval pipeline",
+    "eval.sh uses 'cmake --build build' to build, but the C unit tests (unit-test-cmd-delegate, unit-test-server-compute) are defined in src/tests/Rules.mk for 'make', not CMake"
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/RakuenSoftware__aimee-2581/tests/eval.sh",
+      "detail": "Line 49: ctest --test-dir build -R 'unit-test-(cmd-delegate|server-compute)' — these test names are Makefile targets (src/tests/Rules.mk), not CMake add_test() targets, so ctest finds nothing"
+    },
+    {
+      "file": "/testbed/src/tests/CMakeLists.txt",
+      "detail": "Does not register unit-test-cmd-delegate or unit-test-server-compute; only portable tests like test_memory_provider, test_bus_wire, etc. are registered as CMake tests"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 383-403: test patch modifies src/tests/Rules.mk to add delegate_launch_args.o to Makefile-only test targets; lines 404-758: extensive C test modifications (~350 lines) that are never compiled or run by eval.sh"
+    },
+    {
+      "file": "/testbed/CMakeLists.txt",
+      "detail": "delegate_routing.c (line 854) is in CMD_SRCS/aimee-cmd static lib, but delegate_launch_args.c is not — the gold patch's C changes compile into a static lib that is never linked, so cmake build succeeds but doesn't validate the C code"
+    },
+    {
+      "file": "/audit_tasks/RakuenSoftware__aimee-2581/instruction.md",
+      "detail": "Issue requires 'Update Go and C tests to cover hard capability filtering, tools-on/tools-off behavior, context precedence...' — C test coverage cannot be verified"
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch is a well-designed, comprehensive implementation of the route-filter module spanning Go and C. However, the evaluator has a critical gap: the ctest command in eval.sh targets Makefile-built C tests (unit-test-cmd-delegate, unit-test-server-compute) that are not registered as CMake tests, and ctest 3.25.1 silently returns 0 when no tests match. This means ~350 lines of C test changes in the test patch are never executed, and the entire C integration layer (fact resolution, verdict application, provider registration) is unverified. Only the Go tests (routefilter_test.go, routefilter_stage_test.go, main_test.go) are exercised. The Go tests are well-scoped and comprehensive for the module logic, but a candidate that correctly implements the Go module while botching the C wiring would pass. Fix by either building the C tests via Make (add 'make -C src' to pre-test commands) or registering them in CMake, or by adding --no-tests=error to the ctest call to surface the gap."
+}

@@ -1,0 +1,13 @@
+The CLI keybinding infrastructure should be unified under the UI key module and support initializing key bindings from concise string specifications.
+
+Currently key bindings are represented as plain objects such as `{ key: 'c', ctrl: true }` and live in multiple UI/config locations, which makes matching, formatting, documentation generation, and custom configuration inconsistent. Code that creates custom `KeyBindingConfig` values should be able to use a `KeyBinding` API from `packages/cli/src/ui/key/keyBindings.ts` and construct bindings with strings such as `new KeyBinding('ctrl+c')`, `new KeyBinding('shift+tab')`, `new KeyBinding('alt+left')`, `new KeyBinding('cmd+return')`, or `new KeyBinding('ctrl+alt+shift+cmd+a')`.
+
+The keybinding module should expose `Command`, `KeyBinding`, `KeyBindingConfig`, `defaultKeyBindings`, `commandCategories`, and `commandDescriptions` from the unified UI key location. Every `Command` must have at least one default binding, a non-empty description, and appear exactly once in the command categories used to generate keyboard shortcut documentation.
+
+A `KeyBinding` created from a string must parse the key name and modifiers correctly. Supported modifiers include `ctrl`, `alt`, `shift`, and `cmd`. The parsed binding should remain compatible with existing formatting utilities and matching logic: `formatKeyBinding(new KeyBinding('ctrl+c'))` should render as `Ctrl+C`, `formatKeyBinding(new KeyBinding('alt+left'))` should render as `Option+Left` on macOS and `Alt+Left` elsewhere, and `formatKeyBinding(new KeyBinding('cmd+z'))` should render as `Cmd+Z` on macOS and `Win+Z` on Windows. Named keys such as `return`, `escape`, `tab`, `home`, `end`, `pageup`, and `pagedown` should continue to format with their user-facing names.
+
+Key matching should be driven by the `KeyBinding` objects themselves. `createKeyMatchers()` and the default key matchers must continue to match actual keypresses for all existing commands, including custom configurations such as overriding `Command.HOME` with `[new KeyBinding('ctrl+h'), new KeyBinding('0')]` or assigning multiple bindings to a command such as `[new KeyBinding('ctrl+q'), new KeyBinding('alt+q')]`.
+
+The UI code, hooks, tests, and documentation generation should import keybinding-related APIs from the unified `packages/cli/src/ui/key/` location rather than the old split locations. Keyboard shortcut documentation generation should continue to work from the same command metadata and default bindings.
+
+The historical “Browse and rewind previous interactions” documentation-only `Double Esc` keybinding should no longer be treated as a regular command binding or generated keyboard shortcut entry.

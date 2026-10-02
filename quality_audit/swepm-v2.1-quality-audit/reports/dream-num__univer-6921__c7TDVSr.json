@@ -1,0 +1,79 @@
+{
+  "instance_id": "dream-num__univer-6921",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.78,
+  "gold_patch_assessment": "The gold patch is very large (2700+ lines) and addresses all 5 requirements from the issue: (1) changes gap color defaults from 0.08/0.25 to 0.025/0.08 in sheet-skeleton.ts, (2) refactors OpenTableFilterPanelOperation to delegate to openOrToggleFilterPanel, (3) adds validateSheetTableName utility, (4) updates table theme palette so first theme secondRowStyle bg is #EEF2FF, (5) localizes column prefix from hardcoded 'Column' to locale service call. It also adds 3 new row/column commands (SheetTableInsertRowAtCommand, SheetTableInsertColumnAtCommand, SheetTableRemoveColumnAtCommand). Beyond the requirements, it includes a massive refactor replacing React-based table anchors with canvas-based rendering (new SheetTableControlsRenderController, SheetTableControlsShape, table-controls-util.ts), adds a SheetTableRenameDialog, and modifies 12 locale files.",
+  "base_vs_gold_expectation": "The test patch should correctly reject the base code and accept the gold patch. Base code has: (a) gap defaults 0.08/0.25 (tests expect 0.025/0.08), (b) no openOrToggleFilterPanel method (tests call it), (c) no validateSheetTableName function (test imports from nonexistent file), (d) secondRowStyle bg #BAC6F8 (test expects #EEF2FF), (e) no SheetTableInsertRowAtCommand etc. (tests import and call them), (f) no table-controls-util.ts (test imports from nonexistent file). All these would cause test failures on the base.",
+  "too_narrow_risks": [
+    "No test for the column prefix localization fix (hardcoded 'Column' -> localeService.t('sheets-table.columnPrefix') on line 331 of table-manager.ts). A candidate could fix the other 4 requirements but miss this one and still pass.",
+    "validateSheetTableName tests cover only 3 cases (valid name, duplicate case-insensitive, empty/spaces/leading-number). The issue specifies names failing 'existing custom-name character rules' should also return 'invalid', but no test checks general custom-name character validation beyond spaces and leading numbers.",
+    "Row/column insert-at command tests only verify the happy path returns true and that syncExecuteCommand/pushUndoRedo were called. They do not verify: (a) the correct SetSheetTableCommand parameters for range updates, (b) correct move-range source/destination for trailing cell movement, (c) out-of-range index rejection, (d) missing params returning false, (e) count validation, (f) missing/mismatched table returning false. The issue explicitly requires these validations.",
+    "SheetTableInsertRowAtCommand test does not verify that inserting at the header row index is rejected (issue says 'at a specific index inside an existing table' meaning the body, not the header).",
+    "No test for undo/redo correctness of the new row/column commands - only that pushUndoRedo was called, not what mutations were pushed.",
+    "No test that the new commands (SheetTableInsertRowAtCommand, SheetTableInsertColumnAtCommand, SheetTableRemoveColumnAtCommand) are actually registered in the plugin module.",
+    "No test that the new commands and validateSheetTableName are exported from @univerjs/sheets-table index.ts.",
+    "The table-controls-util.spec.ts tests only cover hitTestTableControl and buildTableMenuRegions geometry functions but not the broader canvas-based rendering behavior that replaced the React anchor system."
+  ],
+  "too_broad_risks": [
+    "The test suite includes tests for SheetTableFilterPanel component UI rendering and column menu operations, which depend on complex mock setups (React rendering, mocked icon components, multiple service dependencies). These could be fragile if alternative implementations organize the component differently.",
+    "The test for SheetTableFilterButtonRenderController simply verifies constructor injection accepts a new parameter (SheetRangeThemeModel), which is tightly coupled to the gold patch's specific dependency injection order."
+  ],
+  "implementation_coupling": [
+    "open-table-filter-dialog.operation.spec.ts explicitly checks that 'openOrToggleFilterPanel' is called by name on SheetsTableComponentController. An alternative implementation that achieves the same observable behavior through a different method name would fail.",
+    "sheet-table-component.controller.spec.ts tests the internal toggle logic of openOrToggleFilterPanel by checking _isSameFilterPanelInfo behavior indirectly - the test is tightly coupled to the specific toggle-on-same-info / switch-on-different-info / close semantics of the gold patch implementation.",
+    "sheet-table-filter-button-render.controller.spec.ts test only adds a new mock parameter (SheetRangeThemeModel) to the constructor call sequence - this is purely implementation-coupled and would fail for any alternative that uses a different DI order or doesn't inject this specific service.",
+    "table-controls-util.spec.ts tests the exact shape of region objects (type, left, top, width, height fields) and menu item actions (['rename', 'update-range', 'set-theme', 'delete']) - these are internal implementation details of the canvas rendering approach.",
+    "SheetTableFilterPanel test for column operations checks specific button indices (menuButtons[0], [1], [2]) for insert-left, insert-right, delete commands - an alternative component layout would break this."
+  ],
+  "environment_risks": [
+    "The test run uses 'pnpm exec vitest run' across 9 test files spanning 3 different packages. If the monorepo build state or vitest configuration is not properly set up in the Docker image, tests could fail regardless of the solution.",
+    "Several test files use vi.mock() for modules like @univerjs/sheets and @univerjs/icons. Module resolution issues in the test environment could cause spurious failures.",
+    "The test patch deletes sheet-table-anchor.controller.spec.ts, which the gold patch's implementation deletion of the corresponding controller makes necessary. If a candidate provides an alternative implementation that keeps the anchor controller, the test deletion could cause unrelated import failures in neighboring tests."
+  ],
+  "mismatches": [
+    "The issue states 5 distinct requirements, but the gold patch does far more: it replaces the entire React-based anchor system with canvas rendering, adds a rename dialog, refactors filter button shapes, modifies 12 locale files. The test patch tests some of this extra work (table-controls-util.spec.ts, SheetTableFilterPanel column menu, filter button controller). This means a candidate must implement more than the issue description states.",
+    "The issue says 'Empty or whitespace-only names should return reason empty', but the gold patch implementation trims the name first and then checks - so '   ' (whitespace-only) returns 'empty'. The test checks empty string '' but does not explicitly test a whitespace-only string, leaving ambiguity about whether trimming is required.",
+    "The issue mentions 'column removal at an index' should 'validate missing params, invalid counts, missing command targets, missing or mismatched tables, and out-of-range indexes by returning false', but the tests for SheetTableRemoveColumnAtCommand only test the happy path (valid removal returning true), not any of these validation scenarios."
+  ],
+  "evidence": [
+    {
+      "file": "/testbed/packages/core/src/sheets/sheet-skeleton.ts",
+      "detail": "Lines 321-322: base code has 0.08/0.25 defaults, gold patch changes to 0.025/0.08"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 7-10: test expects 0.025/0.08 gap colors, correctly rejecting base"
+    },
+    {
+      "file": "/testbed/packages/sheets-table-ui/src/controllers/sheet-table-component.controller.ts",
+      "detail": "No openOrToggleFilterPanel method in base - test patch requires it"
+    },
+    {
+      "file": "/testbed/packages/sheets-table/src/controllers/table-theme.factory.ts",
+      "detail": "Line 86: base has #BAC6F8 for secondRowStyle, gold patch changes to #EEF2FF"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 646-647: test asserts secondRowStyle bg is #EEF2FF"
+    },
+    {
+      "file": "/testbed/packages/sheets-table/src/model/table-manager.ts",
+      "detail": "Line 331: base has hardcoded 'Column', gold patch changes to localeService.t('sheets-table.columnPrefix') - NO test covers this"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 470-598: new row/col at-index command tests only cover happy path, not validation edge cases mentioned in issue"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 604-638: validateSheetTableName tests cover basic cases but miss many edge cases from the issue description"
+    },
+    {
+      "file": "/audit_tasks/dream-num__univer-6921/instruction.md",
+      "detail": "Issue describes 5 requirements; gold patch includes substantial extra refactoring work; tests partially cover both stated requirements and extra work"
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The instance bundles 5 distinct issue requirements plus substantial unrequested refactoring into one very large gold patch (~2700 lines). The test patch correctly rejects the base and accepts the gold patch in principle. However, tests are too narrow in several critical areas: (1) no test covers the column prefix localization fix, (2) the new row/column at-index commands are only tested on their happy path despite the issue explicitly requiring validation of missing params, out-of-range indexes, and other error cases, (3) validateSheetTableName tests miss edge cases from the issue spec. Additionally, several tests are implementation-coupled, checking specific method names (openOrToggleFilterPanel), constructor parameter order (SheetRangeThemeModel injection), button DOM indices, and internal region object shapes. The gold patch also does far more than the issue describes, creating risk that candidates who correctly solve all 5 stated requirements but don't replicate the canvas rendering refactor will fail the test for table-controls-util.spec.ts. Recommend revising tests to (a) add column prefix localization coverage, (b) add validation/error-case tests for at-index commands, (c) decouple tests from implementation specifics where possible, and (d) separate the canvas refactor tests from the core issue requirements."
+}

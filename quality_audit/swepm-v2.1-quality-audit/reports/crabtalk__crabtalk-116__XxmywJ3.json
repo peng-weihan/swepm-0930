@@ -1,0 +1,59 @@
+{
+  "instance_id": "crabtalk__crabtalk-116",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.92,
+  "gold_patch_assessment": "The gold patch is massive (25 files changed) and addresses the full scope of the issue: adding a name field to Message::tool, hub install/uninstall as daemon-streamed operations, ListSkills/ListConversations protocol requests, granular provider management via daemon protocol, shared provider presets from core, auth TUI using daemon protocol, MCP round-trip field preservation, and crabllm dependency update to 0.0.11. The patch appears correct and comprehensive for the stated issue.",
+  "base_vs_gold_expectation": "The base code will fail the tests because Message::tool() only accepts 2 arguments, but the test patch changes calls to pass 3 arguments. The gold-patched code will pass because it updates Message::tool() to accept 3 arguments. So the verifier correctly rejects the base and accepts the gold patch in principle.",
+  "too_narrow_risks": [
+    "The test patch only modifies Message::tool() call sites to pass 3 args instead of 2 — it is essentially a compilation test, not a behavioral test.",
+    "Neither modified test asserts that the name field is actually stored (no assert_eq!(msg.name, 'bash')).",
+    "The serde round-trip test does not assert the name survives serialization/deserialization (no assert_eq!(deser.name, 'bash')).",
+    "A trivial solution that adds a third ignored parameter (_name: impl Into<String>) without storing the value would pass all tests.",
+    "The issue describes ~8 major features (hub streaming, ListSkills, ListConversations, provider management protocol, provider presets, auth TUI, MCP round-trip, crabllm update) but tests only cover the Message::tool signature change.",
+    "No tests for any protocol messages (HubEvent, ListSkills, ListConversations, SetProvider, DeleteProvider, SetActiveModel, ListMcps, etc.).",
+    "No tests for provider preset sharing from core config.",
+    "No tests for MCP round-trip field preservation.",
+    "No tests for crabllm dependency version update or provider kind compatibility."
+  ],
+  "too_broad_risks": [],
+  "implementation_coupling": [
+    "Tests are coupled to the specific function signature (3-arg Message::tool) rather than observable behavior (name field is stored, serialized, and preserved in provider conversion)."
+  ],
+  "environment_risks": [
+    "cargo test requires network access if crabllm-core 0.0.11 / crabllm-provider 0.0.11 are not pre-cached in the Docker image; Cargo.lock changes in the gold patch reference these new crate versions.",
+    "RUSTC_BOOTSTRAP=1 and nightly feature flag (round_char_boundary) usage may break if the Rust toolchain changes."
+  ],
+  "mismatches": [
+    "Major mismatch between issue scope and test scope: the issue describes 8+ major features across CLI, daemon, protocol, config, and model layers, but tests only verify a single function signature change in the model layer.",
+    "The test only validates compilation, not the actual requirement from the issue that 'the model conversion layer should preserve that value when producing the provider message'."
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch only modifies 2 lines: changes Message::tool() calls from 2 to 3 arguments, adds no new assertions for the name field."
+    },
+    {
+      "file": "/testbed/crates/core/tests/message.rs:64-69",
+      "detail": "tool_message test asserts role, content, tool_call_id but NOT name field."
+    },
+    {
+      "file": "/testbed/crates/core/tests/message.rs:152-159",
+      "detail": "message_serde_tool_message test asserts role, content, tool_call_id after round-trip but NOT name field."
+    },
+    {
+      "file": "/testbed/crates/core/src/model/message.rs:87-94",
+      "detail": "Base Message::tool() takes 2 args (content, call). No name field on Message struct."
+    },
+    {
+      "file": "/audit_tasks/crabtalk__crabtalk-116/tests/eval.sh:48",
+      "detail": "Only runs: cargo test -p crabtalk-core --test message — a single test file covering one of many changed packages."
+    },
+    {
+      "file": "/audit_tasks/crabtalk__crabtalk-116/instruction.md",
+      "detail": "Issue describes 8+ features: tool name in messages, hub streaming, ListSkills, ListConversations, provider management, presets, auth TUI, crabllm update."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The test patch is far too narrow for the stated issue. It only modifies two existing test call sites to pass a third argument to Message::tool(), essentially testing compilation with a 3-arg signature. It adds no assertions that the name is stored or survives serialization. A trivial no-op solution (accepting but discarding the third arg) would pass. Furthermore, the massive issue encompasses 8+ features (daemon protocol operations, provider management, hub streaming, etc.) spanning 25 files, but the tests only touch a single function signature in one crate's test file. The tests should be significantly expanded to cover the name field's behavioral contract (storage, serde, provider conversion) and at least some of the other major features described in the issue."
+}

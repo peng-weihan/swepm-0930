@@ -1,0 +1,33 @@
+Running command: test -x /usr/local/bin/codex-code-mode-host && codex --version
+Command outputs captured
+Running command: mkdir -p "$CODEX_HOME" /opt/swepm-runtime/secrets /logs/agent
+Command outputs captured
+Codex auth: using auth.json from [REDACTED]
+Running command: ln -sf /opt/swepm-runtime/secrets/auth.json "$CODEX_HOME/auth.json"
+
+Command outputs captured
+Running command: if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi; codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-6-luna --json --enable unified_exec -c model_reasoning_effort=high -- 'Spec Kit integration management should support controlled multi-install scenarios while keeping shared project infrastructure safe and default-integration behavior explicit.
+
+Currently, `specify integration install <key>` assumes only one integration can exist in a project and fails whenever another integration is installed. This prevents safe team-portability workflows where multiple isolated integrations can coexist. The integration state in `.specify/integration.json` also needs to represent more than one installed integration: it should track a single default integration, the full set of installed integrations, per-integration settings, and a state schema marker, while preserving the legacy `integration` field as an alias for the default integration for backward compatibility.
+
+The CLI should allow installing an additional integration automatically only when all involved integrations are declared multi-install safe. If any existing or requested integration is not declared safe, installation must fail unless the user passes `--force` to explicitly opt in. Installing an additional integration must not change the default integration. A new command, `specify integration use <key>`, should set the default integration to an already-installed integration without uninstalling other installed integrations. `specify integration switch <key>` should replace the current default when the target is not installed, but when the target is already installed it should behave like `use`. In that already-installed case, `--integration-options` should be rejected because changing integration options requires reinstalling or upgrading that integration first. `specify integration upgrade [<key>]` should be able to upgrade any installed integration; when no key is given it should upgrade the default integration. Upgrading a non-default integration must not change the default integration.
+
+The output of `specify integration list` should show which integration is the default, which integrations are installed, and whether each built-in integration is declared multi-install safe. Shared Spec Kit templates should remain aligned with the current default integration’s command invocation style. Changing the default with `use` or switching to an already-installed integration should refresh managed shared templates, but preserve modified or untracked shared templates unless `--force` is passed.
+
+Shared infrastructure installation and refresh also need hardening. Operations that install or refresh `.specify/scripts`, `.specify/templates`, and `.specify/integrations/speckit.manifest.json` must not follow symlinks or write outside the project root. If a shared infrastructure destination file, such as `.specify/scripts/bash/common.sh` or `.specify/templates/plan-template.md`, is a symlink, forced installs or refreshes must refuse to overwrite it and raise an error containing `Refusing to overwrite symlinked`. If a shared infrastructure directory path such as `.specify` or a parent under `.specify/scripts` or `.specify/templates` is a symlink, the operation must refuse to use it and report a `symlinked shared infrastructure directory` error. Nested shared scripts must be supported during preflight and install, while still applying the same path-safety checks. Shared infrastructure paths reported in CLI output should use POSIX-style project-relative paths.
+
+If the shared infrastructure manifest `.specify/integrations/speckit.manifest.json` exists but cannot be loaded, for example because it contains invalid JSON or non-UTF-8 bytes, shared infrastructure install/refresh should not crash. It should warn that it `Could not read shared infrastructure manifest`, explain that `A new shared manifest will be created`, and then continue using a new manifest, with the understanding that previously tracked shared files may be treated as untracked.
+
+All integration management commands should continue to require an initialized Spec Kit project. Error paths should leave integration state and managed files consistent, and failed partial installs should roll back cleanly.
+' 2>&1 </dev/null | tee /logs/agent/codex.txt
+Command outputs captured
+Running command: mkdir -p /logs/agent
+if [ -d "$CODEX_HOME/sessions" ]; then
+  rm -rf /logs/agent/sessions
+  cp -R "$CODEX_HOME/sessions" /logs/agent/sessions
+fi
+Command outputs captured
+Running command: rm -rf /opt/swepm-runtime/secrets "$CODEX_HOME"
+Command outputs captured
+Wrote Codex trajectory to /data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/github__spec-kit-2389__P4d48k5/agent/trajectory.json
+Collecting main service artifacts

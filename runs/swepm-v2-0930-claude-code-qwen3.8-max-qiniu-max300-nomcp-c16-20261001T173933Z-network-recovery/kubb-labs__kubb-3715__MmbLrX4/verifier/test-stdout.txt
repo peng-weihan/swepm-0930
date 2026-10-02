@@ -1,0 +1,1083 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch packages/core/src/Url.test.ts => internals/utils/src/Url.test.ts...
+Checking patch packages/adapter-oas/src/adapter.test.ts...
+Checking patch packages/adapter-oas/src/resolvers.test.ts...
+Checking patch packages/adapter-oas/src/stream.test.ts...
+Checking patch packages/cli/src/loggers/utils.test.ts...
+error: while searching for:
+
+    expect(timer.end('a')).toBeUndefined()
+  })
+
+  it('clear drops pending starts', () => {
+    const timer = createHookTimer()
+
+    timer.start('a')
+    timer.clear()
+
+    expect(timer.end('a')).toBeUndefined()
+  })
+})
+
+error: patch failed: packages/cli/src/loggers/utils.test.ts:80
+error: packages/cli/src/loggers/utils.test.ts: patch does not apply
+Checking patch packages/cli/src/runners/generate/getConfigs.test.ts...
+error: packages/cli/src/runners/generate/getConfigs.test.ts: No such file or directory
+Checking patch packages/cli/src/runners/generate/utils.test.ts...
+error: while searching for:
+import process from 'node:process'
+import { AsyncEventEmitter, type KubbHooks } from '@kubb/core'
+import { describe, expect, it } from 'vitest'
+import { isNewerVersion, runHook } from './utils.ts'
+
+const node = process.execPath
+
+
+error: patch failed: packages/cli/src/runners/generate/utils.test.ts:1
+error: packages/cli/src/runners/generate/utils.test.ts: patch does not apply
+Checking patch packages/cli/src/runners/validate/run.test.ts...
+error: while searching for:
+
+  it('validates input when @kubb/adapter-oas is available', async () => {
+    const validate = vi.fn(async () => undefined)
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    const { run: runValidate } = await import('./run.ts')
+
+    await runValidate(
+      { input: 'spec.yaml', version: '1.0.0' },
+      {
+        loadValidateModule: async () =>
+          ({
+            adapterOas: () => ({ validate }),
+          }) as unknown as Awaited<ReturnType<(typeof import('./run.ts'))['loadValidateModule']>>,
+      },
+    )
+
+    expect(validate).toHaveBeenCalledWith('spec.yaml', { throwOnError: true })
+    expect(logSpy).toHaveBeenCalledWith('✅ Validation success')
+  })
+
+  it('prints install guidance when @kubb/adapter-oas is missing', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit')
+    }) as never)
+
+    const { run: runValidate } = await import('./run.ts')
+
+    await expect(
+      runValidate(
+        { input: 'spec.yaml', version: '1.0.0' },
+        {
+          loadValidateModule: async () => {
+            throw new Error("Cannot find module '@kubb/adapter-oas'")
+          },
+        },
+      ),
+    ).rejects.toThrow('process.exit')
+
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('The @kubb/adapter-oas package is not installed.'))
+    expect(errorSpy).toHaveBeenCalledWith('Install it with:')
+
+error: patch failed: packages/cli/src/runners/validate/run.test.ts:25
+error: packages/cli/src/runners/validate/run.test.ts: patch does not apply
+Checking patch packages/core/src/FileManager.test.ts...
+Checking patch packages/core/src/FileProcessor.test.ts...
+error: while searching for:
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { ast, type FileNode } from '@kubb/ast'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { FileProcessor } from './FileProcessor.ts'
+import { memoryStorage } from './storages/memoryStorage.ts'
+
+function makeFile(path: string, sources: Array<string> = []) {
+  return ast.factory.createFile({
+    path,
+    baseName: path.split('/').pop() as `${string}.${string}`,
+    sources: sources.map((value) => ast.factory.createSource({ nodes: [ast.factory.createText(value)] })),
+    imports: [],
+    exports: [],
+  })
+}
+
+describe('FileProcessor', () => {
+  describe('parse', () => {
+    it('joins source values when no parsers are provided', async () => {
+      const processor = new FileProcessor({ storage: memoryStorage() })
+      const file = makeFile('/src/foo.ts', ['const a = 1', 'const b = 2'])
+      const result = await processor.parse(file)
+      expect(result).toBe('const a = 1\n\nconst b = 2')
+    })
+
+    it('joins source values when no matching parser is registered', async () => {
+      const processor = new FileProcessor({ storage: memoryStorage(), parsers: new Map() })
+      const file = makeFile('/src/foo.ts', ['const a = 1'])
+      const result = await processor.parse(file)
+      expect(result).toBe('const a = 1')
+    })
+
+    it('calls the registered parser for a matching extension', async () => {
+      const file = makeFile('/src/foo.ts', ['const a = 1'])
+      const mockParse = vi.fn().mockResolvedValue('// formatted\nconst a = 1')
+      const parser = {
+        name: 'ts',
+        type: 'parser' as const,
+        extNames: ['.ts' as const],
+        install: vi.fn(),
+        parse: mockParse,
+        print: vi.fn().mockReturnValue(''),
+      }
+      const parsers = new Map([['.ts' as const, parser]])
+      const processor = new FileProcessor({ storage: memoryStorage(), parsers })
+      const result = await processor.parse(file)
+      expect(mockParse).toHaveBeenCalledWith(file, { extname: undefined })
+      expect(result).toBe('// formatted\nconst a = 1')
+    })
+
+    describe('copy', () => {
+      let dir: string | undefined
+
+      afterEach(() => {
+        if (dir) rmSync(dir, { recursive: true, force: true })
+        dir = undefined
+      })
+
+      it('copies a real file verbatim and bypasses the parser', async () => {
+        dir = mkdtempSync(path.join(tmpdir(), 'kubb-copy-'))
+        const template = path.join(dir, 'template.ts')
+        const content = "import a from 'b'\nexport const z = 1\nimport c from 'd'\n"
+        writeFileSync(template, content)
+
+        const parse = vi.fn().mockReturnValue('SHOULD NOT RUN')
+        const parser = { name: 'ts', type: 'parser' as const, extNames: ['.ts' as const], install: vi.fn(), parse, print: vi.fn().mockReturnValue('') }
+        const processor = new FileProcessor({ storage: memoryStorage(), parsers: new Map([['.ts' as const, parser]]) })
+
+        const file = ast.factory.createFile({ path: '/src/client.ts', baseName: 'client.ts', copy: template })
+        const result = await processor.parse(file)
+
+        expect(parse).not.toHaveBeenCalled()
+        expect(result).toBe(content.trimEnd())
+      })
+
+      it('wraps the copied content with banner and footer', async () => {
+        dir = mkdtempSync(path.join(tmpdir(), 'kubb-copy-'))
+        const template = path.join(dir, 'template.ts')
+        writeFileSync(template, 'export const z = 1')
+
+        const processor = new FileProcessor({ storage: memoryStorage() })
+        const file = ast.factory.createFile({ path: '/src/client.ts', baseName: 'client.ts', copy: template, banner: '/* top */', footer: '/* bottom */' })
+        const result = await processor.parse(file)
+
+        expect(result).toBe('/* top */\nexport const z = 1\n/* bottom */')
+      })
+
+      it('throws a clear error when the file is missing', async () => {
+        const processor = new FileProcessor({ storage: memoryStorage() })
+        const file = ast.factory.createFile({ path: '/s
+error: patch failed: packages/core/src/FileProcessor.test.ts:1
+error: packages/core/src/FileProcessor.test.ts: patch does not apply
+Checking patch packages/core/src/KubbDriver.test.ts...
+Checking patch packages/core/src/Transform.test.ts...
+Checking patch packages/core/src/createKubb.test.ts...
+Checking patch packages/core/src/defineResolver.test.ts => packages/core/src/createResolver.test.ts...
+error: packages/core/src/defineResolver.test.ts: No such file or directory
+Checking patch packages/core/src/definePlugin.test.ts...
+error: while searching for:
+      hooks: {
+        'kubb:plugin:setup'(ctx) {
+          ctx.setResolver({
+            default() {
+              return 'CustomTypeName'
+            },
+          })
+        },
+
+error: patch failed: packages/core/src/definePlugin.test.ts:252
+error: packages/core/src/definePlugin.test.ts: patch does not apply
+Checking patch packages/kubb/src/defineConfig.test.ts...
+error: while searching for:
+    expect(barrelCount).toBe(1)
+  })
+
+  test('does not default barrel when pluginBarrel is not in plugins', () => {
+    const customPlugin = createMockedPlugin({ name: 'custom', options: undefined as any })
+    const config = defineConfig({
+      root: '.',
+
+error: patch failed: packages/kubb/src/defineConfig.test.ts:144
+error: packages/kubb/src/defineConfig.test.ts: patch does not apply
+Checking patch packages/renderer-jsx/src/jsxRenderer.test.tsx...
+patching file packages/core/src/Url.test.ts (already renamed from internals/utils/src/Url.test.ts)
+patching file packages/adapter-oas/src/adapter.test.ts
+patching file packages/adapter-oas/src/resolvers.test.ts
+patching file packages/adapter-oas/src/stream.test.ts
+patching file packages/cli/src/loggers/utils.test.ts
+Reversed (or previously applied) patch detected!  Assuming -R.
+The next patch would delete the file packages/cli/src/runners/generate/getConfigs.test.ts,
+which does not exist!  Assuming -R.
+patching file packages/cli/src/runners/generate/getConfigs.test.ts
+patching file packages/cli/src/runners/generate/utils.test.ts
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file packages/cli/src/runners/validate/run.test.ts
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file packages/core/src/FileManager.test.ts
+patching file packages/core/src/FileProcessor.test.ts
+Reversed (or previously applied) patch detected!  Assuming -R.
+Hunk #1 FAILED at 1.
+1 out of 1 hunk FAILED -- saving rejects to file packages/core/src/FileProcessor.test.ts.rej
+patching file packages/core/src/KubbDriver.test.ts
+patching file packages/core/src/Transform.test.ts
+patching file packages/core/src/createKubb.test.ts
+patching file packages/core/src/createResolver.test.ts (already renamed from packages/core/src/defineResolver.test.ts)
+Hunk #1 FAILED at 1.
+Hunk #2 FAILED at 16.
+Hunk #3 succeeded at 181 (offset 72 lines).
+Hunk #4 succeeded at 199 (offset 72 lines).
+Hunk #5 succeeded at 212 (offset 72 lines).
+Hunk #6 succeeded at 230 (offset 72 lines).
+Hunk #7 succeeded at 248 (offset 72 lines).
+Hunk #8 FAILED at 188.
+Hunk #9 FAILED at 212.
+Hunk #10 FAILED at 227.
+Hunk #11 FAILED at 251.
+Hunk #12 succeeded at 339 (offset 69 lines).
+Hunk #13 succeeded at 351 (offset 69 lines).
+Hunk #14 succeeded at 360 (offset 69 lines).
+Hunk #15 succeeded at 374 (offset 69 lines).
+Hunk #16 succeeded at 383 (offset 69 lines).
+Hunk #17 succeeded at 394 (offset 69 lines).
+Hunk #18 succeeded at 416 (offset 69 lines).
+Hunk #19 succeeded at 425 (offset 69 lines).
+Hunk #20 succeeded at 449 (offset 69 lines).
+6 out of 20 hunks FAILED -- saving rejects to file packages/core/src/createResolver.test.ts.rej
+patching file packages/core/src/definePlugin.test.ts
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file packages/kubb/src/defineConfig.test.ts
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file packages/renderer-jsx/src/jsxRenderer.test.tsx
+$ vitest run --config ./configs/vitest.config.ts -- --coverage internals/utils/src/Url.test.ts packages/adapter-oas/src/adapter.test.ts packages/adapter-oas/src/resolvers.test.ts packages/cli/src/loggers/utils.test.ts packages/cli/src/runners/generate/utils.test.ts packages/cli/src/runners/validate/run.test.ts packages/core/src/FileManager.test.ts packages/core/src/KubbDriver.test.ts packages/core/src/Transform.test.ts packages/core/src/createKubb.test.ts packages/core/src/createResolver.test.ts packages/core/src/definePlugin.test.ts packages/kubb/src/defineConfig.test.ts packages/renderer-jsx/src/jsxRenderer.test.tsx
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.9 [39m[90m/testbed[39m
+
+ [32m✓[39m packages/cli/src/runners/generate/utils.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 183[2mms[22m[39m
+ [32m✓[39m packages/mcp/src/tools/generate.test.ts [2m([22m[2m1 test[22m[2m)[22m[32m 214[2mms[22m[39m
+ [32m✓[39m packages/mcp/src/tools/validate.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 274[2mms[22m[39m
+ [32m✓[39m packages/adapter-oas/src/adapter.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 201[2mms[22m[39m
+ [32m✓[39m packages/adapter-oas/src/factory.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 216[2mms[22m[39m
+ [32m✓[39m packages/adapter-oas/src/parser.test.ts [2m([22m[2m353 tests[22m[2m)[22m[32m 132[2mms[22m[39m
+ [32m✓[39m internals/utils/src/promise.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 57[2mms[22m[39m
+ [32m✓[39m packages/adapter-oas/src/bundler.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 51[2mms[22m[39m
+ [31m❯[39m packages/core/src/createKubb.test.ts [2m([22m[2m17 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 47[2mms[22m[39m
+     [32m✓[39m if build can run and return created files and the pluginDriver[32m 6[2mms[22m[39m
+     [32m✓[39m resolves config defaults in the constructor, before setup[32m 1[2mms[22m[39m
+     [32m✓[39m if build with one plugin is running the different hooks in the correct order[32m 8[2mms[22m[39m
+     [32m✓[39m should handle plugin installation errors[32m 2[2mms[22m[39m
+     [32m✓[39m should collect a failed plugin as a diagnostic with the plugin name[32m 1[2mms[22m[39m
+     [32m✓[39m safeBuild should return error instead of throwing[32m 1[2mms[22m[39m
+     [32m✓[39m should track plugin timings as performance diagnostics[32m 1[2mms[22m[39m
+     [32m✓[39m should emit plugin lifecycle events[32m 1[2mms[22m[39m
+[31m     [31m×[31m writes every generated file in one batch after plugin:end fires for each plugin[39m[32m 5[2mms[22m[39m
+     [32m✓[39m cleans up hook-style plugin listeners between builds on shared hooks[32m 2[2mms[22m[39m
+     [32m✓[39m does not throw when userConfig.plugins is undefined[32m 1[2mms[22m[39m
+       [32m✓[39m generates all files when the schema count spans several write batches[32m 3[2mms[22m[39m
+       [32m✓[39m passes operations to gen.operations() in insertion order[32m 1[2mms[22m[39m
+       [32m✓[39m resolves per-node options when an override matches[32m 1[2mms[22m[39m
+       [32m✓[39m passes the same transformed node to operation and operations generators[32m 1[2mms[22m[39m
+[31m       [31m×[31m writes all generated files in a single batch, regardless of schema count[39m[32m 4[2mms[22m[39m
+       [32m✓[39m writes every file exactly once[32m 4[2mms[22m[39m
+ [32m✓[39m packages/ast/src/visitor.test.ts [2m([22m[2m34 tests[22m[2m)[22m[32m 36[2mms[22m[39m
+ [32m✓[39m packages/core/src/FileProcessor.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 26[2mms[22m[39m
+ [32m✓[39m packages/core/src/storages/fsStorage.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 24[2mms[22m[39m
+ [32m✓[39m packages/cli/src/Telemetry.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 23[2mms[22m[39m
+[90mstderr[2m | packages/cli/src/runners/validate/run.test.ts[2m > [22m[2mrunValidate[2m > [22m[2mvalidates input when @kubb/adapter-oas is available
+[22m[39m❌ Validation failed
+[vitest] No "memoize" export is defined on the "@internals/utils" mock. Did you forget to return it from "vi.mock"?
+If you need to partially mock a module, you can use "importOriginal" helper inside:
+
+
+ [31m❯[39m packages/cli/src/runners/validate/run.test.ts [2m([22m[2m2 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[32m 44[2mms[22m[39m
+[31m     [31m×[31m validates input when @kubb/adapter-oas is available[39m[32m 33[2mms[22m[39m
+[31m     [31m×[31m prints install guidance when @kubb/adapter-oas is missing[39m[32m 10[2mms[22m[39m
+ [32m✓[39m packages/parser-ts/src/utils.test.ts [2m([22m[2m92 tests[22m[2m)[22m[32m 29[2mms[22m[39m
+ [31m❯[39m packages/core/src/definePlugin.test.ts [2m([22m[2m29 tests[22m[2m | [22m[31m4 failed[39m[2m)[22m[32m 24[2mms[22m[39m
+     [32m✓[39m creates a valid hook-style plugin with `hooks:` property[32m 2[2mms[22m[39m
+     [32m✓[39m uses empty object as default options when none are provided[32m 0[2mms[22m[39m
+     [32m✓[39m registers a hook-style plugin in the plugins map[32m 1[2mms[22m[39m
+     [32m✓[39m registers kubb:plugin:setup handler on the event emitter[32m 1[2mms[22m[39m
+     [32m✓[39m calls kubb:plugin:setup handler when event is emitted[32m 0[2mms[22m[39m
+     [32m✓[39m addGenerator() registers generators via the event-based path (not on plugin.generators)[32m 1[2mms[22m[39m
+     [32m✓[39m addGenerator() registers every generator passed as separate arguments[32m 1[2mms[22m[39m
+     [32m✓[39m addGenerator() registers a spread list so an existing array can be passed in one call[32m 0[2mms[22m[39m
+     [32m✓[39m options passed to definePlugin are forwarded via ctx.options[32m 1[2mms[22m[39m
+[31m     [31m×[31m setResolver() merges partial resolver overrides with framework defaults[39m[32m 5[2mms[22m[39m
+[31m     [31m×[31m setResolver() mirrors resolver onto plugin.resolver for getPlugin() consumers[39m[32m 1[2mms[22m[39m
+[31m     [31m×[31m uses default resolver when setResolver() is never called[39m[32m 0[2mms[22m[39m
+     [32m✓[39m setOptions() merges resolved options into the normalized plugin[32m 0[2mms[22m[39m
+     [32m✓[39m external listeners receive kubb:plugin:setup context[32m 1[2mms[22m[39m
+     [32m✓[39m registerGenerator() registers kubb:generate:schema listener scoped to plugin[32m 1[2mms[22m[39m
+     [32m✓[39m registerGenerator() does NOT fire for a different plugin context[32m 0[2mms[22m[39m
+     [32m✓[39m hasEventGenerators() returns false before setup and true after[32m 0[2mms[22m[39m
+     [32m✓[39m registerGenerator() registers kubb:generate:operation listener[32m 0[2mms[22m[39m
+     [32m✓[39m registerGenerator() registers kubb:generate:operations listener[32m 0[2mms[22m[39m
+[31m     [31m×[31m registerGenerator() receives the resolved resolver on ctx.resolver[39m[32m 3[2mms[22m[39m
+     [32m✓[39m defaults mode to directory[32m 0[2mms[22m[39m
+     [32m✓[39m keeps an explicit directory mode[32m 0[2mms[22m[39m
+     [32m✓[39m keeps an explicit file mode with its path as-is[32m 0[2mms[22m[39m
+     [32m✓[39m passes through directory mode when a group is configured[32m 0[2mms[22m[39m
+     [32m✓[39m throws KUBB_INVALID_PLUGIN_OPTIONS for file mode paired with a group[32m 1[2mms[22m[39m
+     [32m✓[39m throws a Diagnostics error when file mode is paired with a group[32m 0[2mms[22m[39m
+     [32m✓[39m enforce: post plugin fires after normal plugins for the same event[32m 3[2mms[22m[39m
+     [32m✓[39m ConfigOptionsRegistry: augmented output field is present on Config["output"][32m 0[2mms[22m[39m
+     [32m✓[39m PluginOptionsRegistry: augmented output field is present on per-plugin Output[32m 0[2mms[22m[39m
+ [32m✓[39m internals/utils/src/fs.test.ts [2m([22m[2m34 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+ [32m✓[39m packages/plugin-barrel/src/plugin.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m packages/core/src/KubbDriver.test.ts [2m([22m[2m19 tests[22m[2m)[22m[32m 17[2mms[22m[39m
+ [32m✓[39m packages/ast/src/utils/codegen.test.ts [2m([22m[2m14 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m packages/adapter-oas/src/resolvers.test.ts [2m([22m[2m56 tests[22m[2m)[22m[32m 15[2mms[22m[39m
+ [32m✓[39m packages/adapter-oas/src/schemaDiagnostics.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 18[2mms[22m[39m
+[90mstdout[2m | packages/unplugin-kubb/src/unpluginFactory.test.ts[2m > [22m[2munpluginFactory[2m > [22m[2muses the same generation defaults as defineConfig
+[22m[39mKubb Unplugin 5.0.0-beta.84 🧩
+
+[90mstdout[2m | packages/unplugin-kubb/src/unpluginFactory.test.ts[2m > [22m[2munpluginFactory[2m > [22m[2muses the same generation defaults as defineConfig
+[22m[39m✓ plugin completed in 0.05ms
+
+[90mstdout[2m | packages/unplugin-kubb/src/unpluginFactory.test.ts[2m > [22m[2munpluginFactory[2m > [22m[2muses the same generation defaults as defineConfig
+[22m[39m✓ plugin-barrel completed in 0.01ms
+
+[90mstdout[2m | packages/unplugin-kubb/src/unpluginFactory.test.ts[2m > [22m[2munpluginFactory[2m > [22m[2muses the same generation defaults as defineConfig
+[22m[39m✓ Files written successfully
+
+[90mstdout[2m | packages/unplugin-kubb/src/unpluginFactory.test.ts[2m > [22m[2munpluginFactory[2m > [22m[2muses the same generation defaults as defineConfig
+[22m[39m✓ Generation completed
+Kubb Summary: ✓ 2 successful, 2 total
+
+ [32m✓[39m packages/cli/src/tools.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 14[2mms[22m[39m
+[90mstdout[2m | packages/unplugin-kubb/src/unpluginFactory.test.ts[2m > [22m[2munpluginFactory[2m > [22m[2mpreserves the configured root during generation
+[22m[39mKubb Unplugin 5.0.0-beta.84 🧩
+
+[90mstdout[2m | packages/unplugin-kubb/src/unpluginFactory.test.ts[2m > [22m[2munpluginFactory[2m > [22m[2mpreserves the configured root during generation
+[22m[39m✓ plugin-barrel completed in 0.01ms
+
+[90mstdout[2m | packages/unplugin-kubb/src/unpluginFactory.test.ts[2m > [22m[2munpluginFactory[2m > [22m[2mpreserves the configured root during generation
+[22m[39m✓ Generation completed
+Kubb Summary: ✓ 1 successful, 1 total
+
+[90mstdout[2m | packages/unplugin-kubb/src/unpluginFactory.test.ts[2m > [22m[2munpluginFactory[2m > [22m[2mfails the host build when generation fails
+[22m[39mKubb Unplugin 5.0.0-beta.84 🧩
+
+[90mstdout[2m | packages/unplugin-kubb/src/unpluginFactory.test.ts[2m > [22m[2munpluginFactory[2m > [22m[2mfails the host build when generation fails
+[22m[39m✓ Generation completed
+Kubb Summary: ✓ 2 successful, ✗ 0 failed, 2 total
+
+[90mstderr[2m | packages/unplugin-kubb/src/unpluginFactory.test.ts[2m > [22m[2munpluginFactory[2m > [22m[2mfails the host build when generation fails
+[22m[39m✗ setup failed
+
+ [32m✓[39m packages/unplugin-kubb/src/unpluginFactory.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 16[2mms[22m[39m
+ [31m❯[39m packages/core/src/FileManager.test.ts [2m([22m[2m29 tests[22m[2m | [22m[31m13 failed[39m[2m)[22m[32m 21[2mms[22m[39m
+     [32m✓[39m starts with an empty file list[32m 2[2mms[22m[39m
+       [32m✓[39m stores a new file[32m 2[2mms[22m[39m
+       [32m✓[39m merges two files with the same path passed in a single call[32m 1[2mms[22m[39m
+       [32m✓[39m keeps a default client import when grouped sources omit its body usage[32m 1[2mms[22m[39m
+       [32m✓[39m stores multiple distinct files[32m 0[2mms[22m[39m
+       [32m✓[39m returns the resolved file nodes[32m 0[2mms[22m[39m
+       [32m✓[39m stores a new file when it does not yet exist[32m 0[2mms[22m[39m
+       [32m✓[39m merges into an existing file with the same path[32m 0[2mms[22m[39m
+       [32m✓[39m incoming file banner overrides existing banner (barrel clears plugin banner)[32m 0[2mms[22m[39m
+       [32m✓[39m incoming banner is applied when existing file has none[32m 0[2mms[22m[39m
+       [32m✓[39m preserves banner when both files carry the same banner[32m 0[2mms[22m[39m
+       [32m✓[39m incoming file footer overrides existing footer[32m 0[2mms[22m[39m
+       [32m✓[39m removes all stored files[32m 0[2mms[22m[39m
+       [32m✓[39m returns files sorted by path length (shortest first)[32m 0[2mms[22m[39m
+       [32m✓[39m places index files last within the same length bucket[32m 0[2mms[22m[39m
+       [32m✓[39m clears all stored files[32m 0[2mms[22m[39m
+[31m       [31m×[31m joins source values when no parsers are provided[39m[32m 4[2mms[22m[39m
+[31m       [31m×[31m joins source values when no matching parser is registered[39m[32m 1[2mms[22m[39m
+[31m       [31m×[31m calls the registered parser for a matching extension[39m[32m 1[2mms[22m[39m
+[31m         [31m×[31m copies a real file verbatim and bypasses the parser[39m[32m 2[2mms[22m[39m
+[31m         [31m×[31m wraps the copied content with banner and footer[39m[32m 1[2mms[22m[39m
+[31m         [31m×[31m throws a clear error when the file is missing[39m[32m 0[2mms[22m[39m
+[31m       [31m×[31m is a no-op for an empty batch[39m[32m 1[2mms[22m[39m
+[31m       [31m×[31m writes every file in the batch[39m[32m 0[2mms[22m[39m
+[31m       [31m×[31m parses each file before writing it[39m[32m 1[2mms[22m[39m
+[31m       [31m×[31m fires start once, update per file, then end once, writing every file concurrently[39m[32m 0[2mms[22m[39m
+[31m       [31m×[31m runs writes concurrently instead of pacing itself between files[39m[32m 0[2mms[22m[39m
+[31m       [31m×[31m waits for every write to finish before resolving[39m[32m 0[2mms[22m[39m
+[31m       [31m×[31m rejects when a write fails[39m[32m 0[2mms[22m[39m
+ [32m✓[39m packages/renderer-jsx/src/components/md/Callout.test.tsx [2m([22m[2m8 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m internals/shared/src/loader.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m packages/core/src/Diagnostics.test.ts [2m([22m[2m25 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+ [32m✓[39m packages/core/src/Url.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m packages/ast/src/nodes/file.test.ts [2m([22m[2m28 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m packages/ast/src/utils/combineFileMembers.test.ts [2m([22m[2m33 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m internals/shared/src/init.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [31m❯[39m packages/core/src/createResolver.test.ts [2m([22m[2m38 tests[22m[2m | [22m[31m19 failed[39m[2m)[22m[32m 20[2mms[22m[39m
+     [32m✓[39m injects the default machinery and top-level name/file[32m 2[2mms[22m[39m
+     [32m✓[39m a plugin overrides the top-level name; default.name keeps the built-in casing[32m 1[2mms[22m[39m
+     [32m✓[39m a namespace method reaches the resolver root through `this`[32m 0[2mms[22m[39m
+     [32m✓[39m a file override threads a custom caser through default.file[32m 1[2mms[22m[39m
+     [32m✓[39m resolveOptions does not throw when options is not an object[32m 1[2mms[22m[39m
+     [32m✓[39m Resolver.merge() rebuilds helpers on a new instance[32m 1[2mms[22m[39m
+     [32m✓[39m supports top-level helpers like typeName[32m 0[2mms[22m[39m
+     [32m✓[39m resolves flat path (directory mode)[32m 0[2mms[22m[39m
+     [32m✓[39m returns the output file as-is in file mode[32m 0[2mms[22m[39m
+     [32m✓[39m groups by tag using the plain camelCased tag by default[32m 0[2mms[22m[39m
+[31m     [31m×[31m groups by path when group.type is path[39m[32m 3[2mms[22m[39m
+[31m     [31m×[31m uses custom group.name when provided[39m[32m 1[2mms[22m[39m
+[31m     [31m×[31m falls back to flat path when group present but no tag or path given[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m sanitizes traversal segments in default path-based grouping[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m throws when a custom group.name returns a path outside the output directory[39m[32m 4[2mms[22m[39m
+     [32m✓[39m throws when baseName contains a traversal sequence[32m 0[2mms[22m[39m
+     [32m✓[39m resolves a file with correct baseName and path[32m 1[2mms[22m[39m
+     [32m✓[39m uses the default toFilePath casing for the file name[32m 0[2mms[22m[39m
+     [32m✓[39m nests dotted file name pet.petId into /root/types/pet/petId.ts[32m 0[2mms[22m[39m
+     [32m✓[39m nests dotted file name api.v2 into /root/types/api/v2.ts[32m 0[2mms[22m[39m
+     [32m✓[39m nests dotted file name some_operation_v3.14 into /root/types/someOperationV314.ts[32m 0[2mms[22m[39m
+     [32m✓[39m nests dotted file name ..Schema into /root/types/schema.ts[32m 0[2mms[22m[39m
+     [32m✓[39m omits the file name and writes to the output file in file mode[32m 0[2mms[22m[39m
+     [32m✓[39m groups by tag when resolver is tag-grouped[32m 0[2mms[22m[39m
+[31m     [31m×[31m returns default banner when no output.banner is configured[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m returns simple banner when defaultBanner is "simple"[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m returns null when defaultBanner is false and no user banner[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m user string banner overrides the Kubb default[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m user function banner overrides the Kubb default when meta is provided[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m includes meta title and version (but not description) in the Kubb banner when meta is provided[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m function banner receives per-file context and can skip aggregation files[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m function banner receives filePath and baseName from the file context[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m per-file fields default to false/empty when no file context is provided[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m returns null when no output.footer is configured[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m returns static string footer from output.footer[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m calls output.footer function with meta when meta is provided[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m calls output.footer function with undefined when meta is undefined[39m[32m 0[2mms[22m[39m
+[31m     [31m×[31m function footer receives per-file context[39m[32m 0[2mms[22m[39m
+ [32m✓[39m packages/cli/src/runners/init/utils.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m packages/mcp/src/tools/init.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m packages/renderer-jsx/src/components/md/Frontmatter.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m packages/plugin-barrel/src/utils.test.ts [2m([22m[2m18 tests[22m[2m)[22m[32m 10[2mms[22m[39m
+ [32m✓[39m packages/kubb/src/defineConfig.test.ts [2m([22m[2m29 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m packages/parser-md/src/parserMd.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m packages/renderer-jsx/src/components/md/Paragraph.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m packages/adapter-oas/src/refs.test.ts [2m([22m[2m10 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m packages/renderer-jsx/src/jsxRenderer.test.tsx [2m([22m[2m3 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m packages/renderer-jsx/src/components/md/List.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m packages/core/src/asyncEventEmitter.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m packages/ast/src/nodes/code.test.ts [2m([22m[2m23 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m scripts/verifyRegistry.test.mjs [2m([22m[2m3 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m packages/cli/src/loggers/reporters.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 8[2mms[22m[39m
+ [32m✓[39m packages/ast/src/utils/schemaGraph.test.ts [2m([22m[2m17 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m packages/adapter-oas/src/discriminator.test.ts [2m([22m[2m16 tests[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m packages/ast/src/utils/refs.test.ts [2m([22m[2m15 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m packages/renderer-jsx/src/components/md/Heading.test.tsx [2m([22m[2m1 test[22m[2m)[22m[32m 7[2mms[22m[39m
+ [32m✓[39m packages/core/src/Transform.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m packages/ast/src/utils/strings.test.ts [2m([22m[2m22 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m packages/ast/src/guards.test.ts [2m([22m[2m30 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m packages/core/src/storages/memoryStorage.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m packages/ast/src/createPrinter.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m scripts/createReleases.test.mjs [2m([22m[2m9 tests[22m[2m)[22m[32m 6[2mms[22m[39m
+ [32m✓[39m packages/ast/src/utils/schemaTraversal.test.ts [2m([22m[2m7 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m internals/utils/src/env.test.ts [2m([22m[2m11 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m internals/utils/src/casing.test.ts [2m([22m[2m20 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m packages/core/src/reporters/fileReporter.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m packages/adapter-oas/src/promoteEnums.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m packages/core/src/reporters/report.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [31m❯[39m packages/cli/src/loggers/utils.test.ts [2m([22m[2m8 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 7[2mms[22m[39m
+     [32m✓[39m starts every counter at zero with an hrtime snapshot[32m 2[2mms[22m[39m
+     [32m✓[39m resets counters back to zero in place[32m 0[2mms[22m[39m
+     [32m✓[39m increments completedPlugins on success[32m 0[2mms[22m[39m
+     [32m✓[39m increments failedPlugins on failure[32m 0[2mms[22m[39m
+     [32m✓[39m returns elapsed milliseconds between start and end[32m 0[2mms[22m[39m
+     [32m✓[39m returns undefined when no start was recorded[32m 0[2mms[22m[39m
+     [32m✓[39m consumes the start so a second end returns undefined[32m 0[2mms[22m[39m
+[31m     [31m×[31m clear drops pending starts[39m[32m 2[2mms[22m[39m
+ [32m✓[39m packages/renderer-jsx/src/components/File.test.tsx [2m([22m[2m4 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m packages/ast/src/utils/mergeAdjacentSchemas.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m packages/ast/src/nodes/operation.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m packages/cli/src/runners/generate/getConfigs.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 11[2mms[22m[39m
+ [32m✓[39m packages/renderer-jsx/src/components/js/Type.test.tsx [2m([22m[2m2 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m packages/adapter-oas/src/guards.test.ts [2m([22m[2m13 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m scripts/release.test.mjs [2m([22m[2m6 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m packages/ast/src/defineMacro.test.ts [2m([22m[2m5 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m internals/utils/src/reserved.test.ts [2m([22m[2m8 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m packages/ast/src/nodes/schema.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m packages/core/src/createStorage.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m packages/ast/src/nodes/input.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m packages/ast/src/macros/macroDiscriminatorEnum.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m internals/changelog/format.test.mjs [2m([22m[2m5 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m packages/ast/src/nodes/property.test.ts [2m([22m[2m4 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m packages/ast/src/infer.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m packages/ast/src/nodes/response.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m packages/ast/src/macros/macroSimplifyUnion.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m packages/parser-ts/src/parserTs.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m internals/utils/src/runtime.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m packages/ast/src/macros/macroEnumName.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m internals/changelog/index.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m internals/utils/src/colors.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m internals/utils/src/string.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m packages/ast/src/nodes/parameter.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m packages/mcp/src/utils.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 41 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/FileManager.test.ts[2m > [22mFileManager[2m > [22mparse[2m > [22mjoins source values when no parsers are provided
+[31m[1mTypeError[22m: manager.parse is not a function[39m
+[36m [2m❯[22m packages/core/src/FileManager.test.ts:[2m169:36[22m[39m
+    [90m167|[39m       [35mconst[39m manager [33m=[39m [35mnew[39m [33mFileManager[39m()
+    [90m168|[39m       const file = makeFileWithSources('/src/foo.ts', ['const a = 1', …
+    [90m169|[39m       [35mconst[39m result [33m=[39m [35mawait[39m manager[33m.[39m[34mparse[39m(file)
+    [90m   |[39m                                    [31m^[39m
+    [90m170|[39m       [34mexpect[39m(result)[33m.[39m[34mtoBe[39m([32m'const a = 1\n\nconst b = 2'[39m)
+    [90m171|[39m     })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/FileManager.test.ts[2m > [22mFileManager[2m > [22mparse[2m > [22mjoins source values when no matching parser is registered
+[31m[1mTypeError[22m: manager.parse is not a function[39m
+[36m [2m❯[22m packages/core/src/FileManager.test.ts:[2m176:36[22m[39m
+    [90m174|[39m       [35mconst[39m manager [33m=[39m [35mnew[39m [33mFileManager[39m()
+    [90m175|[39m       [35mconst[39m file [33m=[39m [34mmakeFileWithSources[39m([32m'/src/foo.ts'[39m[33m,[39m [[32m'const a = 1'[39m])
+    [90m176|[39m       [35mconst[39m result [33m=[39m [35mawait[39m manager[33m.[39m[34mparse[39m(file[33m,[39m { parsers[33m:[39m [35mnew[39m [33mMap[39m() })
+    [90m   |[39m                                    [31m^[39m
+    [90m177|[39m       [34mexpect[39m(result)[33m.[39m[34mtoBe[39m([32m'const a = 1'[39m)
+    [90m178|[39m     })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/FileManager.test.ts[2m > [22mFileManager[2m > [22mparse[2m > [22mcalls the registered parser for a matching extension
+[31m[1mTypeError[22m: manager.parse is not a function[39m
+[36m [2m❯[22m packages/core/src/FileManager.test.ts:[2m193:36[22m[39m
+    [90m191|[39m       [35mconst[39m parsers [33m=[39m [35mnew[39m [33mMap[39m([[[32m'.ts'[39m [35mas[39m [35mconst[39m[33m,[39m parser]])
+    [90m192|[39m       [35mconst[39m manager [33m=[39m [35mnew[39m [33mFileManager[39m()
+    [90m193|[39m       [35mconst[39m result [33m=[39m [35mawait[39m manager[33m.[39m[34mparse[39m(file[33m,[39m { parsers })
+    [90m   |[39m                                    [31m^[39m
+    [90m194|[39m       expect(mockParse).toHaveBeenCalledWith(file, { extname: undefine…
+    [90m195|[39m       [34mexpect[39m(result)[33m.[39m[34mtoBe[39m([32m'// formatted\nconst a = 1'[39m)
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/FileManager.test.ts[2m > [22mFileManager[2m > [22mparse[2m > [22mcopy[2m > [22mcopies a real file verbatim and bypasses the parser
+[31m[1mTypeError[22m: manager.parse is not a function[39m
+[36m [2m❯[22m packages/core/src/FileManager.test.ts:[2m217:38[22m[39m
+    [90m215|[39m
+    [90m216|[39m         const file = ast.factory.createFile({ path: '/src/client.ts', …
+    [90m217|[39m         const result = await manager.parse(file, { parsers: new Map([[…
+    [90m   |[39m                                      [31m^[39m
+    [90m218|[39m
+    [90m219|[39m         [34mexpect[39m(parse)[33m.[39mnot[33m.[39m[34mtoHaveBeenCalled[39m()
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/FileManager.test.ts[2m > [22mFileManager[2m > [22mparse[2m > [22mcopy[2m > [22mwraps the copied content with banner and footer
+[31m[1mTypeError[22m: manager.parse is not a function[39m
+[36m [2m❯[22m packages/core/src/FileManager.test.ts:[2m230:38[22m[39m
+    [90m228|[39m         [35mconst[39m manager [33m=[39m [35mnew[39m [33mFileManager[39m()
+    [90m229|[39m         const file = ast.factory.createFile({ path: '/src/client.ts', …
+    [90m230|[39m         [35mconst[39m result [33m=[39m [35mawait[39m manager[33m.[39m[34mparse[39m(file)
+    [90m   |[39m                                      [31m^[39m
+    [90m231|[39m
+    [90m232|[39m         expect(result).toBe('/* top */\nexport const z = 1\n/* bottom …
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/FileManager.test.ts[2m > [22mFileManager[2m > [22mparse[2m > [22mcopy[2m > [22mthrows a clear error when the file is missing
+[31m[1mTypeError[22m: manager.parse is not a function[39m
+[36m [2m❯[22m packages/core/src/FileManager.test.ts:[2m239:30[22m[39m
+    [90m237|[39m         const file = ast.factory.createFile({ path: '/src/client.ts', …
+    [90m238|[39m
+    [90m239|[39m         await expect(manager.parse(file)).rejects.toThrow(/Could not c…
+    [90m   |[39m                              [31m^[39m
+    [90m240|[39m       })
+    [90m241|[39m     })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/FileManager.test.ts[2m > [22mFileManager[2m > [22mwrite[2m > [22mis a no-op for an empty batch
+[31m[1mTypeError[22m: manager.write is not a function[39m
+[36m [2m❯[22m packages/core/src/FileManager.test.ts:[2m250:21[22m[39m
+    [90m248|[39m       [35mconst[39m manager [33m=[39m [35mnew[39m [33mFileManager[39m()
+    [90m249|[39m
+    [90m250|[39m       [35mawait[39m manager[33m.[39m[34mwrite[39m([][33m,[39m { storage })
+    [90m   |[39m                     [31m^[39m
+    [90m251|[39m
+    [90m252|[39m       [34mexpect[39m(setItem)[33m.[39mnot[33m.[39m[34mtoHaveBeenCalled[39m()
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/FileManager.test.ts[2m > [22mFileManager[2m > [22mwrite[2m > [22mwrites every file in the batch
+[31m[1mTypeError[22m: manager.write is not a function[39m
+[36m [2m❯[22m packages/core/src/FileManager.test.ts:[2m259:21[22m[39m
+    [90m257|[39m       [35mconst[39m manager [33m=[39m [35mnew[39m [33mFileManager[39m()
+    [90m258|[39m
+    [90m259|[39m       await manager.write([makeFileWithSources('a.ts', ['/* a.ts */'])…
+    [90m   |[39m                     [31m^[39m
+    [90m260|[39m
+    [90m261|[39m       [34mexpect[39m([35mawait[39m storage[33m.[39m[34mgetItem[39m([32m'a.ts'[39m))[33m.[39m[34mtoContain[39m([32m'/* a.ts */'[39m)
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/FileManager.test.ts[2m > [22mFileManager[2m > [22mwrite[2m > [22mparses each file before writing it
+[31m[1mTypeError[22m: manager.write is not a function[39m
+[36m [2m❯[22m packages/core/src/FileManager.test.ts:[2m287:21[22m[39m
+    [90m285|[39m       [35mconst[39m manager [33m=[39m [35mnew[39m [33mFileManager[39m()
+    [90m286|[39m
+    [90m287|[39m       await manager.write([makeFileWithSources('a.ts', ['/* a */']), m…
+    [90m   |[39m                     [31m^[39m
+    [90m288|[39m         storage[33m,[39m
+    [90m289|[39m         parsers[33m:[39m [35mnew[39m [33mMap[39m([[[32m'.ts'[39m [35mas[39m [35mconst[39m[33m,[39m parser]])[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/FileManager.test.ts[2m > [22mFileManager[2m > [22mwrite[2m > [22mfires start once, update per file, then end once, writing every file concurrently
+[31m[1mTypeError[22m: manager.write is not a function[39m
+[36m [2m❯[22m packages/core/src/FileManager.test.ts:[2m310:21[22m[39m
+    [90m308|[39m       })
+    [90m309|[39m
+    [90m310|[39m       await manager.write([makeFileWithSources('a.ts', ['/* a */']), m…
+    [90m   |[39m                     [31m^[39m
+    [90m311|[39m
+    [90m312|[39m       [34mexpect[39m(events[[34m0[39m])[33m.[39m[34mtoBe[39m([32m'start:2'[39m)
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/FileManager.test.ts[2m > [22mFileManager[2m > [22mwrite[2m > [22mruns writes concurrently instead of pacing itself between files
+[31m[1mTypeError[22m: manager.write is not a function[39m
+[36m [2m❯[22m packages/core/src/FileManager.test.ts:[2m329:31[22m[39m
+    [90m327|[39m       [35mconst[39m manager [33m=[39m [35mnew[39m [33mFileManager[39m()
+    [90m328|[39m
+    [90m329|[39m       const writing = manager.write([makeFileWithSources('a.ts', ['/* …
+    [90m   |[39m                               [31m^[39m
+    [90m330|[39m       [35mawait[39m [35mnew[39m [33mPromise[39m((resolve) [33m=>[39m [34msetTimeout[39m(resolve[33m,[39m [34m5[39m))
+    [90m331|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/FileManager.test.ts[2m > [22mFileManager[2m > [22mwrite[2m > [22mwaits for every write to finish before resolving
+[31m[1mTypeError[22m: manager.write is not a function[39m
+[36m [2m❯[22m packages/core/src/FileManager.test.ts:[2m350:31[22m[39m
+    [90m348|[39m       [35mconst[39m manager [33m=[39m [35mnew[39m [33mFileManager[39m()
+    [90m349|[39m
+    [90m350|[39m       const writing = manager.write([makeFileWithSources('a.ts', ['/* …
+    [90m   |[39m                               [31m^[39m
+    [90m351|[39m         settled [33m=[39m [35mtrue[39m
+    [90m352|[39m       })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/FileManager.test.ts[2m > [22mFileManager[2m > [22mwrite[2m > [22mrejects when a write fails
+[31m[1mTypeError[22m: manager.write is not a function[39m
+[36m [2m❯[22m packages/core/src/FileManager.test.ts:[2m370:28[22m[39m
+    [90m368|[39m       [35mconst[39m manager [33m=[39m [35mnew[39m [33mFileManager[39m()
+    [90m369|[39m
+    [90m370|[39m       await expect(manager.write([makeFileWithSources('a.ts', ['/* a *…
+    [90m   |[39m                            [31m^[39m
+    [90m371|[39m     })
+    [90m372|[39m   })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createKubb.test.ts[2m > [22mcreateKubb[2m > [22mwrites every generated file in one batch after plugin:end fires for each plugin
+[31m[1mAssertionError[22m: expected [ 1, 1 ] to strictly equal [ 2 ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[32m-   2,[39m
+[31m+   1,[39m
+[31m+   1,[39m
+[2m  ][22m
+
+[36m [2m❯[22m packages/core/src/createKubb.test.ts:[2m278:21[22m[39m
+    [90m276|[39m     // declaration order, which drives the CLI counter. Writing to sto…
+    [90m277|[39m     // after every plugin (and post-processing) has finished generatin…
+    [90m278|[39m     [34mexpect[39m(batches)[33m.[39m[34mtoStrictEqual[39m([[34m2[39m])
+    [90m   |[39m                     [31m^[39m
+    [90m279|[39m     [34mexpect[39m(endOrder)[33m.[39m[34mtoStrictEqual[39m([[32m'plugin-one'[39m[33m,[39m [32m'plugin-two'[39m])
+    [90m280|[39m     expect(files.map((file) => file.path)).toStrictEqual(['/workspace/…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createKubb.test.ts[2m > [22mcreateKubb[2m > [22mwrite batch after generation[2m > [22mwrites all generated files in a single batch, regardless of schema count
+[31m[1mAssertionError[22m: expected [ 8, 8, 8, 8, 8, 8, 8, 4 ] to strictly equal [ 60 ][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[32m-   60,[39m
+[31m+   8,[39m
+[31m+   8,[39m
+[31m+   8,[39m
+[31m+   8,[39m
+[31m+   8,[39m
+[31m+   8,[39m
+[31m+   8,[39m
+[31m+   4,[39m
+[2m  ][22m
+
+[36m [2m❯[22m packages/core/src/createKubb.test.ts:[2m562:23[22m[39m
+    [90m560|[39m
+    [90m561|[39m       [34mexpect[39m(files)[33m.[39m[34mtoHaveLength[39m(count)
+    [90m562|[39m       [34mexpect[39m(batches)[33m.[39m[34mtoStrictEqual[39m([count])
+    [90m   |[39m                       [31m^[39m
+    [90m563|[39m     })
+    [90m564|[39m   })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefaultResolvePath[2m > [22mgroups by path when group.type is path
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m184:20[22m[39m
+    [90m182|[39m
+    [90m183|[39m   [34mit[39m([32m'groups by path when group.type is path'[39m[33m,[39m () [33m=>[39m {
+    [90m184|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mpath[39m(
+    [90m   |[39m                    [31m^[39m
+    [90m185|[39m       { baseName[33m:[39m [32m'petTypes.ts'[39m[33m,[39m path[33m:[39m [32m'/pets/list'[39m }[33m,[39m
+    [90m186|[39m       {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefaultResolvePath[2m > [22muses custom group.name when provided
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m202:20[22m[39m
+    [90m200|[39m
+    [90m201|[39m   [34mit[39m([32m'uses custom group.name when provided'[39m[33m,[39m () [33m=>[39m {
+    [90m202|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mpath[39m(
+    [90m   |[39m                    [31m^[39m
+    [90m203|[39m       { baseName[33m:[39m [32m'petTypes.ts'[39m[33m,[39m tag[33m:[39m [32m'pets'[39m }[33m,[39m
+    [90m204|[39m       {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefaultResolvePath[2m > [22mfalls back to flat path when group present but no tag or path given
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m215:20[22m[39m
+    [90m213|[39m
+    [90m214|[39m   it('falls back to flat path when group present but no tag or path gi…
+    [90m215|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mpath[39m(
+    [90m   |[39m                    [31m^[39m
+    [90m216|[39m       { baseName[33m:[39m [32m'petTypes.ts'[39m[33m,[39m tag[33m:[39m [32m'pets'[39m }[33m,[39m
+    [90m217|[39m       {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefaultResolvePath[2m > [22msanitizes traversal segments in default path-based grouping
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m233:20[22m[39m
+    [90m231|[39m
+    [90m232|[39m   it('sanitizes traversal segments in default path-based grouping', ()…
+    [90m233|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mpath[39m(
+    [90m   |[39m                    [31m^[39m
+    [90m234|[39m       { baseName[33m:[39m [32m'petTypes.ts'[39m[33m,[39m path[33m:[39m [32m'../../etc/passwd'[39m }[33m,[39m
+    [90m235|[39m       {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefaultResolvePath[2m > [22mthrows when a custom group.name returns a path outside the output directory
+[31m[1mAssertionError[22m: expected [Function] to throw error including 'outside the output directory' but got 'baseResolver is not defined'[39m
+
+Expected: [32m"outside the output directory"[39m
+Received: [31m"baseResolver is not defined"[39m
+
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m259:7[22m[39m
+    [90m257|[39m         }[33m,[39m
+    [90m258|[39m       )[33m,[39m
+    [90m259|[39m     )[33m.[39m[34mtoThrow[39m([32m'outside the output directory'[39m)
+    [90m   |[39m       [31m^[39m
+    [90m260|[39m   })
+    [90m261|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefault.banner[2m > [22mreturns default banner when no output.banner is configured
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m344:20[22m[39m
+    [90m342|[39m [34mdescribe[39m([32m'default.banner'[39m[33m,[39m () [33m=>[39m {
+    [90m343|[39m   it('returns default banner when no output.banner is configured', () …
+    [90m344|[39m     const result = baseResolver.default.banner(undefined, { config: mo…
+    [90m   |[39m                    [31m^[39m
+    [90m345|[39m     [34mexpect[39m(result)[33m.[39m[34mtoContain[39m([32m'Generated by Kubb'[39m)
+    [90m346|[39m     [34mexpect[39m(result)[33m.[39m[34mtoContain[39m([32m'petStore.yaml'[39m)
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefault.banner[2m > [22mreturns simple banner when defaultBanner is "simple"
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m354:20[22m[39m
+    [90m352|[39m       output[33m:[39m { [33m...[39mmockConfig[33m.[39moutput[33m,[39m defaultBanner[33m:[39m [32m'simple'[39m }[33m,[39m
+    [90m353|[39m     } [35mas[39m unknown [35mas[39m [33mConfig[39m
+    [90m354|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mbanner[39m(undefined[33m,[39m { config })
+    [90m   |[39m                    [31m^[39m
+    [90m355|[39m     expect(result).toBe('/**\n* Generated by Kubb (https://kubb.dev/).…
+    [90m356|[39m   })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefault.banner[2m > [22mreturns null when defaultBanner is false and no user banner
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m363:20[22m[39m
+    [90m361|[39m       output[33m:[39m { [33m...[39mmockConfig[33m.[39moutput[33m,[39m defaultBanner[33m:[39m [35mfalse[39m }[33m,[39m
+    [90m362|[39m     } [35mas[39m unknown [35mas[39m [33mConfig[39m
+    [90m363|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mbanner[39m(undefined[33m,[39m { config })
+    [90m   |[39m                    [31m^[39m
+    [90m364|[39m     [34mexpect[39m(result)[33m.[39m[34mtoBeNull[39m()
+    [90m365|[39m   })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefault.banner[2m > [22muser string banner overrides the Kubb default
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m368:20[22m[39m
+    [90m366|[39m
+    [90m367|[39m   [34mit[39m([32m'user string banner overrides the Kubb default'[39m[33m,[39m () [33m=>[39m {
+    [90m368|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mbanner[39m(undefined[33m,[39m {
+    [90m   |[39m                    [31m^[39m
+    [90m369|[39m       config[33m:[39m mockConfig[33m,[39m
+    [90m370|[39m       output[33m:[39m { banner[33m:[39m [32m'// custom banner'[39m }[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefault.banner[2m > [22muser function banner overrides the Kubb default when meta is provided
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m377:20[22m[39m
+    [90m375|[39m   it('user function banner overrides the Kubb default when meta is pro…
+    [90m376|[39m     const meta: InputMeta = { title: 'Petstore', description: 'Test AP…
+    [90m377|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mbanner[39m(meta[33m,[39m {
+    [90m   |[39m                    [31m^[39m
+    [90m378|[39m       config[33m:[39m mockConfig[33m,[39m
+    [90m379|[39m       output[33m:[39m { banner[33m:[39m (m[33m?[39m[33m:[39m [33mInputMeta[39m) [33m=>[39m [32m`// title: [39m[36m${[39mm[33m?.[39mtitle[36m}[39m[32m`[39m }[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefault.banner[2m > [22mincludes meta title and version (but not description) in the Kubb banner when meta is provided
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m386:20[22m[39m
+    [90m384|[39m   it('includes meta title and version (but not description) in the Kub…
+    [90m385|[39m     const meta: InputMeta = { title: 'Pet API', description: 'A very l…
+    [90m386|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mbanner[39m(meta[33m,[39m {
+    [90m   |[39m                    [31m^[39m
+    [90m387|[39m       config[33m:[39m mockConfig[33m,[39m
+    [90m388|[39m     })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[26/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefault.banner[2m > [22mfunction banner receives per-file context and can skip aggregation files
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m397:25[22m[39m
+    [90m395|[39m     const banner = (m: { isBarrel: boolean; isAggregation: boolean }) …
+    [90m396|[39m
+    [90m397|[39m     [35mconst[39m aggregation [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mbanner[39m(undefined[33m,[39m {
+    [90m   |[39m                         [31m^[39m
+    [90m398|[39m       config[33m:[39m mockConfig[33m,[39m
+    [90m399|[39m       output[33m:[39m { banner }[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[27/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefault.banner[2m > [22mfunction banner receives filePath and baseName from the file context
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m419:20[22m[39m
+    [90m417|[39m
+    [90m418|[39m   it('function banner receives filePath and baseName from the file con…
+    [90m419|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mbanner[39m(undefined[33m,[39m {
+    [90m   |[39m                    [31m^[39m
+    [90m420|[39m       config[33m:[39m mockConfig[33m,[39m
+    [90m421|[39m       output[33m:[39m { banner[33m:[39m (m) [33m=>[39m [32m`// [39m[36m${[39mm[33m.[39mbaseName[36m}[39m[32m @ [39m[36m${[39mm[33m.[39mfilePath[36m}[39m[32m`[39m }[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[28/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefault.banner[2m > [22mper-file fields default to false/empty when no file context is provided
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m428:20[22m[39m
+    [90m426|[39m
+    [90m427|[39m   it('per-file fields default to false/empty when no file context is p…
+    [90m428|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mbanner[39m(undefined[33m,[39m {
+    [90m   |[39m                    [31m^[39m
+    [90m429|[39m       config[33m:[39m mockConfig[33m,[39m
+    [90m430|[39m       output: { banner: (m) => `${m.isBarrel}-${m.isAggregation}-[${m.…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[29/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefault.footer[2m > [22mreturns null when no output.footer is configured
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m438:20[22m[39m
+    [90m436|[39m [34mdescribe[39m([32m'default.footer'[39m[33m,[39m () [33m=>[39m {
+    [90m437|[39m   [34mit[39m([32m'returns null when no output.footer is configured'[39m[33m,[39m () [33m=>[39m {
+    [90m438|[39m     const result = baseResolver.default.footer(undefined, { config: mo…
+    [90m   |[39m                    [31m^[39m
+    [90m439|[39m     [34mexpect[39m(result)[33m.[39m[34mtoBeNull[39m()
+    [90m440|[39m   })
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[30/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefault.footer[2m > [22mreturns static string footer from output.footer
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m443:20[22m[39m
+    [90m441|[39m
+    [90m442|[39m   [34mit[39m([32m'returns static string footer from output.footer'[39m[33m,[39m () [33m=>[39m {
+    [90m443|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mfooter[39m(undefined[33m,[39m {
+    [90m   |[39m                    [31m^[39m
+    [90m444|[39m       config[33m:[39m mockConfig[33m,[39m
+    [90m445|[39m       output[33m:[39m { footer[33m:[39m [32m'// end of file'[39m }[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[31/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefault.footer[2m > [22mcalls output.footer function with meta when meta is provided
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m452:20[22m[39m
+    [90m450|[39m   it('calls output.footer function with meta when meta is provided', (…
+    [90m451|[39m     const meta: InputMeta = { title: 'Petstore', circularNames: [], en…
+    [90m452|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mfooter[39m(meta[33m,[39m {
+    [90m   |[39m                    [31m^[39m
+    [90m453|[39m       config[33m:[39m mockConfig[33m,[39m
+    [90m454|[39m       output: { footer: (m?: InputMeta) => `// footer for ${m?.title}`…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[32/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefault.footer[2m > [22mcalls output.footer function with undefined when meta is undefined
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m460:20[22m[39m
+    [90m458|[39m
+    [90m459|[39m   it('calls output.footer function with undefined when meta is undefin…
+    [90m460|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mfooter[39m(undefined[33m,[39m {
+    [90m   |[39m                    [31m^[39m
+    [90m461|[39m       config[33m:[39m mockConfig[33m,[39m
+    [90m462|[39m       output[33m:[39m { footer[33m:[39m (_m[33m?[39m[33m:[39m [33mInputMeta[39m) [33m=>[39m [32m'// called'[39m }[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[33/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/createResolver.test.ts[2m > [22mdefault.footer[2m > [22mfunction footer receives per-file context
+[31m[1mReferenceError[22m: baseResolver is not defined[39m
+[36m [2m❯[22m packages/core/src/createResolver.test.ts:[2m468:20[22m[39m
+    [90m466|[39m
+    [90m467|[39m   [34mit[39m([32m'function footer receives per-file context'[39m[33m,[39m () [33m=>[39m {
+    [90m468|[39m     [35mconst[39m result [33m=[39m baseResolver[33m.[39m[35mdefault[39m[33m.[39m[34mfooter[39m(undefined[33m,[39m {
+    [90m   |[39m                    [31m^[39m
+    [90m469|[39m       config[33m:[39m mockConfig[33m,[39m
+    [90m470|[39m       output: { footer: (m) => (m.isBarrel ? '// barrel' : `// ${m.bas…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[34/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/definePlugin.test.ts[2m > [22mPluginDriver — hook-style plugin registration[2m > [22msetResolver() merges partial resolver overrides with framework defaults
+[31m[1mTypeError[22m: resolver.default is not a function[39m
+[36m [2m❯[22m packages/core/src/definePlugin.test.ts:[2m271:21[22m[39m
+    [90m269|[39m
+    [90m270|[39m     [35mconst[39m resolver [33m=[39m driver[33m.[39m[34mgetResolver[39m([32m'hook-plugin'[39m)
+    [90m271|[39m     expect(resolver.default('any value', 'type')).toBe('CustomTypeName…
+    [90m   |[39m                     [31m^[39m
+    [90m272|[39m     [34mexpect[39m(
+    [90m273|[39m       resolver[33m.[39m[34mresolvePath[39m(
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[35/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/definePlugin.test.ts[2m > [22mPluginDriver — hook-style plugin registration[2m > [22msetResolver() mirrors resolver onto plugin.resolver for getPlugin() consumers
+[31m[1mTypeError[22m: plugin.resolver.default is not a function[39m
+[36m [2m❯[22m packages/core/src/definePlugin.test.ts:[2m306:29[22m[39m
+    [90m304|[39m     [35mconst[39m plugin [33m=[39m driver[33m.[39mplugins[33m.[39m[35mget[39m([32m'hook-plugin'[39m)[33m![39m
+    [90m305|[39m     [34mexpect[39m(plugin[33m.[39mresolver)[33m.[39m[34mtoBeDefined[39m()
+    [90m306|[39m     [34mexpect[39m(plugin[33m.[39mresolver[33m![39m[33m.[39m[35mdefault[39m([32m'test'[39m[33m,[39m [32m'type'[39m))[33m.[39m[34mtoBe[39m([32m'FromPlugin'[39m)
+    [90m   |[39m                             [31m^[39m
+    [90m307|[39m   })
+    [90m308|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[36/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/definePlugin.test.ts[2m > [22mPluginDriver — hook-style plugin registration[2m > [22muses default resolver when setResolver() is never called
+[31m[1mTypeError[22m: resolver.default is not a function[39m
+[36m [2m❯[22m packages/core/src/definePlugin.test.ts:[2m322:21[22m[39m
+    [90m320|[39m
+    [90m321|[39m     [35mconst[39m resolver [33m=[39m driver[33m.[39m[34mgetResolver[39m([32m'hook-plugin'[39m)
+    [90m322|[39m     expect(resolver.default('my custom type', 'type')).toBe('MyCustomT…
+    [90m   |[39m                     [31m^[39m
+    [90m323|[39m   })
+    [90m324|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[37/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/core/src/definePlugin.test.ts[2m > [22mPluginDriver — generator event dispatch[2m > [22mregisterGenerator() receives the resolved resolver on ctx.resolver
+[31m[1mError[22m: Error in async listener for "kubb:generate:schema" with eventArgs [{"kind":"Schema","name":"Pet"},{"config":{"root":".","input":{"path":"./petStore.yaml"},"output":{"path":"./src/gen","clean":true},"parsers":[],"reporters":[],"storage":{"name":"fs"},"adapter":{"name":"oas","options":{}},"plugins":[{"name":"hook-plugin","hooks":{}}]},"root":"/testbed/src/gen","hooks":{},"plugin":{"name":"hook-plugin","hooks":{},"options":{"output":{"path":".","mode":"directory"},"exclude":[],"override":[]},"resolver":{"pluginName":"hook-plugin","default":{}}},"driver":{"config":{"root":".","input":{"path":"./petStore.yaml"},"output":{"path":"./src/gen","clean":true},"parsers":[],"reporters":[],"storage":{"name":"fs"},"adapter":{"name":"oas","options":{}},"plugins":[{"name":"hook-plugin","hooks":{}}]},"options":{"hooks":{}},"inputNode":null,"adapter":{"name":"oas","options":{}},"fileManager":{"hooks":{}},"plugins":{}},"meta":{"circularNames":[],"enumNames":[]},"adapter":{},"resolver":{"pluginName":"hook-plugin","default":{}},"options":{}}][39m
+[36m [2m❯[22m AsyncEventEmitter.#emitAll packages/core/src/asyncEventEmitter.ts:[2m65:15[22m[39m
+    [90m 63|[39m           serializedArgs [33m=[39m [33mString[39m(eventArgs)
+    [90m 64|[39m         }
+    [90m 65|[39m         throw new Error(`Error in async listener for "${eventName}" wi…
+    [90m   |[39m               [31m^[39m
+    [90m 66|[39m       }
+    [90m 67|[39m     }
+[90m [2m❯[22m packages/core/src/definePlugin.test.ts:[2m573:5[22m[39m
+
+[31m[1mCaused by: TypeError[22m: ctx.resolver.default is not a function[39m
+[36m [2m❯[22m packages/core/src/definePlugin.test.ts:[2m541:43[22m[39m
+[90m [2m❯[22m handler packages/core/src/KubbDriver.ts:[2m322:30[22m[39m
+[90m [2m❯[22m AsyncEventEmitter.#emitAll packages/core/src/asyncEventEmitter.ts:[2m57:15[22m[39m
+[90m [2m❯[22m AsyncEventEmitter.emit packages/core/src/asyncEventEmitter.ts:[2m47:17[22m[39m
+[90m [2m❯[22m packages/core/src/definePlugin.test.ts:[2m573:18[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[38/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/cli/src/loggers/utils.test.ts[2m > [22mcreateHookTimer[2m > [22mclear drops pending starts
+[31m[1mTypeError[22m: timer.clear is not a function[39m
+[36m [2m❯[22m packages/cli/src/loggers/utils.test.ts:[2m88:11[22m[39m
+    [90m 86|[39m
+    [90m 87|[39m     timer[33m.[39m[34mstart[39m([32m'a'[39m)
+    [90m 88|[39m     timer[33m.[39m[34mclear[39m()
+    [90m   |[39m           [31m^[39m
+    [90m 89|[39m
+    [90m 90|[39m     [34mexpect[39m(timer[33m.[39m[34mend[39m([32m'a'[39m))[33m.[39m[34mtoBeUndefined[39m()
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[39/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/cli/src/runners/validate/run.test.ts[2m > [22mrunValidate[2m > [22mvalidates input when @kubb/adapter-oas is available
+[31m[1mError[22m: process.exit unexpectedly called with "1"[39m
+[36m [2m❯[22m run packages/cli/src/runners/validate/run.ts:[2m51:13[22m[39m
+    [90m 49|[39m     console[33m.[39m[34merror[39m([34mgetErrorMessage[39m(error))
+    [90m 50|[39m
+    [90m 51|[39m     process[33m.[39m[34mexit[39m([34m1[39m)
+    [90m   |[39m             [31m^[39m
+    [90m 52|[39m   }
+    [90m 53|[39m }
+[90m [2m❯[22m packages/cli/src/runners/validate/run.test.ts:[2m32:5[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[40/41]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/cli/src/runners/validate/run.test.ts[2m > [22mrunValidate[2m > [22mprints install guidance when @kubb/adapter-oas is missing
+[31m[1mAssertionError[22m: expected "error" to be called with arguments: [ StringContaining{…} ][90m
+
+Received:
+
+[1m  1st error call:
+
+[22m[2m  [[22m
+[32m-   StringContaining "The @kubb/adapter-oas package is not installed.",[90m
+[31m+   "❌ Validation failed",[90m
+[2m  ][22m
+
+[1m  2nd error call:
+
+[22m[2m  [[22m
+[32m-   StringContaining "The @kubb/adapter-oas package is not installed.",[90m
+[31m+   "[vitest] No \"memoize\" export is defined on the \"@internals/utils\" mock. Did you forget to return it from \"vi.mock\"?[90m
+[31m+ If you need to partially mock a module, you can use \"importOriginal\" helper inside:[90m
+[31m+ ",[90m
+[2m  ][22m
+[31m[90m
+
+Number of calls: [1m2[22m
+[31m[39m
+[36m [2m❯[22m packages/cli/src/runners/validate/run.test.ts:[2m65:22[22m[39m
+    [90m 63|[39m     )[33m.[39mrejects[33m.[39m[34mtoThrow[39m([32m'process.exit'[39m)
+    [90m 64|[39m
+    [90m 65|[39m     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('The…
+    [90m   |[39m                      [31m^[39m
+    [90m 66|[39m     [34mexpect[39m(errorSpy)[33m.[39m[34mtoHaveBeenCalledWith[39m([32m'Install it with:'[39m)
+    [90m 67|[39m     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('npm…
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[41/41]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m6 failed[39m[22m[2m | [22m[1m[32m84 passed[39m[22m[90m (90)[39m
+[2m      Tests [22m [1m[31m41 failed[39m[22m[2m | [22m[1m[32m1331 passed[39m[22m[90m (1372)[39m
+[2m   Start at [22m 22:17:56
+[2m   Duration [22m 6.22s[2m (transform 1.56s, setup 0ms, import 6.61s, tests 2.16s, environment 7ms)[22m
+
+[ELIFECYCLE] Test failed. See above for more details.
+OMNIGRIL_EXIT_CODE=1

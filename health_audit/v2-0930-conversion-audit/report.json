@@ -1,0 +1,124 @@
+{
+  "checked_at": "2026-10-02T07:15:48.512076+00:00",
+  "scope": "Current workdir-fixed v2-0930 conversion of82; original four-model328 trial outputs; current workspace v1 runner as a comparison, not a certified upstream v2 reference implementation.",
+  "static_summary": {
+    "tasks": 82,
+    "field_match_counts": {
+      "instance_id": 82,
+      "repository": 82,
+      "language": 82,
+      "base_commit": 82,
+      "docker_image": 82,
+      "workdir": 82,
+      "instruction": 82,
+      "eval_script": 82,
+      "gold_patch": 82,
+      "dockerfile": 82,
+      "executable_scripts": 82
+    },
+    "external_test_patch_tasks": 72,
+    "embedded_test_patch_exact_tasks": 8,
+    "test_patch_assets": 0,
+    "all_base_equals_setup": true,
+    "nonempty_setup": 0,
+    "nonempty_hints": 0,
+    "resource_values": {
+      "memory_mb": [
+        32768
+      ],
+      "cpus": [
+        4
+      ]
+    }
+  },
+  "image_summary": {
+    "checked": 82,
+    "all_probe_success": true,
+    "repository_present": 82,
+    "head_matches_base": 82,
+    "tracked_clean": 80,
+    "external_present_exact": 69,
+    "external_missing_tasks": [
+      "0xMiden__miden-vm-c_5a9834d",
+      "tailcallhq__forgecode-2716",
+      "xremap__xremap-892"
+    ],
+    "forward_check_failures": [
+      "EvoScientist__EvoScientist-307"
+    ]
+  },
+  "findings": [
+    {
+      "id": "F01",
+      "kind": "conversion_delivery_gap",
+      "severity": "high",
+      "title": "test_patch is not delivered or validated",
+      "confirmed_affected_tasks": [
+        "0xMiden__miden-vm-c_5a9834d",
+        "tailcallhq__forgecode-2716",
+        "xremap__xremap-892"
+      ],
+      "evidence": "Source test_patch is nonempty for82.72 scripts require /tmp/test.patch;69 cached images contain exact source bytes;3 lack it. Converter never emits the field.",
+      "attribution": "Image packaging lacks the file; converter passes the missing dependency through. The local v1 evaluator also relies on image/embedded patches, so Harbor did not delete an existing file.",
+      "action": "Deliver exact source patch to verifier-private assets and validate before executing tests; do not expose it to the solving agent. Preserve Go embedded-script handling."
+    },
+    {
+      "id": "F02",
+      "kind": "harness_execution_semantics_difference",
+      "severity": "high",
+      "title": "Shared verifier workspace instead of fresh-container patch replay",
+      "evidence": "328/328 original audited results report shared. Local v1 test_run.py:202 creates fresh evaluation container and reapplies exported model_patch; original solver captures initial baseline tree and binary diff. Current conversion config provides neither separate verifier nor baseline-relative patch export.",
+      "attribution": "Our adapter selected Harbor defaults; this is not a lost source JSON field.",
+      "action": "Capture final source patch against pre-agent baseline before verifier; replay it into a fresh copy of the cached image and check application. Preserve preexisting image setup changes.",
+      "uncertainty": "This exposes evaluation to agent-modified dependencies, caches and temporary files. No controlled replay was performed to count changed rewards. It does not by itself explain every reverse patch."
+    },
+    {
+      "id": "F03",
+      "kind": "conversion_reward_wrapper_bug",
+      "severity": "medium",
+      "title": "Reported success can override shell failure; explicit patch-failure marker ignored",
+      "evidence": "Controlled examples: OMNIGRIL_EXIT_CODE=0 with raw exit7 => converted reward1 vs v1 false; OMNIGRIL_TEST_PATCH_APPLY_FAILED=1 with exit0 => converted reward1 vs v1 false.",
+      "observed_prior_trials": 328,
+      "observed_affected_prior_trials": 0,
+      "action": "Require successful raw exit and successful reported status; reject explicit patch-install failure, record setup/evaluation status separately."
+    },
+    {
+      "id": "F04",
+      "kind": "harness_prompt_difference",
+      "severity": "medium",
+      "title": "Original runner execution requirements are absent from instruction wrapper",
+      "evidence": "Local v1 prompt_for lines97-109 instructs implementation, no reference-patch network access, no commits, and removal of non-solution artifacts. Converter emits raw problem_statement only for82/82.",
+      "attribution": "The task statement is intact; supplemental harness instructions were not migrated.",
+      "action": "Restore a versioned execution prompt and preserve the original task statement verbatim. Prompt text alone is not an enforcement mechanism.",
+      "uncertainty": "Planning-only traces existed previously, but omitted prompt text alone is not proof of causation."
+    }
+  ],
+  "other_boundaries": {
+    "source_verifier_defects": "72/82 raw eval scripts already contain unsafe patch --batch --fuzz=5 fallback; conversion copied it verbatim. Failure to stop on setup/build errors and patches containing production code are upstream issues.",
+    "malformed_patch_check": [
+      "EvoScientist__EvoScientist-307"
+    ],
+    "base_image_dirty_tasks": [
+      "apache__kafka-22505",
+      "RakuenSoftware__aimee-c_d9e4faf"
+    ],
+    "base_image_dirty_explanation": "Kafka switches Gradle distribution URL to a mirror; Aimee adds go.sum entries. They preexist agent startup; blindly resetting to base would erase them.",
+    "network_and_resources": "v1 solver uses host network; v1 evaluator defaults to offline/no network; current Harbor uses bridge/public network and clears proxy vars. Current4CPU/32GiB/7200agent/3600verifier are experiment settings, not copied dataset fields. v1 evaluator default2400s. These prevent treating protocols as identical.",
+    "old_score_postprocessing": "v1 _process_one_instance can mark both failed model/gold outputs as pass when their outputs/reason match (lines338-345). Harbor does not copy that heuristic. This is a protocol difference, not a recommended behavior to restore.",
+    "oracle_apply_difference": "Oracle solve.sh uses strict git apply; v1 evaluator tries GNU patch on failure. Payload is preserved exactly; gold replay equivalence for82 was not executed in this audit.",
+    "embedded_patches": "8/10 byte-match normalized source. Remaining2 (flowcraft,lerd) put deleted-file removals in explicit shell loops; all retained diff bytes and deleted-file lists match source, so no test-loss evidence from those2.",
+    "runtime_user": "82 cached images default to root (78 unspecified,4 root). v1 Claude solver explicitly uses1000:1000 after chown; current Harbor follows image default. Permission/HOME behavior differs, though no new root-cause claim was made.",
+    "image_entrypoints": "27 cached images declare Maven/Node entrypoints. Probe overrides entrypoint for read-only inspection; actual Harbor preserves it. v1 solver disabled entrypoint, while v1 evaluator retained it. No startup-failure attribution made."
+  },
+  "not_performed": [
+    "No benchmark test suite, oracle/no-op or paired original-vs-Harbor replay",
+    "No package installation, image pull/build, production configuration or running-trial modifications"
+  ],
+  "source_sha256": {
+    "/volume/pt-coder/users/mlei/SWE-Cascade/swepmv2/convert_v2_harbor.py": "6a9dced20b7f46223d64cac08a80491cf8699474faf61362c32be3a760c82187",
+    "/volume/pt-coder/users/mlei/SWE-Cascade/swepmv2/v2-0930/v2.json": "0c563643c16489b6031cc04a6d098d9326f61961bd25ebe7fb9310df01bd63e2",
+    "/volume/pt-coder/users/mlei/SWE-Cascade/swepmv2/v2-0930/v2-eval.json": "67304e1ea536b37b349f87dc0c645116deb946be4c14cbde708f7675da68a938",
+    "/volume/pt-coder/users/mlei/SWE-Cascade/scripts/run_claude_code_swe_cascade.py": "bc536f66eac3110cdde83cea829df1473d6e6873a87d3c97b453b27b77de8612",
+    "/volume/pt-coder/users/mlei/SWE-Cascade/src/evaluation/test_run.py": "7326a53cb5d05b45809be0b16d1ddea0d77a9a6f17b7b883e48ac5536e721f43"
+  }
+}

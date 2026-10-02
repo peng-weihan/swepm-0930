@@ -1,0 +1,6014 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/_config/scripts/migrate-perm-codes.mjs b/_config/scripts/migrate-perm-codes.mjs
+new file mode 100644
+--- /dev/null
++++ b/_config/scripts/migrate-perm-codes.mjs
+@@ -0,0 +1,182 @@
++/**
++ * 将 @PermCode 字面量迁移为 PermCodes 嵌套 interface 常量引用。
++ * 仅处理含 @PermCode 的 .java 文件；值不变，只换标识符。
++ *
++ * 用法: node dax-pay-open/_config/scripts/migrate-perm-codes.mjs
++ */
++import fs from 'node:fs';
++import path from 'node:path';
++
++const ROOT = path.resolve(import.meta.dirname, '../..');
++const IMPORT_LINE = 'import cn.daxpay.open.platform.core.code.PermCodes;';
++
++/** menuCode 字面量 → 常量路径 */
++const MENU_MAP = {
++  'channel:merchant': 'PermCodes.Channel.Merchant.MENU',
++  'channel:alipay:app': 'PermCodes.Channel.AlipayApp.MENU',
++  'channel:wechat:app': 'PermCodes.Channel.WechatApp.MENU',
++  'channel:douyin:app': 'PermCodes.Channel.DouyinApp.MENU',
++  'merchant:info': 'PermCodes.Merchant.Info.MENU',
++  'merchant:credential': 'PermCodes.Merchant.Credential.MENU',
++  'merchant:notify_config': 'PermCodes.Merchant.NotifyConfig.MENU',
++  'merchant:app': 'PermCodes.Merchant.App.MENU',
++  'merchant:app:route': 'PermCodes.Merchant.AppRoute.MENU',
++  'merchant:gateway-aggregate': 'PermCodes.Merchant.GatewayAggregate.MENU',
++  'merchant:gateway-cashier': 'PermCodes.Merchant.GatewayCashier.MENU',
++  'merchant:store': 'PermCodes.Merchant.Store.MENU',
++  'merchant:wx_verify': 'PermCodes.Merchant.WxDomainVerify.MENU',
++  'payment:alipay:isv': 'PermCodes.Payment.AlipayIsv.MENU',
++  'payment:wechat:isv': 'PermCodes.Payment.WechatIsv.MENU',
++  'payment:lakala:isv': 'PermCodes.Payment.Lakala.MENU',
++  'payment:hkrt:isv': 'PermCodes.Payment.Hkrt.MENU',
++  'payment:dougong:isv': 'PermCodes.Payment.Dougong.MENU',
++  'payment:vbill:isv': 'PermCodes.Payment.Vbill.MENU',
++  'payment:fuyou:isv': 'PermCodes.Payment.Fuyou.MENU',
++  'payment:leshua:isv': 'PermCodes.Payment.Leshua.MENU',
++  'payment:hmpay:isv': 'PermCodes.Payment.Hmpay.MENU',
++  'payment:platform:product': 'PermCodes.Payment.Platform.Product.MENU',
++  'payment:platform:provider': 'PermCodes.Payment.Platform.Provider.MENU',
++  'payment:platform:pay_channel': 'PermCodes.Payment.Platform.PayChannel.MENU',
++  'payment:platform:capability': 'PermCodes.Payment.Platform.Capability.MENU',
++  'payment:config:product_config': 'PermCodes.Payment.ProductConfig.MENU',
++  'payment:config:wx_verify': 'PermCodes.Payment.Config.WxDomainVerify.MENU',
++  'payment:order': 'PermCodes.Payment.Order.MENU',
++  'payment:gateway-order': 'PermCodes.Payment.GatewayOrder.MENU',
++  'payment:refund': 'PermCodes.Payment.Refund.MENU',
++  'payment:trade': 'PermCodes.Payment.Trade.MENU',
++  'iam:perm:menu': 'PermCodes.Iam.PermMenu.MENU',
++  'iam:role': 'PermCodes.Iam.Role.MENU',
++  'iam:user:manager': 'PermCodes.Iam.UserManager.MENU',
++  'iam:online:user': 'PermCodes.Iam.OnlineUser.MENU',
++  'iam:social:login-config': 'PermCodes.Iam.Social.MENU',
++  'system:dict': 'PermCodes.System.Dict.MENU',
++  'system:log:login': 'PermCodes.System.Log.Login.MENU',
++  'system:log:operate': 'PermCodes.System.Log.Operate.MENU',
++  'system:notify:notice': 'PermCodes.System.Notify.MENU',
++  'system:notify:wechat-config': 'PermCodes.System.WechatNotify.MENU',
++  'system:file:platform': 'PermCodes.System.FilePlatform.MENU',
++  'system:platform_config': 'PermCodes.System.PlatformConfig.MENU',
++  'system:oss_config': 'PermCodes.System.OssConfig.MENU',
++  'system:security_config': 'PermCodes.System.SecurityConfig.MENU',
++  'system:protocol': 'PermCodes.System.Protocol.MENU',
++  'system:config:mobile_app': 'PermCodes.System.MobileApp.MENU',
++  'develop:trade': 'PermCodes.Develop.Trade.MENU',
++  'develop:sign': 'PermCodes.Develop.Sign.MENU',
++  'develop:auth': 'PermCodes.Develop.Auth.MENU',
++  'device:qrcode': 'PermCodes.Device.QrCode.MENU',
++};
++
++/** 通用 / 资源专属动作 */
++const ACTION_MAP = {
++  view: 'PermCodes.Action.VIEW',
++  manage: 'PermCodes.Action.MANAGE',
++  publish: 'PermCodes.Action.PUBLISH',
++  update: 'PermCodes.Action.UPDATE',
++  status: 'PermCodes.Action.STATUS',
++  sign: 'PermCodes.Action.SIGN',
++  kickout: 'PermCodes.Action.KICKOUT',
++  reset_password: 'PermCodes.Action.RESET_PASSWORD',
++  assign_role: 'PermCodes.Action.ASSIGN_ROLE',
++  resend: 'PermCodes.Action.RESEND',
++  test: 'PermCodes.Action.TEST',
++  credential_config_update: 'PermCodes.Merchant.Credential.CREDENTIAL_CONFIG_UPDATE',
++  notify_config_update: 'PermCodes.Merchant.NotifyConfig.NOTIFY_CONFIG_UPDATE',
++};
++
++/** 高复用 name（通道商户） */
++const CHANNEL_MERCHANT_NAMES = [
++  [/nameCn\s*=\s*"通道商户查看"/g, 'nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN'],
++  [/nameEn\s*=\s*"Channel Merchant View"/g, 'nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN'],
++  [/nameCn\s*=\s*"通道商户管理"/g, 'nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN'],
++  [/nameEn\s*=\s*"Channel Merchant Manage"/g, 'nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN'],
++];
++
++function walk(dir, out = []) {
++  for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
++    const p = path.join(dir, ent.name);
++    if (ent.isDirectory()) {
++      if (ent.name === 'target' || ent.name === 'node_modules' || ent.name === '.git') continue;
++      walk(p, out);
++    } else if (ent.isFile() && ent.name.endsWith('.java')) {
++      out.push(p);
++    }
++  }
++  return out;
++}
++
++function ensureImport(content) {
++  if (content.includes(IMPORT_LINE)) return content;
++  if (!content.includes('PermCodes.')) return content;
++
++  // 插在 package 后第一个 import 块前/中：放在其他 platform.core  import 附近
++  const coreImport = /import cn\.daxpay\.open\.platform\.core\.[^\n]+;\n/;
++  if (coreImport.test(content)) {
++    return content.replace(coreImport, (m) => m + IMPORT_LINE + '\n');
++  }
++  // 插在 package 声明后
++  return content.replace(
++    /(package [^;]+;\s*\n)/,
++    `$1\n${IMPORT_LINE}\n`,
++  );
++}
++
++function transform(content) {
++  let next = content;
++  let changed = false;
++
++  // menuCode
++  for (const [literal, constRef] of Object.entries(MENU_MAP)) {
++    const re = new RegExp(`menuCode\\s*=\\s*"${literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'g');
++    const replaced = next.replace(re, `menuCode = ${constRef}`);
++    if (replaced !== next) {
++      next = replaced;
++      changed = true;
++    }
++  }
++
++  // code = "xxx" only inside typical @PermCode usage (attribute name is unique enough)
++  for (const [literal, constRef] of Object.entries(ACTION_MAP)) {
++    const re = new RegExp(`code\\s*=\\s*"${literal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`, 'g');
++    const replaced = next.replace(re, `code = ${constRef}`);
++    if (replaced !== next) {
++      next = replaced;
++      changed = true;
++    }
++  }
++
++  // channel merchant names
++  for (const [re, repl] of CHANNEL_MERCHANT_NAMES) {
++    const replaced = next.replace(re, repl);
++    if (replaced !== next) {
++      next = replaced;
++      changed = true;
++    }
++  }
++
++  if (!changed) return null;
++
++  next = ensureImport(next);
++  return next;
++}
++
++const files = walk(ROOT);
++let modified = 0;
++const report = [];
++
++for (const file of files) {
++  // 跳过常量定义自身与无关路径
++  if (file.endsWith(`${path.sep}PermCodes.java`)) continue;
++
++  const raw = fs.readFileSync(file, 'utf8');
++  if (!raw.includes('@PermCode') && !raw.includes('PermCode')) continue;
++
++  const next = transform(raw);
++  if (!next) continue;
++
++  fs.writeFileSync(file, next, 'utf8');
++  modified++;
++  report.push(path.relative(ROOT, file));
++}
++
++console.log(`Modified ${modified} files:`);
++for (const f of report.sort()) console.log('  ' + f);
+diff --git a/daxpay-channel/daxpay-channel-adapay/src/main/java/cn/daxpay/open/channel/adapay/controller/direct/AdapayDirectChannelMerchantController.java b/daxpay-channel/daxpay-channel-adapay/src/main/java/cn/daxpay/open/channel/adapay/controller/direct/AdapayDirectChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-adapay/src/main/java/cn/daxpay/open/channel/adapay/controller/direct/AdapayDirectChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-adapay/src/main/java/cn/daxpay/open/channel/adapay/controller/direct/AdapayDirectChannelMerchantController.java
+@@ -6,6 +6,7 @@
+ import cn.daxpay.open.channel.adapay.service.direct.AdapayDirectChannelMerchantService;
+ import cn.daxpay.open.channel.adapay.service.direct.AdapayDirectKeyConfigService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -24,7 +25,7 @@
+ ///
+ /// 提供通道商户创建和密钥配置管理。
+ /// Adapay 应用 ID/API Key/私钥/公钥 由密钥配置维护。
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "Adapay 直连通道商户管理")
+ @RestController
+@@ -35,15 +36,15 @@ public class AdapayDirectChannelMerchantController {
+     private final AdapayDirectChannelMerchantService adapayDirectChannelMerchantService;
+     private final AdapayDirectKeyConfigService adapayDirectKeyConfigService;
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建Adapay 直连通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated AdapayDirectChannelMerchantCreateParam param) {
+         adapayDirectChannelMerchantService.create(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询密钥配置")
+     @GetMapping("/find-key-config")
+     public Result<AdapayDirectKeyConfigResult> findKeyConfig(
+@@ -56,7 +57,7 @@ public Result<AdapayDirectKeyConfigResult> findKeyConfig(
+         return Res.ok(result);
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "保存密钥配置")
+     @PostMapping("/save-key-config")
+     public Result<Void> saveKeyConfig(@RequestBody @Validated AdapayDirectKeyConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/direct/AlipayDirectAppCapabilityController.java b/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/direct/AlipayDirectAppCapabilityController.java
+--- a/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/direct/AlipayDirectAppCapabilityController.java
++++ b/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/direct/AlipayDirectAppCapabilityController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.channel.alipay.result.direct.AlipayDirectCapabilityOption;
+ import cn.daxpay.open.channel.alipay.service.direct.AlipayDirectAppCapabilityService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -24,7 +25,7 @@
+ ///
+ /// 提供通道商户维度下「支付能力 → 应用」绑定关系的查询、批量保存及能力候选查询。
+ ///
+-@PermCode(menuCode = "channel:alipay:app")
++@PermCode(menuCode = PermCodes.Channel.AlipayApp.MENU)
+ @Validated
+ @Tag(name = "支付宝直连商户应用支付能力关联管理")
+ @RestController
+@@ -34,7 +35,7 @@ public class AlipayDirectAppCapabilityController {
+ 
+     private final AlipayDirectAppCapabilityService alipayDirectAppCapabilityService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询通道商户的能力应用关联列表")
+     @GetMapping("/list-by-channel-mch-no")
+     public Result<List<AlipayDirectAppCapabilityResult>> listByChannelMchNo(
+@@ -43,15 +44,15 @@ public Result<List<AlipayDirectAppCapabilityResult>> listByChannelMchNo(
+         return Res.ok(alipayDirectAppCapabilityService.listByChannelMchNo(mchNo, channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "全量保存能力应用关联")
+     @PostMapping("/save-batch")
+     public Result<Void> saveBatch(@RequestBody @Validated AlipayDirectAppCapabilityBatchParam param) {
+         alipayDirectAppCapabilityService.saveBatch(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询支付宝直连支持的支付能力候选")
+     @GetMapping("/list-supported-capabilities")
+     public Result<List<AlipayDirectCapabilityOption>> listSupportedCapabilities() {
+diff --git a/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/direct/AlipayDirectAppController.java b/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/direct/AlipayDirectAppController.java
+--- a/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/direct/AlipayDirectAppController.java
++++ b/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/direct/AlipayDirectAppController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.channel.alipay.controller.direct;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -28,7 +30,7 @@
+ ///
+ /// 提供直连商户应用及其密钥配置、授权认证配置的 REST API，支持按商户号和通道商户号查询列表。
+ ///
+-@PermCode(menuCode = "channel:alipay:app")
++@PermCode(menuCode = PermCodes.Channel.AlipayApp.MENU)
+ @Validated
+ @Tag(name = "支付宝直连商户应用管理")
+ @RestController
+@@ -40,7 +42,7 @@ public class AlipayDirectAppController {
+     private final AlipayDirectAppKeyConfigService alipayDirectAppKeyConfigService;
+     private final AlipayDirectAppAuthConfigService alipayDirectAppAuthConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据商户号和通道商户号查询应用列表")
+     @GetMapping("/list-by-channel-mch-no")
+     public Result<List<AlipayDirectAppResult>> listByChannelMchNo(
+@@ -49,15 +51,15 @@ public Result<List<AlipayDirectAppResult>> listByChannelMchNo(
+         return Res.ok(alipayDirectAppService.listByMchNoAndChannelMchNo(mchNo, channelMchNo));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询应用详情")
+     @GetMapping("/find-by-id")
+     public Result<AlipayDirectAppResult> findById(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(alipayDirectAppService.findById(id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "同一通道商户下支付宝应用ID是否已存在")
+     @GetMapping("/exists-ali-app-id-by-channel")
+     public Result<Boolean> existsAliAppIdByChannel(
+@@ -67,7 +69,7 @@ public Result<Boolean> existsAliAppIdByChannel(
+         return Res.ok(alipayDirectAppService.existsAliAppIdByChannel(mchNo, channelMchNo, aliAppId, null));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "同一通道商户下支付宝应用ID是否已存在(排除自身)")
+     @GetMapping("/exists-ali-app-id-by-channel-not-id")
+     public Result<Boolean> existsAliAppIdByChannelNotId(
+@@ -78,7 +80,7 @@ public Result<Boolean> existsAliAppIdByChannelNotId(
+         return Res.ok(alipayDirectAppService.existsAliAppIdByChannel(mchNo, channelMchNo, aliAppId, id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "新增直连商户应用")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) AlipayDirectAppParam param) {
+@@ -87,7 +89,7 @@ public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) Alipa
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "修改直连商户应用")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) AlipayDirectAppParam param) {
+@@ -96,15 +98,15 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) A
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "删除直连商户应用")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         alipayDirectAppService.delete(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询应用密钥配置")
+     @GetMapping("/find-key-config-by-app-id")
+     public Result<AlipayDirectAppKeyConfigResult> findKeyConfigByAppId(
+@@ -113,23 +115,23 @@ public Result<AlipayDirectAppKeyConfigResult> findKeyConfigByAppId(
+         return Res.ok(alipayDirectAppKeyConfigService.findByAlipayDirectAppId(alipayDirectAppId, sandbox).toResult());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "保存应用密钥配置")
+     @PostMapping("/save-key-config")
+     public Result<Void> saveKeyConfig(@RequestBody @Validated AlipayDirectAppKeyConfigParam param) {
+         alipayDirectAppKeyConfigService.save(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询应用授权认证配置")
+     @GetMapping("/find-auth-config-by-app-id")
+     public Result<AlipayDirectAppAuthConfigResult> findAuthConfigByAppId(
+             @NotNull(message = "{validation.field.alipayDirectAppId.notNull}") Long alipayDirectAppId) {
+         return Res.ok(alipayDirectAppAuthConfigService.findByAlipayDirectAppId(alipayDirectAppId).toResult());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "保存应用授权认证配置")
+     @PostMapping("/save-auth-config")
+     public Result<Void> saveAuthConfig(@RequestBody @Validated AlipayDirectAppAuthConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/direct/AlipayDirectChannelMerchantController.java b/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/direct/AlipayDirectChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/direct/AlipayDirectChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/direct/AlipayDirectChannelMerchantController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.channel.alipay.controller.direct;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -19,7 +21,7 @@
+ 
+ /// # 支付宝直连通道商户管理
+ ///
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "支付宝直连通道商户管理")
+ @RestController
+@@ -29,15 +31,15 @@ public class AlipayDirectChannelMerchantController {
+ 
+     private final AlipayDirectChannelMerchantService alipayDirectChannelMerchantService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询支付宝直连通道商户配置")
+     @GetMapping("/find-by-channel-mch-no")
+     public Result<AlipayDirectChannelMerchantResult> findByChannelMchNo(
+             @NotBlank(message = "{validation.field.channelMerchantNo.notBlank}") String channelMchNo) {
+         return Res.ok(alipayDirectChannelMerchantService.findByChannelMchNo(channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建支付宝直连通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated AlipayDirectChannelMerchantCreateParam param) {
+diff --git a/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/isv/AlipayIsvAppController.java b/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/isv/AlipayIsvAppController.java
+--- a/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/isv/AlipayIsvAppController.java
++++ b/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/isv/AlipayIsvAppController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.channel.alipay.controller.isv;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import cn.daxpay.open.platform.core.util.ValidationUtil;
+@@ -28,7 +29,7 @@
+ ///
+ /// 提供服务商应用及其密钥配置、授权认证配置的 REST API，包含查询列表、详情、唯一性校验和增删改操作。
+ ///
+-@PermCode(menuCode = "payment:alipay:isv")
++@PermCode(menuCode = PermCodes.Payment.AlipayIsv.MENU)
+ @Validated
+ @Tag(name = "支付宝服务商应用管理")
+ @RestController
+@@ -40,30 +41,30 @@ public class AlipayIsvAppController {
+     private final AlipayIsvAppKeyConfigService alipayIsvAppKeyConfigService;
+     private final AlipayIsvAppAuthConfigService alipayIsvAppAuthConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "支付宝服务商查看", nameEn = "Alipay ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "支付宝服务商查看", nameEn = "Alipay ISV View")
+     @Operation(summary = "查询服务商应用列表")
+     @GetMapping("/list-all")
+     public Result<List<AlipayIsvAppResult>> listAll() {
+         return Res.ok(alipayIsvAppService.listAll());
+     }
+ 
+-    @PermCode(code = "view", nameCn = "支付宝服务商查看", nameEn = "Alipay ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "支付宝服务商查看", nameEn = "Alipay ISV View")
+     @Operation(summary = "查询应用详情")
+     @GetMapping("/find-by-id")
+     public Result<AlipayIsvAppResult> findById(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(alipayIsvAppService.findById(id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "支付宝服务商查看", nameEn = "Alipay ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "支付宝服务商查看", nameEn = "Alipay ISV View")
+     @Operation(summary = "支付宝应用ID是否已存在")
+     @GetMapping("/exists-ali-app-id")
+     public Result<Boolean> existsAliAppId(
+             @NotBlank(message = "{validation.field.aliAppId.notBlank}") String aliAppId) {
+         return Res.ok(alipayIsvAppService.existsAliAppId(aliAppId, null));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "支付宝服务商查看", nameEn = "Alipay ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "支付宝服务商查看", nameEn = "Alipay ISV View")
+     @Operation(summary = "支付宝应用ID是否已存在(排除自身)")
+     @GetMapping("/exists-ali-app-id-not-id")
+     public Result<Boolean> existsAliAppIdNotId(
+@@ -72,7 +73,7 @@ public Result<Boolean> existsAliAppIdNotId(
+         return Res.ok(alipayIsvAppService.existsAliAppId(aliAppId, id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "支付宝服务商管理", nameEn = "Alipay ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "支付宝服务商管理", nameEn = "Alipay ISV Manage")
+     @Operation(summary = "新增服务商应用")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) AlipayIsvAppParam param) {
+@@ -81,7 +82,7 @@ public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) Alipa
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "支付宝服务商管理", nameEn = "Alipay ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "支付宝服务商管理", nameEn = "Alipay ISV Manage")
+     @Operation(summary = "修改服务商应用")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) AlipayIsvAppParam param) {
+@@ -90,39 +91,39 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) A
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "支付宝服务商管理", nameEn = "Alipay ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "支付宝服务商管理", nameEn = "Alipay ISV Manage")
+     @Operation(summary = "删除服务商应用")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         alipayIsvAppService.delete(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "支付宝服务商查看", nameEn = "Alipay ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "支付宝服务商查看", nameEn = "Alipay ISV View")
+     @Operation(summary = "查询应用密钥配置")
+     @GetMapping("/find-key-config-by-app-id")
+     public Result<AlipayIsvAppKeyConfigResult> findKeyConfigByAppId(
+             @NotNull(message = "{validation.field.alipayIsvAppId.notNull}") Long alipayIsvAppId) {
+         return Res.ok(alipayIsvAppKeyConfigService.findByAlipayIsvAppId(alipayIsvAppId).toResult());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "支付宝服务商管理", nameEn = "Alipay ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "支付宝服务商管理", nameEn = "Alipay ISV Manage")
+     @Operation(summary = "保存应用密钥配置")
+     @PostMapping("/save-key-config")
+     public Result<Void> saveKeyConfig(@RequestBody @Validated AlipayIsvAppKeyConfigParam param) {
+         alipayIsvAppKeyConfigService.save(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "支付宝服务商查看", nameEn = "Alipay ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "支付宝服务商查看", nameEn = "Alipay ISV View")
+     @Operation(summary = "查询应用授权认证配置")
+     @GetMapping("/find-auth-config-by-app-id")
+     public Result<AlipayIsvAppAuthConfigResult> findAuthConfigByAppId(
+             @NotNull(message = "{validation.field.alipayIsvAppId.notNull}") Long alipayIsvAppId) {
+         return Res.ok(alipayIsvAppAuthConfigService.findByAlipayIsvAppId(alipayIsvAppId).toResult());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "支付宝服务商管理", nameEn = "Alipay ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "支付宝服务商管理", nameEn = "Alipay ISV Manage")
+     @Operation(summary = "保存应用授权认证配置")
+     @PostMapping("/save-auth-config")
+     public Result<Void> saveAuthConfig(@RequestBody @Validated AlipayIsvAppAuthConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/isv/AlipayIsvChannelMerchantController.java b/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/isv/AlipayIsvChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/isv/AlipayIsvChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-alipay/src/main/java/cn/daxpay/open/channel/alipay/controller/isv/AlipayIsvChannelMerchantController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.channel.alipay.controller.isv;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -23,7 +25,7 @@
+ 
+ /// # 支付宝服务商通道商户管理
+ ///
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "支付宝服务商通道商户管理")
+ @RestController
+@@ -34,38 +36,38 @@ public class AlipayIsvChannelMerchantController {
+     private final AlipayIsvChannelMerchantService alipayIsvChannelMerchantService;
+     private final AlipayIsvAuthService alipayIsvAuthService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询支付宝服务商通道商户配置")
+     @GetMapping("/find-by-channel-mch-no")
+     public Result<AlipayIsvChannelMerchantResult> findByChannelMchNo(
+             @NotBlank(message = "{validation.field.channelMerchantNo.notBlank}") String channelMchNo) {
+         return Res.ok(alipayIsvChannelMerchantService.findByChannelMchNo(channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建支付宝服务商通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated AlipayIsvChannelMerchantCreateParam param) {
+         alipayIsvChannelMerchantService.create(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "更新应用授权令牌")
+     @PostMapping("/update-app-auth-token")
+     public Result<Void> updateAppAuthToken(@RequestBody @Validated AlipayIsvAppAuthTokenUpdateParam param) {
+         alipayIsvChannelMerchantService.updateAppAuthToken(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "生成代运营授权链接")
+     @PostMapping("/gen-auth-url")
+     public Result<AlipayIsvAuthUrlResult> genAuthUrl(@RequestBody @Validated AlipayIsvAuthParam param) {
+         return Res.ok(alipayIsvAuthService.genAuthUrl(param));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "获取代运营授权回调地址")
+     @GetMapping("/auth-callback-url")
+     public Result<String> getAuthCallbackUrl() {
+diff --git a/daxpay-channel/daxpay-channel-dougong/src/main/java/cn/daxpay/open/channel/dougong/controller/isv/DougongIsvChannelMerchantController.java b/daxpay-channel/daxpay-channel-dougong/src/main/java/cn/daxpay/open/channel/dougong/controller/isv/DougongIsvChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-dougong/src/main/java/cn/daxpay/open/channel/dougong/controller/isv/DougongIsvChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-dougong/src/main/java/cn/daxpay/open/channel/dougong/controller/isv/DougongIsvChannelMerchantController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.channel.dougong.result.isv.DougongIsvChannelMerchantResult;
+ import cn.daxpay.open.channel.dougong.service.isv.DougongIsvChannelMerchantService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -18,7 +19,7 @@
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /// # 斗拱通道商户管理
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "斗拱通道商户管理")
+ @RestController
+@@ -28,23 +29,23 @@ public class DougongIsvChannelMerchantController {
+ 
+     private final DougongIsvChannelMerchantService dougongIsvChannelMerchantService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询斗拱通道商户配置")
+     @GetMapping("/find-by-channel-mch-no")
+     public Result<DougongIsvChannelMerchantResult> findByChannelMchNo(
+             @NotBlank(message = "{validation.field.channelMchNo.notBlank}") String channelMchNo) {
+         return Res.ok(dougongIsvChannelMerchantService.findByChannelMchNo(channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建斗拱通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated DougongIsvChannelMerchantCreateParam param) {
+         dougongIsvChannelMerchantService.create(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "更新商户AppId")
+     @PostMapping("/update-app-id")
+     public Result<Void> updateAppId(
+diff --git a/daxpay-channel/daxpay-channel-dougong/src/main/java/cn/daxpay/open/channel/dougong/controller/isv/DougongIsvKeyConfigController.java b/daxpay-channel/daxpay-channel-dougong/src/main/java/cn/daxpay/open/channel/dougong/controller/isv/DougongIsvKeyConfigController.java
+--- a/daxpay-channel/daxpay-channel-dougong/src/main/java/cn/daxpay/open/channel/dougong/controller/isv/DougongIsvKeyConfigController.java
++++ b/daxpay-channel/daxpay-channel-dougong/src/main/java/cn/daxpay/open/channel/dougong/controller/isv/DougongIsvKeyConfigController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.channel.dougong.result.isv.DougongIsvKeyConfigResult;
+ import cn.daxpay.open.channel.dougong.service.isv.DougongIsvKeyConfigService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -19,7 +20,7 @@
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /// # 斗拱服务商密钥配置
+-@PermCode(menuCode = "payment:dougong:isv")
++@PermCode(menuCode = PermCodes.Payment.Dougong.MENU)
+ @Validated
+ @Tag(name = "斗拱服务商密钥配置")
+ @RestController
+@@ -29,15 +30,15 @@ public class DougongIsvKeyConfigController {
+ 
+     private final DougongIsvKeyConfigService dougongIsvKeyConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "斗拱服务商查看", nameEn = "Dougong ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "斗拱服务商查看", nameEn = "Dougong ISV View")
+     @Operation(summary = "查询斗拱服务商密钥配置")
+     @GetMapping("/find-config")
+     public Result<DougongIsvKeyConfigResult> findConfig(
+             @NotBlank(message = "{validation.field.product.notBlank}") String product) {
+         return Res.ok(DougongIsvKeyConfigConvert.CONVERT.toResult(dougongIsvKeyConfigService.findByProduct(product)));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "斗拱服务商管理", nameEn = "Dougong ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "斗拱服务商管理", nameEn = "Dougong ISV Manage")
+     @Operation(summary = "保存斗拱服务商密钥配置")
+     @PostMapping("/save-config")
+     public Result<Void> saveConfig(@RequestBody @Validated DougongIsvKeyConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-douyin/src/main/java/cn/daxpay/open/channel/douyin/controller/direct/DouyinDirectAppCapabilityController.java b/daxpay-channel/daxpay-channel-douyin/src/main/java/cn/daxpay/open/channel/douyin/controller/direct/DouyinDirectAppCapabilityController.java
+--- a/daxpay-channel/daxpay-channel-douyin/src/main/java/cn/daxpay/open/channel/douyin/controller/direct/DouyinDirectAppCapabilityController.java
++++ b/daxpay-channel/daxpay-channel-douyin/src/main/java/cn/daxpay/open/channel/douyin/controller/direct/DouyinDirectAppCapabilityController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.channel.douyin.result.direct.DouyinDirectAppCapabilityResult;
+ import cn.daxpay.open.channel.douyin.service.direct.DouyinDirectAppCapabilityService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -24,7 +25,7 @@
+ ///
+ /// 提供通道商户维度下「支付能力 → 直连应用」绑定关系的查询、批量保存及能力候选查询。
+ ///
+-@PermCode(menuCode = "channel:douyin:app")
++@PermCode(menuCode = PermCodes.Channel.DouyinApp.MENU)
+ @Validated
+ @Tag(name = "抖音直连商户应用支付能力关联管理")
+ @RestController
+@@ -34,7 +35,7 @@ public class DouyinDirectAppCapabilityController {
+ 
+     private final DouyinDirectAppCapabilityService douyinDirectAppCapabilityService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询通道商户的能力应用关联列表")
+     @GetMapping("/list-by-channel-mch-no")
+     public Result<List<DouyinDirectAppCapabilityResult>> listByChannelMchNo(
+@@ -43,15 +44,15 @@ public Result<List<DouyinDirectAppCapabilityResult>> listByChannelMchNo(
+         return Res.ok(douyinDirectAppCapabilityService.listByChannelMchNo(mchNo, channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "全量保存能力应用关联")
+     @PostMapping("/save-batch")
+     public Result<Void> saveBatch(@RequestBody @Validated DouyinDirectAppCapabilityBatchParam param) {
+         douyinDirectAppCapabilityService.saveBatch(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询抖音直连支持的支付能力候选")
+     @GetMapping("/list-supported-capabilities")
+     public Result<List<DouyinCapabilityOption>> listSupportedCapabilities() {
+diff --git a/daxpay-channel/daxpay-channel-douyin/src/main/java/cn/daxpay/open/channel/douyin/controller/direct/DouyinDirectAppController.java b/daxpay-channel/daxpay-channel-douyin/src/main/java/cn/daxpay/open/channel/douyin/controller/direct/DouyinDirectAppController.java
+--- a/daxpay-channel/daxpay-channel-douyin/src/main/java/cn/daxpay/open/channel/douyin/controller/direct/DouyinDirectAppController.java
++++ b/daxpay-channel/daxpay-channel-douyin/src/main/java/cn/daxpay/open/channel/douyin/controller/direct/DouyinDirectAppController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.channel.douyin.controller.direct;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -29,7 +31,7 @@
+ ///
+ /// 提供直连商户应用及其授权认证配置的 REST API，支持按商户号和通道商户号查询列表。
+ ///
+-@PermCode(menuCode = "channel:douyin:app")
++@PermCode(menuCode = PermCodes.Channel.DouyinApp.MENU)
+ @Validated
+ @Tag(name = "抖音直连商户应用管理")
+ @RestController
+@@ -40,7 +42,7 @@ public class DouyinDirectAppController {
+     private final DouyinDirectAppService douyinDirectAppService;
+     private final DouyinDirectAppAuthConfigService douyinDirectAppAuthConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据商户号和通道商户号查询应用列表")
+     @GetMapping("/list-by-channel-mch-no")
+     public Result<List<DouyinDirectAppResult>> listByChannelMchNo(
+@@ -49,15 +51,15 @@ public Result<List<DouyinDirectAppResult>> listByChannelMchNo(
+         return Res.ok(douyinDirectAppService.listByMchNoAndChannelMchNo(mchNo, channelMchNo));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询应用详情")
+     @GetMapping("/find-by-id")
+     public Result<DouyinDirectAppResult> findById(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(douyinDirectAppService.findById(id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "同一通道商户下抖音应用ID是否已存在")
+     @GetMapping("/exists-douyin-app-id-by-channel")
+     public Result<Boolean> existsDouyinAppIdByChannel(
+@@ -67,7 +69,7 @@ public Result<Boolean> existsDouyinAppIdByChannel(
+         return Res.ok(douyinDirectAppService.existsDouyinAppIdByChannel(mchNo, channelMchNo, douyinAppId, null));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "同一通道商户下抖音应用ID是否已存在(排除自身)")
+     @GetMapping("/exists-douyin-app-id-by-channel-not-id")
+     public Result<Boolean> existsDouyinAppIdByChannelNotId(
+@@ -78,7 +80,7 @@ public Result<Boolean> existsDouyinAppIdByChannelNotId(
+         return Res.ok(douyinDirectAppService.existsDouyinAppIdByChannel(mchNo, channelMchNo, douyinAppId, id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "新增直连商户应用")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) DouyinDirectAppParam param) {
+@@ -87,7 +89,7 @@ public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) Douyi
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "修改直连商户应用")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) DouyinDirectAppParam param) {
+@@ -96,15 +98,15 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) D
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "删除直连商户应用")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         douyinDirectAppService.delete(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询应用授权认证配置")
+     @GetMapping("/find-auth-config-by-app-id")
+     public Result<DouyinDirectAppAuthConfigResult> findAuthConfigByAppId(
+@@ -113,7 +115,7 @@ public Result<DouyinDirectAppAuthConfigResult> findAuthConfigByAppId(
+         return Res.ok(config.toResult());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "保存应用授权认证配置")
+     @PostMapping("/save-auth-config")
+     public Result<Void> saveAuthConfig(@RequestBody @Validated DouyinDirectAppAuthConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-douyin/src/main/java/cn/daxpay/open/channel/douyin/controller/direct/DouyinDirectChannelMerchantController.java b/daxpay-channel/daxpay-channel-douyin/src/main/java/cn/daxpay/open/channel/douyin/controller/direct/DouyinDirectChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-douyin/src/main/java/cn/daxpay/open/channel/douyin/controller/direct/DouyinDirectChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-douyin/src/main/java/cn/daxpay/open/channel/douyin/controller/direct/DouyinDirectChannelMerchantController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.channel.douyin.controller.direct;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -22,7 +24,7 @@
+ 
+ /// # 抖音直连通道商户管理
+ ///
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "抖音直连通道商户管理")
+ @RestController
+@@ -33,23 +35,23 @@ public class DouyinDirectChannelMerchantController {
+     private final DouyinDirectChannelMerchantService douyinDirectChannelMerchantService;
+     private final DouyinDirectKeyConfigService douyinDirectKeyConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询抖音直连通道商户配置")
+     @GetMapping("/find-by-channel-mch-no")
+     public Result<DouyinDirectChannelMerchantResult> findByChannelMchNo(
+             @NotBlank(message = "{validation.field.channelMerchantNo.notBlank}") String channelMchNo) {
+         return Res.ok(douyinDirectChannelMerchantService.findByChannelMchNo(channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建抖音直连通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated DouyinDirectChannelMerchantCreateParam param) {
+         douyinDirectChannelMerchantService.create(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询密钥配置")
+     @GetMapping("/find-key-config")
+     public Result<DouyinDirectKeyConfigResult> findKeyConfig(
+@@ -61,7 +63,7 @@ public Result<DouyinDirectKeyConfigResult> findKeyConfig(
+         return Res.ok(result);
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "保存密钥配置")
+     @PostMapping("/save-key-config")
+     public Result<Void> saveKeyConfig(@RequestBody @Validated DouyinDirectKeyConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-fuyou/src/main/java/cn/daxpay/open/channel/fuyou/controller/isv/FuyouIsvChannelMerchantController.java b/daxpay-channel/daxpay-channel-fuyou/src/main/java/cn/daxpay/open/channel/fuyou/controller/isv/FuyouIsvChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-fuyou/src/main/java/cn/daxpay/open/channel/fuyou/controller/isv/FuyouIsvChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-fuyou/src/main/java/cn/daxpay/open/channel/fuyou/controller/isv/FuyouIsvChannelMerchantController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.channel.fuyou.result.isv.FuyouIsvChannelMerchantResult;
+ import cn.daxpay.open.channel.fuyou.service.isv.FuyouIsvChannelMerchantService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -18,7 +19,7 @@
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /// # 富友通道商户管理
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "富友通道商户管理")
+ @RestController
+@@ -28,15 +29,15 @@ public class FuyouIsvChannelMerchantController {
+ 
+     private final FuyouIsvChannelMerchantService fuyouIsvChannelMerchantService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询富友通道商户配置")
+     @GetMapping("/find-by-channel-mch-no")
+     public Result<FuyouIsvChannelMerchantResult> findByChannelMchNo(
+             @NotBlank(message = "{validation.field.channelMchNo.notBlank}") String channelMchNo) {
+         return Res.ok(fuyouIsvChannelMerchantService.findByChannelMchNo(channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建富友通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated FuyouIsvChannelMerchantCreateParam param) {
+diff --git a/daxpay-channel/daxpay-channel-fuyou/src/main/java/cn/daxpay/open/channel/fuyou/controller/isv/FuyouIsvKeyConfigController.java b/daxpay-channel/daxpay-channel-fuyou/src/main/java/cn/daxpay/open/channel/fuyou/controller/isv/FuyouIsvKeyConfigController.java
+--- a/daxpay-channel/daxpay-channel-fuyou/src/main/java/cn/daxpay/open/channel/fuyou/controller/isv/FuyouIsvKeyConfigController.java
++++ b/daxpay-channel/daxpay-channel-fuyou/src/main/java/cn/daxpay/open/channel/fuyou/controller/isv/FuyouIsvKeyConfigController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.channel.fuyou.result.isv.FuyouIsvKeyConfigResult;
+ import cn.daxpay.open.channel.fuyou.service.isv.FuyouIsvKeyConfigService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -19,7 +20,7 @@
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /// # 富友服务商密钥配置
+-@PermCode(menuCode = "payment:fuyou:isv")
++@PermCode(menuCode = PermCodes.Payment.Fuyou.MENU)
+ @Validated
+ @Tag(name = "富友服务商密钥配置")
+ @RestController
+@@ -29,7 +30,7 @@ public class FuyouIsvKeyConfigController {
+ 
+     private final FuyouIsvKeyConfigService fuyouIsvKeyConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "富友服务商查看", nameEn = "Fuyou ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "富友服务商查看", nameEn = "Fuyou ISV View")
+     @Operation(summary = "查询富友服务商密钥配置")
+     @GetMapping("/find-config")
+     public Result<FuyouIsvKeyConfigResult> findConfig(
+@@ -38,7 +39,7 @@ public Result<FuyouIsvKeyConfigResult> findConfig(
+         return Res.ok(FuyouIsvKeyConfigConvert.CONVERT.toResult(fuyouIsvKeyConfigService.findByProduct(product, sandbox)));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "富友服务商管理", nameEn = "Fuyou ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "富友服务商管理", nameEn = "Fuyou ISV Manage")
+     @Operation(summary = "保存富友服务商密钥配置")
+     @PostMapping("/save-config")
+     public Result<Void> saveConfig(@RequestBody @Validated FuyouIsvKeyConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-hkrt/src/main/java/cn/daxpay/open/channel/hkrt/controller/isv/HkrtIsvChannelMerchantController.java b/daxpay-channel/daxpay-channel-hkrt/src/main/java/cn/daxpay/open/channel/hkrt/controller/isv/HkrtIsvChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-hkrt/src/main/java/cn/daxpay/open/channel/hkrt/controller/isv/HkrtIsvChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-hkrt/src/main/java/cn/daxpay/open/channel/hkrt/controller/isv/HkrtIsvChannelMerchantController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.channel.hkrt.result.isv.HkrtIsvChannelMerchantResult;
+ import cn.daxpay.open.channel.hkrt.service.isv.HkrtIsvChannelMerchantService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -19,7 +20,7 @@
+ 
+ /// # 海科融通通道商户管理
+ ///
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "海科融通通道商户管理")
+ @RestController
+@@ -29,23 +30,23 @@ public class HkrtIsvChannelMerchantController {
+ 
+     private final HkrtIsvChannelMerchantService hkrtIsvChannelMerchantService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询海科融通通道商户配置")
+     @GetMapping("/find-by-channel-mch-no")
+     public Result<HkrtIsvChannelMerchantResult> findByChannelMchNo(
+             @NotBlank(message = "{validation.field.channelMchNo.notBlank}") String channelMchNo) {
+         return Res.ok(hkrtIsvChannelMerchantService.findByChannelMchNo(channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建海科融通通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated HkrtIsvChannelMerchantCreateParam param) {
+         hkrtIsvChannelMerchantService.create(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "更新SAAS终端号")
+     @PostMapping("/update-pn")
+     public Result<Void> updatePn(
+diff --git a/daxpay-channel/daxpay-channel-hkrt/src/main/java/cn/daxpay/open/channel/hkrt/controller/isv/HkrtIsvKeyConfigController.java b/daxpay-channel/daxpay-channel-hkrt/src/main/java/cn/daxpay/open/channel/hkrt/controller/isv/HkrtIsvKeyConfigController.java
+--- a/daxpay-channel/daxpay-channel-hkrt/src/main/java/cn/daxpay/open/channel/hkrt/controller/isv/HkrtIsvKeyConfigController.java
++++ b/daxpay-channel/daxpay-channel-hkrt/src/main/java/cn/daxpay/open/channel/hkrt/controller/isv/HkrtIsvKeyConfigController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.channel.hkrt.result.isv.HkrtIsvKeyConfigResult;
+ import cn.daxpay.open.channel.hkrt.service.isv.HkrtIsvKeyConfigService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -20,7 +21,7 @@
+ 
+ /// # 海科融通服务商密钥配置
+ ///
+-@PermCode(menuCode = "payment:hkrt:isv")
++@PermCode(menuCode = PermCodes.Payment.Hkrt.MENU)
+ @Validated
+ @Tag(name = "海科融通服务商密钥配置")
+ @RestController
+@@ -30,7 +31,7 @@ public class HkrtIsvKeyConfigController {
+ 
+     private final HkrtIsvKeyConfigService hkrtIsvKeyConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "海科融通服务商查看", nameEn = "Hkrt ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "海科融通服务商查看", nameEn = "Hkrt ISV View")
+     @Operation(summary = "查询海科融通服务商密钥配置")
+     @GetMapping("/find-config")
+     public Result<HkrtIsvKeyConfigResult> findConfig(
+@@ -39,7 +40,7 @@ public Result<HkrtIsvKeyConfigResult> findConfig(
+         return Res.ok(HkrtIsvKeyConfigConvert.CONVERT.toResult(hkrtIsvKeyConfigService.findByProduct(product, sandbox)));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "海科融通服务商管理", nameEn = "Hkrt ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "海科融通服务商管理", nameEn = "Hkrt ISV Manage")
+     @Operation(summary = "保存海科融通服务商密钥配置")
+     @PostMapping("/save-config")
+     public Result<Void> saveConfig(@RequestBody @Validated HkrtIsvKeyConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-hmpay/src/main/java/cn/daxpay/open/channel/hmpay/controller/isv/HmpayIsvChannelMerchantController.java b/daxpay-channel/daxpay-channel-hmpay/src/main/java/cn/daxpay/open/channel/hmpay/controller/isv/HmpayIsvChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-hmpay/src/main/java/cn/daxpay/open/channel/hmpay/controller/isv/HmpayIsvChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-hmpay/src/main/java/cn/daxpay/open/channel/hmpay/controller/isv/HmpayIsvChannelMerchantController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.channel.hmpay.result.isv.HmpayIsvChannelMerchantResult;
+ import cn.daxpay.open.channel.hmpay.service.isv.HmpayIsvChannelMerchantService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -19,7 +20,7 @@
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /// # 河马付通道商户管理
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "河马付通道商户管理")
+ @RestController
+@@ -29,23 +30,23 @@ public class HmpayIsvChannelMerchantController {
+ 
+     private final HmpayIsvChannelMerchantService hmpayIsvChannelMerchantService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询河马付通道商户配置")
+     @GetMapping("/find-by-channel-mch-no")
+     public Result<HmpayIsvChannelMerchantResult> findByChannelMchNo(
+             @NotBlank(message = "{validation.field.channelMchNo.notBlank}") String channelMchNo) {
+         return Res.ok(hmpayIsvChannelMerchantService.findByChannelMchNo(channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建河马付通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated HmpayIsvChannelMerchantCreateParam param) {
+         hmpayIsvChannelMerchantService.create(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "更新河马付通道商户可选配置")
+     @PostMapping("/update-config")
+     public Result<Void> updateConfig(@RequestBody @Validated HmpayIsvChannelMerchantUpdateParam param) {
+diff --git a/daxpay-channel/daxpay-channel-hmpay/src/main/java/cn/daxpay/open/channel/hmpay/controller/isv/HmpayIsvKeyConfigController.java b/daxpay-channel/daxpay-channel-hmpay/src/main/java/cn/daxpay/open/channel/hmpay/controller/isv/HmpayIsvKeyConfigController.java
+--- a/daxpay-channel/daxpay-channel-hmpay/src/main/java/cn/daxpay/open/channel/hmpay/controller/isv/HmpayIsvKeyConfigController.java
++++ b/daxpay-channel/daxpay-channel-hmpay/src/main/java/cn/daxpay/open/channel/hmpay/controller/isv/HmpayIsvKeyConfigController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.channel.hmpay.result.isv.HmpayIsvKeyConfigResult;
+ import cn.daxpay.open.channel.hmpay.service.isv.HmpayIsvKeyConfigService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -19,7 +20,7 @@
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /// # 河马付服务商密钥配置
+-@PermCode(menuCode = "payment:hmpay:isv")
++@PermCode(menuCode = PermCodes.Payment.Hmpay.MENU)
+ @Validated
+ @Tag(name = "河马付服务商密钥配置")
+ @RestController
+@@ -29,7 +30,7 @@ public class HmpayIsvKeyConfigController {
+ 
+     private final HmpayIsvKeyConfigService hmpayIsvKeyConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "河马付服务商查看", nameEn = "Hmpay ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "河马付服务商查看", nameEn = "Hmpay ISV View")
+     @Operation(summary = "查询河马付服务商密钥配置")
+     @GetMapping("/find-config")
+     public Result<HmpayIsvKeyConfigResult> findConfig(
+@@ -38,7 +39,7 @@ public Result<HmpayIsvKeyConfigResult> findConfig(
+         return Res.ok(HmpayIsvKeyConfigConvert.CONVERT.toResult(hmpayIsvKeyConfigService.findByProduct(product, sandbox)));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "河马付服务商管理", nameEn = "Hmpay ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "河马付服务商管理", nameEn = "Hmpay ISV Manage")
+     @Operation(summary = "保存河马付服务商密钥配置")
+     @PostMapping("/save-config")
+     public Result<Void> saveConfig(@RequestBody @Validated HmpayIsvKeyConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-lakala/src/main/java/cn/daxpay/open/channel/lakala/controller/isv/LakalaIsvChannelMerchantController.java b/daxpay-channel/daxpay-channel-lakala/src/main/java/cn/daxpay/open/channel/lakala/controller/isv/LakalaIsvChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-lakala/src/main/java/cn/daxpay/open/channel/lakala/controller/isv/LakalaIsvChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-lakala/src/main/java/cn/daxpay/open/channel/lakala/controller/isv/LakalaIsvChannelMerchantController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.channel.lakala.result.isv.LakalaIsvChannelMerchantResult;
+ import cn.daxpay.open.channel.lakala.service.isv.LakalaIsvChannelMerchantService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -19,7 +20,7 @@
+ 
+ /// # 拉卡拉通道商户管理
+ ///
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "拉卡拉通道商户管理")
+ @RestController
+@@ -29,23 +30,23 @@ public class LakalaIsvChannelMerchantController {
+ 
+     private final LakalaIsvChannelMerchantService lakalaIsvChannelMerchantService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询拉卡拉通道商户配置")
+     @GetMapping("/find-by-channel-mch-no")
+     public Result<LakalaIsvChannelMerchantResult> findByChannelMchNo(
+             @NotBlank(message = "{validation.field.channelMchNo.notBlank}") String channelMchNo) {
+         return Res.ok(lakalaIsvChannelMerchantService.findByChannelMchNo(channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建拉卡拉通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated LakalaIsvChannelMerchantCreateParam param) {
+         lakalaIsvChannelMerchantService.create(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "更新终端号")
+     @PostMapping("/update-term-no")
+     public Result<Void> updateTermNo(
+diff --git a/daxpay-channel/daxpay-channel-lakala/src/main/java/cn/daxpay/open/channel/lakala/controller/isv/LakalaIsvKeyConfigController.java b/daxpay-channel/daxpay-channel-lakala/src/main/java/cn/daxpay/open/channel/lakala/controller/isv/LakalaIsvKeyConfigController.java
+--- a/daxpay-channel/daxpay-channel-lakala/src/main/java/cn/daxpay/open/channel/lakala/controller/isv/LakalaIsvKeyConfigController.java
++++ b/daxpay-channel/daxpay-channel-lakala/src/main/java/cn/daxpay/open/channel/lakala/controller/isv/LakalaIsvKeyConfigController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.channel.lakala.result.isv.LakalaIsvKeyConfigResult;
+ import cn.daxpay.open.channel.lakala.service.isv.LakalaIsvKeyConfigService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -20,7 +21,7 @@
+ 
+ /// # 拉卡拉服务商密钥配置
+ ///
+-@PermCode(menuCode = "payment:lakala:isv")
++@PermCode(menuCode = PermCodes.Payment.Lakala.MENU)
+ @Validated
+ @Tag(name = "拉卡拉服务商密钥配置")
+ @RestController
+@@ -30,7 +31,7 @@ public class LakalaIsvKeyConfigController {
+ 
+     private final LakalaIsvKeyConfigService lakalaIsvKeyConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "拉卡拉服务商查看", nameEn = "Lakala ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "拉卡拉服务商查看", nameEn = "Lakala ISV View")
+     @Operation(summary = "查询拉卡拉服务商密钥配置")
+     @GetMapping("/find-config")
+     public Result<LakalaIsvKeyConfigResult> findConfig(
+@@ -39,7 +40,7 @@ public Result<LakalaIsvKeyConfigResult> findConfig(
+         return Res.ok(LakalaIsvKeyConfigConvert.CONVERT.toResult(lakalaIsvKeyConfigService.findByProduct(product, sandbox)));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "拉卡拉服务商管理", nameEn = "Lakala ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "拉卡拉服务商管理", nameEn = "Lakala ISV Manage")
+     @Operation(summary = "保存拉卡拉服务商密钥配置")
+     @PostMapping("/save-config")
+     public Result<Void> saveConfig(@RequestBody @Validated LakalaIsvKeyConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-leshua/src/main/java/cn/daxpay/open/channel/leshua/controller/isv/LeshuaIsvChannelMerchantController.java b/daxpay-channel/daxpay-channel-leshua/src/main/java/cn/daxpay/open/channel/leshua/controller/isv/LeshuaIsvChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-leshua/src/main/java/cn/daxpay/open/channel/leshua/controller/isv/LeshuaIsvChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-leshua/src/main/java/cn/daxpay/open/channel/leshua/controller/isv/LeshuaIsvChannelMerchantController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.channel.leshua.result.isv.LeshuaIsvChannelMerchantResult;
+ import cn.daxpay.open.channel.leshua.service.isv.LeshuaIsvChannelMerchantService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -19,7 +20,7 @@
+ 
+ /// # 乐刷通道商户管理
+ ///
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "乐刷通道商户管理")
+ @RestController
+@@ -29,15 +30,15 @@ public class LeshuaIsvChannelMerchantController {
+ 
+     private final LeshuaIsvChannelMerchantService leshuaIsvChannelMerchantService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询乐刷通道商户配置")
+     @GetMapping("/find-by-channel-mch-no")
+     public Result<LeshuaIsvChannelMerchantResult> findByChannelMchNo(
+             @NotBlank(message = "{validation.field.channelMchNo.notBlank}") String channelMchNo) {
+         return Res.ok(leshuaIsvChannelMerchantService.findByChannelMchNo(channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建乐刷通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated LeshuaIsvChannelMerchantCreateParam param) {
+diff --git a/daxpay-channel/daxpay-channel-leshua/src/main/java/cn/daxpay/open/channel/leshua/controller/isv/LeshuaIsvKeyConfigController.java b/daxpay-channel/daxpay-channel-leshua/src/main/java/cn/daxpay/open/channel/leshua/controller/isv/LeshuaIsvKeyConfigController.java
+--- a/daxpay-channel/daxpay-channel-leshua/src/main/java/cn/daxpay/open/channel/leshua/controller/isv/LeshuaIsvKeyConfigController.java
++++ b/daxpay-channel/daxpay-channel-leshua/src/main/java/cn/daxpay/open/channel/leshua/controller/isv/LeshuaIsvKeyConfigController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.channel.leshua.result.isv.LeshuaIsvKeyConfigResult;
+ import cn.daxpay.open.channel.leshua.service.isv.LeshuaIsvKeyConfigService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -20,7 +21,7 @@
+ 
+ /// # 乐刷服务商密钥配置
+ ///
+-@PermCode(menuCode = "payment:leshua:isv")
++@PermCode(menuCode = PermCodes.Payment.Leshua.MENU)
+ @Validated
+ @Tag(name = "乐刷服务商密钥配置")
+ @RestController
+@@ -30,7 +31,7 @@ public class LeshuaIsvKeyConfigController {
+ 
+     private final LeshuaIsvKeyConfigService leshuaIsvKeyConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "乐刷服务商查看", nameEn = "Leshua ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "乐刷服务商查看", nameEn = "Leshua ISV View")
+     @Operation(summary = "查询乐刷服务商密钥配置")
+     @GetMapping("/find-config")
+     public Result<LeshuaIsvKeyConfigResult> findConfig(
+@@ -39,7 +40,7 @@ public Result<LeshuaIsvKeyConfigResult> findConfig(
+         return Res.ok(LeshuaIsvKeyConfigConvert.CONVERT.toResult(leshuaIsvKeyConfigService.findByProduct(product, sandbox)));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "乐刷服务商管理", nameEn = "Leshua ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "乐刷服务商管理", nameEn = "Leshua ISV Manage")
+     @Operation(summary = "保存乐刷服务商密钥配置")
+     @PostMapping("/save-config")
+     public Result<Void> saveConfig(@RequestBody @Validated LeshuaIsvKeyConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-ums/src/main/java/cn/daxpay/open/channel/ums/controller/direct/UmsDirectChannelMerchantController.java b/daxpay-channel/daxpay-channel-ums/src/main/java/cn/daxpay/open/channel/ums/controller/direct/UmsDirectChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-ums/src/main/java/cn/daxpay/open/channel/ums/controller/direct/UmsDirectChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-ums/src/main/java/cn/daxpay/open/channel/ums/controller/direct/UmsDirectChannelMerchantController.java
+@@ -6,6 +6,7 @@
+ import cn.daxpay.open.channel.ums.service.direct.UmsDirectChannelMerchantService;
+ import cn.daxpay.open.channel.ums.service.direct.UmsDirectKeyConfigService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -24,7 +25,7 @@
+ ///
+ /// 提供通道商户创建和密钥配置管理。
+ /// 商户身份(mid)创建时录入, 应用ID/终端号(tid)/应用密钥/通讯密钥由密钥配置维护。
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "银联商务直连通道商户管理")
+ @RestController
+@@ -35,15 +36,15 @@ public class UmsDirectChannelMerchantController {
+     private final UmsDirectChannelMerchantService umsDirectChannelMerchantService;
+     private final UmsDirectKeyConfigService umsDirectKeyConfigService;
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建银联商务直连通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated UmsDirectChannelMerchantCreateParam param) {
+         umsDirectChannelMerchantService.create(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询密钥配置")
+     @GetMapping("/find-key-config")
+     public Result<UmsDirectKeyConfigResult> findKeyConfig(
+@@ -56,7 +57,7 @@ public Result<UmsDirectKeyConfigResult> findKeyConfig(
+         return Res.ok(result);
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "保存密钥配置")
+     @PostMapping("/save-key-config")
+     public Result<Void> saveKeyConfig(@RequestBody @Validated UmsDirectKeyConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-vbill/src/main/java/cn/daxpay/open/channel/vbill/controller/isv/VbillIsvChannelMerchantController.java b/daxpay-channel/daxpay-channel-vbill/src/main/java/cn/daxpay/open/channel/vbill/controller/isv/VbillIsvChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-vbill/src/main/java/cn/daxpay/open/channel/vbill/controller/isv/VbillIsvChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-vbill/src/main/java/cn/daxpay/open/channel/vbill/controller/isv/VbillIsvChannelMerchantController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.channel.vbill.result.isv.VbillIsvChannelMerchantResult;
+ import cn.daxpay.open.channel.vbill.service.isv.VbillIsvChannelMerchantService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -18,7 +19,7 @@
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /// # 随行付通道商户管理
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "随行付通道商户管理")
+ @RestController
+@@ -28,15 +29,15 @@ public class VbillIsvChannelMerchantController {
+ 
+     private final VbillIsvChannelMerchantService vbillIsvChannelMerchantService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询随行付通道商户配置")
+     @GetMapping("/find-by-channel-mch-no")
+     public Result<VbillIsvChannelMerchantResult> findByChannelMchNo(
+             @NotBlank(message = "{validation.field.channelMchNo.notBlank}") String channelMchNo) {
+         return Res.ok(vbillIsvChannelMerchantService.findByChannelMchNo(channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建随行付通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated VbillIsvChannelMerchantCreateParam param) {
+diff --git a/daxpay-channel/daxpay-channel-vbill/src/main/java/cn/daxpay/open/channel/vbill/controller/isv/VbillIsvKeyConfigController.java b/daxpay-channel/daxpay-channel-vbill/src/main/java/cn/daxpay/open/channel/vbill/controller/isv/VbillIsvKeyConfigController.java
+--- a/daxpay-channel/daxpay-channel-vbill/src/main/java/cn/daxpay/open/channel/vbill/controller/isv/VbillIsvKeyConfigController.java
++++ b/daxpay-channel/daxpay-channel-vbill/src/main/java/cn/daxpay/open/channel/vbill/controller/isv/VbillIsvKeyConfigController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.channel.vbill.result.isv.VbillIsvKeyConfigResult;
+ import cn.daxpay.open.channel.vbill.service.isv.VbillIsvKeyConfigService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -19,7 +20,7 @@
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /// # 随行付服务商密钥配置
+-@PermCode(menuCode = "payment:vbill:isv")
++@PermCode(menuCode = PermCodes.Payment.Vbill.MENU)
+ @Validated
+ @Tag(name = "随行付服务商密钥配置")
+ @RestController
+@@ -29,7 +30,7 @@ public class VbillIsvKeyConfigController {
+ 
+     private final VbillIsvKeyConfigService vbillIsvKeyConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "随行付服务商查看", nameEn = "VBill ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "随行付服务商查看", nameEn = "VBill ISV View")
+     @Operation(summary = "查询随行付服务商密钥配置")
+     @GetMapping("/find-config")
+     public Result<VbillIsvKeyConfigResult> findConfig(
+@@ -38,7 +39,7 @@ public Result<VbillIsvKeyConfigResult> findConfig(
+         return Res.ok(VbillIsvKeyConfigConvert.CONVERT.toResult(vbillIsvKeyConfigService.findByProduct(product, sandbox)));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "随行付服务商管理", nameEn = "VBill ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "随行付服务商管理", nameEn = "VBill ISV Manage")
+     @Operation(summary = "保存随行付服务商密钥配置")
+     @PostMapping("/save-config")
+     public Result<Void> saveConfig(@RequestBody @Validated VbillIsvKeyConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/direct/WechatDirectAppCapabilityController.java b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/direct/WechatDirectAppCapabilityController.java
+--- a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/direct/WechatDirectAppCapabilityController.java
++++ b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/direct/WechatDirectAppCapabilityController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.channel.wechat.result.direct.WechatDirectAppCapabilityResult;
+ import cn.daxpay.open.channel.wechat.service.direct.WechatDirectAppCapabilityService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -24,7 +25,7 @@
+ ///
+ /// 提供通道商户维度下「支付能力 → 直连应用」绑定关系的查询、批量保存及能力候选查询。
+ ///
+-@PermCode(menuCode = "channel:wechat:app")
++@PermCode(menuCode = PermCodes.Channel.WechatApp.MENU)
+ @Validated
+ @Tag(name = "微信直连商户应用支付能力关联管理")
+ @RestController
+@@ -34,7 +35,7 @@ public class WechatDirectAppCapabilityController {
+ 
+     private final WechatDirectAppCapabilityService wechatDirectAppCapabilityService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询通道商户的能力应用关联列表")
+     @GetMapping("/list-by-channel-mch-no")
+     public Result<List<WechatDirectAppCapabilityResult>> listByChannelMchNo(
+@@ -43,15 +44,15 @@ public Result<List<WechatDirectAppCapabilityResult>> listByChannelMchNo(
+         return Res.ok(wechatDirectAppCapabilityService.listByChannelMchNo(mchNo, channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "全量保存能力应用关联")
+     @PostMapping("/save-batch")
+     public Result<Void> saveBatch(@RequestBody @Validated WechatDirectAppCapabilityBatchParam param) {
+         wechatDirectAppCapabilityService.saveBatch(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询微信直连支持的支付能力候选")
+     @GetMapping("/list-supported-capabilities")
+     public Result<List<WechatCapabilityOption>> listSupportedCapabilities() {
+diff --git a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/direct/WechatDirectAppController.java b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/direct/WechatDirectAppController.java
+--- a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/direct/WechatDirectAppController.java
++++ b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/direct/WechatDirectAppController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.channel.wechat.controller.direct;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -29,7 +31,7 @@
+ ///
+ /// 提供直连商户应用及其密钥配置、授权认证配置的 REST API，支持按商户号和通道商户号查询列表。
+ ///
+-@PermCode(menuCode = "channel:wechat:app")
++@PermCode(menuCode = PermCodes.Channel.WechatApp.MENU)
+ @Validated
+ @Tag(name = "微信直连商户应用管理")
+ @RestController
+@@ -40,7 +42,7 @@ public class WechatDirectAppController {
+     private final WechatDirectAppService wechatDirectAppService;
+     private final WechatDirectAppAuthConfigService wechatDirectAppAuthConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据商户号和通道商户号查询应用列表")
+     @GetMapping("/list-by-channel-mch-no")
+     public Result<List<WechatDirectAppResult>> listByChannelMchNo(
+@@ -49,15 +51,15 @@ public Result<List<WechatDirectAppResult>> listByChannelMchNo(
+         return Res.ok(wechatDirectAppService.listByMchNoAndChannelMchNo(mchNo, channelMchNo));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询应用详情")
+     @GetMapping("/find-by-id")
+     public Result<WechatDirectAppResult> findById(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(wechatDirectAppService.findById(id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "同一通道商户下微信应用ID是否已存在")
+     @GetMapping("/exists-wx-app-id-by-channel")
+     public Result<Boolean> existsWxAppIdByChannel(
+@@ -67,7 +69,7 @@ public Result<Boolean> existsWxAppIdByChannel(
+         return Res.ok(wechatDirectAppService.existsWxAppIdByChannel(mchNo, channelMchNo, wxAppId, null));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "同一通道商户下微信应用ID是否已存在(排除自身)")
+     @GetMapping("/exists-wx-app-id-by-channel-not-id")
+     public Result<Boolean> existsWxAppIdByChannelNotId(
+@@ -78,7 +80,7 @@ public Result<Boolean> existsWxAppIdByChannelNotId(
+         return Res.ok(wechatDirectAppService.existsWxAppIdByChannel(mchNo, channelMchNo, wxAppId, id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "新增直连商户应用")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) WechatDirectAppParam param) {
+@@ -87,7 +89,7 @@ public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) Wecha
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "修改直连商户应用")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) WechatDirectAppParam param) {
+@@ -96,15 +98,15 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) W
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "删除直连商户应用")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         wechatDirectAppService.delete(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询应用授权认证配置")
+     @GetMapping("/find-auth-config-by-app-id")
+     public Result<WechatDirectAppAuthConfigResult> findAuthConfigByAppId(
+@@ -113,7 +115,7 @@ public Result<WechatDirectAppAuthConfigResult> findAuthConfigByAppId(
+         return Res.ok(config.toResult());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "保存应用授权认证配置")
+     @PostMapping("/save-auth-config")
+     public Result<Void> saveAuthConfig(@RequestBody @Validated WechatDirectAppAuthConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/direct/WechatDirectChannelMerchantController.java b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/direct/WechatDirectChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/direct/WechatDirectChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/direct/WechatDirectChannelMerchantController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.channel.wechat.controller.direct;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -22,7 +24,7 @@
+ 
+ /// # 微信直连通道商户管理
+ ///
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "微信直连通道商户管理")
+ @RestController
+@@ -33,31 +35,31 @@ public class WechatDirectChannelMerchantController {
+     private final WechatDirectChannelMerchantService wechatDirectChannelMerchantService;
+     private final WechatDirectKeyConfigService wechatDirectKeyConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询微信直连通道商户配置")
+     @GetMapping("/find-by-channel-mch-no")
+     public Result<WechatDirectChannelMerchantResult> findByChannelMchNo(
+             @NotBlank(message = "{validation.field.channelMerchantNo.notBlank}") String channelMchNo) {
+         return Res.ok(wechatDirectChannelMerchantService.findByChannelMchNo(channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建微信直连通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated WechatDirectChannelMerchantCreateParam param) {
+         wechatDirectChannelMerchantService.create(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询密钥配置")
+     @GetMapping("/find-key-config")
+     public Result<WechatDirectKeyConfigResult> findKeyConfig(
+             @NotBlank(message = "{validation.field.channelMerchantNo.notBlank}") String channelMchNo) {
+         return Res.ok(wechatDirectKeyConfigService.findByChannelMchNo(channelMchNo).toResult());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "保存密钥配置")
+     @PostMapping("/save-key-config")
+     public Result<Void> saveKeyConfig(@RequestBody @Validated WechatDirectKeyConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvAppCapabilityController.java b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvAppCapabilityController.java
+--- a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvAppCapabilityController.java
++++ b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvAppCapabilityController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.channel.wechat.result.isv.WechatIsvAppCapabilityResult;
+ import cn.daxpay.open.channel.wechat.service.isv.WechatIsvAppCapabilityService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -23,7 +24,7 @@
+ ///
+ /// 提供全局维度下「支付能力 → 服务商应用」绑定关系的查询、批量保存及能力候选查询。
+ ///
+-@PermCode(menuCode = "payment:wechat:isv")
++@PermCode(menuCode = PermCodes.Payment.WechatIsv.MENU)
+ @Validated
+ @Tag(name = "微信服务商应用支付能力关联管理")
+ @RestController
+@@ -33,22 +34,22 @@ public class WechatIsvAppCapabilityController {
+ 
+     private final WechatIsvAppCapabilityService wechatIsvAppCapabilityService;
+ 
+-    @PermCode(code = "view", nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
+     @Operation(summary = "查询能力应用关联列表")
+     @GetMapping("/list-all")
+     public Result<List<WechatIsvAppCapabilityResult>> listAll() {
+         return Res.ok(wechatIsvAppCapabilityService.listAll());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "微信服务商管理", nameEn = "WeChat ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "微信服务商管理", nameEn = "WeChat ISV Manage")
+     @Operation(summary = "全量保存能力应用关联")
+     @PostMapping("/save-batch")
+     public Result<Void> saveBatch(@RequestBody @Validated WechatIsvAppCapabilityBatchParam param) {
+         wechatIsvAppCapabilityService.saveBatch(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
+     @Operation(summary = "查询微信服务商支持的支付能力候选")
+     @GetMapping("/list-supported-capabilities")
+     public Result<List<WechatCapabilityOption>> listSupportedCapabilities() {
+diff --git a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvAppController.java b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvAppController.java
+--- a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvAppController.java
++++ b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvAppController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.channel.wechat.controller.isv;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import cn.daxpay.open.platform.core.util.ValidationUtil;
+@@ -24,7 +25,7 @@
+ 
+ /// # 微信服务商应用管理
+ ///
+-@PermCode(menuCode = "payment:wechat:isv")
++@PermCode(menuCode = PermCodes.Payment.WechatIsv.MENU)
+ @Validated
+ @Tag(name = "微信服务商应用管理")
+ @RestController
+@@ -35,30 +36,30 @@ public class WechatIsvAppController {
+     private final WechatIsvAppService wechatIsvAppService;
+     private final WechatIsvAppAuthConfigService wechatIsvAppAuthConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
+     @Operation(summary = "查询服务商应用列表")
+     @GetMapping("/list-all")
+     public Result<List<WechatIsvAppResult>> listAll() {
+         return Res.ok(wechatIsvAppService.listAll());
+     }
+ 
+-    @PermCode(code = "view", nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
+     @Operation(summary = "查询应用详情")
+     @GetMapping("/find-by-id")
+     public Result<WechatIsvAppResult> findById(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(wechatIsvAppService.findById(id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
+     @Operation(summary = "微信应用AppId是否已存在")
+     @GetMapping("/exists-wx-app-id")
+     public Result<Boolean> existsWxAppId(
+             @NotBlank(message = "{validation.field.wxAppId.notBlank}") String wxAppId) {
+         return Res.ok(wechatIsvAppService.existsWxAppId(wxAppId, null));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
+     @Operation(summary = "微信应用AppId是否已存在(排除自身)")
+     @GetMapping("/exists-wx-app-id-not-id")
+     public Result<Boolean> existsWxAppIdNotId(
+@@ -67,7 +68,7 @@ public Result<Boolean> existsWxAppIdNotId(
+         return Res.ok(wechatIsvAppService.existsWxAppId(wxAppId, id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "微信服务商管理", nameEn = "WeChat ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "微信服务商管理", nameEn = "WeChat ISV Manage")
+     @Operation(summary = "新增服务商应用")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) WechatIsvAppParam param) {
+@@ -76,7 +77,7 @@ public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) Wecha
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "微信服务商管理", nameEn = "WeChat ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "微信服务商管理", nameEn = "WeChat ISV Manage")
+     @Operation(summary = "修改服务商应用")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) WechatIsvAppParam param) {
+@@ -85,15 +86,15 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) W
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "微信服务商管理", nameEn = "WeChat ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "微信服务商管理", nameEn = "WeChat ISV Manage")
+     @Operation(summary = "删除服务商应用")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         wechatIsvAppService.delete(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
+     @Operation(summary = "查询应用授权认证配置")
+     @GetMapping("/find-auth-config-by-app-id")
+     public Result<WechatIsvAppAuthConfigResult> findAuthConfigByAppId(
+@@ -102,7 +103,7 @@ public Result<WechatIsvAppAuthConfigResult> findAuthConfigByAppId(
+         return Res.ok(WechatIsvAppAuthConfigConvert.CONVERT.toResult(config));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "微信服务商管理", nameEn = "WeChat ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "微信服务商管理", nameEn = "WeChat ISV Manage")
+     @Operation(summary = "保存应用授权认证配置")
+     @PostMapping("/save-auth-config")
+     public Result<Void> saveAuthConfig(@RequestBody @Validated WechatIsvAppAuthConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvChannelMerchantController.java b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvChannelMerchantController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.channel.wechat.controller.isv;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -20,7 +22,7 @@
+ 
+ /// # 微信服务商通道商户管理
+ ///
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "微信服务商通道商户管理")
+ @RestController
+@@ -30,23 +32,23 @@ public class WechatIsvChannelMerchantController {
+ 
+     private final WechatIsvChannelMerchantService wechatIsvChannelMerchantService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询微信服务商通道商户配置")
+     @GetMapping("/find-by-channel-mch-no")
+     public Result<WechatIsvChannelMerchantResult> findByChannelMchNo(
+             @NotBlank(message = "{validation.field.channelMerchantNo.notBlank}") String channelMchNo) {
+         return Res.ok(wechatIsvChannelMerchantService.findByChannelMchNo(channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建微信服务商通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated WechatIsvChannelMerchantCreateParam param) {
+         wechatIsvChannelMerchantService.create(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "更新认证应用类型")
+     @PostMapping("/update-auth-app-type")
+     public Result<Void> updateAuthAppType(@RequestBody @Validated WechatIsvAuthAppTypeUpdateParam param) {
+diff --git a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvKeyConfigController.java b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvKeyConfigController.java
+--- a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvKeyConfigController.java
++++ b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvKeyConfigController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.channel.wechat.controller.isv;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import cn.daxpay.open.channel.wechat.convert.isv.WechatIsvKeyConfigConvert;
+@@ -16,7 +17,7 @@
+ 
+ /// # 微信服务商密钥配置
+ ///
+-@PermCode(menuCode = "payment:wechat:isv")
++@PermCode(menuCode = PermCodes.Payment.WechatIsv.MENU)
+ @Validated
+ @Tag(name = "微信服务商密钥配置")
+ @RestController
+@@ -26,15 +27,15 @@ public class WechatIsvKeyConfigController {
+ 
+     private final WechatIsvKeyConfigService wechatIsvKeyConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "微信服务商查看", nameEn = "WeChat ISV View")
+     @Operation(summary = "查询微信服务商密钥配置")
+     @GetMapping("/find-config")
+     public Result<WechatIsvKeyConfigResult> findConfig(
+             @NotBlank(message = "{validation.field.product.notBlank}") String product) {
+         return Res.ok(WechatIsvKeyConfigConvert.CONVERT.toResult(wechatIsvKeyConfigService.findByProduct(product)));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "微信服务商管理", nameEn = "WeChat ISV Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "微信服务商管理", nameEn = "WeChat ISV Manage")
+     @Operation(summary = "保存微信服务商密钥配置")
+     @PostMapping("/save-config")
+     public Result<Void> saveConfig(@RequestBody @Validated WechatIsvKeyConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvMchAppCapabilityController.java b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvMchAppCapabilityController.java
+--- a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvMchAppCapabilityController.java
++++ b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvMchAppCapabilityController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.channel.wechat.result.isv.WechatIsvMchAppCapabilityResult;
+ import cn.daxpay.open.channel.wechat.service.isv.WechatIsvMchAppCapabilityService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -24,7 +25,7 @@
+ ///
+ /// 提供通道商户(特约商户)维度下「支付能力 → 子商户应用」绑定关系的查询、批量保存及能力候选查询。
+ ///
+-@PermCode(menuCode = "channel:wechat:app")
++@PermCode(menuCode = PermCodes.Channel.WechatApp.MENU)
+ @Validated
+ @Tag(name = "微信服务商通道商户应用支付能力关联管理")
+ @RestController
+@@ -34,7 +35,7 @@ public class WechatIsvMchAppCapabilityController {
+ 
+     private final WechatIsvMchAppCapabilityService wechatIsvMchAppCapabilityService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询通道商户的能力应用关联列表")
+     @GetMapping("/list-by-channel-mch-no")
+     public Result<List<WechatIsvMchAppCapabilityResult>> listByChannelMchNo(
+@@ -43,15 +44,15 @@ public Result<List<WechatIsvMchAppCapabilityResult>> listByChannelMchNo(
+         return Res.ok(wechatIsvMchAppCapabilityService.listByChannelMchNo(mchNo, channelMchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "全量保存能力应用关联")
+     @PostMapping("/save-batch")
+     public Result<Void> saveBatch(@RequestBody @Validated WechatIsvMchAppCapabilityBatchParam param) {
+         wechatIsvMchAppCapabilityService.saveBatch(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询微信服务商支持的支付能力候选")
+     @GetMapping("/list-supported-capabilities")
+     public Result<List<WechatCapabilityOption>> listSupportedCapabilities() {
+diff --git a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvMchAppController.java b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvMchAppController.java
+--- a/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvMchAppController.java
++++ b/daxpay-channel/daxpay-channel-wechat/src/main/java/cn/daxpay/open/channel/wechat/controller/isv/WechatIsvMchAppController.java
+@@ -7,6 +7,7 @@
+ import cn.daxpay.open.channel.wechat.service.isv.WechatIsvMchAppAuthConfigService;
+ import cn.daxpay.open.channel.wechat.service.isv.WechatIsvMchAppService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import cn.daxpay.open.platform.core.util.ValidationUtil;
+@@ -29,7 +30,7 @@
+ ///
+ /// 提供服务商通道商户应用(子商户应用)及其授权认证配置的 REST API,支持按商户号和通道商户号查询列表。
+ ///
+-@PermCode(menuCode = "channel:wechat:app")
++@PermCode(menuCode = PermCodes.Channel.WechatApp.MENU)
+ @Validated
+ @Tag(name = "微信服务商通道商户应用管理")
+ @RestController
+@@ -40,7 +41,7 @@ public class WechatIsvMchAppController {
+     private final WechatIsvMchAppService wechatIsvMchAppService;
+     private final WechatIsvMchAppAuthConfigService wechatIsvMchAppAuthConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据商户号和通道商户号查询应用列表")
+     @GetMapping("/list-by-channel-mch-no")
+     public Result<List<WechatIsvMchAppResult>> listByChannelMchNo(
+@@ -49,15 +50,15 @@ public Result<List<WechatIsvMchAppResult>> listByChannelMchNo(
+         return Res.ok(wechatIsvMchAppService.listByMchNoAndChannelMchNo(mchNo, channelMchNo));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询应用详情")
+     @GetMapping("/find-by-id")
+     public Result<WechatIsvMchAppResult> findById(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(wechatIsvMchAppService.findById(id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "同一通道商户下微信应用ID是否已存在")
+     @GetMapping("/exists-wx-app-id-by-channel")
+     public Result<Boolean> existsWxAppIdByChannel(
+@@ -67,7 +68,7 @@ public Result<Boolean> existsWxAppIdByChannel(
+         return Res.ok(wechatIsvMchAppService.existsWxAppIdByChannel(mchNo, channelMchNo, wxAppId, null));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "同一通道商户下微信应用ID是否已存在(排除自身)")
+     @GetMapping("/exists-wx-app-id-by-channel-not-id")
+     public Result<Boolean> existsWxAppIdByChannelNotId(
+@@ -78,7 +79,7 @@ public Result<Boolean> existsWxAppIdByChannelNotId(
+         return Res.ok(wechatIsvMchAppService.existsWxAppIdByChannel(mchNo, channelMchNo, wxAppId, id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "新增服务商通道商户应用")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) WechatIsvMchAppParam param) {
+@@ -87,7 +88,7 @@ public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) Wecha
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "修改服务商通道商户应用")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) WechatIsvMchAppParam param) {
+@@ -96,15 +97,15 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) W
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "删除服务商通道商户应用")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         wechatIsvMchAppService.delete(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询应用授权认证配置")
+     @GetMapping("/find-auth-config-by-app-id")
+     public Result<WechatIsvMchAppAuthConfigResult> findAuthConfigByAppId(
+@@ -113,7 +114,7 @@ public Result<WechatIsvMchAppAuthConfigResult> findAuthConfigByAppId(
+         return Res.ok(config.toResult());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "保存应用授权认证配置")
+     @PostMapping("/save-auth-config")
+     public Result<Void> saveAuthConfig(@RequestBody @Validated WechatIsvMchAppAuthConfigParam param) {
+diff --git a/daxpay-channel/daxpay-channel-yeepay/src/main/java/cn/daxpay/open/channel/yeepay/controller/direct/YeepayDirectChannelMerchantController.java b/daxpay-channel/daxpay-channel-yeepay/src/main/java/cn/daxpay/open/channel/yeepay/controller/direct/YeepayDirectChannelMerchantController.java
+--- a/daxpay-channel/daxpay-channel-yeepay/src/main/java/cn/daxpay/open/channel/yeepay/controller/direct/YeepayDirectChannelMerchantController.java
++++ b/daxpay-channel/daxpay-channel-yeepay/src/main/java/cn/daxpay/open/channel/yeepay/controller/direct/YeepayDirectChannelMerchantController.java
+@@ -6,6 +6,7 @@
+ import cn.daxpay.open.channel.yeepay.service.direct.YeepayDirectChannelMerchantService;
+ import cn.daxpay.open.channel.yeepay.service.direct.YeepayDirectKeyConfigService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -24,7 +25,7 @@
+ ///
+ /// 提供通道商户创建和密钥配置管理。
+ /// 商户身份(merchantNo/yopIsvNo)创建时录入, 密钥(appKey/privateKey/yopPublicKey等)由密钥配置维护。
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "易宝直连通道商户管理")
+ @RestController
+@@ -35,15 +36,15 @@ public class YeepayDirectChannelMerchantController {
+     private final YeepayDirectChannelMerchantService yeepayDirectChannelMerchantService;
+     private final YeepayDirectKeyConfigService yeepayDirectKeyConfigService;
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "创建易宝直连通道商户")
+     @PostMapping("/create")
+     public Result<Void> create(@RequestBody @Validated YeepayDirectChannelMerchantCreateParam param) {
+         yeepayDirectChannelMerchantService.create(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据通道商户号查询密钥配置")
+     @GetMapping("/find-key-config")
+     public Result<YeepayDirectKeyConfigResult> findKeyConfig(
+@@ -57,7 +58,7 @@ public Result<YeepayDirectKeyConfigResult> findKeyConfig(
+         return Res.ok(result);
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "保存密钥配置")
+     @PostMapping("/save-key-config")
+     public Result<Void> saveKeyConfig(@RequestBody @Validated YeepayDirectKeyConfigParam param) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/channel/ChannelMerchantAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/channel/ChannelMerchantAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/channel/ChannelMerchantAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/channel/ChannelMerchantAdminController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.channel;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+@@ -18,7 +20,7 @@
+ 
+ /// 通道商户管理(运营平台-综合管理)
+ /// 全局查看和管理所有通道商户，仅支持查看和编辑
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "通道商户管理(运营平台-综合管理)")
+ @RestController
+@@ -27,29 +29,29 @@
+ public class ChannelMerchantAdminController {
+     private final ChannelMerchantService channelMerchantService;
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "修改")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated ChannelMerchantEditParam param) {
+         channelMerchantService.update(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "分页查询")
+     @GetMapping("/page")
+     public Result<PageResult<ChannelMerchantResult>> page(PageParam pageParam, ChannelMerchantQuery query) {
+         return Res.ok(channelMerchantService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询详情")
+     @GetMapping("/get")
+     public Result<ChannelMerchantResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(channelMerchantService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "更新启用状态")
+     @PostMapping("/update-enable")
+     public Result<Void> updateEnable(@NotNull(message = "{validation.field.id.notNull}") Long id, @NotNull(message = "{validation.field.enable.notNull}") Boolean enable) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/channel/MerchantChannelMerchantAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/channel/MerchantChannelMerchantAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/channel/MerchantChannelMerchantAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/channel/MerchantChannelMerchantAdminController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.channel;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.dto.LabelValue;
+@@ -23,7 +25,7 @@
+ 
+ /// 商户通道商户管理(运营平台)
+ /// 从商户入口进入，管理指定商户的通道商户
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "商户通道商户管理(运营平台)")
+ @RestController
+@@ -32,51 +34,51 @@
+ public class MerchantChannelMerchantAdminController {
+     private final ChannelMerchantService channelMerchantService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "分页查询")
+     @GetMapping("/page")
+     public Result<PageResult<ChannelMerchantResult>> page(PageParam pageParam, ChannelMerchantQuery query) {
+         return Res.ok(channelMerchantService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询详情")
+     @GetMapping("/get")
+     public Result<ChannelMerchantResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(channelMerchantService.findById(id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据商户号查询所有通道商户")
+     @GetMapping("/all-by-mch-no")
+     public Result<List<ChannelMerchantResult>> findAllByMchNo(@NotBlank(message = "{validation.field.mchNo.notBlank}") String mchNo) {
+         return Res.ok(channelMerchantService.findAllByMchNo(mchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "更新启用状态")
+     @PostMapping("/update-enable")
+     public Result<Void> updateEnable(@NotNull(message = "{validation.field.id.notNull}") Long id, @NotNull(message = "{validation.field.enable.notNull}") Boolean enable) {
+         channelMerchantService.updateEnable(id, enable);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "修改商户名称")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated ChannelMerchantEditParam param) {
+         channelMerchantService.update(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据商户和通道查询通道商户号列表")
+     @GetMapping("/dropdown")
+     public Result<List<LabelValue>> dropdown(@NotBlank(message = "{validation.field.mchNo.notBlank}") String mchNo, @NotBlank(message = "{validation.field.channel.notBlank}") String channel) {
+         return Res.ok(channelMerchantService.dropdown(mchNo, channel));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据商户号查询通道")
+     @GetMapping("/channel/dropdown-by-mch-no")
+     public Result<List<PayChannelResult>> dropdownByMchNo(@NotBlank(message = "{validation.field.mchNo.notBlank}") String mchNo) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/develop/DevelopAuthController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/develop/DevelopAuthController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/develop/DevelopAuthController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/develop/DevelopAuthController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.payment.unipay.result.assist.AuthUrlResult;
+ import cn.daxpay.open.payment.admin.service.develop.DevelopAuthService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -30,7 +31,7 @@
+ ///
+ /// 已实现项均通过查询码轮询认证结果。
+ @Validated
+-@PermCode(menuCode = "develop:auth")
++@PermCode(menuCode = PermCodes.Develop.Auth.MENU)
+ @Tag(name = "认证调试服务")
+ @RestController
+ @RequestMapping("/admin/develop/auth")
+@@ -39,28 +40,28 @@ public class DevelopAuthController {
+ 
+     private final DevelopAuthService developAuthService;
+ 
+-    @PermCode(code = "view", nameCn = "查看", nameEn = "View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "查看", nameEn = "View")
+     @Operation(summary = "生成支付宝H5授权链接")
+     @PostMapping("/generate-alipay-auth-url")
+     public Result<AuthUrlResult> generateAlipayAuthUrl() {
+         return Res.ok(developAuthService.generateAlipayAuthUrl());
+     }
+ 
+-    @PermCode(code = "view", nameCn = "查看", nameEn = "View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "查看", nameEn = "View")
+     @Operation(summary = "生成微信公众号配置授权链接")
+     @PostMapping("/generate-wechat-mp-auth-url")
+     public Result<AuthUrlResult> generateWechatMpAuthUrl() {
+         return Res.ok(developAuthService.generateWechatMpAuthUrl());
+     }
+ 
+-    @PermCode(code = "view", nameCn = "查看", nameEn = "View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "查看", nameEn = "View")
+     @Operation(summary = "生成抖音H5授权链接")
+     @PostMapping("/generate-douyin-auth-url")
+     public Result<AuthUrlResult> generateDouyinAuthUrl() {
+         return Res.ok(developAuthService.generateDouyinAuthUrl());
+     }
+ 
+-    @PermCode(code = "view", nameCn = "查看", nameEn = "View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "查看", nameEn = "View")
+     @Operation(summary = "生成微信支付授权链接")
+     @PostMapping("/generate-channel-auth-url")
+     public Result<AuthUrlResult> generateChannelAuthUrl(@RequestBody GenerateAuthUrlParam param) {
+@@ -69,7 +70,7 @@ public Result<AuthUrlResult> generateChannelAuthUrl(@RequestBody GenerateAuthUrl
+         return Res.ok(developAuthService.generateChannelAuthUrl(param));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "查看", nameEn = "View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "查看", nameEn = "View")
+     @Operation(summary = "通过查询码获取认证结果")
+     @GetMapping("/query-auth-result")
+     public Result<AuthResult> queryAuthResult(
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/develop/DevelopSignController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/develop/DevelopSignController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/develop/DevelopSignController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/develop/DevelopSignController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.develop;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.payment.admin.param.develop.DevelopSignParam;
+ import cn.daxpay.open.payment.admin.param.develop.DevelopVerifyParam;
+ import cn.daxpay.open.payment.admin.result.develop.DevelopSignResult;
+@@ -16,7 +18,7 @@
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /// 签名调试(管理)
+-@PermCode(menuCode = "develop:sign")
++@PermCode(menuCode = PermCodes.Develop.Sign.MENU)
+ @Tag(name = "签名调试服务")
+ @RestController
+ @RequestMapping("/admin/develop/sign")
+@@ -25,14 +27,14 @@ public class DevelopSignController {
+ 
+     private final DevelopSignService developSignService;
+ 
+-    @PermCode(code = "view", nameCn = "查看", nameEn = "View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "查看", nameEn = "View")
+     @Operation(summary = "生成签名")
+     @PostMapping("/gen")
+     public Result<DevelopSignResult> sign(@RequestBody DevelopSignParam param) {
+         return Res.ok(developSignService.sign(param));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "查看", nameEn = "View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "查看", nameEn = "View")
+     @Operation(summary = "验签")
+     @PostMapping("/verify")
+     public Result<Boolean> verify(@RequestBody DevelopVerifyParam param) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/develop/DevelopTradeController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/develop/DevelopTradeController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/develop/DevelopTradeController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/develop/DevelopTradeController.java
+@@ -6,6 +6,7 @@
+ import cn.daxpay.open.payment.masterdata.constants.provider.result.PayProviderMethodResult;
+ import cn.daxpay.open.payment.unipay.param.trade.pay.NormalPayParam;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.dto.LabelValue;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -25,7 +26,7 @@
+ /// 交易开发调试(管理)
+ ///
+ /// 仅提供签名与元数据辅助, 真实支付由前端模拟商户请求调用 `/unipay/pay`。
+-@PermCode(menuCode = "develop:trade")
++@PermCode(menuCode = PermCodes.Develop.Trade.MENU)
+ @Tag(name = "交易开发调试服务")
+ @RestController
+ @RequestMapping("/admin/develop/trade")
+@@ -34,21 +35,21 @@ public class DevelopTradeController {
+ 
+     private final DevelopTradeService developTradeService;
+ 
+-    @PermCode(code = "sign", nameCn = "签名", nameEn = "Sign")
++    @PermCode(code = PermCodes.Action.SIGN, nameCn = "签名", nameEn = "Sign")
+     @Operation(summary = "支付参数签名")
+     @PostMapping("/sign")
+     public Result<DevelopSignResult> sign(@RequestBody DevelopParam<NormalPayParam> param) {
+         return Res.ok(developTradeService.sign(param));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "查看", nameEn = "View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "查看", nameEn = "View")
+     @Operation(summary = "已启用渠道支付方式目录")
+     @GetMapping("/method-directory")
+     public Result<List<PayProviderMethodResult>> methodDirectory() {
+         return Res.ok(developTradeService.listMethodDirectory());
+     }
+ 
+-    @PermCode(code = "view", nameCn = "查看", nameEn = "View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "查看", nameEn = "View")
+     @Operation(summary = "传值模式通道商户候选")
+     @GetMapping("/channel-mch-candidates")
+     public Result<List<LabelValue>> channelMchCandidates(
+@@ -57,7 +58,7 @@ public Result<List<LabelValue>> channelMchCandidates(
+         return Res.ok(developTradeService.listChannelMchCandidates(mchNo, provider));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "查看", nameEn = "View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "查看", nameEn = "View")
+     @Operation(summary = "传值模式支付能力候选")
+     @GetMapping("/capability-candidates")
+     public Result<List<LabelValue>> capabilityCandidates(
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/device/DeviceQrCodeAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/device/DeviceQrCodeAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/device/DeviceQrCodeAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/device/DeviceQrCodeAdminController.java
+@@ -7,6 +7,7 @@
+ import cn.daxpay.open.payment.device.qrcode.result.DeviceQrCodeResult;
+ import cn.daxpay.open.payment.admin.service.device.DeviceQrCodeAdminService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+@@ -29,7 +30,7 @@
+ 
+ /// # 支付码牌管理(运营端)
+ ///
+-@PermCode(menuCode = "device:qrcode")
++@PermCode(menuCode = PermCodes.Device.QrCode.MENU)
+ @Validated
+ @Tag(name = "支付码牌管理")
+ @RestController
+@@ -39,75 +40,75 @@ public class DeviceQrCodeAdminController {
+ 
+     private final DeviceQrCodeAdminService deviceQrCodeAdminService;
+ 
+-    @PermCode(code = "manage", nameCn = "码牌管理", nameEn = "QrCode Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "码牌管理", nameEn = "QrCode Manage")
+     @Operation(summary = "批量创建空白码牌")
+     @PostMapping("/create-batch")
+     public Result<Void> createBatch(@RequestBody @Validated DeviceQrCodeBatchParam param) {
+         deviceQrCodeAdminService.createBatch(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "码牌查看", nameEn = "QrCode View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "码牌查看", nameEn = "QrCode View")
+     @Operation(summary = "判断批次号是否已存在")
+     @GetMapping("/exists-by-batch-no")
+     public Result<Boolean> existsByBatchNo(@NotBlank(message = "{validation.field.batchNo.notBlank}") String batchNo) {
+         return Res.ok(deviceQrCodeAdminService.existsByBatchNo(batchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "码牌管理", nameEn = "QrCode Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "码牌管理", nameEn = "QrCode Manage")
+     @Operation(summary = "批量绑定商户")
+     @PostMapping("/bind-merchant")
+     public Result<Void> bindMerchant(@RequestBody @Validated DeviceQrCodeBindMerchantParam param) {
+         deviceQrCodeAdminService.bindMerchant(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "码牌管理", nameEn = "QrCode Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "码牌管理", nameEn = "QrCode Manage")
+     @Operation(summary = "批量解绑商户")
+     @PostMapping("/unbind-merchant")
+     public Result<Void> unbindMerchant(@RequestBody @NotEmpty(message = "{validation.field.ids.notEmpty}") List<Long> ids) {
+         deviceQrCodeAdminService.unbindMerchant(ids);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "码牌管理", nameEn = "QrCode Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "码牌管理", nameEn = "QrCode Manage")
+     @Operation(summary = "修改码牌")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) DeviceQrCodeParam param) {
+         deviceQrCodeAdminService.update(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "码牌查看", nameEn = "QrCode View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "码牌查看", nameEn = "QrCode View")
+     @Operation(summary = "码牌分页")
+     @GetMapping("/page")
+     public Result<PageResult<DeviceQrCodeResult>> page(PageParam pageParam, DeviceQrCodeQuery query) {
+         return Res.ok(deviceQrCodeAdminService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "码牌查看", nameEn = "QrCode View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "码牌查看", nameEn = "QrCode View")
+     @Operation(summary = "根据id查询码牌")
+     @GetMapping("/get")
+     public Result<DeviceQrCodeResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(deviceQrCodeAdminService.findById(id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "码牌查看", nameEn = "QrCode View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "码牌查看", nameEn = "QrCode View")
+     @Operation(summary = "获取码牌扫码链接")
+     @GetMapping("/get-code-link")
+     public Result<String> getCodeLink(@NotBlank(message = "{validation.field.code.notBlank}") String code) {
+         return Res.ok(deviceQrCodeAdminService.getCodeLink(code));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "码牌管理", nameEn = "QrCode Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "码牌管理", nameEn = "QrCode Manage")
+     @Operation(summary = "删除码牌")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         deviceQrCodeAdminService.delete(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "码牌管理", nameEn = "QrCode Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "码牌管理", nameEn = "QrCode Manage")
+     @Operation(summary = "修改码牌状态")
+     @PostMapping("/change-status")
+     public Result<Void> changeStatus(@NotNull(message = "{validation.field.id.notNull}") Long id,
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/capability/PayCapabilityController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/capability/PayCapabilityController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/capability/PayCapabilityController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/capability/PayCapabilityController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.masterdata.capability;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.payment.masterdata.constants.capability.param.PayCapabilityQuery;
+ import cn.daxpay.open.payment.masterdata.constants.capability.result.PayCapabilityResult;
+ import cn.daxpay.open.payment.admin.service.masterdata.capability.PayCapabilityService;
+@@ -18,7 +20,7 @@
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /// # 支付能力（管理端，只读）
+-@PermCode(menuCode = "payment:platform:capability")
++@PermCode(menuCode = PermCodes.Payment.Platform.Capability.MENU)
+ @Validated
+ @Tag(name = "支付能力管理")
+ @RestController
+@@ -28,14 +30,14 @@ public class PayCapabilityController {
+ 
+     private final PayCapabilityService payCapabilityService;
+ 
+-    @PermCode(code = "view", nameCn = "支付能力查看", nameEn = "Pay Capability View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "支付能力查看", nameEn = "Pay Capability View")
+     @Operation(summary = "分页查询")
+     @GetMapping("/page")
+     public Result<PageResult<PayCapabilityResult>> page(PageParam pageParam, PayCapabilityQuery query, String name) {
+         return Res.ok(payCapabilityService.page(pageParam, query, name));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "支付能力查看", nameEn = "Pay Capability View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "支付能力查看", nameEn = "Pay Capability View")
+     @Operation(summary = "根据编码查询详情")
+     @GetMapping("/get")
+     public Result<PayCapabilityResult> findByCode(@NotBlank(message = "{validation.field.code.notBlank}") String code) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/paychannel/PayChannelController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/paychannel/PayChannelController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/paychannel/PayChannelController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/paychannel/PayChannelController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.masterdata.paychannel;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.payment.masterdata.constants.channel.param.PayChannelQuery;
+ import cn.daxpay.open.payment.masterdata.constants.channel.result.PayChannelResult;
+ import cn.daxpay.open.payment.masterdata.constants.product.result.PayProductResult;
+@@ -25,7 +27,7 @@
+ /// # 支付通道（管理端，只读）
+ ///
+ /// 清单来自 `ChannelEnum` + `pay_channel` 表 + 产品策略推断的通道能力。
+-@PermCode(menuCode = "payment:platform:pay_channel")
++@PermCode(menuCode = PermCodes.Payment.Platform.PayChannel.MENU)
+ @Validated
+ @Tag(name = "支付通道")
+ @RestController
+@@ -36,29 +38,29 @@ public class PayChannelController {
+     private final PayChannelService payChannelService;
+     private final PayProductService payProductService;
+ 
+-    @PermCode(code = "view", nameCn = "支付通道查看", nameEn = "Pay Channel View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "支付通道查看", nameEn = "Pay Channel View")
+     @Operation(summary = "分页查询")
+     @GetMapping("/page")
+     public Result<PageResult<PayChannelResult>> page(PageParam pageParam, PayChannelQuery query, String name) {
+         return Res.ok(payChannelService.page(pageParam, query, name));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "支付通道查看", nameEn = "Pay Channel View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "支付通道查看", nameEn = "Pay Channel View")
+     @Operation(summary = "根据编码查询详情")
+     @GetMapping("/get")
+     public Result<PayChannelResult> findByCode(@NotBlank(message = "{validation.field.code.notBlank}") String code) {
+         return Res.ok(payChannelService.findByCode(code));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "支付通道查看", nameEn = "Pay Channel View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "支付通道查看", nameEn = "Pay Channel View")
+     @Operation(summary = "按通道编码查询所属支付产品")
+     @GetMapping("/list-products")
+     public Result<List<PayProductResult>> listProducts(
+             @NotBlank(message = "{validation.field.channel.notBlank}") String channel) {
+         return Res.ok(payProductService.listByChannel(channel));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "支付通道查看", nameEn = "Pay Channel View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "支付通道查看", nameEn = "Pay Channel View")
+     @Operation(summary = "启用通道下拉列表")
+     @GetMapping("/dropdown")
+     public Result<List<LabelValue>> dropdown() {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/product/PayProductConfigController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/product/PayProductConfigController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/product/PayProductConfigController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/product/PayProductConfigController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.masterdata.product;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.payment.masterdata.constants.product.param.PayProductConfigParam;
+ import cn.daxpay.open.payment.masterdata.constants.product.result.PayProductConfigResult;
+ import cn.daxpay.open.payment.admin.service.masterdata.product.PayProductConfigService;
+@@ -18,7 +20,7 @@
+ 
+ /// # 支付产品配置管理
+ ///
+-@PermCode(menuCode = "payment:config:product_config")
++@PermCode(menuCode = PermCodes.Payment.ProductConfig.MENU)
+ @Validated
+ @Tag(name = "支付产品配置管理")
+ @RestController
+@@ -28,14 +30,14 @@ public class PayProductConfigController {
+ 
+     private final PayProductConfigService payProductConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "产品配置查看", nameEn = "Product Config View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "产品配置查看", nameEn = "Product Config View")
+     @Operation(summary = "全量查询产品配置列表（卡片页使用）")
+     @GetMapping("/list-all")
+     public Result<List<PayProductConfigResult>> listAll() {
+         return Res.ok(payProductConfigService.listAll());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "产品配置管理", nameEn = "Product Config Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "产品配置管理", nameEn = "Product Config Manage")
+     @Operation(summary = "切换产品生效环境")
+     @PostMapping("/switch-env")
+     public Result<Void> switchEnv(
+@@ -45,7 +47,7 @@ public Result<Void> switchEnv(
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "产品配置管理", nameEn = "Product Config Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "产品配置管理", nameEn = "Product Config Manage")
+     @Operation(summary = "保存产品配置")
+     @PostMapping("/save")
+     public Result<Void> save(@RequestBody @Validated PayProductConfigParam param) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/product/PayProductController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/product/PayProductController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/product/PayProductController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/product/PayProductController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.masterdata.product;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.payment.masterdata.constants.product.param.PayProductQuery;
+ import cn.daxpay.open.payment.masterdata.constants.product.result.PayProductResult;
+ import cn.daxpay.open.payment.masterdata.constants.product.service.PayProductService;
+@@ -24,7 +26,7 @@
+ 
+ /// # 支付产品管理
+ ///
+-@PermCode(menuCode = "payment:platform:product")
++@PermCode(menuCode = PermCodes.Payment.Platform.Product.MENU)
+ @Validated
+ @Tag(name = "支付产品管理")
+ @RestController
+@@ -34,28 +36,28 @@ public class PayProductController {
+ 
+     private final PayProductService payProductService;
+ 
+-    @PermCode(code = "view", nameCn = "产品查看", nameEn = "Product View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "产品查看", nameEn = "Product View")
+     @Operation(summary = "分页查询")
+     @GetMapping("/page")
+     public Result<PageResult<PayProductResult>> page(PageParam pageParam, PayProductQuery query, String name) {
+         return Res.ok(payProductService.page(pageParam, query, name));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "产品查看", nameEn = "Product View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "产品查看", nameEn = "Product View")
+     @Operation(summary = "根据编码查询详情")
+     @GetMapping("/get")
+     public Result<PayProductResult> findByCode(@NotBlank(message = "{validation.field.code.notBlank}") String code) {
+         return Res.ok(payProductService.findByCode(code));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "产品查看", nameEn = "Product View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "产品查看", nameEn = "Product View")
+     @Operation(summary = "启用产品下拉列表")
+     @GetMapping("/dropdown")
+     public Result<List<LabelValue>> dropdown() {
+         return Res.ok(payProductService.dropdown());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "产品管理", nameEn = "Product Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "产品管理", nameEn = "Product Manage")
+     @Operation(summary = "切换支付产品启停")
+     @PostMapping("/switch-enabled")
+     public Result<Void> switchEnabled(
+@@ -66,7 +68,7 @@ public Result<Void> switchEnabled(
+     }
+ 
+     /// 全量查询支付产品列表（卡片式管理页使用）
+-    @PermCode(code = "view", nameCn = "产品查看", nameEn = "Product View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "产品查看", nameEn = "Product View")
+     @Operation(summary = "全量查询支付产品")
+     @GetMapping("/list-all")
+     public Result<List<PayProductResult>> listAll() {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/provider/PayProviderController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/provider/PayProviderController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/provider/PayProviderController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/masterdata/provider/PayProviderController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.payment.masterdata.constants.provider.result.PayProviderMethodResult;
+ import cn.daxpay.open.payment.admin.service.masterdata.provider.PayProviderService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -21,7 +22,7 @@
+ 
+ /// # 支付渠道（管理端）
+ ///
+-@PermCode(menuCode = "payment:platform:provider")
++@PermCode(menuCode = PermCodes.Payment.Platform.Provider.MENU)
+ @Validated
+ @Tag(name = "支付渠道")
+ @RestController
+@@ -31,14 +32,14 @@ public class PayProviderController {
+ 
+     private final PayProviderService payProviderService;
+ 
+-    @PermCode(code = "view", nameCn = "品牌目录查看", nameEn = "Brand Method Directory View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "品牌目录查看", nameEn = "Brand Method Directory View")
+     @Operation(summary = "按支付渠道分组查询支付方式列表")
+     @GetMapping("/list-by-provider")
+     public Result<List<PayProviderGroupResult>> listByProvider() {
+         return Res.ok(payProviderService.listByProvider());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "支付渠道管理", nameEn = "Provider Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "支付渠道管理", nameEn = "Provider Manage")
+     @Operation(summary = "切换支付渠道启停")
+     @PostMapping("/switch-enabled")
+     public Result<Void> switchEnabled(
+@@ -48,7 +49,7 @@ public Result<Void> switchEnabled(
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "品牌目录查看", nameEn = "Brand Method Directory View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "品牌目录查看", nameEn = "Brand Method Directory View")
+     @Operation(summary = "查询单条支付渠道项")
+     @GetMapping("/get")
+     public Result<PayProviderMethodResult> get(
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/appinfo/MchAppInfoAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/appinfo/MchAppInfoAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/appinfo/MchAppInfoAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/appinfo/MchAppInfoAdminController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.merchant.appinfo;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+@@ -19,7 +21,7 @@
+ import org.springframework.web.bind.annotation.*;
+ 
+ /// 商户应用配置(管理)
+-@PermCode(menuCode = "merchant:app")
++@PermCode(menuCode = PermCodes.Merchant.App.MENU)
+ @Validated
+ @Tag(name = "商户应用配置(管理)")
+ @RestController
+@@ -28,7 +30,7 @@
+ public class MchAppInfoAdminController {
+     private final MchAppInfoService mchAppInfoService;
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "新增商户应用")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) MchAppInfoParam param){
+@@ -37,7 +39,7 @@ public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) MchAp
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "修改商户应用")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) MchAppInfoParam param){
+@@ -46,37 +48,37 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) M
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "商户应用分页")
+     @GetMapping("/page")
+     public Result<PageResult<MchAppInfoResult>> page(PageParam pageParam, MchAppInfoQuery query){
+         return Res.ok(mchAppInfoService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "根据id查询商户应用")
+     @GetMapping("/get")
+     public Result<MchAppInfoResult> findById(@NotNull(message = "{validation.field.id.notNull}")Long id){
+         return Res.ok(mchAppInfoService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "删除商户应用")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id){
+         mchAppInfoService.delete(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "设置默认商户应用")
+     @PostMapping("/set-default")
+     public Result<Void> setDefault(@NotNull(message = "{validation.field.id.notNull}") Long id){
+         mchAppInfoService.setDefault(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "取消默认商户应用")
+     @PostMapping("/clear-default")
+     public Result<Void> clearDefault(@NotNull(message = "{validation.field.id.notNull}") Long id){
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/config/MchAppNotifyConfigAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/config/MchAppNotifyConfigAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/config/MchAppNotifyConfigAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/config/MchAppNotifyConfigAdminController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.merchant.config;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import cn.daxpay.open.payment.merchant.param.config.MchAppNotifyConfigParam;
+@@ -15,7 +16,7 @@
+ 
+ /// # 商户应用事件通知配置管理控制器
+ ///
+-@PermCode(menuCode = "merchant:notify_config")
++@PermCode(menuCode = PermCodes.Merchant.NotifyConfig.MENU)
+ @Validated
+ @Tag(name = "商户应用事件通知配置管理")
+ @RestController
+@@ -25,15 +26,15 @@ public class MchAppNotifyConfigAdminController {
+ 
+     private final MchAppNotifyConfigService notifyConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "根据应用ID查询通知配置")
+     @GetMapping("/get-by-app-id")
+     public Result<MchAppNotifyConfigResult> findByAppId(
+             @NotBlank(message = "{validation.field.appId.notBlank}") String appId) {
+         return Res.ok(notifyConfigService.findByAppId(appId));
+     }
+ 
+-    @PermCode(code = "notify_config_update", nameCn = "通知配置更新", nameEn = "Notify Config Update")
++    @PermCode(code = PermCodes.Merchant.NotifyConfig.NOTIFY_CONFIG_UPDATE, nameCn = "通知配置更新", nameEn = "Notify Config Update")
+     @Operation(summary = "保存或更新通知配置")
+     @PostMapping("/save-or-update")
+     public Result<Void> saveOrUpdate(@RequestBody @Validated MchAppNotifyConfigParam param) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/config/MerchantCredentialAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/config/MerchantCredentialAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/config/MerchantCredentialAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/config/MerchantCredentialAdminController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.merchant.config;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -15,7 +17,7 @@
+ 
+ /// # 商户对接配置管理控制器
+ ///
+-@PermCode(menuCode = "merchant:credential")
++@PermCode(menuCode = PermCodes.Merchant.Credential.MENU)
+ @Validated
+ @Tag(name = "商户对接配置管理")
+ @RestController
+@@ -25,15 +27,15 @@ public class MerchantCredentialAdminController {
+ 
+     private final MerchantCredentialService credentialService;
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "根据商户号查询对接配置")
+     @GetMapping("/get-by-mch-no")
+     public Result<MerchantCredentialResult> findByMchNo(
+             @NotBlank(message = "{validation.field.mchNo.notBlank}") String mchNo) {
+         return Res.ok(credentialService.findByMchNo(mchNo));
+     }
+ 
+-    @PermCode(code = "credential_config_update", nameCn = "对接配置更新", nameEn = "Credential Config Update")
++    @PermCode(code = PermCodes.Merchant.Credential.CREDENTIAL_CONFIG_UPDATE, nameCn = "对接配置更新", nameEn = "Credential Config Update")
+     @Operation(summary = "更新商户对接配置")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated MerchantCredentialParam param) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/gateway/GatewayAggregateConfigAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/gateway/GatewayAggregateConfigAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/gateway/GatewayAggregateConfigAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/gateway/GatewayAggregateConfigAdminController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.payment.merchant.result.gateway.GatewayAggregateConfigResult;
+ import cn.daxpay.open.payment.merchant.service.gateway.GatewayAggregateConfigService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -14,7 +15,7 @@
+ import org.springframework.web.bind.annotation.*;
+ 
+ /// # 网关聚合扫码配置(管理)
+-@PermCode(menuCode = "merchant:gateway-aggregate")
++@PermCode(menuCode = PermCodes.Merchant.GatewayAggregate.MENU)
+ @Validated
+ @Tag(name = "网关聚合扫码配置")
+ @RestController
+@@ -24,15 +25,15 @@ public class GatewayAggregateConfigAdminController {
+ 
+     private final GatewayAggregateConfigService gatewayAggregateConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "配置查看", nameEn = "Config View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "配置查看", nameEn = "Config View")
+     @Operation(summary = "按应用查询聚合扫码配置")
+     @GetMapping("/get-by-app-id")
+     public Result<GatewayAggregateConfigResult> getByAppId(
+             @NotBlank(message = "{validation.field.appId.notBlank}") String appId) {
+         return Res.ok(gatewayAggregateConfigService.findByAppId(appId));
+     }
+ 
+-    @PermCode(code = "update", nameCn = "配置更新", nameEn = "Config Update")
++    @PermCode(code = PermCodes.Action.UPDATE, nameCn = "配置更新", nameEn = "Config Update")
+     @Operation(summary = "保存或更新聚合扫码配置")
+     @PostMapping("/save-or-update")
+     public Result<Void> saveOrUpdate(@RequestBody @Validated GatewayAggregateConfigParam param) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/gateway/GatewayCashierConfigAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/gateway/GatewayCashierConfigAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/gateway/GatewayCashierConfigAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/gateway/GatewayCashierConfigAdminController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.payment.merchant.result.gateway.GatewayCashierItemResult;
+ import cn.daxpay.open.payment.admin.service.merchant.gateway.GatewayCashierConfigService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import cn.daxpay.open.platform.core.util.ValidationUtil;
+@@ -19,7 +20,7 @@
+ import java.util.List;
+ 
+ /// # 网关收银台配置(管理)
+-@PermCode(menuCode = "merchant:gateway-cashier")
++@PermCode(menuCode = PermCodes.Merchant.GatewayCashier.MENU)
+ @Validated
+ @Tag(name = "网关收银台配置")
+ @RestController
+@@ -29,7 +30,7 @@ public class GatewayCashierConfigAdminController {
+ 
+     private final GatewayCashierConfigService gatewayCashierConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "配置查看", nameEn = "Config View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "配置查看", nameEn = "Config View")
+     @Operation(summary = "按应用与分桶查询收银台支付项列表")
+     @GetMapping("/list")
+     public Result<List<GatewayCashierItemResult>> list(
+@@ -39,23 +40,23 @@ public Result<List<GatewayCashierItemResult>> list(
+         return Res.ok(gatewayCashierConfigService.list(appId, cashierType, scene));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "配置查看", nameEn = "Config View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "配置查看", nameEn = "Config View")
+     @Operation(summary = "按ID查询收银台支付项")
+     @GetMapping("/get-by-id")
+     public Result<GatewayCashierItemResult> getById(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(gatewayCashierConfigService.findById(id));
+     }
+ 
+-    @PermCode(code = "update", nameCn = "配置更新", nameEn = "Config Update")
++    @PermCode(code = PermCodes.Action.UPDATE, nameCn = "配置更新", nameEn = "Config Update")
+     @Operation(summary = "新建收银台支付项")
+     @PostMapping("/save")
+     public Result<Void> save(@RequestBody @Validated GatewayCashierItemParam param) {
+         gatewayCashierConfigService.save(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "update", nameCn = "配置更新", nameEn = "Config Update")
++    @PermCode(code = PermCodes.Action.UPDATE, nameCn = "配置更新", nameEn = "Config Update")
+     @Operation(summary = "更新收银台支付项")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) GatewayCashierItemParam param) {
+@@ -65,7 +66,7 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) G
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "update", nameCn = "配置更新", nameEn = "Config Update")
++    @PermCode(code = PermCodes.Action.UPDATE, nameCn = "配置更新", nameEn = "Config Update")
+     @Operation(summary = "删除收银台支付项")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/info/MerchantAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/info/MerchantAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/info/MerchantAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/info/MerchantAdminController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.merchant.info;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+@@ -20,7 +22,7 @@
+ import org.springframework.web.bind.annotation.*;
+ 
+ /// 商户配置(管理)
+-@PermCode(menuCode = "merchant:info")
++@PermCode(menuCode = PermCodes.Merchant.Info.MENU)
+ @Validated
+ @Tag(name = "商户配置(管理)")
+ @RestController
+@@ -29,60 +31,60 @@
+ public class MerchantAdminController {
+     private final MerchantAdminService merchantService;
+ 
+-        @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++        @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "新增商户")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) MerchantRegisterParam param){
+         merchantService.add(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "修改商户")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) MerchantInfoParam param){
+         merchantService.update(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "商户分页")
+     @GetMapping("/page")
+     public Result<PageResult<MerchantInfoResult>> page(PageParam pageParam, MerchantInfoQuery param){
+         return Res.ok(merchantService.page(pageParam, param));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "根据id查询商户")
+     @GetMapping("/get")
+     public Result<MerchantInfoResult> findById(@NotNull(message = "{validation.field.id.notNull}")Long id){
+         return Res.ok(merchantService.findById(id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "根据商户号查询商户")
+     @GetMapping("/get-by-mch-no")
+     public Result<MerchantInfoResult> findByMchNo(@NotBlank(message = "{validation.field.mchNo.notBlank}") String mchNo){
+         return Res.ok(merchantService.findByMchNo(mchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "删除商户")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id){
+         merchantService.delete(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "启用商户")
+     @PostMapping("/enable")
+     public Result<Void> enable(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         merchantService.enable(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "禁用商户")
+     @PostMapping("/disable")
+     public Result<Void> disable(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/route/PayRouteAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/route/PayRouteAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/route/PayRouteAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/route/PayRouteAdminController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.merchant.route;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.payment.masterdata.constants.provider.result.PayProviderMethodResult;
+ import cn.daxpay.open.payment.masterdata.constants.provider.service.PayProviderMethodService;
+ import cn.daxpay.open.payment.merchant.param.route.basic.PayRouteBasicConfigBatchParam;
+@@ -30,7 +32,7 @@
+ /// 「运营」指 Admin 运营端角色，不是支付通道 channel。提供策略、基础/场景配置及
+ /// 已启用渠道支付方式扁平目录（`method-directory/flat-list`）。
+ ///
+-@PermCode(menuCode = "merchant:app:route")
++@PermCode(menuCode = PermCodes.Merchant.AppRoute.MENU)
+ @Validated
+ @Tag(name = "应用通道路由管理")
+ @RestController
+@@ -41,59 +43,59 @@ public class PayRouteAdminController {
+     private final PayRouteConfigService configService;
+     private final PayProviderMethodService payProviderMethodService;
+ 
+-    @PermCode(code = "view", nameCn = "通道路由查看", nameEn = "Pay Route View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "通道路由查看", nameEn = "Pay Route View")
+     @Operation(summary = "已启用渠道支付方式扁平列表")
+     @GetMapping("/method-directory/flat-list")
+     public Result<List<PayProviderMethodResult>> listMethodDirectoryFlat() {
+         return Res.ok(payProviderMethodService.listDirectoryFlat());
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道路由查看", nameEn = "Pay Route View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "通道路由查看", nameEn = "Pay Route View")
+     @Operation(summary = "获取或初始化应用路由策略")
+     @GetMapping("/strategy/get-or-init-by-app-id")
+     public Result<PayRouteStrategyResult> getOrInitByAppId(@NotBlank(message = "{validation.field.appId.notBlank}") String appId) {
+         return Res.ok(configService.getOrInitByAppId(appId));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道路由管理", nameEn = "Pay Route Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "通道路由管理", nameEn = "Pay Route Manage")
+     @Operation(summary = "更新路由策略")
+     @PostMapping("/strategy/update")
+     public Result<PayRouteStrategyResult> updateStrategy(@RequestBody @Validated PayRouteStrategyParam param) {
+         return Res.ok(configService.updateStrategy(param));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道路由查看", nameEn = "Pay Route View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "通道路由查看", nameEn = "Pay Route View")
+     @Operation(summary = "查询场景模式配置列表")
+     @GetMapping("/scene-config/list-by-app-id")
+     public Result<List<PayRouteSceneConfigResult>> listSceneByAppId(@NotBlank(message = "{validation.field.appId.notBlank}") String appId) {
+         return Res.ok(configService.listSceneByAppId(appId));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道路由管理", nameEn = "Pay Route Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "通道路由管理", nameEn = "Pay Route Manage")
+     @Operation(summary = "批量保存场景模式配置")
+     @PostMapping("/scene-config/save-batch")
+     public Result<Void> saveSceneBatch(@RequestBody @Validated PayRouteSceneConfigBatchParam param) {
+         configService.saveSceneBatch(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道路由查看", nameEn = "Pay Route View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "通道路由查看", nameEn = "Pay Route View")
+     @Operation(summary = "通道路由白名单目录下全部通道商户候选（批量）")
+     @GetMapping("/scene-config/channel-mch-candidates-batch")
+     public Result<Map<String, List<LabelValue>>> listSceneChannelMchCandidatesBatch(
+             @NotBlank(message = "{validation.field.appId.notBlank}") String appId) {
+         return Res.ok(configService.listSceneChannelMchCandidatesBatch(appId));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道路由查看", nameEn = "Pay Route View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "通道路由查看", nameEn = "Pay Route View")
+     @Operation(summary = "按目录项与通道商户批量返回支付能力候选")
+     @PostMapping("/scene-config/capability-candidates-batch")
+     public Result<Map<String, List<LabelValue>>> listSceneCapabilityCandidatesBatch(
+             @Valid @RequestBody PayRouteSceneCapabilityBatchParam param) {
+         return Res.ok(configService.listSceneCapabilityCandidatesBatch(param));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道路由查看", nameEn = "Pay Route View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "通道路由查看", nameEn = "Pay Route View")
+     @Operation(summary = "目录项下商户已开通的通道商户候选")
+     @GetMapping("/scene-config/channel-mch-candidates")
+     public Result<List<LabelValue>> listSceneChannelMchCandidates(
+@@ -103,7 +105,7 @@ public Result<List<LabelValue>> listSceneChannelMchCandidates(
+         return Res.ok(configService.listSceneChannelMchCandidatesForMethod(appId, provider, method));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道路由查看", nameEn = "Pay Route View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "通道路由查看", nameEn = "Pay Route View")
+     @Operation(summary = "目录项与通道商户下支付能力候选")
+     @GetMapping("/scene-config/capability-candidates")
+     public Result<List<LabelValue>> listSceneCapabilityCandidates(
+@@ -114,14 +116,14 @@ public Result<List<LabelValue>> listSceneCapabilityCandidates(
+         return Res.ok(configService.listSceneCapabilityCandidatesForMethod(appId, provider, method, channelMchNo));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道路由查看", nameEn = "Pay Route View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "通道路由查看", nameEn = "Pay Route View")
+     @Operation(summary = "查询基础模式配置列表")
+     @GetMapping("/basic-config/list-by-app-id")
+     public Result<List<PayRouteBasicConfigResult>> listBasicByAppId(@NotBlank(message = "{validation.field.appId.notBlank}") String appId) {
+         return Res.ok(configService.listBasicByAppId(appId));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道路由管理", nameEn = "Pay Route Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "通道路由管理", nameEn = "Pay Route Manage")
+     @Operation(summary = "批量保存基础模式配置")
+     @PostMapping("/basic-config/save-batch")
+     public Result<Void> saveBasicBatch(@RequestBody @Validated PayRouteBasicConfigBatchParam param) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/store/MchStoreInfoAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/store/MchStoreInfoAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/store/MchStoreInfoAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/store/MchStoreInfoAdminController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.merchant.store;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.payment.merchant.param.store.MchStoreInfoParam;
+ import cn.daxpay.open.payment.merchant.param.store.MchStoreInfoQuery;
+ import cn.daxpay.open.payment.merchant.result.store.MchStoreInfoResult;
+@@ -19,7 +21,7 @@
+ import org.springframework.web.bind.annotation.*;
+ 
+ /// 门店信息管理(管理端)
+-@PermCode(menuCode = "merchant:store")
++@PermCode(menuCode = PermCodes.Merchant.Store.MENU)
+ @Validated
+ @Tag(name = "门店信息管理(管理端)")
+ @RestController
+@@ -28,7 +30,7 @@
+ public class MchStoreInfoAdminController {
+     private final MchStoreInfoService mchStoreInfoService;
+ 
+-    @PermCode(code = "manage", nameCn = "门店管理", nameEn = "Store Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "门店管理", nameEn = "Store Manage")
+     @Operation(summary = "新增门店")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) MchStoreInfoParam param) {
+@@ -37,7 +39,7 @@ public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) MchSt
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "门店管理", nameEn = "Store Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "门店管理", nameEn = "Store Manage")
+     @Operation(summary = "修改门店")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) MchStoreInfoParam param) {
+@@ -46,21 +48,21 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) M
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "门店查看", nameEn = "Store View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "门店查看", nameEn = "Store View")
+     @Operation(summary = "门店分页")
+     @GetMapping("/page")
+     public Result<PageResult<MchStoreInfoResult>> page(PageParam pageParam, MchStoreInfoQuery query) {
+         return Res.ok(mchStoreInfoService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "门店查看", nameEn = "Store View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "门店查看", nameEn = "Store View")
+     @Operation(summary = "根据id查询门店")
+     @GetMapping("/get")
+     public Result<MchStoreInfoResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(mchStoreInfoService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "门店管理", nameEn = "Store Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "门店管理", nameEn = "Store Manage")
+     @Operation(summary = "删除门店")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/wxverify/PlatformWxDomainVerifyAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/wxverify/PlatformWxDomainVerifyAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/wxverify/PlatformWxDomainVerifyAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/wxverify/PlatformWxDomainVerifyAdminController.java
+@@ -6,6 +6,7 @@
+ import cn.daxpay.open.payment.merchant.result.wxverify.WxDomainVerifyResult;
+ import cn.daxpay.open.payment.merchant.service.wxverify.WxDomainVerifyService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+@@ -22,7 +23,7 @@
+ ///
+ /// 管理平台自身的公众号/小程序验证文件，挂载在支付配置菜单下。
+ /// 上传走 JSON（fileName + fileContent），不走 multipart。
+-@PermCode(menuCode = "payment:config:wx_verify")
++@PermCode(menuCode = PermCodes.Payment.Config.WxDomainVerify.MENU)
+ @Validated
+ @Tag(name = "平台微信域名验证文件")
+ @RestController
+@@ -32,37 +33,37 @@ public class PlatformWxDomainVerifyAdminController {
+ 
+     private final WxDomainVerifyService wxDomainVerifyService;
+ 
+-    @PermCode(code = "manage", nameCn = "管理", nameEn = "Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "管理", nameEn = "Manage")
+     @Operation(summary = "上传验证文件")
+     @PostMapping("/upload")
+     public Result<WxDomainVerifyResult> upload(@RequestBody @Validated WxDomainVerifyUploadParam param) {
+         return Res.ok(wxDomainVerifyService.uploadPlatform(param));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "管理", nameEn = "Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "管理", nameEn = "Manage")
+     @Operation(summary = "修改验证文件元数据")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) WxDomainVerifyParam param) {
+         wxDomainVerifyService.update(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "查看", nameEn = "View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "查看", nameEn = "View")
+     @Operation(summary = "分页查询")
+     @GetMapping("/page")
+     public Result<PageResult<WxDomainVerifyResult>> page(PageParam pageParam, WxDomainVerifyQuery query) {
+         // 平台管理端查询全部（平台 + 所有商户），由前端按需筛选归属/商户号
+         return Res.ok(wxDomainVerifyService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "查看", nameEn = "View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "查看", nameEn = "View")
+     @Operation(summary = "详情")
+     @GetMapping("/get")
+     public Result<WxDomainVerifyResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(wxDomainVerifyService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "管理", nameEn = "Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "管理", nameEn = "Manage")
+     @Operation(summary = "删除")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/wxverify/WxDomainVerifyAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/wxverify/WxDomainVerifyAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/wxverify/WxDomainVerifyAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/merchant/wxverify/WxDomainVerifyAdminController.java
+@@ -6,6 +6,7 @@
+ import cn.daxpay.open.payment.merchant.result.wxverify.WxDomainVerifyResult;
+ import cn.daxpay.open.payment.merchant.service.wxverify.WxDomainVerifyService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+@@ -23,7 +24,7 @@
+ ///
+ /// 运营在商户工作台代为管理指定商户的验证文件，mchNo 由请求参数指定。
+ /// 上传走 JSON（fileName + fileContent），不走 multipart。
+-@PermCode(menuCode = "merchant:wx_verify")
++@PermCode(menuCode = PermCodes.Merchant.WxDomainVerify.MENU)
+ @Validated
+ @Tag(name = "商户微信域名验证文件(管理)")
+ @RestController
+@@ -32,37 +33,37 @@
+ public class WxDomainVerifyAdminController {
+     private final WxDomainVerifyService wxDomainVerifyService;
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "上传验证文件")
+     @PostMapping("/upload")
+     public Result<WxDomainVerifyResult> upload(@RequestBody @Validated WxDomainVerifyUploadParam param,
+                                                @RequestParam("mchNo") @NotBlank(message = "{validation.field.mchNo.notBlank}") String mchNo) {
+         return Res.ok(wxDomainVerifyService.upload(param, mchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "修改验证文件元数据")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) WxDomainVerifyParam param) {
+         wxDomainVerifyService.update(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "分页查询")
+     @GetMapping("/page")
+     public Result<PageResult<WxDomainVerifyResult>> page(PageParam pageParam, WxDomainVerifyQuery query) {
+         return Res.ok(wxDomainVerifyService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "详情")
+     @GetMapping("/get")
+     public Result<WxDomainVerifyResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(wxDomainVerifyService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "删除")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/GatewayPayOrderAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/GatewayPayOrderAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/GatewayPayOrderAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/GatewayPayOrderAdminController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.payment.admin.service.trade.GatewayPayOrderAdminService;
+ import cn.daxpay.open.payment.unipay.result.trade.pay.NormalPaySyncResult;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+@@ -17,7 +18,7 @@
+ import org.springframework.web.bind.annotation.*;
+ 
+ /// # 网关支付业务单(管理)
+-@PermCode(menuCode = "payment:gateway-order")
++@PermCode(menuCode = PermCodes.Payment.GatewayOrder.MENU)
+ @Validated
+ @Tag(name = "网关支付业务单(管理)")
+ @RestController
+@@ -27,30 +28,30 @@ public class GatewayPayOrderAdminController {
+ 
+     private final GatewayPayOrderAdminService gatewayPayOrderAdminService;
+ 
+-    @PermCode(code = "view", nameCn = "订单查看", nameEn = "Order View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "订单查看", nameEn = "Order View")
+     @Operation(summary = "网关支付业务单分页")
+     @GetMapping("/page")
+     public Result<PageResult<GatewayPayOrderResult>> page(PageParam pageParam, GatewayPayOrderQuery query) {
+         return Res.ok(gatewayPayOrderAdminService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "订单查看", nameEn = "Order View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "订单查看", nameEn = "Order View")
+     @Operation(summary = "根据ID查询详情")
+     @GetMapping("/get-by-id")
+     public Result<GatewayPayOrderResult> findById(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(gatewayPayOrderAdminService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "订单管理", nameEn = "Order Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "订单管理", nameEn = "Order Manage")
+     @Operation(summary = "同步支付状态")
+     @PostMapping("/sync")
+     public Result<NormalPaySyncResult> sync(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(gatewayPayOrderAdminService.sync(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "订单管理", nameEn = "Order Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "订单管理", nameEn = "Order Manage")
+     @Operation(summary = "关闭订单")
+     @PostMapping("/close")
+     public Result<Void> close(
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/NormalPayOrderAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/NormalPayOrderAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/NormalPayOrderAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/NormalPayOrderAdminController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.trade;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+@@ -23,7 +24,7 @@
+ /// # 普通支付业务单(管理)
+ ///
+ /// 面向运营/商户后台的业务订单(容器)管理: 分页查询、详情、状态同步、关闭/撤销
+-@PermCode(menuCode = "payment:order")
++@PermCode(menuCode = PermCodes.Payment.Order.MENU)
+ @Validated
+ @Tag(name = "普通支付业务单(管理)")
+ @RestController
+@@ -33,30 +34,30 @@ public class NormalPayOrderAdminController {
+ 
+     private final NormalPayOrderAdminService normalPayOrderAdminService;
+ 
+-    @PermCode(code = "view", nameCn = "订单查看", nameEn = "Order View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "订单查看", nameEn = "Order View")
+     @Operation(summary = "普通支付业务单分页")
+     @GetMapping("/page")
+     public Result<PageResult<NormalPayOrderResult>> page(PageParam pageParam, NormalPayOrderQuery query) {
+         return Res.ok(normalPayOrderAdminService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "订单查看", nameEn = "Order View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "订单查看", nameEn = "Order View")
+     @Operation(summary = "根据ID查询普通支付业务单详情")
+     @GetMapping("/get-by-id")
+     public Result<NormalPayOrderResult> findById(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(normalPayOrderAdminService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "订单管理", nameEn = "Order Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "订单管理", nameEn = "Order Manage")
+     @Operation(summary = "同步支付状态")
+     @PostMapping("/sync")
+     public Result<NormalPaySyncResult> sync(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(normalPayOrderAdminService.sync(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "订单管理", nameEn = "Order Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "订单管理", nameEn = "Order Manage")
+     @Operation(summary = "关闭/撤销订单")
+     @PostMapping("/close")
+     public Result<Void> close(
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/PayRefundOrderAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/PayRefundOrderAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/PayRefundOrderAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/PayRefundOrderAdminController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.trade;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+@@ -24,7 +25,7 @@
+ /// # 退款订单(管理)
+ ///
+ /// 面向运营/商户后台的退款订单管理: 分页查询、详情、发起退款、退款状态同步
+-@PermCode(menuCode = "payment:refund")
++@PermCode(menuCode = PermCodes.Payment.Refund.MENU)
+ @Validated
+ @Tag(name = "退款订单(管理)")
+ @RestController
+@@ -34,29 +35,29 @@ public class PayRefundOrderAdminController {
+ 
+     private final PayRefundOrderAdminService payRefundOrderAdminService;
+ 
+-    @PermCode(code = "view", nameCn = "退款查看", nameEn = "Refund View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "退款查看", nameEn = "Refund View")
+     @Operation(summary = "退款订单分页")
+     @GetMapping("/page")
+     public Result<PageResult<PayRefundOrderResult>> page(PageParam pageParam, PayRefundOrderQuery query) {
+         return Res.ok(payRefundOrderAdminService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "退款查看", nameEn = "Refund View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "退款查看", nameEn = "Refund View")
+     @Operation(summary = "根据ID查询退款订单详情")
+     @GetMapping("/get-by-id")
+     public Result<PayRefundOrderResult> findById(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(payRefundOrderAdminService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "退款管理", nameEn = "Refund Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "退款管理", nameEn = "Refund Manage")
+     @Operation(summary = "发起退款")
+     @PostMapping("/refund")
+     public Result<PayRefundOrderResult> refund(@Valid @RequestBody PayRefundParam param) {
+         return Res.ok(payRefundOrderAdminService.refund(param));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "退款管理", nameEn = "Refund Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "退款管理", nameEn = "Refund Manage")
+     @Operation(summary = "同步退款状态")
+     @PostMapping("/sync")
+     public Result<PayRefundOrderResult> sync(
+diff --git a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/PayTradeAdminController.java b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/PayTradeAdminController.java
+--- a/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/PayTradeAdminController.java
++++ b/daxpay-payment/daxpay-payment-admin/src/main/java/cn/daxpay/open/payment/admin/controller/trade/PayTradeAdminController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.payment.admin.controller.trade;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+@@ -23,7 +24,7 @@
+ /// # 资金交易凭证(管理)
+ ///
+ /// 面向运营/商户后台的资金交易(凭证)管理: 分页查询、详情、状态同步、关闭/撤销
+-@PermCode(menuCode = "payment:trade")
++@PermCode(menuCode = PermCodes.Payment.Trade.MENU)
+ @Validated
+ @Tag(name = "资金交易凭证(管理)")
+ @RestController
+@@ -33,30 +34,30 @@ public class PayTradeAdminController {
+ 
+     private final PayTradeAdminService payTradeAdminService;
+ 
+-    @PermCode(code = "view", nameCn = "交易查看", nameEn = "Trade View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "交易查看", nameEn = "Trade View")
+     @Operation(summary = "资金交易凭证分页")
+     @GetMapping("/page")
+     public Result<PageResult<PayTradeResult>> page(PageParam pageParam, PayTradeQuery query) {
+         return Res.ok(payTradeAdminService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "交易查看", nameEn = "Trade View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "交易查看", nameEn = "Trade View")
+     @Operation(summary = "根据ID查询资金交易凭证详情")
+     @GetMapping("/get-by-id")
+     public Result<PayTradeResult> findById(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(payTradeAdminService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "交易管理", nameEn = "Trade Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "交易管理", nameEn = "Trade Manage")
+     @Operation(summary = "同步支付状态")
+     @PostMapping("/sync")
+     public Result<NormalPaySyncResult> sync(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(payTradeAdminService.sync(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "交易管理", nameEn = "Trade Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "交易管理", nameEn = "Trade Manage")
+     @Operation(summary = "关闭/撤销订单")
+     @PostMapping("/close")
+     public Result<Void> close(
+diff --git a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/channel/AppAdminChannelMerchantController.java b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/channel/AppAdminChannelMerchantController.java
+--- a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/channel/AppAdminChannelMerchantController.java
++++ b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/channel/AppAdminChannelMerchantController.java
+@@ -6,6 +6,7 @@
+ import cn.daxpay.open.payment.channel.result.info.ChannelMerchantResult;
+ import cn.daxpay.open.payment.masterdata.constants.channel.result.PayChannelResult;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.dto.LabelValue;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+@@ -22,7 +23,7 @@
+ import java.util.List;
+ 
+ /// 运营移动端-商户通道商户管理
+-@PermCode(menuCode = "channel:merchant")
++@PermCode(menuCode = PermCodes.Channel.Merchant.MENU)
+ @Validated
+ @Tag(name = "运营移动端-商户通道商户管理")
+ @RestController
+@@ -32,29 +33,29 @@ public class AppAdminChannelMerchantController {
+ 
+     private final AppAdminChannelMerchantService channelMerchantService;
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "分页查询")
+     @GetMapping("/page")
+     public Result<PageResult<ChannelMerchantResult>> page(PageParam pageParam, ChannelMerchantQuery query) {
+         return Res.ok(channelMerchantService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "查询详情")
+     @GetMapping("/get")
+     public Result<ChannelMerchantResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(channelMerchantService.findById(id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据商户号查询所有通道商户")
+     @GetMapping("/all-by-mch-no")
+     public Result<List<ChannelMerchantResult>> findAllByMchNo(
+             @NotBlank(message = "{validation.field.mchNo.notBlank}") String mchNo) {
+         return Res.ok(channelMerchantService.findAllByMchNo(mchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "更新启用状态")
+     @PostMapping("/update-enable")
+     public Result<Void> updateEnable(
+@@ -64,15 +65,15 @@ public Result<Void> updateEnable(
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "通道商户管理", nameEn = "Channel Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = PermCodes.Channel.Merchant.MANAGE_NAME_CN, nameEn = PermCodes.Channel.Merchant.MANAGE_NAME_EN)
+     @Operation(summary = "修改商户名称")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated ChannelMerchantEditParam param) {
+         channelMerchantService.update(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据商户和通道查询通道商户号列表")
+     @GetMapping("/dropdown")
+     public Result<List<LabelValue>> dropdown(
+@@ -81,7 +82,7 @@ public Result<List<LabelValue>> dropdown(
+         return Res.ok(channelMerchantService.dropdown(mchNo, channel));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通道商户查看", nameEn = "Channel Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = PermCodes.Channel.Merchant.VIEW_NAME_CN, nameEn = PermCodes.Channel.Merchant.VIEW_NAME_EN)
+     @Operation(summary = "根据商户号查询通道")
+     @GetMapping("/channel/dropdown-by-mch-no")
+     public Result<List<PayChannelResult>> dropdownByMchNo(
+diff --git a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/masterdata/product/AppAdminPayProductConfigController.java b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/masterdata/product/AppAdminPayProductConfigController.java
+--- a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/masterdata/product/AppAdminPayProductConfigController.java
++++ b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/masterdata/product/AppAdminPayProductConfigController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.payment.masterdata.constants.product.param.PayProductConfigParam;
+ import cn.daxpay.open.payment.masterdata.constants.product.result.PayProductConfigResult;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -17,7 +18,7 @@
+ import java.util.List;
+ 
+ /// 运营移动端-支付产品配置管理
+-@PermCode(menuCode = "payment:config:product_config")
++@PermCode(menuCode = PermCodes.Payment.ProductConfig.MENU)
+ @Validated
+ @Tag(name = "运营移动端-支付产品配置管理")
+ @RestController
+@@ -27,14 +28,14 @@ public class AppAdminPayProductConfigController {
+ 
+     private final AppAdminPayProductConfigService payProductConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "产品配置查看", nameEn = "Product Config View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "产品配置查看", nameEn = "Product Config View")
+     @Operation(summary = "全量查询产品配置列表")
+     @GetMapping("/list-all")
+     public Result<List<PayProductConfigResult>> listAll() {
+         return Res.ok(payProductConfigService.listAll());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "产品配置管理", nameEn = "Product Config Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "产品配置管理", nameEn = "Product Config Manage")
+     @Operation(summary = "切换产品生效环境")
+     @PostMapping("/switch-env")
+     public Result<Void> switchEnv(
+@@ -44,7 +45,7 @@ public Result<Void> switchEnv(
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "产品配置管理", nameEn = "Product Config Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "产品配置管理", nameEn = "Product Config Manage")
+     @Operation(summary = "保存产品配置")
+     @PostMapping("/save")
+     public Result<Void> save(@RequestBody @Validated PayProductConfigParam param) {
+diff --git a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/masterdata/product/AppAdminPayProductController.java b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/masterdata/product/AppAdminPayProductController.java
+--- a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/masterdata/product/AppAdminPayProductController.java
++++ b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/masterdata/product/AppAdminPayProductController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.payment.masterdata.constants.product.param.PayProductQuery;
+ import cn.daxpay.open.payment.masterdata.constants.product.result.PayProductResult;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.dto.LabelValue;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+@@ -23,7 +24,7 @@
+ import java.util.List;
+ 
+ /// 运营移动端-支付产品管理
+-@PermCode(menuCode = "payment:platform:product")
++@PermCode(menuCode = PermCodes.Payment.Platform.Product.MENU)
+ @Validated
+ @Tag(name = "运营移动端-支付产品管理")
+ @RestController
+@@ -33,28 +34,28 @@ public class AppAdminPayProductController {
+ 
+     private final AppAdminPayProductService payProductService;
+ 
+-    @PermCode(code = "view", nameCn = "产品查看", nameEn = "Product View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "产品查看", nameEn = "Product View")
+     @Operation(summary = "分页查询")
+     @GetMapping("/page")
+     public Result<PageResult<PayProductResult>> page(PageParam pageParam, PayProductQuery query, String name) {
+         return Res.ok(payProductService.page(pageParam, query, name));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "产品查看", nameEn = "Product View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "产品查看", nameEn = "Product View")
+     @Operation(summary = "根据编码查询详情")
+     @GetMapping("/get")
+     public Result<PayProductResult> findByCode(@NotBlank(message = "{validation.field.code.notBlank}") String code) {
+         return Res.ok(payProductService.findByCode(code));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "产品查看", nameEn = "Product View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "产品查看", nameEn = "Product View")
+     @Operation(summary = "启用产品下拉列表")
+     @GetMapping("/dropdown")
+     public Result<List<LabelValue>> dropdown() {
+         return Res.ok(payProductService.dropdown());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "产品管理", nameEn = "Product Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "产品管理", nameEn = "Product Manage")
+     @Operation(summary = "切换支付产品启停")
+     @PostMapping("/switch-enabled")
+     public Result<Void> switchEnabled(
+@@ -64,7 +65,7 @@ public Result<Void> switchEnabled(
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "产品查看", nameEn = "Product View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "产品查看", nameEn = "Product View")
+     @Operation(summary = "全量查询支付产品")
+     @GetMapping("/list-all")
+     public Result<List<PayProductResult>> listAll() {
+diff --git a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/appinfo/AppAdminMchAppInfoController.java b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/appinfo/AppAdminMchAppInfoController.java
+--- a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/appinfo/AppAdminMchAppInfoController.java
++++ b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/appinfo/AppAdminMchAppInfoController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.payment.merchant.param.appinfo.MchAppInfoQuery;
+ import cn.daxpay.open.payment.merchant.result.appinfo.MchAppInfoResult;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+@@ -19,7 +20,7 @@
+ import org.springframework.web.bind.annotation.*;
+ 
+ /// 运营移动端-商户应用配置
+-@PermCode(menuCode = "merchant:app")
++@PermCode(menuCode = PermCodes.Merchant.App.MENU)
+ @Validated
+ @Tag(name = "运营移动端-商户应用配置")
+ @RestController
+@@ -29,7 +30,7 @@ public class AppAdminMchAppInfoController {
+ 
+     private final AppAdminMchAppInfoService mchAppInfoService;
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "新增商户应用")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) MchAppInfoParam param) {
+@@ -38,7 +39,7 @@ public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) MchAp
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "修改商户应用")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) MchAppInfoParam param) {
+@@ -47,37 +48,37 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) M
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "商户应用分页")
+     @GetMapping("/page")
+     public Result<PageResult<MchAppInfoResult>> page(PageParam pageParam, MchAppInfoQuery query) {
+         return Res.ok(mchAppInfoService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "根据id查询商户应用")
+     @GetMapping("/get")
+     public Result<MchAppInfoResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(mchAppInfoService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "删除商户应用")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         mchAppInfoService.delete(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "设置默认商户应用")
+     @PostMapping("/set-default")
+     public Result<Void> setDefault(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         mchAppInfoService.setDefault(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "取消默认商户应用")
+     @PostMapping("/clear-default")
+     public Result<Void> clearDefault(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+diff --git a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/config/AppAdminMchAppNotifyConfigController.java b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/config/AppAdminMchAppNotifyConfigController.java
+--- a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/config/AppAdminMchAppNotifyConfigController.java
++++ b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/config/AppAdminMchAppNotifyConfigController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.payment.merchant.param.config.MchAppNotifyConfigParam;
+ import cn.daxpay.open.payment.merchant.result.config.MchAppNotifyConfigResult;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -14,7 +15,7 @@
+ import org.springframework.web.bind.annotation.*;
+ 
+ /// 运营移动端-应用事件通知配置
+-@PermCode(menuCode = "merchant:notify_config")
++@PermCode(menuCode = PermCodes.Merchant.NotifyConfig.MENU)
+ @Validated
+ @Tag(name = "运营移动端-应用事件通知配置")
+ @RestController
+@@ -24,15 +25,15 @@ public class AppAdminMchAppNotifyConfigController {
+ 
+     private final AppAdminMchAppNotifyConfigService notifyConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "根据应用ID查询通知配置")
+     @GetMapping("/get-by-app-id")
+     public Result<MchAppNotifyConfigResult> findByAppId(
+             @NotBlank(message = "{validation.field.appId.notBlank}") String appId) {
+         return Res.ok(notifyConfigService.findByAppId(appId));
+     }
+ 
+-    @PermCode(code = "notify_config_update", nameCn = "通知配置更新", nameEn = "Notify Config Update")
++    @PermCode(code = PermCodes.Merchant.NotifyConfig.NOTIFY_CONFIG_UPDATE, nameCn = "通知配置更新", nameEn = "Notify Config Update")
+     @Operation(summary = "保存或更新通知配置")
+     @PostMapping("/save-or-update")
+     public Result<Void> saveOrUpdate(@RequestBody @Validated MchAppNotifyConfigParam param) {
+diff --git a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/config/AppAdminMerchantCredentialController.java b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/config/AppAdminMerchantCredentialController.java
+--- a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/config/AppAdminMerchantCredentialController.java
++++ b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/config/AppAdminMerchantCredentialController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.payment.merchant.param.config.MerchantCredentialParam;
+ import cn.daxpay.open.payment.merchant.result.config.MerchantCredentialResult;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -14,7 +15,7 @@
+ import org.springframework.web.bind.annotation.*;
+ 
+ /// 运营移动端-商户对接配置
+-@PermCode(menuCode = "merchant:credential")
++@PermCode(menuCode = PermCodes.Merchant.Credential.MENU)
+ @Validated
+ @Tag(name = "运营移动端-商户对接配置")
+ @RestController
+@@ -24,15 +25,15 @@ public class AppAdminMerchantCredentialController {
+ 
+     private final AppAdminMerchantCredentialService credentialService;
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "根据商户号查询对接配置")
+     @GetMapping("/get-by-mch-no")
+     public Result<MerchantCredentialResult> findByMchNo(
+             @NotBlank(message = "{validation.field.mchNo.notBlank}") String mchNo) {
+         return Res.ok(credentialService.findByMchNo(mchNo));
+     }
+ 
+-    @PermCode(code = "credential_config_update", nameCn = "对接配置更新", nameEn = "Credential Config Update")
++    @PermCode(code = PermCodes.Merchant.Credential.CREDENTIAL_CONFIG_UPDATE, nameCn = "对接配置更新", nameEn = "Credential Config Update")
+     @Operation(summary = "更新商户对接配置")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated MerchantCredentialParam param) {
+diff --git a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/info/AppAdminMerchantController.java b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/info/AppAdminMerchantController.java
+--- a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/info/AppAdminMerchantController.java
++++ b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/info/AppAdminMerchantController.java
+@@ -6,6 +6,7 @@
+ import cn.daxpay.open.payment.merchant.param.info.MerchantRegisterParam;
+ import cn.daxpay.open.payment.merchant.result.info.MerchantInfoResult;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+@@ -20,7 +21,7 @@
+ import org.springframework.web.bind.annotation.*;
+ 
+ /// 运营移动端-商户配置
+-@PermCode(menuCode = "merchant:info")
++@PermCode(menuCode = PermCodes.Merchant.Info.MENU)
+ @Validated
+ @Tag(name = "运营移动端-商户配置")
+ @RestController
+@@ -30,60 +31,60 @@ public class AppAdminMerchantController {
+ 
+     private final AppAdminMerchantService merchantService;
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "新增商户")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) MerchantRegisterParam param) {
+         merchantService.add(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "修改商户")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) MerchantInfoParam param) {
+         merchantService.update(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "商户分页")
+     @GetMapping("/page")
+     public Result<PageResult<MerchantInfoResult>> page(PageParam pageParam, MerchantInfoQuery param) {
+         return Res.ok(merchantService.page(pageParam, param));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "根据id查询商户")
+     @GetMapping("/get")
+     public Result<MerchantInfoResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(merchantService.findById(id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "商户查看", nameEn = "Merchant View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "商户查看", nameEn = "Merchant View")
+     @Operation(summary = "根据商户号查询商户")
+     @GetMapping("/get-by-mch-no")
+     public Result<MerchantInfoResult> findByMchNo(@NotBlank(message = "{validation.field.mchNo.notBlank}") String mchNo) {
+         return Res.ok(merchantService.findByMchNo(mchNo));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "删除商户")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         merchantService.delete(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "启用商户")
+     @PostMapping("/enable")
+     public Result<Void> enable(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         merchantService.enable(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "商户管理", nameEn = "Merchant Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "商户管理", nameEn = "Merchant Manage")
+     @Operation(summary = "禁用商户")
+     @PostMapping("/disable")
+     public Result<Void> disable(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+diff --git a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/store/AppAdminMchStoreInfoController.java b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/store/AppAdminMchStoreInfoController.java
+--- a/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/store/AppAdminMchStoreInfoController.java
++++ b/daxpay-payment/daxpay-payment-app-admin/src/main/java/cn/daxpay/open/payment/app/admin/controller/merchant/store/AppAdminMchStoreInfoController.java
+@@ -5,6 +5,7 @@
+ import cn.daxpay.open.payment.merchant.param.store.MchStoreInfoQuery;
+ import cn.daxpay.open.payment.merchant.result.store.MchStoreInfoResult;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+@@ -19,7 +20,7 @@
+ import org.springframework.web.bind.annotation.*;
+ 
+ /// 运营移动端-门店信息管理
+-@PermCode(menuCode = "merchant:store")
++@PermCode(menuCode = PermCodes.Merchant.Store.MENU)
+ @Validated
+ @Tag(name = "运营移动端-门店信息管理")
+ @RestController
+@@ -29,7 +30,7 @@ public class AppAdminMchStoreInfoController {
+ 
+     private final AppAdminMchStoreInfoService mchStoreInfoService;
+ 
+-    @PermCode(code = "manage", nameCn = "门店管理", nameEn = "Store Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "门店管理", nameEn = "Store Manage")
+     @Operation(summary = "新增门店")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) MchStoreInfoParam param) {
+@@ -38,7 +39,7 @@ public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) MchSt
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "门店管理", nameEn = "Store Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "门店管理", nameEn = "Store Manage")
+     @Operation(summary = "修改门店")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) MchStoreInfoParam param) {
+@@ -47,21 +48,21 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) M
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "门店查看", nameEn = "Store View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "门店查看", nameEn = "Store View")
+     @Operation(summary = "门店分页")
+     @GetMapping("/page")
+     public Result<PageResult<MchStoreInfoResult>> page(PageParam pageParam, MchStoreInfoQuery query) {
+         return Res.ok(mchStoreInfoService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "门店查看", nameEn = "Store View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "门店查看", nameEn = "Store View")
+     @Operation(summary = "根据id查询门店")
+     @GetMapping("/get")
+     public Result<MchStoreInfoResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(mchStoreInfoService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "门店管理", nameEn = "Store Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "门店管理", nameEn = "Store Manage")
+     @Operation(summary = "删除门店")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+diff --git a/daxpay-platform/daxpay-platform-capability/capability-audit-log/src/main/java/cn/daxpay/open/platform/capability/audit/log/controller/LoginLogController.java b/daxpay-platform/daxpay-platform-capability/capability-audit-log/src/main/java/cn/daxpay/open/platform/capability/audit/log/controller/LoginLogController.java
+--- a/daxpay-platform/daxpay-platform-capability/capability-audit-log/src/main/java/cn/daxpay/open/platform/capability/audit/log/controller/LoginLogController.java
++++ b/daxpay-platform/daxpay-platform-capability/capability-audit-log/src/main/java/cn/daxpay/open/platform/capability/audit/log/controller/LoginLogController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.platform.capability.audit.log.controller;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+@@ -19,7 +21,7 @@
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ 
+-@PermCode(menuCode = "system:log:login")
++@PermCode(menuCode = PermCodes.System.Log.Login.MENU)
+ @Validated
+ @Tag(name = "登录日志")
+ @RestController
+@@ -29,21 +31,21 @@ public class LoginLogController {
+ 
+     private final LoginLogService loginLogService;
+ 
+-    @PermCode(code = "view", nameCn = "登录日志查看", nameEn = "Login Log View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "登录日志查看", nameEn = "Login Log View")
+     @Operation(summary = "分页")
+     @GetMapping("/page")
+     public Result<PageResult<LoginLogResult>> page(PageParam pageParam, LoginLogQuery query) {
+         return Res.ok(loginLogService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "登录日志查看", nameEn = "Login Log View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "登录日志查看", nameEn = "Login Log View")
+     @Operation(summary = "获取")
+     @GetMapping("/get")
+     public Result<LoginLogResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(loginLogService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "登录日志管理", nameEn = "Login Log Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "登录日志管理", nameEn = "Login Log Manage")
+     @Operation(summary = "清除指定天数之前的日志")
+     @PostMapping("/delete-by-day")
+     public Result<Void> deleteByDay(@NotNull(message = "{validation.field.deleteDay.notNull}") Integer deleteDay){
+diff --git a/daxpay-platform/daxpay-platform-capability/capability-audit-log/src/main/java/cn/daxpay/open/platform/capability/audit/log/controller/OperateLogController.java b/daxpay-platform/daxpay-platform-capability/capability-audit-log/src/main/java/cn/daxpay/open/platform/capability/audit/log/controller/OperateLogController.java
+--- a/daxpay-platform/daxpay-platform-capability/capability-audit-log/src/main/java/cn/daxpay/open/platform/capability/audit/log/controller/OperateLogController.java
++++ b/daxpay-platform/daxpay-platform-capability/capability-audit-log/src/main/java/cn/daxpay/open/platform/capability/audit/log/controller/OperateLogController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.platform.capability.audit.log.controller;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+@@ -20,7 +22,7 @@
+ 
+ /// # 操作日志
+ ///
+-@PermCode(menuCode = "system:log:operate")
++@PermCode(menuCode = PermCodes.System.Log.Operate.MENU)
+ @Validated
+ @Tag(name = "操作日志")
+ @RestController
+@@ -30,21 +32,21 @@ public class OperateLogController {
+ 
+     private final OperateLogService operateLogService;
+ 
+-    @PermCode(code = "view", nameCn = "操作日志查看", nameEn = "Operate Log View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "操作日志查看", nameEn = "Operate Log View")
+     @Operation(summary = "分页")
+     @GetMapping("/page")
+     public Result<PageResult<OperateLogResult>> page(PageParam pageParam, OperateLogQuery operateLogParam) {
+         return Res.ok(operateLogService.page(pageParam, operateLogParam));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "操作日志查看", nameEn = "Operate Log View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "操作日志查看", nameEn = "Operate Log View")
+     @Operation(summary = "获取")
+     @GetMapping("/get")
+     public Result<OperateLogResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(operateLogService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "操作日志管理", nameEn = "Operate Log Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "操作日志管理", nameEn = "Operate Log Manage")
+     @Operation(summary = "清除指定天数的日志")
+     @PostMapping("/delete-by-day")
+     public Result<Void> deleteByDay(@NotNull(message = "{validation.field.deleteDay.notNull}") Integer deleteDay){
+diff --git a/daxpay-platform/daxpay-platform-capability/capability-file/src/main/java/cn/daxpay/open/platform/capability/file/controller/PlatformFileRecordController.java b/daxpay-platform/daxpay-platform-capability/capability-file/src/main/java/cn/daxpay/open/platform/capability/file/controller/PlatformFileRecordController.java
+--- a/daxpay-platform/daxpay-platform-capability/capability-file/src/main/java/cn/daxpay/open/platform/capability/file/controller/PlatformFileRecordController.java
++++ b/daxpay-platform/daxpay-platform-capability/capability-file/src/main/java/cn/daxpay/open/platform/capability/file/controller/PlatformFileRecordController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.platform.capability.file.result.PlatformFileRecordResult;
+ import cn.daxpay.open.platform.capability.file.service.PlatformFileRecordService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -20,21 +21,21 @@
+ @RestController
+ @RequestMapping("/file/platform/record")
+ @RequiredArgsConstructor
+-@PermCode(menuCode = "system:file:platform")
++@PermCode(menuCode = PermCodes.System.FilePlatform.MENU)
+ public class PlatformFileRecordController {
+ 
+     private final PlatformFileRecordService platformFileRecordService;
+ 
+     @Operation(summary = "分页查询")
+     @GetMapping("/page")
+-    @PermCode(code = "view", nameCn = "文件查看", nameEn = "File View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "文件查看", nameEn = "File View")
+     public Result<PageResult<PlatformFileRecordResult>> page(PlatformFileRecordPageParam param) {
+         return Res.ok(platformFileRecordService.page(param));
+     }
+ 
+     @Operation(summary = "查询详情")
+     @GetMapping("/{id}")
+-    @PermCode(code = "view", nameCn = "文件查看", nameEn = "File View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "文件查看", nameEn = "File View")
+     public Result<PlatformFileRecordResult> findById(@PathVariable Long id) {
+         return Res.ok(platformFileRecordService.findById(id));
+     }
+diff --git a/daxpay-platform/daxpay-platform-core/src/main/java/cn/daxpay/open/platform/core/code/PermCodes.java b/daxpay-platform/daxpay-platform-core/src/main/java/cn/daxpay/open/platform/core/code/PermCodes.java
+new file mode 100644
+--- /dev/null
++++ b/daxpay-platform/daxpay-platform-core/src/main/java/cn/daxpay/open/platform/core/code/PermCodes.java
+@@ -0,0 +1,321 @@
++package cn.daxpay.open.platform.core.code;
++
++/// # 权限编译期常量
++///
++/// 供 {@code @PermCode} 使用。完整码 = menuCode + ":" + code（见
++/// {@link cn.daxpay.open.platform.core.util.PermCodeUtil}）。
++///
++/// ## 约定
++///
++/// | 要点 | 说明 |
++/// |------|------|
++/// | 形态 | 嵌套 interface，字段默认 `public static final`（对齐 {@link CommonCode}） |
++/// | 叶子语义 | `MENU` = menuCode；`Action.*` / 资源专属 = 动作段 `code`；**不是**完整码 |
++/// | 完整码 | 运行时由工具拼接；前端完整码见 `dax-pay-ui/.../constants/perm-codes.ts` |
++/// | 域划分 | 对齐前端七域：merchant / channel / payment / develop / device / iam / system |
++/// | name | 仅高复用资源抽中英文名（如跨通道 `Channel.Merchant`）；其余可在注解上写字面量 |
++///
++/// 前端对照：`dax-pay-ui/apps/daxpay-admin/src/constants/perm-codes.ts`（叶子为完整码 `menuCode:code`）。
++public interface PermCodes {
++
++    /// 通用动作码（对应 {@code @PermCode.code}）
++    interface Action {
++        /// 查看（列表/详情/下拉等只读）
++        String VIEW = "view";
++        /// 管理（增删改等写操作，标准粒度）
++        String MANAGE = "manage";
++        /// 发布（公告、协议等从草稿上线）
++        String PUBLISH = "publish";
++        /// 更新（仅更新配置、非完整 manage 场景）
++        String UPDATE = "update";
++        /// 状态变更（启用/禁用等）
++        String STATUS = "status";
++        /// 签名（开发调试签名等）
++        String SIGN = "sign";
++        /// 踢下线（在线用户）
++        String KICKOUT = "kickout";
++        /// 重置密码
++        String RESET_PASSWORD = "reset_password";
++        /// 分配角色
++        String ASSIGN_ROLE = "assign_role";
++        /// 重发（如微信消息通知失败重发）
++        String RESEND = "resend";
++        /// 测试（如通知配置测试发送）
++        String TEST = "test";
++    }
++
++    /// 渠道域
++    interface Channel {
++        /// 通道商户 menuCode=channel:merchant（多通道 Controller 共用）
++        interface Merchant {
++            String MENU = "channel:merchant";
++            String VIEW_NAME_CN = "通道商户查看";
++            String VIEW_NAME_EN = "Channel Merchant View";
++            String MANAGE_NAME_CN = "通道商户管理";
++            String MANAGE_NAME_EN = "Channel Merchant Manage";
++        }
++
++        /// 支付宝直连应用
++        interface AlipayApp {
++            String MENU = "channel:alipay:app";
++        }
++
++        /// 微信直连应用
++        interface WechatApp {
++            String MENU = "channel:wechat:app";
++        }
++
++        /// 抖音直连应用
++        interface DouyinApp {
++            String MENU = "channel:douyin:app";
++        }
++    }
++
++    /// 商户域
++    interface Merchant {
++        /// 商户主体
++        interface Info {
++            String MENU = "merchant:info";
++        }
++
++        /// 对接配置
++        interface Credential {
++            String MENU = "merchant:credential";
++            /// 资源专属动作
++            String CREDENTIAL_CONFIG_UPDATE = "credential_config_update";
++        }
++
++        /// 通知配置
++        interface NotifyConfig {
++            String MENU = "merchant:notify_config";
++            /// 资源专属动作
++            String NOTIFY_CONFIG_UPDATE = "notify_config_update";
++        }
++
++        /// 商户应用
++        interface App {
++            String MENU = "merchant:app";
++        }
++
++        /// 通道路由
++        interface AppRoute {
++            String MENU = "merchant:app:route";
++        }
++
++        /// 码牌和聚合支付配置
++        interface GatewayAggregate {
++            String MENU = "merchant:gateway-aggregate";
++        }
++
++        /// 收银台配置
++        interface GatewayCashier {
++            String MENU = "merchant:gateway-cashier";
++        }
++
++        /// 门店
++        interface Store {
++            String MENU = "merchant:store";
++        }
++
++        /// 微信域名验证文件（商户侧）
++        interface WxDomainVerify {
++            String MENU = "merchant:wx_verify";
++        }
++    }
++
++    /// 支付核心域
++    interface Payment {
++        /// 支付宝服务商
++        interface AlipayIsv {
++            String MENU = "payment:alipay:isv";
++        }
++
++        /// 微信服务商
++        interface WechatIsv {
++            String MENU = "payment:wechat:isv";
++        }
++
++        /// 拉卡拉服务商
++        interface Lakala {
++            String MENU = "payment:lakala:isv";
++        }
++
++        /// 海科融通服务商
++        interface Hkrt {
++            String MENU = "payment:hkrt:isv";
++        }
++
++        /// 斗拱服务商
++        interface Dougong {
++            String MENU = "payment:dougong:isv";
++        }
++
++        /// 随行付服务商
++        interface Vbill {
++            String MENU = "payment:vbill:isv";
++        }
++
++        /// 富友服务商
++        interface Fuyou {
++            String MENU = "payment:fuyou:isv";
++        }
++
++        /// 乐刷服务商
++        interface Leshua {
++            String MENU = "payment:leshua:isv";
++        }
++
++        /// 河马付服务商
++        interface Hmpay {
++            String MENU = "payment:hmpay:isv";
++        }
++
++        /// 支付主数据
++        interface Platform {
++            interface Product {
++                String MENU = "payment:platform:product";
++            }
++
++            interface Provider {
++                String MENU = "payment:platform:provider";
++            }
++
++            interface PayChannel {
++                String MENU = "payment:platform:pay_channel";
++            }
++
++            interface Capability {
++                String MENU = "payment:platform:capability";
++            }
++        }
++
++        /// 支付产品配置
++        interface ProductConfig {
++            String MENU = "payment:config:product_config";
++        }
++
++        /// 支付配置子域
++        interface Config {
++            /// 微信域名验证文件（平台侧）
++            interface WxDomainVerify {
++                String MENU = "payment:config:wx_verify";
++            }
++        }
++
++        /// 普通支付业务订单
++        interface Order {
++            String MENU = "payment:order";
++        }
++
++        /// 网关支付订单
++        interface GatewayOrder {
++            String MENU = "payment:gateway-order";
++        }
++
++        /// 退款订单
++        interface Refund {
++            String MENU = "payment:refund";
++        }
++
++        /// 资金交易凭证
++        interface Trade {
++            String MENU = "payment:trade";
++        }
++    }
++
++    /// IAM 身份与访问
++    interface Iam {
++        interface PermMenu {
++            String MENU = "iam:perm:menu";
++        }
++
++        interface Role {
++            String MENU = "iam:role";
++        }
++
++        interface UserManager {
++            String MENU = "iam:user:manager";
++        }
++
++        interface OnlineUser {
++            String MENU = "iam:online:user";
++        }
++
++        interface Social {
++            String MENU = "iam:social:login-config";
++        }
++    }
++
++    /// 系统域
++    interface System {
++        interface Dict {
++            String MENU = "system:dict";
++        }
++
++        interface Log {
++            interface Login {
++                String MENU = "system:log:login";
++            }
++
++            interface Operate {
++                String MENU = "system:log:operate";
++            }
++        }
++
++        /// 公告通知
++        interface Notify {
++            String MENU = "system:notify:notice";
++        }
++
++        /// 微信消息通知
++        interface WechatNotify {
++            String MENU = "system:notify:wechat-config";
++        }
++
++        interface FilePlatform {
++            String MENU = "system:file:platform";
++        }
++
++        interface PlatformConfig {
++            String MENU = "system:platform_config";
++        }
++
++        interface OssConfig {
++            String MENU = "system:oss_config";
++        }
++
++        interface SecurityConfig {
++            String MENU = "system:security_config";
++        }
++
++        interface Protocol {
++            String MENU = "system:protocol";
++        }
++
++        interface MobileApp {
++            String MENU = "system:config:mobile_app";
++        }
++    }
++
++    /// 开发调试
++    interface Develop {
++        interface Trade {
++            String MENU = "develop:trade";
++        }
++
++        interface Sign {
++            String MENU = "develop:sign";
++        }
++
++        interface Auth {
++            String MENU = "develop:auth";
++        }
++    }
++
++    /// 设备管理
++    interface Device {
++        interface QrCode {
++            String MENU = "device:qrcode";
++        }
++    }
++}
+diff --git a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/permission/resource/PermCodeController.java b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/permission/resource/PermCodeController.java
+--- a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/permission/resource/PermCodeController.java
++++ b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/permission/resource/PermCodeController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.platform.iam.controller.permission.resource;
+ 
+ import cn.daxpay.open.platform.core.annotation.IgnoreAuth;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.entity.UserDetail;
+ import cn.daxpay.open.platform.core.rest.Res;
+@@ -28,7 +29,7 @@
+ 
+ /// # 权限码管理
+ ///
+-@PermCode(menuCode = "iam:perm:menu")
++@PermCode(menuCode = PermCodes.Iam.PermMenu.MENU)
+ @Validated
+ @Tag(name = "权限码管理")
+ @RestController
+@@ -40,14 +41,14 @@ public class PermCodeController {
+     private final UserRolePremService userRoleService;
+     private final PermCodeScanService permCodeScanService;
+ 
+-    @PermCode(code = "manage", nameCn = "菜单管理", nameEn = "Menu Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "菜单管理", nameEn = "Menu Manage")
+     @Operation(summary = "手动扫描同步权限码")
+     @PostMapping("/scan")
+     public Result<PermCodeScanResult> scan() {
+         return Res.ok(permCodeScanService.scan(new PermCodeScanParam()));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "菜单查看", nameEn = "Menu View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "菜单查看", nameEn = "Menu View")
+     @Operation(summary = "根据菜单查询权限码列表")
+     @GetMapping("/get-by-menu")
+     public Result<List<MenuPermCodeItemResult>> findByMenu(
+diff --git a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/permission/resource/PermMenuController.java b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/permission/resource/PermMenuController.java
+--- a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/permission/resource/PermMenuController.java
++++ b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/permission/resource/PermMenuController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.platform.iam.controller.permission.resource;
+ 
+ import cn.daxpay.open.platform.core.annotation.*;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import cn.daxpay.open.platform.core.validation.ValidationGroup;
+@@ -21,7 +22,7 @@
+ 
+ /// # 菜单权限
+ ///
+-@PermCode(menuCode = "iam:perm:menu")
++@PermCode(menuCode = PermCodes.Iam.PermMenu.MENU)
+ @Validated
+ @Tag(name = "菜单权限管理")
+ @RestController
+@@ -33,7 +34,7 @@ public class PermMenuController {
+ 
+     private final UserRolePremService userRoleService;
+ 
+-    @PermCode(code = "manage", nameCn = "菜单管理", nameEn = "Menu Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "菜单管理", nameEn = "Menu Manage")
+     @InternalPath
+     @Operation(summary = "添加菜单权限")
+     @PostMapping("/add")
+@@ -42,7 +43,7 @@ public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) PermM
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "菜单管理", nameEn = "Menu Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "菜单管理", nameEn = "Menu Manage")
+     @InternalPath
+     @Operation(summary = "修改菜单权限")
+     @PostMapping("/update")
+@@ -51,29 +52,29 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) P
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "菜单查看", nameEn = "Menu View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "菜单查看", nameEn = "Menu View")
+     @InternalPath
+     @Operation(summary = "获取菜单树", description = "管理端接口，终端编码通过参数传递")
+     @GetMapping("/tree")
+     public Result<List<PermMenuResult>> menuTree(@NotBlank(message = "{validation.field.clientCode.notBlank}") @Parameter(description = "终端编码") String clientCode) {
+         return Res.ok(permMenuService.tree(clientCode));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "菜单查看", nameEn = "Menu View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "菜单查看", nameEn = "Menu View")
+     @Operation(summary = "获取当前用户菜单树", description = "登录用户获取个人菜单，终端编码从请求头读取")
+     @GetMapping("/my")
+     public Result<List<PermMenuResult>> myMenuTree() {
+         return Res.ok(userRoleService.menuTreeByCurrentUser());
+     }
+ 
+-    @PermCode(code = "view", nameCn = "菜单查看", nameEn = "Menu View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "菜单查看", nameEn = "Menu View")
+     @Operation(summary = "根据id查询")
+     @GetMapping("/get")
+     public Result<PermMenuResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(permMenuService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "菜单管理", nameEn = "Menu Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "菜单管理", nameEn = "Menu Manage")
+     @InternalPath
+     @Operation(summary = "删除菜单权限")
+     @PostMapping("/delete")
+@@ -82,7 +83,7 @@ public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") L
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "菜单查看", nameEn = "Menu View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "菜单查看", nameEn = "Menu View")
+     @Operation(summary = "检查菜单编码是否存在")
+     @GetMapping("/check-menu-code-exists")
+     public Result<Boolean> checkMenuCodeExists(
+diff --git a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/role/RoleController.java b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/role/RoleController.java
+--- a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/role/RoleController.java
++++ b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/role/RoleController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.platform.iam.controller.role;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.dto.KeyValue;
+@@ -25,7 +27,7 @@
+ import java.util.List;
+ 
+ 
+-@PermCode(menuCode = "iam:role")
++@PermCode(menuCode = PermCodes.Iam.Role.MENU)
+ @Validated
+ @Tag(name = "角色管理")
+ @RestController
+@@ -37,7 +39,7 @@ public class RoleController {
+ 
+     private final RoleQueryService roleQueryService;
+ 
+-    @PermCode(code = "manage", nameCn = "角色管理", nameEn = "Role Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "角色管理", nameEn = "Role Manage")
+     @Operation(summary = "添加角色")
+     @PostMapping(value = "/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) RoleParam roleParam) {
+@@ -46,7 +48,7 @@ public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) RoleP
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "角色管理", nameEn = "Role Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "角色管理", nameEn = "Role Manage")
+     @Operation(summary = "修改角色")
+     @PostMapping(value = "/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) RoleParam roleParam) {
+@@ -55,50 +57,50 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) R
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "角色查看", nameEn = "Role View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "角色查看", nameEn = "Role View")
+     @Operation(summary = "分页查询")
+     @GetMapping("/page")
+     public Result<PageResult<RoleResult>> page(PageParam pageParam, RoleQuery query) {
+         return Res.ok(roleQueryService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "角色管理", nameEn = "Role Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "角色管理", nameEn = "Role Manage")
+     @Operation(summary = "删除角色")
+     @PostMapping(value = "/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         roleService.delete(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "角色查看", nameEn = "Role View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "角色查看", nameEn = "Role View")
+     @Operation(summary = "通过ID查询角色")
+     @GetMapping(value = "/get")
+     public Result<RoleResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(roleQueryService.findById(id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "角色查看", nameEn = "Role View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "角色查看", nameEn = "Role View")
+     @Operation(summary = "查询所有的角色")
+     @GetMapping(value = "/all")
+     public Result<List<RoleResult>> findAll() {
+         return Res.ok(roleQueryService.findAll());
+     }
+ 
+-    @PermCode(code = "view", nameCn = "角色查看", nameEn = "Role View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "角色查看", nameEn = "Role View")
+     @Operation(summary = "角色下拉框")
+     @GetMapping(value = "/dropdown")
+     public Result<List<KeyValue>> dropdown() {
+         return Res.ok(roleQueryService.dropdown());
+     }
+ 
+-    @PermCode(code = "view", nameCn = "角色查看", nameEn = "Role View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "角色查看", nameEn = "Role View")
+     @Operation(summary = "编码是否被使用")
+     @GetMapping("/exists-by-code")
+     public Result<Boolean> existsByCode(@NotBlank(message = "{validation.field.code.notBlank}") @Parameter(description = "编码") String code) {
+         return Res.ok(roleQueryService.existsByCode(code));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "角色查看", nameEn = "Role View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "角色查看", nameEn = "Role View")
+     @Operation(summary = "编码是否被使用(不包含自己)")
+     @GetMapping("/exists-by-code-not-id")
+     public Result<Boolean> existsByCode(
+@@ -107,14 +109,14 @@ public Result<Boolean> existsByCode(
+         return Res.ok(roleQueryService.existsByCode(code, id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "角色查看", nameEn = "Role View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "角色查看", nameEn = "Role View")
+     @Operation(summary = "中文名称是否被使用")
+     @GetMapping("/exists-by-name-cn")
+     public Result<Boolean> existsByNameCn(@NotBlank(message = "{validation.field.nameCn.notBlank}") @Parameter(description = "中文名称") String nameCn) {
+         return Res.ok(roleQueryService.existsByNameCn(nameCn));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "角色查看", nameEn = "Role View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "角色查看", nameEn = "Role View")
+     @Operation(summary = "中文名称是否被使用(不包含自己)")
+     @GetMapping("/exists-by-name-cn-not-id")
+     public Result<Boolean> existsByNameCn(
+@@ -123,14 +125,14 @@ public Result<Boolean> existsByNameCn(
+         return Res.ok(roleQueryService.existsByNameCn(nameCn, id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "角色查看", nameEn = "Role View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "角色查看", nameEn = "Role View")
+     @Operation(summary = "英文名称是否被使用")
+     @GetMapping("/exists-by-name-en")
+     public Result<Boolean> existsByNameEn(@NotBlank(message = "{validation.field.nameEn.notBlank}") @Parameter(description = "英文名称") String nameEn) {
+         return Res.ok(roleQueryService.existsByNameEn(nameEn));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "角色查看", nameEn = "Role View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "角色查看", nameEn = "Role View")
+     @Operation(summary = "英文名称是否被使用(不包含自己)")
+     @GetMapping("/exists-by-name-en-not-id")
+     public Result<Boolean> existsByNameEn(
+diff --git a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/session/OnlineUserController.java b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/session/OnlineUserController.java
+--- a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/session/OnlineUserController.java
++++ b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/session/OnlineUserController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.platform.iam.controller.session;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+@@ -19,7 +20,7 @@
+ 
+ /// # 在线用户管理
+ ///
+-@PermCode(menuCode = "iam:online:user")
++@PermCode(menuCode = PermCodes.Iam.OnlineUser.MENU)
+ @Validated
+ @Tag(name = "在线用户管理")
+ @RestController
+@@ -29,22 +30,22 @@ public class OnlineUserController {
+ 
+     private final OnlineUserService onlineUserService;
+ 
+-    @PermCode(code = "view", nameCn = "在线用户查看", nameEn = "Online User View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "在线用户查看", nameEn = "Online User View")
+     @Operation(summary = "在线用户分页")
+     @GetMapping("/page")
+     public Result<PageResult<OnlineUserResult>> page(PageParam pageParam, OnlineUserQuery query) {
+         return Res.ok(onlineUserService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "kickout", nameCn = "强制下线", nameEn = "Kickout")
++    @PermCode(code = PermCodes.Action.KICKOUT, nameCn = "强制下线", nameEn = "Kickout")
+     @Operation(summary = "强制用户下线")
+     @PostMapping("/kickout")
+     public Result<Void> kickout(@RequestParam String sessionId) {
+         onlineUserService.kickout(sessionId);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "kickout", nameCn = "强制下线", nameEn = "Kickout")
++    @PermCode(code = PermCodes.Action.KICKOUT, nameCn = "强制下线", nameEn = "Kickout")
+     @Operation(summary = "批量强制用户下线")
+     @PostMapping("/kickout-batch")
+     public Result<Void> kickoutBatch(@RequestBody @NotEmpty(message = "{validation.field.sessionIds.notEmpty}") List<String> sessionIds) {
+diff --git a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/social/SocialLoginConfigController.java b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/social/SocialLoginConfigController.java
+--- a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/social/SocialLoginConfigController.java
++++ b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/social/SocialLoginConfigController.java
+@@ -4,6 +4,7 @@
+ import cn.daxpay.open.platform.iam.result.social.SocialLoginConfigResult;
+ import cn.daxpay.open.platform.iam.service.social.SocialLoginConfigService;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import io.swagger.v3.oas.annotations.Operation;
+@@ -22,7 +23,7 @@
+ 
+ /// # 第三方平台登录配置管理
+ ///
+-@PermCode(menuCode = "iam:social:login-config")
++@PermCode(menuCode = PermCodes.Iam.Social.MENU)
+ @Validated
+ @Tag(name = "社交登录配置管理")
+ @RestController
+@@ -32,29 +33,29 @@ public class SocialLoginConfigController {
+ 
+     private final SocialLoginConfigService socialLoginConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "社交登录配置查看", nameEn = "Social Login Config View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "社交登录配置查看", nameEn = "Social Login Config View")
+     @Operation(summary = "全量查询平台配置(枚举驱动, 读时初始化缺失平台)")
+     @GetMapping("/find-all")
+     public Result<List<SocialLoginConfigResult>> findAll() {
+         return Res.ok(socialLoginConfigService.findAll());
+     }
+ 
+-    @PermCode(code = "view", nameCn = "社交登录配置查看", nameEn = "Social Login Config View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "社交登录配置查看", nameEn = "Social Login Config View")
+     @Operation(summary = "根据平台编码查询(不存在则初始化占位记录)")
+     @GetMapping("/get-by-source")
+     public Result<SocialLoginConfigResult> findBySource(@NotBlank(message = "{validation.field.source.notBlank}") String source) {
+         return Res.ok(socialLoginConfigService.findBySource(source));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "社交登录配置管理", nameEn = "Social Login Config Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "社交登录配置管理", nameEn = "Social Login Config Manage")
+     @Operation(summary = "修改平台配置")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated SocialLoginConfigParam param) {
+         socialLoginConfigService.update(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "社交登录配置管理", nameEn = "Social Login Config Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "社交登录配置管理", nameEn = "Social Login Config Manage")
+     @Operation(summary = "切换平台启用状态(仅已配置平台可启停)")
+     @PostMapping("/update-enabled")
+     public Result<Void> updateEnabled(
+diff --git a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/upms/UserRoleController.java b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/upms/UserRoleController.java
+--- a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/upms/UserRoleController.java
++++ b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/upms/UserRoleController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.platform.iam.controller.upms;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -18,7 +20,7 @@
+ import java.util.List;
+ 
+ 
+-@PermCode(menuCode = "iam:user:manager")
++@PermCode(menuCode = PermCodes.Iam.UserManager.MENU)
+ @Validated
+ @Tag(name = "用户角色管理")
+ @RestController
+@@ -28,37 +30,37 @@ public class UserRoleController {
+ 
+     private final UserRoleService userRoleService;
+ 
+-    @PermCode(code = "assign_role", nameCn = "分配角色", nameEn = "Assign Role")
++    @PermCode(code = PermCodes.Action.ASSIGN_ROLE, nameCn = "分配角色", nameEn = "Assign Role")
+     @Operation(summary = "给用户分配角色")
+     @PostMapping(value = "/save-assign")
+     public Result<Void> saveAssign(@Validated @RequestBody UserRoleParam param) {
+         userRoleService.saveAssign(param.getUserId(), param.getRoleId(),false);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "assign_role", nameCn = "分配角色", nameEn = "Assign Role")
++    @PermCode(code = PermCodes.Action.ASSIGN_ROLE, nameCn = "分配角色", nameEn = "Assign Role")
+     @Operation(summary = "给用户分配角色(批量)")
+     @PostMapping(value = "/save-assign-batch")
+     public Result<Void> saveAssignBatch(@RequestBody @Validated UserRoleBatchParam param) {
+         userRoleService.saveAssignBatch(param.getUserIds(), param.getRoleId());
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "用户查看", nameEn = "User View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "用户查看", nameEn = "User View")
+     @Operation(summary = "根据用户ID获取角色")
+     @GetMapping(value = "/find-roles-by-user")
+     public Result<RoleResult> findRolesByUser(@NotNull(message = "{validation.field.userId.notNull}") @Parameter(description = "用户ID") Long userId) {
+         return Res.ok(userRoleService.findRolesByUser(userId));
+     }
+ 
+-    @PermCode(code = "assign_role", nameCn = "分配角色", nameEn = "Assign Role")
++    @PermCode(code = PermCodes.Action.ASSIGN_ROLE, nameCn = "分配角色", nameEn = "Assign Role")
+     @Operation(summary = "根据用户ID获取到可分配角色集合")
+     @GetMapping(value = "/find-assignable-roles-by-user")
+     public Result<List<RoleResult>> findAssignableRolesByUser(@NotNull(message = "{validation.field.userId.notNull}") @Parameter(description = "用户ID") Long userId) {
+         return Res.ok(userRoleService.findAssignableRolesByUser(userId));
+     }
+ 
+-    @PermCode(code = "assign_role", nameCn = "分配角色", nameEn = "Assign Role")
++    @PermCode(code = PermCodes.Action.ASSIGN_ROLE, nameCn = "分配角色", nameEn = "Assign Role")
+     @Operation(summary = "根据用户ID获取到角色id集合")
+     @GetMapping(value = "/find-role-ids-by-user")
+     public Result<List<Long>> findRoleIdsByUser(@NotNull(message = "{validation.field.userId.notNull}") @Parameter(description = "用户ID") Long userId) {
+diff --git a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/user/UserAdminController.java b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/user/UserAdminController.java
+--- a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/user/UserAdminController.java
++++ b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/user/UserAdminController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.platform.iam.controller.user;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+@@ -26,7 +27,7 @@
+ import java.util.List;
+ 
+ 
+-@PermCode(menuCode = "iam:user:manager")
++@PermCode(menuCode = PermCodes.Iam.UserManager.MENU)
+ @Validated
+ @Tag(name = "管理用户(管理员级别)")
+ @RestController
+@@ -38,94 +39,94 @@ public class UserAdminController {
+ 
+     private final UserQueryService userQueryService;
+ 
+-    @PermCode(code = "view", nameCn = "用户查看", nameEn = "User View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "用户查看", nameEn = "User View")
+     @Operation(summary = "根据用户id查询用户")
+     @GetMapping("/get")
+     public Result<UserInfoResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(userQueryService.findById(id));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "用户管理", nameEn = "User Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "用户管理", nameEn = "User Manage")
+     @Operation(summary = "添加用户")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) UserInfoParam userInfoParam) {
+         userAdminService.add(userInfoParam);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "用户管理", nameEn = "User Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "用户管理", nameEn = "User Manage")
+     @Operation(summary = "修改用户")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) UserInfoParam userInfoParam) {
+         userAdminService.update(userInfoParam);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "reset_password", nameCn = "重置密码", nameEn = "Reset Password")
++    @PermCode(code = PermCodes.Action.RESET_PASSWORD, nameCn = "重置密码", nameEn = "Reset Password")
+     @Operation(summary = "重置密码")
+     @PostMapping("/restart-password")
+     public Result<Void> restartPassword(@RequestBody @Validated RestartPwdParam param) {
+         userAdminService.restartPassword(param.getUserId(), param.getNewPassword());
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "reset_password", nameCn = "重置密码", nameEn = "Reset Password")
++    @PermCode(code = PermCodes.Action.RESET_PASSWORD, nameCn = "重置密码", nameEn = "Reset Password")
+     @Operation(summary = "批量重置密码")
+     @PostMapping("/restart-password-batch")
+     public Result<Void> restartPasswordBatch(@RequestBody @Validated RestartPwdBatchParam param) {
+         userAdminService.restartPasswordBatch(param.getUserIds(), param.getNewPassword());
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "status", nameCn = "用户状态管理", nameEn = "User Status Manage")
++    @PermCode(code = PermCodes.Action.STATUS, nameCn = "用户状态管理", nameEn = "User Status Manage")
+     @Operation(summary = "封禁用户")
+     @PostMapping("/ban")
+     public Result<Void> ban(@NotNull(message = "{validation.field.userId.notNull}") Long userId) {
+         userAdminService.ban(userId);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "status", nameCn = "用户状态管理", nameEn = "User Status Manage")
++    @PermCode(code = PermCodes.Action.STATUS, nameCn = "用户状态管理", nameEn = "User Status Manage")
+     @Operation(summary = "批量封禁用户")
+     @PostMapping("/ban-batch")
+     public Result<Void> banBatch(@RequestBody @Validated UserBatchParam param) {
+         userAdminService.banBatch(param.getUserIds());
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "status", nameCn = "用户状态管理", nameEn = "User Status Manage")
++    @PermCode(code = PermCodes.Action.STATUS, nameCn = "用户状态管理", nameEn = "User Status Manage")
+     @Operation(summary = "解锁用户")
+     @PostMapping("/unlock")
+     public Result<Void> unlock(@NotNull(message = "{validation.field.userId.notNull}") Long userId) {
+         userAdminService.unlock(userId);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "status", nameCn = "用户状态管理", nameEn = "User Status Manage")
++    @PermCode(code = PermCodes.Action.STATUS, nameCn = "用户状态管理", nameEn = "User Status Manage")
+     @Operation(summary = "批量解锁用户")
+     @PostMapping("/unlock-batch")
+     public Result<Void> unlockBatch(@RequestBody @Validated UserBatchParam param) {
+         userAdminService.unlockBatch(param.getUserIds());
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "status", nameCn = "用户状态管理", nameEn = "User Status Manage")
++    @PermCode(code = PermCodes.Action.STATUS, nameCn = "用户状态管理", nameEn = "User Status Manage")
+     @Operation(summary = "锁定用户")
+     @PostMapping("/lock")
+     public Result<Void> lock(@NotNull(message = "{validation.field.userId.notNull}") Long userId) {
+         userAdminService.lock(userId);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "status", nameCn = "用户状态管理", nameEn = "User Status Manage")
++    @PermCode(code = PermCodes.Action.STATUS, nameCn = "用户状态管理", nameEn = "User Status Manage")
+     @Operation(summary = "批量锁定用户")
+     @PostMapping("/lock-batch")
+     public Result<Void> lockBatch(@RequestBody @Validated UserBatchParam param) {
+         userAdminService.lockBatch(param.getUserIds());
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "用户查看", nameEn = "User View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "用户查看", nameEn = "User View")
+     @Operation(summary = "用户分页")
+     @GetMapping("/page")
+     public Result<PageResult<UserWholeInfoResult>> page(PageParam pageParam, UserInfoQuery query) {
+diff --git a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/user/UserSocialController.java b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/user/UserSocialController.java
+--- a/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/user/UserSocialController.java
++++ b/daxpay-platform/daxpay-platform-service/service-iam/src/main/java/cn/daxpay/open/platform/iam/controller/user/UserSocialController.java
+@@ -3,6 +3,7 @@
+ import java.util.List;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import cn.daxpay.open.platform.iam.result.social.SocialBindResult;
+@@ -24,7 +25,7 @@
+ /// 归属用户管理域, 与 [UserAdminController] 同包同 menuCode,
+ /// 直接注入 [IamUserSocialBindStore] 操作数据层, 与登录/绑定流程([SocialEndpoint])完全分离.
+ ///
+-@PermCode(menuCode = "iam:user:manager")
++@PermCode(menuCode = PermCodes.Iam.UserManager.MENU)
+ @Validated
+ @Tag(name = "用户三方账号绑定管理")
+ @RestController
+@@ -36,7 +37,7 @@ public class UserSocialController {
+ 
+     /// 查询指定用户的第三方账号绑定列表
+     /// @param userId 目标用户ID
+-    @PermCode(code = "view", nameCn = "用户查看", nameEn = "User View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "用户查看", nameEn = "User View")
+     @Operation(summary = "查询指定用户的第三方账号绑定列表")
+     @GetMapping("/bind-list")
+     public Result<List<SocialBindResult>> bindList(@NotNull(message = "{validation.field.userId.notNull}") Long userId) {
+@@ -46,7 +47,7 @@ public Result<List<SocialBindResult>> bindList(@NotNull(message = "{validation.f
+     /// 解除指定用户的第三方账号绑定
+     /// @param userId 目标用户ID
+     /// @param source 平台编码
+-    @PermCode(code = "view", nameCn = "用户查看", nameEn = "User View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "用户查看", nameEn = "User View")
+     @Operation(summary = "解除指定用户的第三方账号绑定")
+     @PostMapping("/unbind")
+     public Result<Void> unbind(@NotNull(message = "{validation.field.userId.notNull}") Long userId,
+diff --git a/daxpay-platform/daxpay-platform-service/service-notify/src/main/java/cn/daxpay/open/platform/notify/controller/notice/NotifyNoticeController.java b/daxpay-platform/daxpay-platform-service/service-notify/src/main/java/cn/daxpay/open/platform/notify/controller/notice/NotifyNoticeController.java
+--- a/daxpay-platform/daxpay-platform-service/service-notify/src/main/java/cn/daxpay/open/platform/notify/controller/notice/NotifyNoticeController.java
++++ b/daxpay-platform/daxpay-platform-service/service-notify/src/main/java/cn/daxpay/open/platform/notify/controller/notice/NotifyNoticeController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.platform.notify.controller.notice;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+@@ -23,7 +25,7 @@
+ import org.springframework.web.bind.annotation.RestController;
+ 
+ /// 公告管理(管理端)
+-@PermCode(menuCode = "system:notify:notice")
++@PermCode(menuCode = PermCodes.System.Notify.MENU)
+ @Validated
+ @Tag(name = "公告管理")
+ @RestController
+@@ -33,7 +35,7 @@ public class NotifyNoticeController {
+ 
+     private final NotifyNoticeService noticeService;
+ 
+-    @PermCode(code = "manage", nameCn = "公告管理", nameEn = "Notice Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "公告管理", nameEn = "Notice Manage")
+     @Operation(summary = "新建公告")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody NotifyNoticeParam param) {
+@@ -42,7 +44,7 @@ public Result<Void> add(@RequestBody NotifyNoticeParam param) {
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "公告管理", nameEn = "Notice Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "公告管理", nameEn = "Notice Manage")
+     @Operation(summary = "编辑公告")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody NotifyNoticeParam param) {
+@@ -51,38 +53,38 @@ public Result<Void> update(@RequestBody NotifyNoticeParam param) {
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "公告管理", nameEn = "Notice Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "公告管理", nameEn = "Notice Manage")
+     @Operation(summary = "删除公告")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         noticeService.delete(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "publish", nameCn = "公告发布", nameEn = "Notice Publish")
++    @PermCode(code = PermCodes.Action.PUBLISH, nameCn = "公告发布", nameEn = "Notice Publish")
+     @Operation(summary = "发布公告")
+     @PostMapping("/publish")
+     public Result<Void> publish(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         noticeService.publish(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "publish", nameCn = "公告发布", nameEn = "Notice Publish")
++    @PermCode(code = PermCodes.Action.PUBLISH, nameCn = "公告发布", nameEn = "Notice Publish")
+     @Operation(summary = "下线公告")
+     @PostMapping("/offline")
+     public Result<Void> offline(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         noticeService.offline(id);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "公告查看", nameEn = "Notice View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "公告查看", nameEn = "Notice View")
+     @Operation(summary = "公告详情")
+     @GetMapping("/get")
+     public Result<NotifyNoticeResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(noticeService.findById(id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "公告查看", nameEn = "Notice View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "公告查看", nameEn = "Notice View")
+     @Operation(summary = "公告分页")
+     @GetMapping("/page")
+     public Result<PageResult<NotifyNoticeResult>> page(PageParam pageParam, NotifyNoticeQuery query) {
+diff --git a/daxpay-platform/daxpay-platform-service/service-notify/src/main/java/cn/daxpay/open/platform/notify/controller/wechat/WechatConfigController.java b/daxpay-platform/daxpay-platform-service/service-notify/src/main/java/cn/daxpay/open/platform/notify/controller/wechat/WechatConfigController.java
+--- a/daxpay-platform/daxpay-platform-service/service-notify/src/main/java/cn/daxpay/open/platform/notify/controller/wechat/WechatConfigController.java
++++ b/daxpay-platform/daxpay-platform-service/service-notify/src/main/java/cn/daxpay/open/platform/notify/controller/wechat/WechatConfigController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.platform.notify.controller.wechat;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import cn.daxpay.open.platform.system.param.config.notify.PlatformWechatNotifyConfigParam;
+@@ -19,7 +20,7 @@
+ ///
+ /// 仅管理场景模板 Id, 存于系统平台非加密配置 `wechat_notify`.
+ /// 公众号凭据见三方平台管理.
+-@PermCode(menuCode = "system:notify:wechat-config")
++@PermCode(menuCode = PermCodes.System.WechatNotify.MENU)
+ @Tag(name = "微信消息通知配置")
+ @RestController
+ @RequestMapping("/notify/wechat/config")
+@@ -28,14 +29,14 @@ public class WechatConfigController {
+ 
+     private final PlatformWechatNotifyConfigService wechatNotifyConfigService;
+ 
+-    @PermCode(code = "manage", nameCn = "微信消息通知管理", nameEn = "Wechat Message Notify Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "微信消息通知管理", nameEn = "Wechat Message Notify Manage")
+     @Operation(summary = "查询配置")
+     @GetMapping("/find")
+     public Result<PlatformWechatNotifyConfigResult> find() {
+         return Res.ok(wechatNotifyConfigService.findConfig());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "微信消息通知管理", nameEn = "Wechat Message Notify Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "微信消息通知管理", nameEn = "Wechat Message Notify Manage")
+     @Operation(summary = "更新配置")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody PlatformWechatNotifyConfigParam param) {
+diff --git a/daxpay-platform/daxpay-platform-service/service-notify/src/main/java/cn/daxpay/open/platform/notify/controller/wechat/WechatMessageController.java b/daxpay-platform/daxpay-platform-service/service-notify/src/main/java/cn/daxpay/open/platform/notify/controller/wechat/WechatMessageController.java
+--- a/daxpay-platform/daxpay-platform-service/service-notify/src/main/java/cn/daxpay/open/platform/notify/controller/wechat/WechatMessageController.java
++++ b/daxpay-platform/daxpay-platform-service/service-notify/src/main/java/cn/daxpay/open/platform/notify/controller/wechat/WechatMessageController.java
+@@ -3,6 +3,7 @@
+ import cn.daxpay.open.platform.capability.auth.util.SecurityUtil;
+ import cn.daxpay.open.platform.capability.wechat.message.result.MessageSendResult;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+@@ -28,7 +29,7 @@
+ ///
+ /// 与配置页共用菜单 [system:notify:wechat-config], 页内 Tabs 切换.
+ /// 查询发送记录 / 失败重发 / 测试发送(给当前登录用户发一条, 验证配置与绑定链路).
+-@PermCode(menuCode = "system:notify:wechat-config")
++@PermCode(menuCode = PermCodes.System.WechatNotify.MENU)
+ @Validated
+ @Tag(name = "微信消息通知记录")
+ @RestController
+@@ -40,21 +41,21 @@ public class WechatMessageController {
+ 
+     private final WechatNotifyService wechatNotifyService;
+ 
+-    @PermCode(code = "view", nameCn = "通知记录查看", nameEn = "Wechat Message View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "通知记录查看", nameEn = "Wechat Message View")
+     @Operation(summary = "分页查询")
+     @GetMapping("/page")
+     public Result<PageResult<WechatMessageRecordResult>> page(PageParam pageParam, WechatMessageQuery query) {
+         return Res.ok(messageRecordService.page(pageParam, query));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "通知记录查看", nameEn = "Wechat Message View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "通知记录查看", nameEn = "Wechat Message View")
+     @Operation(summary = "记录详情")
+     @GetMapping("/get")
+     public Result<WechatMessageRecordResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(messageRecordService.findById(id));
+     }
+ 
+-    @PermCode(code = "resend", nameCn = "通知重发", nameEn = "Wechat Message Resend")
++    @PermCode(code = PermCodes.Action.RESEND, nameCn = "通知重发", nameEn = "Wechat Message Resend")
+     @Operation(summary = "重发失败消息")
+     @PostMapping("/resend")
+     public Result<Void> resend(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+@@ -63,7 +64,7 @@ public Result<Void> resend(@NotNull(message = "{validation.field.id.notNull}") L
+     }
+ 
+     /// 测试发送(给当前登录用户发一条操作通知, 验证配置 + 绑定链路是否打通)
+-    @PermCode(code = "test", nameCn = "测试发送", nameEn = "Wechat Message Test")
++    @PermCode(code = PermCodes.Action.TEST, nameCn = "测试发送", nameEn = "Wechat Message Test")
+     @Operation(summary = "测试发送(发给当前登录用户)")
+     @PostMapping("/test-send")
+     public Result<MessageSendResult> testSend() {
+diff --git a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/auth/PlatformAlipayAuthConfigController.java b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/auth/PlatformAlipayAuthConfigController.java
+--- a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/auth/PlatformAlipayAuthConfigController.java
++++ b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/auth/PlatformAlipayAuthConfigController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.platform.system.controller.config.auth;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import cn.daxpay.open.platform.system.param.config.auth.PlatformAlipayAuthConfigParam;
+@@ -21,7 +22,7 @@
+ /// 管理支付宝 OAuth 凭据(appId/私钥/证书), 挂载在「三方平台管理」菜单下(与登录平台配置共享菜单权限)。
+ /// 凭据同时服务于: 三方登录的支付宝授权登录(iam 模块)、支付场景的通道认证(payment 模块)。
+ ///
+-@PermCode(menuCode = "iam:social:login-config")
++@PermCode(menuCode = PermCodes.Iam.Social.MENU)
+ @Validated
+ @Tag(name = "平台支付宝开放平台认证配置")
+ @RestController
+@@ -31,14 +32,14 @@ public class PlatformAlipayAuthConfigController {
+ 
+     private final PlatformAlipayAuthConfigService platformAlipayAuthConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "社交登录配置查看", nameEn = "Social Login Config View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "社交登录配置查看", nameEn = "Social Login Config View")
+     @Operation(summary = "获取支付宝认证配置")
+     @GetMapping("/get")
+     public Result<PlatformAlipayAuthConfigResult> getAlipayAuthConfig() {
+         return Res.ok(platformAlipayAuthConfigService.findAlipayAuthConfig());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "社交登录配置管理", nameEn = "Social Login Config Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "社交登录配置管理", nameEn = "Social Login Config Manage")
+     @Operation(summary = "更新支付宝认证配置")
+     @PostMapping("/update")
+     public Result<Void> updateAlipayAuthConfig(@RequestBody @Validated PlatformAlipayAuthConfigParam param) {
+diff --git a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/auth/PlatformDouyinH5AuthConfigController.java b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/auth/PlatformDouyinH5AuthConfigController.java
+--- a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/auth/PlatformDouyinH5AuthConfigController.java
++++ b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/auth/PlatformDouyinH5AuthConfigController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.platform.system.controller.config.auth;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -21,7 +23,7 @@
+ /// 管理抖音开放平台 H5 应用凭据(clientKey/clientSecret), 挂载在「三方平台管理」菜单下(与登录平台配置共享菜单权限)。
+ /// 本配置独立于「三方平台登录配置」中的抖音 OAuth 登录凭据。
+ ///
+-@PermCode(menuCode = "iam:social:login-config")
++@PermCode(menuCode = PermCodes.Iam.Social.MENU)
+ @Validated
+ @Tag(name = "平台抖音开放平台 H5 应用认证配置")
+ @RestController
+@@ -31,14 +33,14 @@ public class PlatformDouyinH5AuthConfigController {
+ 
+     private final PlatformDouyinH5AuthConfigService platformDouyinH5AuthConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "社交登录配置查看", nameEn = "Social Login Config View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "社交登录配置查看", nameEn = "Social Login Config View")
+     @Operation(summary = "获取抖音 H5 应用认证配置")
+     @GetMapping("/get")
+     public Result<PlatformDouyinH5AuthConfigResult> getDouyinH5AuthConfig() {
+         return Res.ok(platformDouyinH5AuthConfigService.findDouyinH5AuthConfig());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "社交登录配置管理", nameEn = "Social Login Config Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "社交登录配置管理", nameEn = "Social Login Config Manage")
+     @Operation(summary = "更新抖音 H5 应用认证配置")
+     @PostMapping("/update")
+     public Result<Void> updateDouyinH5AuthConfig(@RequestBody @Validated PlatformDouyinH5AuthConfigParam param) {
+diff --git a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/auth/PlatformWechatMpAuthConfigController.java b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/auth/PlatformWechatMpAuthConfigController.java
+--- a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/auth/PlatformWechatMpAuthConfigController.java
++++ b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/auth/PlatformWechatMpAuthConfigController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.platform.system.controller.config.auth;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import cn.daxpay.open.platform.system.param.config.auth.PlatformWechatMpAuthConfigParam;
+@@ -20,7 +21,7 @@
+ ///
+ /// 管理微信公众号网页授权凭据(appId/appSecret), 挂载在「三方平台管理」菜单下(与登录平台配置共享菜单权限)。
+ ///
+-@PermCode(menuCode = "iam:social:login-config")
++@PermCode(menuCode = PermCodes.Iam.Social.MENU)
+ @Validated
+ @Tag(name = "平台微信公众号 H5 认证配置")
+ @RestController
+@@ -30,14 +31,14 @@ public class PlatformWechatMpAuthConfigController {
+ 
+     private final PlatformWechatMpAuthConfigService platformWechatMpAuthConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "社交登录配置查看", nameEn = "Social Login Config View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "社交登录配置查看", nameEn = "Social Login Config View")
+     @Operation(summary = "获取微信公众号认证配置")
+     @GetMapping("/get")
+     public Result<PlatformWechatMpAuthConfigResult> getWechatMpAuthConfig() {
+         return Res.ok(platformWechatMpAuthConfigService.findWechatMpAuthConfig());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "社交登录配置管理", nameEn = "Social Login Config Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "社交登录配置管理", nameEn = "Social Login Config Manage")
+     @Operation(summary = "更新微信公众号认证配置")
+     @PostMapping("/update")
+     public Result<Void> updateWechatMpAuthConfig(@RequestBody @Validated PlatformWechatMpAuthConfigParam param) {
+diff --git a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/infra/PlatformOssConfigController.java b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/infra/PlatformOssConfigController.java
+--- a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/infra/PlatformOssConfigController.java
++++ b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/infra/PlatformOssConfigController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.platform.system.controller.config.infra;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -15,7 +17,7 @@
+ /// # 平台OSS配置
+ ///
+ /// 管理对象存储配置
+-@PermCode(menuCode = "system:oss_config")
++@PermCode(menuCode = PermCodes.System.OssConfig.MENU)
+ @Validated
+ @Tag(name = "平台OSS配置")
+ @RestController
+@@ -24,14 +26,14 @@
+ public class PlatformOssConfigController {
+     private final PlatformOssConfigService platformOssConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "OSS配置查看", nameEn = "OSS Config View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "OSS配置查看", nameEn = "OSS Config View")
+     @Operation(summary = "获取OSS配置")
+     @GetMapping("/get")
+     public Result<PlatformOssConfigResult> getOssConfig() {
+         return Res.ok(platformOssConfigService.findOssConfig());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "OSS配置管理", nameEn = "OSS Config Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "OSS配置管理", nameEn = "OSS Config Manage")
+     @Operation(summary = "更新OSS配置")
+     @PostMapping("/update")
+     public Result<Void> updateOssConfig(@RequestBody @Validated PlatformOssConfigParam param) {
+diff --git a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/infra/PlatformUrlConfigController.java b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/infra/PlatformUrlConfigController.java
+--- a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/infra/PlatformUrlConfigController.java
++++ b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/infra/PlatformUrlConfigController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.platform.system.controller.config.infra;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+@@ -15,7 +17,7 @@
+ /// # 平台端点配置
+ ///
+ /// 管理系统访问地址等端点配置
+-@PermCode(menuCode = "system:platform_config")
++@PermCode(menuCode = PermCodes.System.PlatformConfig.MENU)
+ @Validated
+ @Tag(name = "平台端点配置")
+ @RestController
+@@ -24,14 +26,14 @@
+ public class PlatformUrlConfigController {
+     private final PlatformUrlConfigService platformUrlConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "平台配置查看", nameEn = "Platform Config View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "平台配置查看", nameEn = "Platform Config View")
+     @Operation(summary = "获取端点配置")
+     @GetMapping("/get")
+     public Result<PlatformUrlConfigResult> getUrlConfig() {
+         return Res.ok(platformUrlConfigService.findUrlConfig());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "平台配置管理", nameEn = "Platform Config Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "平台配置管理", nameEn = "Platform Config Manage")
+     @Operation(summary = "更新端点配置")
+     @PostMapping("/update")
+     public Result<Void> updateUrlConfig(@RequestBody @Validated PlatformUrlConfigParam param) {
+diff --git a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/mobile/MobileAppController.java b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/mobile/MobileAppController.java
+--- a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/mobile/MobileAppController.java
++++ b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/mobile/MobileAppController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.platform.system.controller.config.mobile;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.result.Result;
+ import cn.daxpay.open.platform.system.param.mobile.MobileAppParam;
+@@ -20,7 +21,7 @@
+ ///
+ /// 平台级移动端应用(商户端/管理端/收银台小程序)的密钥、通知、用户绑定配置管理。
+ /// 按端类型(appType)+移动平台(platform)维度, 每组合一条配置记录。
+-@PermCode(menuCode = "system:config:mobile_app")
++@PermCode(menuCode = PermCodes.System.MobileApp.MENU)
+ @Validated
+ @Tag(name = "移动端应用配置管理")
+ @RestController
+@@ -30,30 +31,30 @@ public class MobileAppController {
+ 
+     private final MobileAppService mobileAppService;
+ 
+-    @PermCode(code = "view", nameCn = "移动端应用查看", nameEn = "Mobile App View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "移动端应用查看", nameEn = "Mobile App View")
+     @Operation(summary = "查询全部(按端类型分组)")
+     @GetMapping("/list")
+     public Result<List<MobileAppResult>> list() {
+         return Res.ok(mobileAppService.findAll());
+     }
+ 
+-    @PermCode(code = "view", nameCn = "移动端应用查看", nameEn = "Mobile App View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "移动端应用查看", nameEn = "Mobile App View")
+     @Operation(summary = "按端类型查询所有平台配置")
+     @GetMapping("/list-by-app-type")
+     public Result<List<MobileAppResult>> listByAppType(
+             @NotBlank(message = "{validation.field.appType.notBlank}") String appType) {
+         return Res.ok(mobileAppService.findAllByAppType(appType));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "移动端应用查看", nameEn = "Mobile App View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "移动端应用查看", nameEn = "Mobile App View")
+     @Operation(summary = "查询单条详情")
+     @GetMapping("/get")
+     public Result<MobileAppResult> findById(
+             @NotNull(message = "{validation.field.id.notNull}") Long id) {
+         return Res.ok(mobileAppService.findById(id));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "移动端应用查看", nameEn = "Mobile App View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "移动端应用查看", nameEn = "Mobile App View")
+     @Operation(summary = "按端类型+平台查询(不存在返回 null)")
+     @GetMapping("/get-by-type-platform")
+     public Result<MobileAppResult> findByAppTypeAndPlatform(
+@@ -62,14 +63,14 @@ public Result<MobileAppResult> findByAppTypeAndPlatform(
+         return Res.ok(mobileAppService.findByAppTypeAndPlatform(appType, platform).orElse(null));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "移动端应用管理", nameEn = "Mobile App Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "移动端应用管理", nameEn = "Mobile App Manage")
+     @Operation(summary = "保存(按端类型+平台 upsert)")
+     @PostMapping("/save")
+     public Result<MobileAppResult> save(@RequestBody @Validated MobileAppParam param) {
+         return Res.ok(mobileAppService.save(param));
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "移动端应用管理", nameEn = "Mobile App Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "移动端应用管理", nameEn = "Mobile App Manage")
+     @Operation(summary = "更新启用状态")
+     @PostMapping("/update-enabled")
+     public Result<Void> updateEnabled(
+diff --git a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/security/PlatformSecurityConfigController.java b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/security/PlatformSecurityConfigController.java
+--- a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/security/PlatformSecurityConfigController.java
++++ b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/config/security/PlatformSecurityConfigController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.platform.system.controller.config.security;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.IgnoreAuth;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.core.rest.Res;
+@@ -16,7 +18,7 @@
+ /// # 平台安全配置
+ ///
+ /// 管理密码策略、登录安全、会话管理、双因素认证等安全类配置
+-@PermCode(menuCode = "system:security_config")
++@PermCode(menuCode = PermCodes.System.SecurityConfig.MENU)
+ @Validated
+ @Tag(name = "平台安全配置")
+ @RestController
+@@ -25,7 +27,7 @@
+ public class PlatformSecurityConfigController {
+     private final PlatformSecurityConfigService platformSecurityConfigService;
+ 
+-    @PermCode(code = "view", nameCn = "安全配置查看", nameEn = "Security View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "安全配置查看", nameEn = "Security View")
+     @Operation(summary = "获取密码策略配置")
+     @GetMapping("/password-policy/get")
+     public Result<PlatformPasswordPolicyConfigResult> getPasswordPolicyConfig() {
+@@ -39,52 +41,52 @@ public Result<PlatformPasswordPolicyConfigResult> getPasswordPolicyValidateConfi
+         return Res.ok(platformSecurityConfigService.findPasswordPolicyConfig());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "安全配置管理", nameEn = "Security Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "安全配置管理", nameEn = "Security Manage")
+     @Operation(summary = "更新密码策略配置")
+     @PostMapping("/password-policy/update")
+     public Result<Void> updatePasswordPolicyConfig(@RequestBody @Validated PlatformPasswordPolicyConfigParam param) {
+         platformSecurityConfigService.updatePasswordPolicyConfig(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "安全配置查看", nameEn = "Security View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "安全配置查看", nameEn = "Security View")
+     @Operation(summary = "获取登录安全配置")
+     @GetMapping("/login/get")
+     public Result<PlatformLoginSecurityConfigResult> getLoginSecurityConfig() {
+         return Res.ok(platformSecurityConfigService.findLoginSecurityConfig());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "安全配置管理", nameEn = "Security Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "安全配置管理", nameEn = "Security Manage")
+     @Operation(summary = "更新登录安全配置")
+     @PostMapping("/login/update")
+     public Result<Void> updateLoginSecurityConfig(@RequestBody @Validated PlatformLoginSecurityConfigParam param) {
+         platformSecurityConfigService.updateLoginSecurityConfig(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "安全配置查看", nameEn = "Security View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "安全配置查看", nameEn = "Security View")
+     @Operation(summary = "获取会话管理配置")
+     @GetMapping("/session/get")
+     public Result<PlatformSessionManagementConfigResult> getSessionManagementConfig() {
+         return Res.ok(platformSecurityConfigService.findSessionManagementConfig());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "安全配置管理", nameEn = "Security Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "安全配置管理", nameEn = "Security Manage")
+     @Operation(summary = "更新会话管理配置")
+     @PostMapping("/session/update")
+     public Result<Void> updateSessionManagementConfig(@RequestBody @Validated PlatformSessionManagementConfigParam param) {
+         platformSecurityConfigService.updateSessionManagementConfig(param);
+         return Res.ok();
+     }
+ 
+-    @PermCode(code = "view", nameCn = "安全配置查看", nameEn = "Security View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "安全配置查看", nameEn = "Security View")
+     @Operation(summary = "获取双因素认证配置")
+     @GetMapping("/two-factor-auth/get")
+     public Result<PlatformTwoFactorAuthConfigResult> getTwoFactorAuthConfig() {
+         return Res.ok(platformSecurityConfigService.findTwoFactorAuthConfig());
+     }
+ 
+-    @PermCode(code = "manage", nameCn = "安全配置管理", nameEn = "Security Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "安全配置管理", nameEn = "Security Manage")
+     @Operation(summary = "更新双因素认证配置")
+     @PostMapping("/two-factor-auth/update")
+     public Result<Void> updateTwoFactorAuthConfig(@RequestBody @Validated PlatformTwoFactorAuthConfigParam param) {
+diff --git a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/dict/DictController.java b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/dict/DictController.java
+--- a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/dict/DictController.java
++++ b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/dict/DictController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.platform.system.controller.dict;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.system.param.dict.DictParam;
+ import cn.daxpay.open.platform.system.result.dict.DictResult;
+@@ -22,7 +24,7 @@
+ 
+ /// # 字典控制器
+ ///
+-@PermCode(menuCode = "system:dict")
++@PermCode(menuCode = PermCodes.System.Dict.MENU)
+ @Validated
+ @Tag(name = "字典")
+ @Tag(name = "字典")
+@@ -36,7 +38,7 @@ public class DictController {
+     /// 添加字典
+     ///
+     /// @param param 字典参数
+-    @PermCode(code = "manage", nameCn = "字典管理", nameEn = "Dict Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "字典管理", nameEn = "Dict Manage")
+     @Operation(summary = "添加字典")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody DictParam param) {
+@@ -48,7 +50,7 @@ public Result<Void> add(@RequestBody DictParam param) {
+     /// 根据主键删除字典
+     ///
+     /// @param id 字典ID
+-    @PermCode(code = "manage", nameCn = "字典管理", nameEn = "Dict Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "字典管理", nameEn = "Dict Manage")
+     @Operation(summary = "根据主键删除")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+@@ -59,7 +61,7 @@ public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") L
+     /// 更新字典
+     ///
+     /// @param param 字典参数
+-    @PermCode(code = "manage", nameCn = "字典管理", nameEn = "Dict Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "字典管理", nameEn = "Dict Manage")
+     @Operation(summary = "更新字典")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody DictParam param) {
+@@ -72,7 +74,7 @@ public Result<Void> update(@RequestBody DictParam param) {
+     ///
+     /// @param id 字典ID
+     /// @return 字典信息
+-    @PermCode(code = "view", nameCn = "字典查看", nameEn = "Dict View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "字典查看", nameEn = "Dict View")
+     @Operation(summary = "根据主键获取字典")
+     @GetMapping("/get")
+     public Result<DictResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+@@ -82,7 +84,7 @@ public Result<DictResult> findById(@NotNull(message = "{validation.field.id.notN
+     /// 查询全部字典
+     ///
+     /// @return 字典列表
+-    @PermCode(code = "view", nameCn = "字典查看", nameEn = "Dict View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "字典查看", nameEn = "Dict View")
+     @Operation(summary = "查询全部字典")
+     @GetMapping("/all")
+     public Result<List<DictResult>> findAll() {
+@@ -94,7 +96,7 @@ public Result<List<DictResult>> findAll() {
+     /// @param pageParam 分页参数
+     /// @param param 查询参数
+     /// @return 字典分页结果
+-    @PermCode(code = "view", nameCn = "字典查看", nameEn = "Dict View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "字典查看", nameEn = "Dict View")
+     @Operation(summary = "字典分页")
+     @GetMapping("/page")
+     public Result<PageResult<DictResult>> page(PageParam pageParam, DictParam param) {
+@@ -105,7 +107,7 @@ public Result<PageResult<DictResult>> page(PageParam pageParam, DictParam param)
+     ///
+     /// @param code 字典编码
+     /// @return 是否存在
+-    @PermCode(code = "view", nameCn = "字典查看", nameEn = "Dict View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "字典查看", nameEn = "Dict View")
+     @Operation(summary = "字典编码是否被使用")
+     @GetMapping("/exists-by-code")
+     public Result<Boolean> existsByCode(@NotBlank(message = "{validation.field.code.notBlank}") String code) {
+@@ -117,7 +119,7 @@ public Result<Boolean> existsByCode(@NotBlank(message = "{validation.field.code.
+     /// @param code 字典编码
+     /// @param id 字典ID
+     /// @return 是否存在
+-    @PermCode(code = "view", nameCn = "字典查看", nameEn = "Dict View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "字典查看", nameEn = "Dict View")
+     @Operation(summary = "编码是否被使用(不包含自己)")
+     @GetMapping("/exists-by-code-not-id")
+     public Result<Boolean> existsByCode(@NotBlank(message = "{validation.field.code.notBlank}") String code, @NotNull(message = "{validation.field.id.notNull}") Long id) {
+diff --git a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/dict/DictItemController.java b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/dict/DictItemController.java
+--- a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/dict/DictItemController.java
++++ b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/dict/DictItemController.java
+@@ -1,5 +1,7 @@
+ package cn.daxpay.open.platform.system.controller.dict;
+ 
++
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.system.param.dict.DictItemParam;
+ import cn.daxpay.open.platform.system.result.dict.DictItemResult;
+@@ -24,7 +26,7 @@
+ /// # 字典项控制器
+ ///
+ @Validated
+-@PermCode(menuCode = "system:dict")
++@PermCode(menuCode = PermCodes.System.Dict.MENU)
+ @Tag(name = "字典项")
+ @RestController
+ @RequestMapping("/dict/item")
+@@ -37,7 +39,7 @@ public class DictItemController {
+     ///
+     /// @param param 字典项参数
+     /// @return 操作结果
+-    @PermCode(code = "manage", nameCn = "字典管理", nameEn = "Dict Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "字典管理", nameEn = "Dict Manage")
+     @Operation(summary = "添加字典项")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) DictItemParam param) {
+@@ -49,7 +51,7 @@ public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) DictI
+     ///
+     /// @param param 字典项参数
+     /// @return 操作结果
+-    @PermCode(code = "manage", nameCn = "字典管理", nameEn = "Dict Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "字典管理", nameEn = "Dict Manage")
+     @Operation(summary = "修改字典项")
+     @PostMapping(value = "/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) DictItemParam param) {
+@@ -61,7 +63,7 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) D
+     ///
+     /// @param id 字典项ID
+     /// @return 操作结果
+-    @PermCode(code = "manage", nameCn = "字典管理", nameEn = "Dict Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "字典管理", nameEn = "Dict Manage")
+     @Operation(summary = "删除字典项")
+     @PostMapping(value = "/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id) {
+@@ -73,7 +75,7 @@ public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") L
+     ///
+     /// @param id 字典项ID
+     /// @return 字典项信息
+-    @PermCode(code = "view", nameCn = "字典查看", nameEn = "Dict View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "字典查看", nameEn = "Dict View")
+     @Operation(summary = "根据字典项ID查询")
+     @GetMapping("/get")
+     public Result<DictItemResult> findById(@NotNull(message = "{validation.field.dictItemId.notNull}") Long id) {
+@@ -84,7 +86,7 @@ public Result<DictItemResult> findById(@NotNull(message = "{validation.field.dic
+     ///
+     /// @param dictId 字典ID
+     /// @return 字典项列表
+-    @PermCode(code = "view", nameCn = "字典查看", nameEn = "Dict View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "字典查看", nameEn = "Dict View")
+     @Operation(summary = "查询指定字典ID下的所有字典项")
+     @GetMapping("/get-by-dictionary-id")
+     public Result<List<DictItemResult>> findByDictionaryId(@NotNull(message = "{validation.field.dictId.notNull}") Long dictId) {
+@@ -96,7 +98,7 @@ public Result<List<DictItemResult>> findByDictionaryId(@NotNull(message = "{vali
+     /// @param pageParam 分页参数
+     /// @param dictId 字典ID
+     /// @return 字典项分页结果
+-    @PermCode(code = "view", nameCn = "字典查看", nameEn = "Dict View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "字典查看", nameEn = "Dict View")
+     @Operation(summary = "分页查询指定字典下的字典项")
+     @GetMapping("/page-by-dictionary-id")
+     public Result<PageResult<DictItemResult>> pageByDictionaryId(PageParam pageParam, @Parameter(description = "字典ID") Long dictId) {
+@@ -106,7 +108,7 @@ public Result<PageResult<DictItemResult>> pageByDictionaryId(PageParam pageParam
+     /// 获取全部字典项
+     ///
+     /// @return 所有字典项列表
+-    @PermCode(code = "view", nameCn = "字典查看", nameEn = "Dict View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "字典查看", nameEn = "Dict View")
+     @Operation(summary = "获取全部字典项")
+     @GetMapping("/all")
+     public Result<List<DictItemResult>> findAll() {
+@@ -128,7 +130,7 @@ public Result<List<DictItemResult>> findAllByEnable() {
+     /// @param code 字典项编码
+     /// @param dictId 字典ID
+     /// @return 是否存在
+-    @PermCode(code = "view", nameCn = "字典查看", nameEn = "Dict View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "字典查看", nameEn = "Dict View")
+     @Operation(summary = "字典项编码是否被使用")
+     @GetMapping("/exists-by-code")
+     public Result<Boolean> existsByCode(
+@@ -143,7 +145,7 @@ public Result<Boolean> existsByCode(
+     /// @param dictId 字典ID
+     /// @param id 字典项ID
+     /// @return 是否存在
+-    @PermCode(code = "view", nameCn = "字典查看", nameEn = "Dict View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "字典查看", nameEn = "Dict View")
+     @Operation(summary = "字典项编码是否被使用(不包含自己)")
+     @GetMapping("/exists-by-code-not-id")
+     public Result<Boolean> existsByCode(@Parameter(description = "编码") @NotBlank(message = "{validation.field.code.notBlank}") String code,
+diff --git a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/protocol/UserProtocolController.java b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/protocol/UserProtocolController.java
+--- a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/protocol/UserProtocolController.java
++++ b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/protocol/UserProtocolController.java
+@@ -8,6 +8,7 @@
+ import cn.daxpay.open.platform.system.result.protocol.UserProtocolResult;
+ import cn.daxpay.open.platform.system.service.protocol.UserProtocolService;
+ import cn.daxpay.open.platform.core.annotation.IgnoreAuth;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.annotation.PermCode;
+ import cn.daxpay.open.platform.common.i18n.util.I18nUtil;
+ import cn.daxpay.open.platform.core.rest.dto.LabelValue;
+@@ -28,7 +29,7 @@
+ 
+ /// # 用户协议控制器
+ ///
+-@PermCode(menuCode = "system:protocol")
++@PermCode(menuCode = PermCodes.System.Protocol.MENU)
+ @Validated
+ @Tag(name = "用户协议")
+ @RestController
+@@ -42,7 +43,7 @@ public class UserProtocolController {
+     /// @param pageParam 分页参数
+     /// @param query 查询条件
+     /// @return 用户协议分页结果
+-    @PermCode(code = "view", nameCn = "协议查看", nameEn = "Protocol View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "协议查看", nameEn = "Protocol View")
+     @Operation(summary = "分页")
+     @GetMapping("/page")
+     public Result<PageResult<UserProtocolResult>> page(PageParam pageParam, UserProtocolQuery query){
+@@ -53,7 +54,7 @@ public Result<PageResult<UserProtocolResult>> page(PageParam pageParam, UserProt
+     ///
+     /// @param param 用户协议参数
+     /// @return 操作结果
+-    @PermCode(code = "manage", nameCn = "协议管理", nameEn = "Protocol Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "协议管理", nameEn = "Protocol Manage")
+     @Operation(summary = "新增")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody  @Validated(ValidationGroup.add.class) UserProtocolParam param){
+@@ -65,7 +66,7 @@ public Result<Void> add(@RequestBody  @Validated(ValidationGroup.add.class) User
+     ///
+     /// @param param 用户协议参数
+     /// @return 操作结果
+-    @PermCode(code = "manage", nameCn = "协议管理", nameEn = "Protocol Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "协议管理", nameEn = "Protocol Manage")
+     @Operation(summary = "修改")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody  @Validated(ValidationGroup.edit.class) UserProtocolParam param){
+@@ -77,7 +78,7 @@ public Result<Void> update(@RequestBody  @Validated(ValidationGroup.edit.class)
+     ///
+     /// @param id 协议ID
+     /// @return 操作结果
+-    @PermCode(code = "manage", nameCn = "协议管理", nameEn = "Protocol Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "协议管理", nameEn = "Protocol Manage")
+     @Operation(summary = "删除")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id){
+@@ -89,7 +90,7 @@ public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") L
+     ///
+     /// @param id 协议ID
+     /// @return 用户协议信息
+-    @PermCode(code = "view", nameCn = "协议查看", nameEn = "Protocol View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "协议查看", nameEn = "Protocol View")
+     @Operation(summary = "查询")
+     @GetMapping("/get")
+     public Result<UserProtocolResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id){
+@@ -111,7 +112,7 @@ public Result<UserProtocolContentResult> findDefault(@NotNull(message = "{valida
+         return Res.ok(userProtocolService.findDefault(type, clientType, language));
+     }
+ 
+-    @PermCode(code = "view", nameCn = "协议查看", nameEn = "Protocol View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "协议查看", nameEn = "Protocol View")
+     @Operation(summary = "协议类型列表")
+     @GetMapping("/type-options")
+     public Result<List<LabelValue>> typeOptions(){
+@@ -120,7 +121,7 @@ public Result<List<LabelValue>> typeOptions(){
+                 .toList());
+     }
+ 
+-    @PermCode(code = "view", nameCn = "协议查看", nameEn = "Protocol View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "协议查看", nameEn = "Protocol View")
+     @Operation(summary = "协议端类型列表")
+     @GetMapping("/client-type-options")
+     public Result<List<LabelValue>> clientTypeOptions(){
+@@ -133,7 +134,7 @@ public Result<List<LabelValue>> clientTypeOptions(){
+     ///
+     /// @param id 协议ID
+     /// @return 操作结果
+-    @PermCode(code = "manage", nameCn = "协议管理", nameEn = "Protocol Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "协议管理", nameEn = "Protocol Manage")
+     @Operation(summary = "设置默认")
+     @PostMapping("/set-default")
+     public Result<Void> setDefault(@NotNull(message = "{validation.field.id.notNull}") Long id){
+@@ -145,7 +146,7 @@ public Result<Void> setDefault(@NotNull(message = "{validation.field.id.notNull}
+     ///
+     /// @param id 协议ID
+     /// @return 操作结果
+-    @PermCode(code = "manage", nameCn = "协议管理", nameEn = "Protocol Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "协议管理", nameEn = "Protocol Manage")
+     @Operation(summary = "取消默认")
+     @PostMapping("/cancel-default")
+     public Result<Void> cancelDefault(@NotNull(message = "{validation.field.id.notNull}") Long id){
+@@ -158,7 +159,7 @@ public Result<Void> cancelDefault(@NotNull(message = "{validation.field.id.notNu
+     /// @param id 源协议ID
+     /// @param clientType 目标端类型
+     /// @return 目标协议ID
+-    @PermCode(code = "manage", nameCn = "协议管理", nameEn = "Protocol Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "协议管理", nameEn = "Protocol Manage")
+     @Operation(summary = "复制到其他端")
+     @PostMapping("/copy-to-client")
+     public Result<Long> copyToClient(@NotNull(message = "{validation.field.id.notNull}") Long id,
+diff --git a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/protocol/UserProtocolVersionController.java b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/protocol/UserProtocolVersionController.java
+--- a/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/protocol/UserProtocolVersionController.java
++++ b/daxpay-platform/daxpay-platform-service/service-system/src/main/java/cn/daxpay/open/platform/system/controller/protocol/UserProtocolVersionController.java
+@@ -1,6 +1,7 @@
+ package cn.daxpay.open.platform.system.controller.protocol;
+ 
+ import cn.daxpay.open.platform.core.annotation.PermCode;
++import cn.daxpay.open.platform.core.code.PermCodes;
+ import cn.daxpay.open.platform.core.rest.Res;
+ import cn.daxpay.open.platform.core.rest.param.PageParam;
+ import cn.daxpay.open.platform.core.rest.result.PageResult;
+@@ -19,7 +20,7 @@
+ 
+ /// # 用户协议版本控制器
+ ///
+-@PermCode(menuCode = "system:protocol")
++@PermCode(menuCode = PermCodes.System.Protocol.MENU)
+ @Validated
+ @Tag(name = "用户协议版本")
+ @RestController
+@@ -33,7 +34,7 @@ public class UserProtocolVersionController {
+     /// @param pageParam 分页参数
+     /// @param query 查询条件
+     /// @return 版本分页结果
+-    @PermCode(code = "view", nameCn = "协议查看", nameEn = "Protocol View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "协议查看", nameEn = "Protocol View")
+     @Operation(summary = "分页")
+     @GetMapping("/page")
+     public Result<PageResult<UserProtocolVersionResult>> page(PageParam pageParam, UserProtocolVersionQuery query){
+@@ -43,7 +44,7 @@ public Result<PageResult<UserProtocolVersionResult>> page(PageParam pageParam, U
+     /// 新建草稿
+     ///
+     /// @param param 版本参数
+-    @PermCode(code = "manage", nameCn = "协议管理", nameEn = "Protocol Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "协议管理", nameEn = "Protocol Manage")
+     @Operation(summary = "新建草稿")
+     @PostMapping("/add")
+     public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) UserProtocolVersionParam param){
+@@ -54,7 +55,7 @@ public Result<Void> add(@RequestBody @Validated(ValidationGroup.add.class) UserP
+     /// 编辑草稿内容(仅草稿可编辑)
+     ///
+     /// @param param 版本参数
+-    @PermCode(code = "manage", nameCn = "协议管理", nameEn = "Protocol Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "协议管理", nameEn = "Protocol Manage")
+     @Operation(summary = "编辑草稿")
+     @PostMapping("/update")
+     public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) UserProtocolVersionParam param){
+@@ -65,7 +66,7 @@ public Result<Void> update(@RequestBody @Validated(ValidationGroup.edit.class) U
+     /// 删除草稿(仅草稿可删除)
+     ///
+     /// @param id 版本ID
+-    @PermCode(code = "manage", nameCn = "协议管理", nameEn = "Protocol Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "协议管理", nameEn = "Protocol Manage")
+     @Operation(summary = "删除草稿")
+     @PostMapping("/delete")
+     public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") Long id){
+@@ -77,7 +78,7 @@ public Result<Void> delete(@NotNull(message = "{validation.field.id.notNull}") L
+     ///
+     /// @param id 版本ID
+     /// @return 版本信息
+-    @PermCode(code = "view", nameCn = "协议查看", nameEn = "Protocol View")
++    @PermCode(code = PermCodes.Action.VIEW, nameCn = "协议查看", nameEn = "Protocol View")
+     @Operation(summary = "查询")
+     @GetMapping("/get")
+     public Result<UserProtocolVersionResult> findById(@NotNull(message = "{validation.field.id.notNull}") Long id){
+@@ -87,7 +88,7 @@ public Result<UserProtocolVersionResult> findById(@NotNull(message = "{validatio
+     /// 发布版本(草稿 -> 已发布, 同协议同语言原已发布自动归档)
+     ///
+     /// @param id 版本ID
+-    @PermCode(code = "publish", nameCn = "协议发布", nameEn = "Protocol Publish")
++    @PermCode(code = PermCodes.Action.PUBLISH, nameCn = "协议发布", nameEn = "Protocol Publish")
+     @Operation(summary = "发布版本")
+     @PostMapping("/publish")
+     public Result<Void> publish(@NotNull(message = "{validation.field.id.notNull}") Long id){
+@@ -98,7 +99,7 @@ public Result<Void> publish(@NotNull(message = "{validation.field.id.notNull}")
+     /// 归档版本(已发布 -> 归档)
+     ///
+     /// @param id 版本ID
+-    @PermCode(code = "manage", nameCn = "协议管理", nameEn = "Protocol Manage")
++    @PermCode(code = PermCodes.Action.MANAGE, nameCn = "协议管理", nameEn = "Protocol Manage")
+     @Operation(summary = "归档版本")
+     @PostMapping("/archive")
+     public Result<Void> archive(@NotNull(message = "{validation.field.id.notNull}") Long id){
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

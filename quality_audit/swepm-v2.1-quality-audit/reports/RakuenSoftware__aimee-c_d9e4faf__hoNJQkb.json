@@ -1,0 +1,61 @@
+{
+  "instance_id": "RakuenSoftware__aimee-c_d9e4faf",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch is enormous: 7206 lines added, 2114 removed across 92 files. It adds 24 new files and modifies 68 existing files spanning C source (delegates, economizer, config, server, sandbox, attention guard, git, workspace), Go modules (delegates, git, workspace, cmd/aimee-module), benchmark corpus, docs, proposals, and build files. It implements a complete delegate process-contract framework with sandbox planning, Docker argument rendering, isolation checks, handoff validation, economics, patch coordination, rescue parsing, role policy, and verification stages. It also refreshes the compaction-quality benchmark and context-reduction logic. This is a massive feature implementation, not a debugging task as categorized in task.toml.",
+  "base_vs_gold_expectation": "The base should fail the tests and the gold should pass, but only because the test patch is tightly coupled to the gold implementation. Specifically: (1) The test patch introduces all 21 'unit-test-*' ctest targets that eval.sh references — none exist at the base. (2) The test patch must update main_test.go to expect 10 delegate stages (gold adds 6) and 6 git stages (gold adds 2), vs 4 each at base. (3) The test patch must update runner_io_test.go to expect ModuleStatusCapabilityAbsent instead of ModuleStatusInvalidRequest for unserved trees. Without seeing the test patch directly (it is placed at /tmp/test.patch by the harness and not included in the audit materials), verification of pass/fail behavior is inferential.",
+  "too_narrow_risks": [
+    "Cannot inspect the test patch (at /tmp/test.patch) to verify what the 21 C unit tests actually assert — they may only smoke-test compilation rather than verifying security properties like Docker socket exposure, network isolation, or credential routing as the issue requires.",
+    "The issue calls for sandbox security guarantees (no Docker socket exposure, network disabled, read-only mount semantics, credentialed work routing) but we cannot confirm these are tested without seeing the test patch.",
+    "The compaction-quality benchmark corpus is added but it is unclear if the tests verify retention quality or just check that the code compiles."
+  ],
+  "too_broad_risks": [
+    "eval.sh runs 21 C unit tests covering diverse subsystems (agent, HTTP, IR parse, rescue, attention guard, cmd delegate, config, context reduce, coord closet, coord jobs, delegate driver/economics/handoff/patch/role, fold recall, git PR CI grade/stage, log, server compute, session compact) — many are pre-existing test areas that could regress independently of the issue.",
+    "eval.sh also runs Go tests across 4 packages (delegates, git, workspace, cmd/aimee-module), requiring all existing tests in those packages to pass even if unrelated to the issue.",
+    "The scope effectively requires an entire-suite regression pass over large portions of the codebase, not just the new feature."
+  ],
+  "implementation_coupling": [
+    "main_test.go (cmd/aimee-module) expects exact stage counts and event IDs (e.g., delegates must register exactly the 10 events the gold introduces). Any alternative registering different stages or using a different module decomposition will fail.",
+    "runner_io_test.go expects the specific status code change (ModuleStatusCapabilityAbsent) rather than testing the observable behavior (caller can distinguish unserved tree from malformed request).",
+    "The 21 unit-test-* ctest targets are introduced by the test patch and presumably test functions/APIs created by the gold patch, making them tightly coupled to the gold's exact API surface.",
+    "Go package-level tests will fail if the gold's new .go files introduce compile errors or if an alternative implementation uses different type signatures, struct fields, or package organization."
+  ],
+  "environment_risks": [
+    "Build requires cmake, ninja, and Go 1.25 — all present in the Docker image, but the cmake reconfiguration from THIN_CLIENT=ON to OFF plus full rebuild is time-sensitive within the 1800s build timeout.",
+    "Go module dependencies must be cached or downloadable; network access during go test is not guaranteed in all harness configurations.",
+    "The gold patch is 446KB — applying it requires sufficient git/patch tooling and the base must be at the exact expected commit for the patch to apply cleanly."
+  ],
+  "mismatches": [
+    "task.toml categorizes this as 'debugging' but the instruction describes a large feature implementation (delegate process contracts, sandbox enforcement, compaction benchmarks).",
+    "The test patch file (/tmp/test.patch) is not included in the audit materials, making independent verification of test coverage impossible."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/RakuenSoftware__aimee-c_d9e4faf/task.toml",
+      "detail": "category = 'debugging' but instruction describes major feature implementation"
+    },
+    {
+      "file": "/audit_tasks/RakuenSoftware__aimee-c_d9e4faf/solution/solve.sh",
+      "detail": "Gold patch: 92 files changed (24 new, 68 modified), 7206 lines added, 2114 removed — 446KB patch"
+    },
+    {
+      "file": "/testbed/server-go/cmd/aimee-module/main_test.go",
+      "detail": "TestModuleRegistryMatchesProcessContracts expects delegates={6657,6658,6659,6660} (4 stages) at base; gold adds 6 more stages requiring test patch update"
+    },
+    {
+      "file": "/testbed/server-go/modules/workspace/runner_io_test.go",
+      "detail": "Lines 84,87 expect ModuleStatusInvalidRequest for unserved trees; gold changes to ModuleStatusCapabilityAbsent — test patch must update"
+    },
+    {
+      "file": "/audit_tasks/RakuenSoftware__aimee-c_d9e4faf/tests/eval.sh",
+      "detail": "References 21 unit-test-* ctest targets that do not exist in the base repo CMakeLists — all introduced by test patch"
+    },
+    {
+      "file": "/testbed/server-go/modules/delegates/delegates.go",
+      "detail": "Base has 4 stages (Invoke, Capabilities, Chain, Paths); gold adds Handoff, Rescue, Verify, Economics, PatchCoord, RolePolicy"
+    }
+  ],
+  "recommended_action": "revise_instance",
+  "summary": "This instance is questionable due to massive scope, implementation coupling, and category mismatch. The gold patch spans 92 files with 7206 added lines implementing a complete delegate process-contract framework — far beyond typical SWE benchmark instances. Tests are simultaneously too broad (requiring regression passes across many unrelated subsystems) and likely too narrow (untestable without the test patch, which is not provided for audit). The tests are tightly coupled to the gold implementation: exact stage IDs, specific status codes, and module registry structure rather than observable behavior. The task is miscategorized as 'debugging' when it is a major feature implementation. Alternative implementations that achieve the same functional goals through different architectural choices would almost certainly fail the tests. Recommend revising to either a narrower scope or splitting into multiple instances."
+}

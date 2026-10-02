@@ -1,0 +1,252 @@
+storage/ent/client/client.go:11:	create := d.client.OAuth2Client.Create().
+storage/ent/client/client.go:35:	clients, err := d.client.OAuth2Client.Query().All(ctx)
+storage/ent/client/client.go:49:	client, err := d.client.OAuth2Client.Get(ctx, id)
+storage/ent/client/client.go:58:	err := d.client.OAuth2Client.DeleteOneID(id).Exec(ctx)
+storage/ent/client/client.go:72:	client, err := tx.OAuth2Client.Get(ctx, id)
+storage/ent/client/client.go:82:	update := tx.OAuth2Client.UpdateOneID(newClient.ID).
+storage/kubernetes/types.go:103:					Kind:     "OAuth2Client",
+storage/ent/client/types.go:88:func toStorageClient(c *db.OAuth2Client) storage.Client {
+storage/kubernetes/storage.go:20:	kindClient          = "OAuth2Client"
+storage/ent/db/client.go:50:	// OAuth2Client is the client for interacting with the OAuth2Client builders.
+storage/ent/db/client.go:51:	OAuth2Client *OAuth2ClientClient
+storage/ent/db/client.go:78:	c.OAuth2Client = NewOAuth2ClientClient(c.config)
+storage/ent/db/client.go:182:		OAuth2Client:   NewOAuth2ClientClient(cfg),
+storage/ent/db/client.go:213:		OAuth2Client:   NewOAuth2ClientClient(cfg),
+storage/ent/db/client.go:248:		c.DeviceToken, c.Keys, c.OAuth2Client, c.OfflineSession, c.Password,
+storage/ent/db/client.go:260:		c.DeviceToken, c.Keys, c.OAuth2Client, c.OfflineSession, c.Password,
+storage/ent/db/client.go:284:	case *OAuth2ClientMutation:
+storage/ent/db/client.go:285:		return c.OAuth2Client.mutate(ctx, m)
+storage/ent/db/client.go:1230:// OAuth2ClientClient is a client for the OAuth2Client schema.
+storage/ent/db/client.go:1231:type OAuth2ClientClient struct {
+storage/ent/db/client.go:1235:// NewOAuth2ClientClient returns a client for the OAuth2Client from the given config.
+storage/ent/db/client.go:1236:func NewOAuth2ClientClient(c config) *OAuth2ClientClient {
+storage/ent/db/client.go:1237:	return &OAuth2ClientClient{config: c}
+storage/ent/db/client.go:1242:func (c *OAuth2ClientClient) Use(hooks ...Hook) {
+storage/ent/db/client.go:1243:	c.hooks.OAuth2Client = append(c.hooks.OAuth2Client, hooks...)
+storage/ent/db/client.go:1248:func (c *OAuth2ClientClient) Intercept(interceptors ...Interceptor) {
+storage/ent/db/client.go:1249:	c.inters.OAuth2Client = append(c.inters.OAuth2Client, interceptors...)
+storage/ent/db/client.go:1252:// Create returns a builder for creating a OAuth2Client entity.
+storage/ent/db/client.go:1253:func (c *OAuth2ClientClient) Create() *OAuth2ClientCreate {
+storage/ent/db/client.go:1254:	mutation := newOAuth2ClientMutation(c.config, OpCreate)
+storage/ent/db/client.go:1255:	return &OAuth2ClientCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+storage/ent/db/client.go:1258:// CreateBulk returns a builder for creating a bulk of OAuth2Client entities.
+storage/ent/db/client.go:1259:func (c *OAuth2ClientClient) CreateBulk(builders ...*OAuth2ClientCreate) *OAuth2ClientCreateBulk {
+storage/ent/db/client.go:1260:	return &OAuth2ClientCreateBulk{config: c.config, builders: builders}
+storage/ent/db/client.go:1265:func (c *OAuth2ClientClient) MapCreateBulk(slice any, setFunc func(*OAuth2ClientCreate, int)) *OAuth2ClientCreateBulk {
+storage/ent/db/client.go:1268:		return &OAuth2ClientCreateBulk{err: fmt.Errorf("calling to OAuth2ClientClient.MapCreateBulk with wrong type %T, need slice", slice)}
+storage/ent/db/client.go:1270:	builders := make([]*OAuth2ClientCreate, rv.Len())
+storage/ent/db/client.go:1275:	return &OAuth2ClientCreateBulk{config: c.config, builders: builders}
+storage/ent/db/client.go:1278:// Update returns an update builder for OAuth2Client.
+storage/ent/db/client.go:1279:func (c *OAuth2ClientClient) Update() *OAuth2ClientUpdate {
+storage/ent/db/client.go:1280:	mutation := newOAuth2ClientMutation(c.config, OpUpdate)
+storage/ent/db/client.go:1281:	return &OAuth2ClientUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+storage/ent/db/client.go:1285:func (c *OAuth2ClientClient) UpdateOne(_m *OAuth2Client) *OAuth2ClientUpdateOne {
+storage/ent/db/client.go:1286:	mutation := newOAuth2ClientMutation(c.config, OpUpdateOne, withOAuth2Client(_m))
+storage/ent/db/client.go:1287:	return &OAuth2ClientUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+storage/ent/db/client.go:1291:func (c *OAuth2ClientClient) UpdateOneID(id string) *OAuth2ClientUpdateOne {
+storage/ent/db/client.go:1292:	mutation := newOAuth2ClientMutation(c.config, OpUpdateOne, withOAuth2ClientID(id))
+storage/ent/db/client.go:1293:	return &OAuth2ClientUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+storage/ent/db/client.go:1296:// Delete returns a delete builder for OAuth2Client.
+storage/ent/db/client.go:1297:func (c *OAuth2ClientClient) Delete() *OAuth2ClientDelete {
+storage/ent/db/client.go:1298:	mutation := newOAuth2ClientMutation(c.config, OpDelete)
+storage/ent/db/client.go:1299:	return &OAuth2ClientDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+storage/ent/db/client.go:1303:func (c *OAuth2ClientClient) DeleteOne(_m *OAuth2Client) *OAuth2ClientDeleteOne {
+storage/ent/db/client.go:1308:func (c *OAuth2ClientClient) DeleteOneID(id string) *OAuth2ClientDeleteOne {
+storage/ent/db/client.go:1312:	return &OAuth2ClientDeleteOne{builder}
+storage/ent/db/client.go:1315:// Query returns a query builder for OAuth2Client.
+storage/ent/db/client.go:1316:func (c *OAuth2ClientClient) Query() *OAuth2ClientQuery {
+storage/ent/db/client.go:1317:	return &OAuth2ClientQuery{
+storage/ent/db/client.go:1319:		ctx:    &QueryContext{Type: TypeOAuth2Client},
+storage/ent/db/client.go:1324:// Get returns a OAuth2Client entity by its id.
+storage/ent/db/client.go:1325:func (c *OAuth2ClientClient) Get(ctx context.Context, id string) (*OAuth2Client, error) {
+storage/ent/db/client.go:1330:func (c *OAuth2ClientClient) GetX(ctx context.Context, id string) *OAuth2Client {
+storage/ent/db/client.go:1339:func (c *OAuth2ClientClient) Hooks() []Hook {
+storage/ent/db/client.go:1340:	return c.hooks.OAuth2Client
+storage/ent/db/client.go:1344:func (c *OAuth2ClientClient) Interceptors() []Interceptor {
+storage/ent/db/client.go:1345:	return c.inters.OAuth2Client
+storage/ent/db/client.go:1348:func (c *OAuth2ClientClient) mutate(ctx context.Context, m *OAuth2ClientMutation) (Value, error) {
+storage/ent/db/client.go:1351:		return (&OAuth2ClientCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+storage/ent/db/client.go:1353:		return (&OAuth2ClientUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+storage/ent/db/client.go:1355:		return (&OAuth2ClientUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+storage/ent/db/client.go:1357:		return (&OAuth2ClientDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+storage/ent/db/client.go:1359:		return nil, fmt.Errorf("db: unknown OAuth2Client mutation op: %q", m.Op())
+storage/ent/db/client.go:1899:		OAuth2Client, OfflineSession, Password, RefreshToken, UserIdentity []ent.Hook
+storage/ent/db/client.go:1903:		OAuth2Client, OfflineSession, Password, RefreshToken,
+storage/ent/db/runtime.go:199:	oauth2clientFields := schema.OAuth2Client{}.Fields()
+storage/ent/db/oauth2client.go:16:// OAuth2Client is the model entity for the OAuth2Client schema.
+storage/ent/db/oauth2client.go:17:type OAuth2Client struct {
+storage/ent/db/oauth2client.go:47:func (*OAuth2Client) scanValues(columns []string) ([]any, error) {
+storage/ent/db/oauth2client.go:65:// to the OAuth2Client fields.
+storage/ent/db/oauth2client.go:66:func (_m *OAuth2Client) assignValues(columns []string, values []any) error {
+storage/ent/db/oauth2client.go:165:// Value returns the ent.Value that was dynamically selected and assigned to the OAuth2Client.
+storage/ent/db/oauth2client.go:167:func (_m *OAuth2Client) Value(name string) (ent.Value, error) {
+storage/ent/db/oauth2client.go:171:// Update returns a builder for updating this OAuth2Client.
+storage/ent/db/oauth2client.go:172:// Note that you need to call OAuth2Client.Unwrap() before calling this method if this OAuth2Client
+storage/ent/db/oauth2client.go:174:func (_m *OAuth2Client) Update() *OAuth2ClientUpdateOne {
+storage/ent/db/oauth2client.go:175:	return NewOAuth2ClientClient(_m.config).UpdateOne(_m)
+storage/ent/db/oauth2client.go:178:// Unwrap unwraps the OAuth2Client entity that was returned from a transaction after it was closed,
+storage/ent/db/oauth2client.go:180:func (_m *OAuth2Client) Unwrap() *OAuth2Client {
+storage/ent/db/oauth2client.go:183:		panic("db: OAuth2Client is not a transactional entity")
+storage/ent/db/oauth2client.go:190:func (_m *OAuth2Client) String() string {
+storage/ent/db/oauth2client.go:192:	builder.WriteString("OAuth2Client(")
+storage/ent/db/oauth2client.go:230:// OAuth2Clients is a parsable slice of OAuth2Client.
+storage/ent/db/oauth2client.go:231:type OAuth2Clients []*OAuth2Client
+storage/ent/db/oauth2client_query.go:18:// OAuth2ClientQuery is the builder for querying OAuth2Client entities.
+storage/ent/db/oauth2client_query.go:19:type OAuth2ClientQuery struct {
+storage/ent/db/oauth2client_query.go:24:	predicates []predicate.OAuth2Client
+storage/ent/db/oauth2client_query.go:30:// Where adds a new predicate for the OAuth2ClientQuery builder.
+storage/ent/db/oauth2client_query.go:31:func (_q *OAuth2ClientQuery) Where(ps ...predicate.OAuth2Client) *OAuth2ClientQuery {
+storage/ent/db/oauth2client_query.go:37:func (_q *OAuth2ClientQuery) Limit(limit int) *OAuth2ClientQuery {
+storage/ent/db/oauth2client_query.go:43:func (_q *OAuth2ClientQuery) Offset(offset int) *OAuth2ClientQuery {
+storage/ent/db/oauth2client_query.go:50:func (_q *OAuth2ClientQuery) Unique(unique bool) *OAuth2ClientQuery {
+storage/ent/db/oauth2client_query.go:56:func (_q *OAuth2ClientQuery) Order(o ...oauth2client.OrderOption) *OAuth2ClientQuery {
+storage/ent/db/oauth2client_query.go:61:// First returns the first OAuth2Client entity from the query.
+storage/ent/db/oauth2client_query.go:62:// Returns a *NotFoundError when no OAuth2Client was found.
+storage/ent/db/oauth2client_query.go:63:func (_q *OAuth2ClientQuery) First(ctx context.Context) (*OAuth2Client, error) {
+storage/ent/db/oauth2client_query.go:75:func (_q *OAuth2ClientQuery) FirstX(ctx context.Context) *OAuth2Client {
+storage/ent/db/oauth2client_query.go:83:// FirstID returns the first OAuth2Client ID from the query.
+storage/ent/db/oauth2client_query.go:84:// Returns a *NotFoundError when no OAuth2Client ID was found.
+storage/ent/db/oauth2client_query.go:85:func (_q *OAuth2ClientQuery) FirstID(ctx context.Context) (id string, err error) {
+storage/ent/db/oauth2client_query.go:98:func (_q *OAuth2ClientQuery) FirstIDX(ctx context.Context) string {
+storage/ent/db/oauth2client_query.go:106:// Only returns a single OAuth2Client entity found by the query, ensuring it only returns one.
+storage/ent/db/oauth2client_query.go:107:// Returns a *NotSingularError when more than one OAuth2Client entity is found.
+storage/ent/db/oauth2client_query.go:108:// Returns a *NotFoundError when no OAuth2Client entities are found.
+storage/ent/db/oauth2client_query.go:109:func (_q *OAuth2ClientQuery) Only(ctx context.Context) (*OAuth2Client, error) {
+storage/ent/db/oauth2client_query.go:125:func (_q *OAuth2ClientQuery) OnlyX(ctx context.Context) *OAuth2Client {
+storage/ent/db/oauth2client_query.go:133:// OnlyID is like Only, but returns the only OAuth2Client ID in the query.
+storage/ent/db/oauth2client_query.go:134:// Returns a *NotSingularError when more than one OAuth2Client ID is found.
+storage/ent/db/oauth2client_query.go:136:func (_q *OAuth2ClientQuery) OnlyID(ctx context.Context) (id string, err error) {
+storage/ent/db/oauth2client_query.go:153:func (_q *OAuth2ClientQuery) OnlyIDX(ctx context.Context) string {
+storage/ent/db/oauth2client_query.go:161:// All executes the query and returns a list of OAuth2Clients.
+storage/ent/db/oauth2client_query.go:162:func (_q *OAuth2ClientQuery) All(ctx context.Context) ([]*OAuth2Client, error) {
+storage/ent/db/oauth2client_query.go:167:	qr := querierAll[[]*OAuth2Client, *OAuth2ClientQuery]()
+storage/ent/db/oauth2client_query.go:168:	return withInterceptors[[]*OAuth2Client](ctx, _q, qr, _q.inters)
+storage/ent/db/oauth2client_query.go:172:func (_q *OAuth2ClientQuery) AllX(ctx context.Context) []*OAuth2Client {
+storage/ent/db/oauth2client_query.go:180:// IDs executes the query and returns a list of OAuth2Client IDs.
+storage/ent/db/oauth2client_query.go:181:func (_q *OAuth2ClientQuery) IDs(ctx context.Context) (ids []string, err error) {
+storage/ent/db/oauth2client_query.go:193:func (_q *OAuth2ClientQuery) IDsX(ctx context.Context) []string {
+storage/ent/db/oauth2client_query.go:202:func (_q *OAuth2ClientQuery) Count(ctx context.Context) (int, error) {
+storage/ent/db/oauth2client_query.go:207:	return withInterceptors[int](ctx, _q, querierCount[*OAuth2ClientQuery](), _q.inters)
+storage/ent/db/oauth2client_query.go:211:func (_q *OAuth2ClientQuery) CountX(ctx context.Context) int {
+storage/ent/db/oauth2client_query.go:220:func (_q *OAuth2ClientQuery) Exist(ctx context.Context) (bool, error) {
+storage/ent/db/oauth2client_query.go:233:func (_q *OAuth2ClientQuery) ExistX(ctx context.Context) bool {
+storage/ent/db/oauth2client_query.go:241:// Clone returns a duplicate of the OAuth2ClientQuery builder, including all associated steps. It can be
+storage/ent/db/oauth2client_query.go:243:func (_q *OAuth2ClientQuery) Clone() *OAuth2ClientQuery {
+storage/ent/db/oauth2client_query.go:247:	return &OAuth2ClientQuery{
+storage/ent/db/oauth2client_query.go:252:		predicates: append([]predicate.OAuth2Client{}, _q.predicates...),
+storage/ent/db/oauth2client_query.go:269://	client.OAuth2Client.Query().
+storage/ent/db/oauth2client_query.go:273:func (_q *OAuth2ClientQuery) GroupBy(field string, fields ...string) *OAuth2ClientGroupBy {
+storage/ent/db/oauth2client_query.go:275:	grbuild := &OAuth2ClientGroupBy{build: _q}
+storage/ent/db/oauth2client_query.go:291://	client.OAuth2Client.Query().
+storage/ent/db/oauth2client_query.go:294:func (_q *OAuth2ClientQuery) Select(fields ...string) *OAuth2ClientSelect {
+storage/ent/db/oauth2client_query.go:296:	sbuild := &OAuth2ClientSelect{OAuth2ClientQuery: _q}
+storage/ent/db/oauth2client_query.go:302:// Aggregate returns a OAuth2ClientSelect configured with the given aggregations.
+storage/ent/db/oauth2client_query.go:303:func (_q *OAuth2ClientQuery) Aggregate(fns ...AggregateFunc) *OAuth2ClientSelect {
+storage/ent/db/oauth2client_query.go:307:func (_q *OAuth2ClientQuery) prepareQuery(ctx context.Context) error {
+storage/ent/db/oauth2client_query.go:333:func (_q *OAuth2ClientQuery) sqlAll(ctx context.Context, hooks ...queryHook) ([]*OAuth2Client, error) {
+storage/ent/db/oauth2client_query.go:335:		nodes = []*OAuth2Client{}
+storage/ent/db/oauth2client_query.go:339:		return (*OAuth2Client).scanValues(nil, columns)
+storage/ent/db/oauth2client_query.go:342:		node := &OAuth2Client{config: _q.config}
+storage/ent/db/oauth2client_query.go:358:func (_q *OAuth2ClientQuery) sqlCount(ctx context.Context) (int, error) {
+storage/ent/db/oauth2client_query.go:367:func (_q *OAuth2ClientQuery) querySpec() *sqlgraph.QuerySpec {
+storage/ent/db/oauth2client_query.go:407:func (_q *OAuth2ClientQuery) sqlQuery(ctx context.Context) *sql.Selector {
+storage/ent/db/oauth2client_query.go:439:// OAuth2ClientGroupBy is the group-by builder for OAuth2Client entities.
+storage/ent/db/oauth2client_query.go:440:type OAuth2ClientGroupBy struct {
+storage/ent/db/oauth2client_query.go:442:	build *OAuth2ClientQuery
+storage/ent/db/oauth2client_query.go:446:func (_g *OAuth2ClientGroupBy) Aggregate(fns ...AggregateFunc) *OAuth2ClientGroupBy {
+storage/ent/db/oauth2client_query.go:452:func (_g *OAuth2ClientGroupBy) Scan(ctx context.Context, v any) error {
+storage/ent/db/oauth2client_query.go:457:	return scanWithInterceptors[*OAuth2ClientQuery, *OAuth2ClientGroupBy](ctx, _g.build, _g, _g.build.inters, v)
+storage/ent/db/oauth2client_query.go:460:func (_g *OAuth2ClientGroupBy) sqlScan(ctx context.Context, root *OAuth2ClientQuery, v any) error {
+storage/ent/db/oauth2client_query.go:487:// OAuth2ClientSelect is the builder for selecting fields of OAuth2Client entities.
+storage/ent/db/oauth2client_query.go:488:type OAuth2ClientSelect struct {
+storage/ent/db/oauth2client_query.go:489:	*OAuth2ClientQuery
+storage/ent/db/oauth2client_query.go:494:func (_s *OAuth2ClientSelect) Aggregate(fns ...AggregateFunc) *OAuth2ClientSelect {
+storage/ent/db/oauth2client_query.go:500:func (_s *OAuth2ClientSelect) Scan(ctx context.Context, v any) error {
+storage/ent/db/oauth2client_query.go:505:	return scanWithInterceptors[*OAuth2ClientQuery, *OAuth2ClientSelect](ctx, _s.OAuth2ClientQuery, _s, _s.inters, v)
+storage/ent/db/oauth2client_query.go:508:func (_s *OAuth2ClientSelect) sqlScan(ctx context.Context, root *OAuth2ClientQuery, v any) error {
+storage/ent/db/hook/hook.go:96:// The OAuth2ClientFunc type is an adapter to allow the use of ordinary
+storage/ent/db/hook/hook.go:97:// function as OAuth2Client mutator.
+storage/ent/db/hook/hook.go:98:type OAuth2ClientFunc func(context.Context, *db.OAuth2ClientMutation) (db.Value, error)
+storage/ent/db/hook/hook.go:101:func (f OAuth2ClientFunc) Mutate(ctx context.Context, m db.Mutation) (db.Value, error) {
+storage/ent/db/hook/hook.go:102:	if mv, ok := m.(*db.OAuth2ClientMutation); ok {
+storage/ent/db/hook/hook.go:105:	return nil, fmt.Errorf("unexpected mutation type %T. expect *db.OAuth2ClientMutation", m)
+storage/ent/db/oauth2client/where.go:11:func ID(id string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:12:	return predicate.OAuth2Client(sql.FieldEQ(FieldID, id))
+storage/ent/db/oauth2client/where.go:16:func IDEQ(id string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:17:	return predicate.OAuth2Client(sql.FieldEQ(FieldID, id))
+storage/ent/db/oauth2client/where.go:21:func IDNEQ(id string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:22:	return predicate.OAuth2Client(sql.FieldNEQ(FieldID, id))
+storage/ent/db/oauth2client/where.go:26:func IDIn(ids ...string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:27:	return predicate.OAuth2Client(sql.FieldIn(FieldID, ids...))
+storage/ent/db/oauth2client/where.go:31:func IDNotIn(ids ...string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:32:	return predicate.OAuth2Client(sql.FieldNotIn(FieldID, ids...))
+storage/ent/db/oauth2client/where.go:36:func IDGT(id string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:37:	return predicate.OAuth2Client(sql.FieldGT(FieldID, id))
+storage/ent/db/oauth2client/where.go:41:func IDGTE(id string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:42:	return predicate.OAuth2Client(sql.FieldGTE(FieldID, id))
+storage/ent/db/oauth2client/where.go:46:func IDLT(id string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:47:	return predicate.OAuth2Client(sql.FieldLT(FieldID, id))
+storage/ent/db/oauth2client/where.go:51:func IDLTE(id string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:52:	return predicate.OAuth2Client(sql.FieldLTE(FieldID, id))
+storage/ent/db/oauth2client/where.go:56:func IDEqualFold(id string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:57:	return predicate.OAuth2Client(sql.FieldEqualFold(FieldID, id))
+storage/ent/db/oauth2client/where.go:61:func IDContainsFold(id string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:62:	return predicate.OAuth2Client(sql.FieldContainsFold(FieldID, id))
+storage/ent/db/oauth2client/where.go:66:func Secret(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:67:	return predicate.OAuth2Client(sql.FieldEQ(FieldSecret, v))
+storage/ent/db/oauth2client/where.go:71:func Public(v bool) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:72:	return predicate.OAuth2Client(sql.FieldEQ(FieldPublic, v))
+storage/ent/db/oauth2client/where.go:76:func Name(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:77:	return predicate.OAuth2Client(sql.FieldEQ(FieldName, v))
+storage/ent/db/oauth2client/where.go:81:func LogoURL(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:82:	return predicate.OAuth2Client(sql.FieldEQ(FieldLogoURL, v))
+storage/ent/db/oauth2client/where.go:86:func SecretEQ(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:87:	return predicate.OAuth2Client(sql.FieldEQ(FieldSecret, v))
+storage/ent/db/oauth2client/where.go:91:func SecretNEQ(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:92:	return predicate.OAuth2Client(sql.FieldNEQ(FieldSecret, v))
+storage/ent/db/oauth2client/where.go:96:func SecretIn(vs ...string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:97:	return predicate.OAuth2Client(sql.FieldIn(FieldSecret, vs...))
+storage/ent/db/oauth2client/where.go:101:func SecretNotIn(vs ...string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:102:	return predicate.OAuth2Client(sql.FieldNotIn(FieldSecret, vs...))
+storage/ent/db/oauth2client/where.go:106:func SecretGT(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:107:	return predicate.OAuth2Client(sql.FieldGT(FieldSecret, v))
+storage/ent/db/oauth2client/where.go:111:func SecretGTE(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:112:	return predicate.OAuth2Client(sql.FieldGTE(FieldSecret, v))
+storage/ent/db/oauth2client/where.go:116:func SecretLT(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:117:	return predicate.OAuth2Client(sql.FieldLT(FieldSecret, v))
+storage/ent/db/oauth2client/where.go:121:func SecretLTE(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:122:	return predicate.OAuth2Client(sql.FieldLTE(FieldSecret, v))
+storage/ent/db/oauth2client/where.go:126:func SecretContains(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:127:	return predicate.OAuth2Client(sql.FieldContains(FieldSecret, v))
+storage/ent/db/oauth2client/where.go:131:func SecretHasPrefix(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:132:	return predicate.OAuth2Client(sql.FieldHasPrefix(FieldSecret, v))
+storage/ent/db/oauth2client/where.go:136:func SecretHasSuffix(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:137:	return predicate.OAuth2Client(sql.FieldHasSuffix(FieldSecret, v))
+storage/ent/db/oauth2client/where.go:141:func SecretEqualFold(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:142:	return predicate.OAuth2Client(sql.FieldEqualFold(FieldSecret, v))
+storage/ent/db/oauth2client/where.go:146:func SecretContainsFold(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:147:	return predicate.OAuth2Client(sql.FieldContainsFold(FieldSecret, v))
+storage/ent/db/oauth2client/where.go:151:func RedirectUrisIsNil() predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:152:	return predicate.OAuth2Client(sql.FieldIsNull(FieldRedirectUris))
+storage/ent/db/oauth2client/where.go:156:func RedirectUrisNotNil() predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:157:	return predicate.OAuth2Client(sql.FieldNotNull(FieldRedirectUris))
+storage/ent/db/oauth2client/where.go:161:func TrustedPeersIsNil() predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:162:	return predicate.OAuth2Client(sql.FieldIsNull(FieldTrustedPeers))
+storage/ent/db/oauth2client/where.go:166:func TrustedPeersNotNil() predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:167:	return predicate.OAuth2Client(sql.FieldNotNull(FieldTrustedPeers))
+storage/ent/db/oauth2client/where.go:171:func PublicEQ(v bool) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:172:	return predicate.OAuth2Client(sql.FieldEQ(FieldPublic, v))
+storage/ent/db/oauth2client/where.go:176:func PublicNEQ(v bool) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:177:	return predicate.OAuth2Client(sql.FieldNEQ(FieldPublic, v))
+storage/ent/db/oauth2client/where.go:181:func NameEQ(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:182:	return predicate.OAuth2Client(sql.FieldEQ(FieldName, v))
+storage/ent/db/oauth2client/where.go:186:func NameNEQ(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:187:	return predicate.OAuth2Client(sql.FieldNEQ(FieldName, v))
+storage/ent/db/oauth2client/where.go:191:func NameIn(vs ...string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:192:	return predicate.OAuth2Client(sql.FieldIn(FieldName, vs...))
+storage/ent/db/oauth2client/where.go:196:func NameNotIn(vs ...string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:197:	return predicate.OAuth2Client(sql.FieldNotIn(FieldName, vs...))
+storage/ent/db/oauth2client/where.go:201:func NameGT(v string) predicate.OAuth2Client {
+storage/ent/db/oauth2client/where.go:202:	return predicate.OAuth2Client(sql.FieldGT(FieldName, v))
+
+[Showing results with pagination = limit: 250]

@@ -1,0 +1,825 @@
+===== builder/PromptBudgetOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+/**
+ * Prompt budget reserved around item extraction requests.
+ */
+public record PromptBudgetOptions(
+        int maxInputTokens,
+        int reservedPromptOverhead,
+        int reservedOutputTokens,
+        int safetyMargin) {
+
+    public PromptBudgetOptions {
+        if (maxInputTokens <= 0) {
+            throw new IllegalArgumentException("maxInputTokens must be positive");
+        }
+        if (reservedPromptOverhead < 0 || reservedOutputTokens < 0 || safetyMargin < 0) {
+            throw new IllegalArgumentException("reserved token budgets must be non-negative");
+        }
+        if (maxInputTokens <= reservedPromptOverhead + reservedOutputTokens + safetyMargin) {
+            throw new IllegalArgumentException("maxInputTokens must exceed reserved token budgets");
+        }
+    }
+
+    public static PromptBudgetOptions defaults() {
+        return new PromptBudgetOptions(8192, 1400, 1200, 400);
+    }
+}
+===== builder/ItemGraphOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+import com.openmemind.ai.memory.core.extraction.item.graph.AliasEvidenceMode;
+import com.openmemind.ai.memory.core.extraction.item.graph.CrossScriptMergePolicy;
+import com.openmemind.ai.memory.core.extraction.item.graph.EntityResolutionMode;
+import com.openmemind.ai.memory.core.extraction.item.graph.UserAliasDictionary;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Set;
+
+public record ItemGraphOptions(
+        boolean enabled,
+        int maxEntitiesPerItem,
+        int maxCausalReferencesPerItem,
+        int maxTemporalLinksPerItem,
+        int maxSemanticLinksPerItem,
+        double semanticMinScore,
+        int semanticSearchHeadroom,
+        int semanticLinkConcurrency,
+        int semanticSourceWindowSize,
+        boolean entityOverlapSemanticLinksEnabled,
+        int minSharedEntitiesForSemanticLink,
+        int maxEntityOverlapLinksPerItem,
+        int maxItemsPerEntityForSemanticLink,
+        float entityOverlapMinMentionConfidence,
+        EntityResolutionMode resolutionMode,
+        int maxResolutionCandidatesPerMention,
+        double resolutionMergeThreshold,
+        Set<String> supportedLanguagePacks,
+        CrossScriptMergePolicy crossScriptMergePolicy,
+        AliasEvidenceMode aliasEvidenceMode,
+        UserAliasDictionary userAliasDictionary) {
+
+    public ItemGraphOptions {
+        if (maxEntitiesPerItem <= 0) {
+            throw new IllegalArgumentException("maxEntitiesPerItem must be positive");
+        }
+        if (maxCausalReferencesPerItem <= 0) {
+            throw new IllegalArgumentException("maxCausalReferencesPerItem must be positive");
+        }
+        if (maxTemporalLinksPerItem <= 0) {
+            throw new IllegalArgumentException("maxTemporalLinksPerItem must be positive");
+        }
+        if (maxSemanticLinksPerItem <= 0) {
+            throw new IllegalArgumentException("maxSemanticLinksPerItem must be positive");
+        }
+        if (semanticMinScore < 0.0d || semanticMinScore > 1.0d) {
+            throw new IllegalArgumentException("semanticMinScore must be in [0,1]");
+        }
+        if (semanticSearchHeadroom < 0) {
+            throw new IllegalArgumentException("semanticSearchHeadroom must be non-negative");
+        }
+        if (semanticLinkConcurrency <= 0) {
+            throw new IllegalArgumentException("semanticLinkConcurrency must be positive");
+        }
+        if (semanticSourceWindowSize <= 0) {
+            throw new IllegalArgumentException("semanticSourceWindowSize must be positive");
+        }
+        if (minSharedEntitiesForSemanticLink <= 0) {
+            throw new IllegalArgumentException("minSharedEntitiesForSemanticLink must be positive");
+        }
+        if (maxEntityOverlapLinksPerItem <= 0) {
+            throw new IllegalArgumentException("maxEntityOverlapLinksPerItem must be positive");
+        }
+        if (maxItemsPerEntityForSemanticLink <= 0) {
+            throw new IllegalArgumentException("maxItemsPerEntityForSemanticLink must be positive");
+        }
+===== builder/InsightGraphAssistOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+/**
+ * Runtime switches and caps for graph-assisted insight generation.
+ */
+public record InsightGraphAssistOptions(
+        boolean enabled,
+        int maxGroupingClusters,
+        int maxRepresentativeItems,
+        int maxRelationHints,
+        int maxContextChars,
+        boolean reorderEvidence) {
+
+    public InsightGraphAssistOptions {
+        if (maxGroupingClusters <= 0
+                || maxRepresentativeItems <= 0
+                || maxRelationHints <= 0
+                || maxContextChars <= 0) {
+            throw new IllegalArgumentException("graph assist caps must be positive");
+        }
+    }
+
+    public static InsightGraphAssistOptions defaults() {
+        return new InsightGraphAssistOptions(false, 3, 6, 6, 1200, true);
+    }
+
+    public InsightGraphAssistOptions withEnabled(boolean enabled) {
+        return new InsightGraphAssistOptions(
+                enabled,
+                maxGroupingClusters,
+                maxRepresentativeItems,
+                maxRelationHints,
+                maxContextChars,
+                reorderEvidence);
+    }
+}
+===== extraction/insight/scheduler/InsightBuildConfig.java =====
+package com.openmemind.ai.memory.core.extraction.insight.scheduler;
+
+/**
+ * InsightBuildScheduler Configuration
+ *
+ * @param groupingThreshold  The threshold for the number of ungrouped items to trigger grouping
+ * @param buildThreshold     The threshold for the number of unbuilt items within a group to trigger leaf building
+ * @param concurrency        The maximum number of concurrent insight types
+ * @param maxRetries         The number of retry attempts on failure
+ */
+public record InsightBuildConfig(
+        int groupingThreshold, int buildThreshold, int concurrency, int maxRetries) {
+
+    public static InsightBuildConfig defaults() {
+        return new InsightBuildConfig(20, 10, 4, 2);
+    }
+}
+===== extraction/rawdata/chunk/ConversationChunkingConfig.java =====
+package com.openmemind.ai.memory.core.extraction.rawdata.chunk;
+
+/**
+ * Conversation chunking configuration
+ *
+ * @param messagesPerChunk Number of messages per chunk in fixed segment mode
+ * @param strategy Segmentation strategy (FIXED_SIZE or LLM)
+ * @param minMessagesPerSegment Minimum number of messages per segment in LLM mode
+ */
+public record ConversationChunkingConfig(
+        int messagesPerChunk, ConversationSegmentStrategy strategy, int minMessagesPerSegment)
+        implements ChunkingConfig {
+
+    public enum ConversationSegmentStrategy {
+        FIXED_SIZE,
+        LLM
+    }
+
+    public ConversationChunkingConfig {
+        if (messagesPerChunk <= 0) {
+            throw new IllegalArgumentException("messagesPerChunk must be positive");
+        }
+        if (strategy == null) {
+            throw new IllegalArgumentException("strategy must not be null");
+        }
+        if (minMessagesPerSegment <= 0) {
+            throw new IllegalArgumentException("minMessagesPerSegment must be positive");
+        }
+    }
+
+    /** Backward compatible single-parameter constructor */
+    public ConversationChunkingConfig(int messagesPerChunk) {
+        this(messagesPerChunk, ConversationSegmentStrategy.FIXED_SIZE, 20);
+    }
+
+    public static final ConversationChunkingConfig DEFAULT = new ConversationChunkingConfig(10);
+}
+===== extraction/context/CommitDetectorConfig.java =====
+package com.openmemind.ai.memory.core.extraction.context;
+
+/**
+ * Boundary detection configuration.
+ *
+ * @param maxMessages maximum number of messages before sealing
+ * @param maxTokens maximum number of tokens before sealing
+ * @param minMessagesForLlm minimum number of messages before running LLM topic-shift detection
+ */
+public record CommitDetectorConfig(int maxMessages, int maxTokens, int minMessagesForLlm) {
+
+    private static final int DEFAULT_MAX_MESSAGES = 50;
+    private static final int DEFAULT_MAX_TOKENS = 8192;
+    private static final int DEFAULT_MIN_MESSAGES_FOR_LLM = 5;
+
+    /**
+     * Default configuration.
+     */
+    public static CommitDetectorConfig defaults() {
+        return new CommitDetectorConfig(
+                DEFAULT_MAX_MESSAGES, DEFAULT_MAX_TOKENS, DEFAULT_MIN_MESSAGES_FOR_LLM);
+    }
+
+    /**
+     * Return a copy with a different maximum number of messages.
+     */
+    public CommitDetectorConfig withMaxMessages(int maxMessages) {
+        return new CommitDetectorConfig(maxMessages, maxTokens, minMessagesForLlm);
+    }
+
+    /**
+     * Return a copy with a different maximum number of tokens.
+     */
+    public CommitDetectorConfig withMaxTokens(int maxTokens) {
+        return new CommitDetectorConfig(maxMessages, maxTokens, minMessagesForLlm);
+    }
+
+    /**
+     * Return a copy with a different LLM threshold.
+     */
+    public CommitDetectorConfig withMinMessagesForLlm(int minMessagesForLlm) {
+        return new CommitDetectorConfig(maxMessages, maxTokens, minMessagesForLlm);
+    }
+}
+===== builder/SimpleTemporalRetrievalOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.time.Duration;
+import java.util.Objects;
+
+public record SimpleTemporalRetrievalOptions(
+        boolean enabled, int maxWindowCandidates, double channelWeight, Duration timeout) {
+
+    public SimpleTemporalRetrievalOptions {
+        validateTemporalShape(maxWindowCandidates, channelWeight, timeout);
+    }
+
+    public static SimpleTemporalRetrievalOptions defaults() {
+        return new SimpleTemporalRetrievalOptions(true, 100, 1.10d, Duration.ofMillis(200));
+    }
+
+    @JsonCreator
+    public static SimpleTemporalRetrievalOptions fromJson(
+            @JsonProperty("enabled") Boolean enabled,
+            @JsonProperty("maxWindowCandidates") Integer maxWindowCandidates,
+            @JsonProperty("channelWeight") Double channelWeight,
+            @JsonProperty("timeout") Duration timeout) {
+        var defaults = defaults();
+        return new SimpleTemporalRetrievalOptions(
+                enabled != null ? enabled : defaults.enabled(),
+                maxWindowCandidates != null ? maxWindowCandidates : defaults.maxWindowCandidates(),
+                channelWeight != null ? channelWeight : defaults.channelWeight(),
+                timeout != null ? timeout : defaults.timeout());
+    }
+
+    public static void validateTemporalShape(
+            int maxWindowCandidates, double channelWeight, Duration timeout) {
+        Objects.requireNonNull(timeout, "timeout");
+        if (maxWindowCandidates <= 0) {
+            throw new IllegalArgumentException("maxWindowCandidates must be positive");
+        }
+        if (channelWeight < 0.0d) {
+            throw new IllegalArgumentException("channelWeight must be non-negative");
+        }
+    }
+}
+===== builder/SimpleRetrievalGraphOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.openmemind.ai.memory.core.retrieval.graph.RetrievalGraphMode;
+import java.time.Duration;
+import java.util.Objects;
+
+/**
+ * Runtime switches and caps for bounded graph-assisted simple retrieval.
+ */
+public record SimpleRetrievalGraphOptions(
+        boolean enabled,
+        RetrievalGraphMode mode,
+        int maxSeedItems,
+        int maxExpandedItems,
+        int maxSemanticNeighborsPerSeed,
+        int maxTemporalNeighborsPerSeed,
+        int maxCausalNeighborsPerSeed,
+        int maxEntitySiblingItemsPerSeed,
+        int maxItemsPerEntity,
+        double graphChannelWeight,
+        double minLinkStrength,
+        float minMentionConfidence,
+        int protectDirectTopK,
+        double semanticEvidenceDecayFactor,
+        Duration timeout) {
+
+    public SimpleRetrievalGraphOptions {
+        Objects.requireNonNull(mode, "mode");
+        validateGraphAssistShape(
+                maxSeedItems,
+                maxExpandedItems,
+                maxSemanticNeighborsPerSeed,
+                maxTemporalNeighborsPerSeed,
+                maxCausalNeighborsPerSeed,
+                maxEntitySiblingItemsPerSeed,
+                maxItemsPerEntity,
+                graphChannelWeight,
+                minLinkStrength,
+                minMentionConfidence,
+                protectDirectTopK,
+                semanticEvidenceDecayFactor,
+                timeout);
+    }
+
+    public static void validateGraphAssistShape(
+            int maxSeedItems,
+            int maxExpandedItems,
+            int maxSemanticNeighborsPerSeed,
+            int maxTemporalNeighborsPerSeed,
+            int maxCausalNeighborsPerSeed,
+            int maxEntitySiblingItemsPerSeed,
+            int maxItemsPerEntity,
+            double graphChannelWeight,
+            double minLinkStrength,
+            float minMentionConfidence,
+            int protectDirectTopK,
+            double semanticEvidenceDecayFactor,
+            Duration timeout) {
+        if (maxSeedItems <= 0
+                || maxExpandedItems <= 0
+                || maxSemanticNeighborsPerSeed < 0
+                || maxTemporalNeighborsPerSeed < 0
+                || maxCausalNeighborsPerSeed < 0
+                || maxEntitySiblingItemsPerSeed < 0
+                || maxItemsPerEntity <= 0
+===== builder/SimpleMemoryThreadAssistOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.time.Duration;
+import java.util.Objects;
+
+/**
+ * Builder-owned runtime switches and bounds for simple retrieval memory-thread assist.
+ */
+public record SimpleMemoryThreadAssistOptions(
+        boolean enabled,
+        int maxThreads,
+        int maxMembersPerThread,
+        int protectDirectTopK,
+        Duration timeout) {
+
+    public SimpleMemoryThreadAssistOptions {
+        validateAssistShape(maxThreads, maxMembersPerThread, protectDirectTopK, timeout);
+    }
+
+    public static void validateAssistShape(
+            int maxThreads, int maxMembersPerThread, int protectDirectTopK, Duration timeout) {
+        if (maxThreads <= 0 || maxMembersPerThread <= 0) {
+            throw new IllegalArgumentException("memory thread assist bounds must be positive");
+        }
+        if (protectDirectTopK < 0) {
+            throw new IllegalArgumentException("protectDirectTopK must be non-negative");
+        }
+        Objects.requireNonNull(timeout, "timeout");
+    }
+
+    public static SimpleMemoryThreadAssistOptions defaults() {
+        return new SimpleMemoryThreadAssistOptions(false, 2, 3, 3, Duration.ofMillis(150));
+    }
+
+    @JsonCreator
+    public static SimpleMemoryThreadAssistOptions fromJson(
+            @JsonProperty("enabled") Boolean enabled,
+            @JsonProperty("maxThreads") Integer maxThreads,
+            @JsonProperty("maxMembersPerThread") Integer maxMembersPerThread,
+            @JsonProperty("protectDirectTopK") Integer protectDirectTopK,
+            @JsonProperty("timeout") Duration timeout) {
+        var defaults = defaults();
+        return new SimpleMemoryThreadAssistOptions(
+                enabled != null ? enabled : defaults.enabled(),
+                maxThreads != null ? maxThreads : defaults.maxThreads(),
+                maxMembersPerThread != null ? maxMembersPerThread : defaults.maxMembersPerThread(),
+                protectDirectTopK != null ? protectDirectTopK : defaults.protectDirectTopK(),
+                timeout != null ? timeout : defaults.timeout());
+    }
+
+    public SimpleMemoryThreadAssistOptions withEnabled(boolean enabled) {
+        return new SimpleMemoryThreadAssistOptions(
+                enabled, maxThreads, maxMembersPerThread, protectDirectTopK, timeout);
+    }
+
+    public SimpleMemoryThreadAssistOptions withMaxMembersPerThread(int maxMembersPerThread) {
+        return new SimpleMemoryThreadAssistOptions(
+                enabled, maxThreads, maxMembersPerThread, protectDirectTopK, timeout);
+    }
+
+    public SimpleMemoryThreadAssistOptions withProtectDirectTopK(int protectDirectTopK) {
+        return new SimpleMemoryThreadAssistOptions(
+                enabled, maxThreads, maxMembersPerThread, protectDirectTopK, timeout);
+    }
+
+===== builder/QueryExpansionOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+public record QueryExpansionOptions(int maxExpandedQueries) {
+
+    public static QueryExpansionOptions defaults() {
+        return new QueryExpansionOptions(3);
+    }
+}
+===== builder/SufficiencyOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+public record SufficiencyOptions(int itemTopK) {
+
+    public static SufficiencyOptions defaults() {
+        return new SufficiencyOptions(20);
+    }
+}
+===== builder/DeepRetrievalGraphOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+import com.openmemind.ai.memory.core.retrieval.graph.RetrievalGraphMode;
+import java.time.Duration;
+import java.util.Objects;
+
+/**
+ * Builder-owned graph-assist options for deep retrieval.
+ */
+public record DeepRetrievalGraphOptions(
+        boolean enabled,
+        RetrievalGraphMode mode,
+        int maxSeedItems,
+        int maxExpandedItems,
+        int maxSemanticNeighborsPerSeed,
+        int maxTemporalNeighborsPerSeed,
+        int maxCausalNeighborsPerSeed,
+        int maxEntitySiblingItemsPerSeed,
+        int maxItemsPerEntity,
+        double graphChannelWeight,
+        double minLinkStrength,
+        float minMentionConfidence,
+        int protectDirectTopK,
+        double semanticEvidenceDecayFactor,
+        Duration timeout) {
+
+    public DeepRetrievalGraphOptions {
+        Objects.requireNonNull(mode, "mode");
+        SimpleRetrievalGraphOptions.validateGraphAssistShape(
+                maxSeedItems,
+                maxExpandedItems,
+                maxSemanticNeighborsPerSeed,
+                maxTemporalNeighborsPerSeed,
+                maxCausalNeighborsPerSeed,
+                maxEntitySiblingItemsPerSeed,
+                maxItemsPerEntity,
+                graphChannelWeight,
+                minLinkStrength,
+                minMentionConfidence,
+                protectDirectTopK,
+                semanticEvidenceDecayFactor,
+                timeout);
+    }
+
+    public static DeepRetrievalGraphOptions defaults() {
+        return new DeepRetrievalGraphOptions(
+                false,
+                RetrievalGraphMode.ASSIST,
+                8,
+                16,
+                2,
+                2,
+                2,
+                4,
+                8,
+                0.30d,
+                0.55d,
+                0.70f,
+                5,
+                0.5d,
+                Duration.ofMillis(300));
+    }
+
+    public DeepRetrievalGraphOptions withEnabled(boolean enabled) {
+        return new DeepRetrievalGraphOptions(
+                enabled,
+                mode,
+===== builder/DeepMemoryThreadAssistOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import java.time.Duration;
+
+/**
+ * Builder-owned runtime switches and bounds for deep retrieval memory-thread assist.
+ */
+public record DeepMemoryThreadAssistOptions(
+        boolean enabled,
+        int maxThreads,
+        int maxMembersPerThread,
+        int protectDirectTopK,
+        Duration timeout) {
+
+    public DeepMemoryThreadAssistOptions {
+        SimpleMemoryThreadAssistOptions.validateAssistShape(
+                maxThreads, maxMembersPerThread, protectDirectTopK, timeout);
+    }
+
+    public static DeepMemoryThreadAssistOptions defaults() {
+        return new DeepMemoryThreadAssistOptions(false, 2, 3, 5, Duration.ofMillis(150));
+    }
+
+    @JsonCreator
+    public static DeepMemoryThreadAssistOptions fromJson(
+            @JsonProperty("enabled") Boolean enabled,
+            @JsonProperty("maxThreads") Integer maxThreads,
+            @JsonProperty("maxMembersPerThread") Integer maxMembersPerThread,
+            @JsonProperty("protectDirectTopK") Integer protectDirectTopK,
+            @JsonProperty("timeout") Duration timeout) {
+        var defaults = defaults();
+        return new DeepMemoryThreadAssistOptions(
+                enabled != null ? enabled : defaults.enabled(),
+                maxThreads != null ? maxThreads : defaults.maxThreads(),
+                maxMembersPerThread != null ? maxMembersPerThread : defaults.maxMembersPerThread(),
+                protectDirectTopK != null ? protectDirectTopK : defaults.protectDirectTopK(),
+                timeout != null ? timeout : defaults.timeout());
+    }
+
+    public DeepMemoryThreadAssistOptions withEnabled(boolean enabled) {
+        return new DeepMemoryThreadAssistOptions(
+                enabled, maxThreads, maxMembersPerThread, protectDirectTopK, timeout);
+    }
+
+    public DeepMemoryThreadAssistOptions withMaxMembersPerThread(int maxMembersPerThread) {
+        return new DeepMemoryThreadAssistOptions(
+                enabled, maxThreads, maxMembersPerThread, protectDirectTopK, timeout);
+    }
+
+    public DeepMemoryThreadAssistOptions withProtectDirectTopK(int protectDirectTopK) {
+        return new DeepMemoryThreadAssistOptions(
+                enabled, maxThreads, maxMembersPerThread, protectDirectTopK, timeout);
+    }
+
+    public DeepMemoryThreadAssistOptions withTimeout(Duration timeout) {
+        return new DeepMemoryThreadAssistOptions(
+                enabled, maxThreads, maxMembersPerThread, protectDirectTopK, timeout);
+    }
+}
+===== builder/RerankOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+public record RerankOptions(
+        RerankMode mode, int topK, double top3Weight, double top10Weight, double otherWeight) {
+
+    public static RerankOptions defaults() {
+        return new RerankOptions(RerankMode.PURE, 10, 0.75, 0.60, 0.40);
+    }
+}
+===== retrieval/scoring/ScoringConfig.java =====
+package com.openmemind.ai.memory.core.retrieval.scoring;
+
+/**
+ * Scoring configuration: unifying the hard-coded constants of the original RetrievalConstants
+ * into configurable parameters
+ *
+ * <p>All parameters have reasonable default values, which can be obtained through {@link #defaults()}.
+ * Advanced users can override individual parameters through with* methods.
+ *
+ */
+public record ScoringConfig(
+        FusionConfig fusion,
+        TimeDecayConfig timeDecay,
+        RecencyConfig recency,
+        PositionBonusConfig positionBonus,
+        KeywordSearchConfig keywordSearch,
+        QueryWeightConfig queryWeight,
+        int candidateMultiplier,
+        int rerankCandidateLimit,
+        int rawDataKeyInfoMaxLines,
+        int insightLlmThreshold) {
+
+    public static ScoringConfig defaults() {
+        return new ScoringConfig(
+                FusionConfig.defaults(),
+                TimeDecayConfig.defaults(),
+                RecencyConfig.defaults(),
+                PositionBonusConfig.defaults(),
+                KeywordSearchConfig.defaults(),
+                QueryWeightConfig.defaults(),
+                2,
+                40,
+                5,
+                15);
+    }
+
+    public ScoringConfig withFusion(FusionConfig fusion) {
+        return new ScoringConfig(
+                fusion,
+                timeDecay,
+                recency,
+                positionBonus,
+                keywordSearch,
+                queryWeight,
+                candidateMultiplier,
+                rerankCandidateLimit,
+                rawDataKeyInfoMaxLines,
+                insightLlmThreshold);
+    }
+
+    public ScoringConfig withTimeDecay(TimeDecayConfig timeDecay) {
+        return new ScoringConfig(
+                fusion,
+                timeDecay,
+                recency,
+                positionBonus,
+                keywordSearch,
+                queryWeight,
+                candidateMultiplier,
+                rerankCandidateLimit,
+                rawDataKeyInfoMaxLines,
+                insightLlmThreshold);
+    }
+
+    public ScoringConfig withRecency(RecencyConfig recency) {
+        return new ScoringConfig(
+                fusion,
+===== builder/MemoryThreadDerivationOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+/**
+ * Derivation execution switches for memory-thread building.
+ */
+public record MemoryThreadDerivationOptions(boolean enabled, boolean async) {
+
+    public static MemoryThreadDerivationOptions defaults() {
+        return new MemoryThreadDerivationOptions(false, true);
+    }
+
+    public MemoryThreadDerivationOptions withEnabled(boolean enabled) {
+        return new MemoryThreadDerivationOptions(enabled, async);
+    }
+
+    public MemoryThreadDerivationOptions withAsync(boolean async) {
+        return new MemoryThreadDerivationOptions(enabled, async);
+    }
+}
+===== builder/MemoryThreadRuleOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+/**
+ * Deterministic caps and thresholds for memory-thread derivation.
+ */
+public record MemoryThreadRuleOptions(
+        double matchThreshold,
+        double newThreadThreshold,
+        int maxCandidateThreads,
+        int maxMembersPerThread,
+        int maxRetrievalMembersPerThread) {
+
+    public MemoryThreadRuleOptions {
+        if (Double.isNaN(matchThreshold) || matchThreshold < 0.0d || matchThreshold > 1.0d) {
+            throw new IllegalArgumentException("matchThreshold must be in [0,1]");
+        }
+        if (Double.isNaN(newThreadThreshold)
+                || newThreadThreshold < 0.0d
+                || newThreadThreshold > 1.0d) {
+            throw new IllegalArgumentException("newThreadThreshold must be in [0,1]");
+        }
+        if (maxCandidateThreads <= 0) {
+            throw new IllegalArgumentException("maxCandidateThreads must be positive");
+        }
+        if (maxMembersPerThread <= 0) {
+            throw new IllegalArgumentException("maxMembersPerThread must be positive");
+        }
+        if (maxRetrievalMembersPerThread <= 0) {
+            throw new IllegalArgumentException("maxRetrievalMembersPerThread must be positive");
+        }
+        if (maxRetrievalMembersPerThread > maxMembersPerThread) {
+            throw new IllegalArgumentException(
+                    "maxRetrievalMembersPerThread must not exceed maxMembersPerThread");
+        }
+    }
+
+    public static MemoryThreadRuleOptions defaults() {
+        return new MemoryThreadRuleOptions(0.78d, 0.70d, 4, 32, 6);
+    }
+
+    public MemoryThreadRuleOptions withMatchThreshold(double matchThreshold) {
+        return new MemoryThreadRuleOptions(
+                matchThreshold,
+                newThreadThreshold,
+                maxCandidateThreads,
+                maxMembersPerThread,
+                maxRetrievalMembersPerThread);
+    }
+
+    public MemoryThreadRuleOptions withNewThreadThreshold(double newThreadThreshold) {
+        return new MemoryThreadRuleOptions(
+                matchThreshold,
+                newThreadThreshold,
+                maxCandidateThreads,
+                maxMembersPerThread,
+                maxRetrievalMembersPerThread);
+    }
+
+    public MemoryThreadRuleOptions withMaxCandidateThreads(int maxCandidateThreads) {
+        return new MemoryThreadRuleOptions(
+                matchThreshold,
+                newThreadThreshold,
+                maxCandidateThreads,
+                maxMembersPerThread,
+                maxRetrievalMembersPerThread);
+    }
+
+===== builder/MemoryThreadLifecycleOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+import java.time.Duration;
+import java.util.Objects;
+
+/**
+ * Lifecycle thresholds for memory-thread state transitions.
+ */
+public record MemoryThreadLifecycleOptions(Duration dormantAfter, Duration closeAfter) {
+
+    public MemoryThreadLifecycleOptions {
+        Objects.requireNonNull(dormantAfter, "dormantAfter");
+        Objects.requireNonNull(closeAfter, "closeAfter");
+        if (dormantAfter.isNegative() || dormantAfter.isZero()) {
+            throw new IllegalArgumentException("dormantAfter must be positive");
+        }
+        if (closeAfter.isNegative() || closeAfter.isZero()) {
+            throw new IllegalArgumentException("closeAfter must be positive");
+        }
+        if (closeAfter.compareTo(dormantAfter) < 0) {
+            throw new IllegalArgumentException("closeAfter must be >= dormantAfter");
+        }
+    }
+
+    public static MemoryThreadLifecycleOptions defaults() {
+        return new MemoryThreadLifecycleOptions(Duration.ofDays(14), Duration.ofDays(45));
+    }
+
+    public MemoryThreadLifecycleOptions withDormantAfter(Duration dormantAfter) {
+        return new MemoryThreadLifecycleOptions(dormantAfter, closeAfter);
+    }
+
+    public MemoryThreadLifecycleOptions withCloseAfter(Duration closeAfter) {
+        return new MemoryThreadLifecycleOptions(dormantAfter, closeAfter);
+    }
+}
+===== builder/MemoryThreadEnrichmentOptions.java =====
+package com.openmemind.ai.memory.core.builder;
+
+import java.time.Duration;
+
+/**
+ * Optional write-side memory-thread enrichment controls.
+ */
+public record MemoryThreadEnrichmentOptions(
+        boolean enabled,
+        int minimumEventCountForFirstEnrichment,
+        int minimumMeaningfulEventDeltaForReenrichment,
+        Duration minimumWallClockGapBetweenRuns,
+        Duration timeout) {
+
+    public MemoryThreadEnrichmentOptions {
+        minimumWallClockGapBetweenRuns =
+                minimumWallClockGapBetweenRuns != null
+                        ? minimumWallClockGapBetweenRuns
+                        : defaults().minimumWallClockGapBetweenRuns();
+        timeout = timeout != null ? timeout : defaults().timeout();
+        if (minimumEventCountForFirstEnrichment < 0) {
+            throw new IllegalArgumentException(
+                    "minimumEventCountForFirstEnrichment must be non-negative");
+        }
+        if (minimumMeaningfulEventDeltaForReenrichment < 0) {
+            throw new IllegalArgumentException(
+                    "minimumMeaningfulEventDeltaForReenrichment must be non-negative");
+        }
+        if (minimumWallClockGapBetweenRuns.isNegative()) {
+            throw new IllegalArgumentException(
+                    "minimumWallClockGapBetweenRuns must be non-negative");
+        }
+        if (timeout.isNegative()) {
+            throw new IllegalArgumentException("timeout must be non-negative");
+        }
+    }
+
+    public static MemoryThreadEnrichmentOptions defaults() {
+        return new MemoryThreadEnrichmentOptions(
+                false, 2, 3, Duration.ofMinutes(15), Duration.ofSeconds(10));
+    }
+
+    public MemoryThreadEnrichmentOptions withEnabled(boolean enabled) {
+        return new MemoryThreadEnrichmentOptions(
+                enabled,
+                minimumEventCountForFirstEnrichment,
+                minimumMeaningfulEventDeltaForReenrichment,
+                minimumWallClockGapBetweenRuns,
+                timeout);
+    }
+}
+===== builder/RerankMode.java =====
+package com.openmemind.ai.memory.core.builder;
+
+public enum RerankMode {
+    DISABLED,
+    PURE,
+    BLEND
+}

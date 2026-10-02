@@ -1,0 +1,23 @@
+Checking patch src/main_test/lit_file_runner_tests/runtime_regression_tests/complex_scalars.rs...
+error: while searching for:
+use super::*;
+
+#[test]
+fn complex_builtin_symbol_ids_are_stably_appended() {
+    let start = 1_u64 << 62;
+    let expected = [(C, 48), (I, 49), (RE, 50), (IMG, 51), (C_ABS, 52)];
+
+    for (name, offset) in expected {
+        let symbol = builtin_symbol_ref(name).expect("native complex name should have a symbol ID");
+        assert_eq!(symbol.id().value(), start + offset, "{name}");
+    }
+}
+
+
+error: patch failed: src/main_test/lit_file_runner_tests/runtime_regression_tests/complex_scalars.rs:1
+error: src/main_test/lit_file_runner_tests/runtime_regression_tests/complex_scalars.rs: patch does not apply
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.01s
+   Compiling litex-lang v0.9.110-beta (/testbed)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.15s
+     Running unittests src/lib.rs (target/debug/deps/litex-5c67ab9fed4aaf77)
+     Running unittests src/main.rs (target/debug/deps/litex-bc19a4ceb913e9ae)

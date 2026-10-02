@@ -1,0 +1,58 @@
+{
+  "instance_id": "dromara__dax-pay-c_f88f383",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.72,
+  "gold_patch_assessment": "The gold patch correctly addresses the stated issue: it splits the auth module into four responsibility packages (core, merchant, platform, develop), removes the old PlatformAuthService facade and AlipayAuthStrategy/AuthContext in the strategy.auth package, introduces PlatformAuthProvider interface with three implementations (AlipayAuthProvider, WechatMpAuthProvider, DouyinH5AuthProvider), adds the AuthScene enum and scene field to AuthSession, adds authToken field to AuthUrlResult, renames ChannelProductAuthService to ProductAuthService, and updates all controller imports across four Maven modules. The WechatMpAuthProvider correctly sources config from WxAppFacade instead of the old PlatformWechatMpAuthConfig.",
+  "base_vs_gold_expectation": "Tests will reject the base: the test patch creates test classes in packages (auth.platform, auth.merchant) and imports classes (AlipayAuthProvider, WechatMpAuthProvider, DouyinH5AuthProvider, ProductAuthService, new ChannelAuthService with Provider-list constructor) that do not exist in the base commit. Compilation will fail. Tests will accept the gold: all referenced classes are created by the gold patch in the expected packages.",
+  "too_narrow_risks": [
+    "Tests only build and test the daxpay-payment-core module (-pl daxpay-payment/daxpay-payment-core), but the gold patch also modifies controller import statements in daxpay-payment-admin, daxpay-payment-merchant, and daxpay-payment-unipay. A candidate could correctly restructure payment-core but miss updating controller imports, and tests would still pass.",
+    "No test for DevelopAuthService, which is a key refactored class that switches from depending on PlatformAuthService to depending on three individual PlatformAuthProvider implementations.",
+    "No test for ProductAuthService (renamed from ChannelProductAuthService), specifically the new assertNotAlipayProduct guard, the AuthScene.PAYMENT scene setting on sessions, and the authToken being returned in AuthUrlResult.",
+    "No test for AbsProductAuthStrategy (renamed from AbsChannelAuthStrategy) or ProductAuthContext (renamed from AuthContext), so the old strategy package cleanup and rename are not verified.",
+    "No test verifies that the old classes (PlatformAuthService, AlipayAuthStrategy, AuthContext) are actually deleted; a candidate could add the new classes without removing the old ones."
+  ],
+  "too_broad_risks": [],
+  "implementation_coupling": [
+    "Tests are tightly coupled to exact class names (AlipayAuthProvider, WechatMpAuthProvider, DouyinH5AuthProvider, ProductAuthService) and package structure (auth.platform, auth.merchant, auth.core). Any reasonable alternative naming or package organization would fail even if behavior is identical.",
+    "WechatMpAuthProviderTest hard-codes the exact WxAppFacade.resolve() call signature with isNull()/eq() matchers for each parameter position, requiring the exact same facade call pattern as the gold implementation.",
+    "ChannelAuthServiceTest constructs ChannelAuthService with List<PlatformAuthProvider> in setUp(), coupling to the exact Provider-registry constructor pattern. An alternative dispatch mechanism (e.g., separate injected fields) would fail.",
+    "AlipayAuthProviderTest verifies 'never().saveSession' on config failure, asserting the specific 'validate-before-save' ordering that the gold patch introduces. This tests an internal implementation detail rather than observable behavior."
+  ],
+  "environment_risks": [
+    "Maven build depends on Docker image having all dependencies pre-cached. The pre-test step 'mvn -pl daxpay-payment/daxpay-payment-core -am install' compiles multiple upstream modules; if artifacts are missing, it could hit network or timeout issues within the 3600s verifier timeout.",
+    "The project uses Java records (ProductAuthContext, WxAppView) requiring JDK 16+. The Docker image must provide the correct JDK version."
+  ],
+  "mismatches": [
+    "task.toml categorizes this as 'debugging' but the issue is clearly a refactoring/restructuring task.",
+    "The instruction specifies that the WechatMpAuthProvider should not write session when appSecret is empty, using error 'error.payment.wx.appNotConfigured'. The test checks exactly this, but this is a behavioral change from the base (old PlatformAuthService used PlatformWechatMpAuthConfig directly with 'error.social.wechatMpNotConfigured'). The instruction conflates refactoring with functional changes."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/dromara__dax-pay-c_f88f383/tests/eval.sh",
+      "detail": "Line 44-48: Only builds/tests daxpay-payment-core module. Gold patch modifies 4 modules (admin, merchant, unipay controllers), but only core is tested."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 676-847: AlipayAuthProviderTest directly tests the gold implementation's class name, constructor injection pattern, and internal validate-before-save ordering."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 977-1139: WechatMpAuthProviderTest hardcodes WxAppFacade.resolve(null,null,WECHAT_JSAPI,null,WECHAT_PAY) call pattern, tightly coupling to gold implementation's exact facade usage."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 381-667: ChannelAuthServiceTest setUp constructs ChannelAuthService with List<PlatformAuthProvider>, coupling to the Provider-registry constructor pattern."
+    },
+    {
+      "file": "/audit_tasks/dromara__dax-pay-c_f88f383/task.toml",
+      "detail": "Line 9: category='debugging' is incorrect for a refactoring task."
+    },
+    {
+      "file": "/testbed/daxpay-payment/daxpay-payment-core/src/main/java/cn/daxpay/open/payment/auth/core/AuthSession.java",
+      "detail": "Base commit AuthSession has no 'scene' field; the gold patch adds it. No test explicitly verifies AuthScene enum values or that scene is correctly set by non-Provider callers."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch correctly implements the requested auth module refactoring. However, tests are too narrow and too coupled to the specific gold implementation. Key gaps: (1) Tests only compile/run in the payment-core module, missing the 3 other modules that have import changes in the gold patch. (2) No tests for DevelopAuthService, ProductAuthService new features, or old-class removal. (3) Tests are tightly coupled to exact class names, package paths, constructor patterns, and internal implementation ordering of the gold patch, making them reject reasonable alternative implementations. The 'debugging' category label is also incorrect. Recommend expanding tests to include a multi-module compile check and reducing coupling to gold-specific class internals."
+}

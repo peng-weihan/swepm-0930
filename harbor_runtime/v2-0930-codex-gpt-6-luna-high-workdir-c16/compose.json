@@ -1,0 +1,32 @@
+{
+  "services": {
+    "main": {
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/data/swepmv2-harbor-runtime/tools/codex/0.159.0/codex",
+          "target": "/usr/local/bin/codex",
+          "read_only": true
+        },
+        {
+          "type": "bind",
+          "source": "/data/swepmv2-harbor-runtime/campaigns/v2-0930-codex-gpt-6-luna-high-workdir-c16/runtime/${COMPOSE_PROJECT_NAME}",
+          "target": "/opt/swepm-runtime"
+        },
+        {
+          "type": "bind",
+          "source": "/data/swepmv2-harbor-runtime/tools/codex/0.159.0/codex-code-mode-host",
+          "target": "/usr/local/bin/codex-code-mode-host",
+          "read_only": true
+        }
+      ],
+      "pull_policy": "never"
+    }
+  },
+  "networks": {
+    "default": {
+      "name": "${COMPOSE_PROJECT_NAME}_default",
+      "external": true
+    }
+  }
+}

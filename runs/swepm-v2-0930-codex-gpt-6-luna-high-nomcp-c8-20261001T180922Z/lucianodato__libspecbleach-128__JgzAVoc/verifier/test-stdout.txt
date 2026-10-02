@@ -1,0 +1,239 @@
+SPECBUILD_RESOLVED_PYTHON=python3
+Checking patch tests/test_audio_file_regression.c...
+error: while searching for:
+ * Audio file regression tests - compare library output against reference files
+ */
+
+#include <math.h>
+#include <sndfile.h>
+
+#include <specbleach_denoiser.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+error: patch failed: tests/test_audio_file_regression.c:2
+error: tests/test_audio_file_regression.c: patch does not apply
+Checking patch tests/test_hpss_filter.c...
+error: tests/test_hpss_filter.c: already exists in working directory
+Checking patch tests/test_specbleach_2d_denoiser.c...
+error: while searching for:
+#include <stdlib.h>
+#include <string.h>
+
+#include "specbleach_2d_denoiser.h"
+
+#define ROLLING_MEAN 1
+
+error: patch failed: tests/test_specbleach_2d_denoiser.c:23
+error: tests/test_specbleach_2d_denoiser.c: patch does not apply
+Checking patch tests/test_specbleach_denoiser.c...
+error: while searching for:
+#include <stdlib.h>
+#include <string.h>
+
+#include "specbleach_denoiser.h"
+
+#define ROLLING_MEAN 1
+
+error: patch failed: tests/test_specbleach_denoiser.c:7
+error: tests/test_specbleach_denoiser.c: patch does not apply
+Checking patch tests/test_specbleach_processor_core.c...
+error: while searching for:
+  TEST_ASSERT(sp2.reduction_curve_bias == (const float*)0x1234,
+              "Sanitize enabled curve bias ptr");
+
+  // Bounds clamping checks for noise_profile_offset_db (-6dB to +6dB)
+  SpectralBleachDenoiserParameters p_min = p1;
+  p_min.noise_profile_offset_db = -20.0f;
+  DenoiserParameters sp_min = sb_denoiser_params_sanitize(p_min);
+  TEST_FLOAT_CLOSE(sp_min.noise_profile_offset_linear, 0.5012f, 1e-3f);
+
+  SpectralBleachDenoiserParameters p_max = p1;
+  p_max.noise_profile_offset_db = 20.0f;
+  DenoiserParameters sp_max = sb_denoiser_params_sanitize(p_max);
+  TEST_FLOAT_CLOSE(sp_max.noise_profile_offset_linear, 1.9953f, 1e-3f);
+
+  SpectralBleach2DDenoiserParameters p2_min = p2;
+  p2_min.noise_profile_offset_db = -20.0f;
+  Denoiser2DParameters sp2_min = sb_denoiser_2d_params_sanitize(p2_min);
+  TEST_FLOAT_CLOSE(sp2_min.noise_profile_offset_linear, 0.5012f, 1e-3f);
+
+  SpectralBleach2DDenoiserParameters p2_max = p2;
+  p2_max.noise_profile_offset_db = 20.0f;
+  Denoiser2DParameters sp2_max = sb_denoiser_2d_params_sanitize(p2_max);
+  TEST_FLOAT_CLOSE(sp2_max.noise_profile_offset_linear, 1.9953f, 1e-3f);
+
+  printf("✓ Params sanitize functions tests passed\n");
+}
+
+error: patch failed: tests/test_specbleach_processor_core.c:213
+error: tests/test_specbleach_processor_core.c: patch does not apply
+Checking patch tests/test_spectral_circular_buffer.c...
+error: while searching for:
+  spectral_circular_buffer_push(NULL, layer0, NULL);
+  TEST_ASSERT(spectral_circular_buffer_retrieve(NULL, layer0, 0) == NULL,
+              "NULL handle retrieve");
+  TEST_ASSERT(spectral_circular_buffer_retrieve(cb, 99, 0) == NULL,
+              "Invalid layer id retrieve");
+  spectral_circular_buffer_advance(NULL);
+
+  spectral_circular_buffer_free(cb);
+  spectral_circular_buffer_free(NULL);
+  printf("✓ Edge cases passed\n");
+}
+
+int main(void) {
+  printf("Running SbSpectralCircularBuffer tests...\n\n");
+
+  test_circular_buffer_init_and_free();
+  test_circular_buffer_push_retrieve();
+  test_circular_buffer_delay_alignment();
+  test_circular_buffer_edge_cases();
+
+  printf("\n✅ All spectral circular buffer tests passed!\n");
+  return 0;
+
+error: patch failed: tests/test_spectral_circular_buffer.c:141
+error: tests/test_spectral_circular_buffer.c: patch does not apply
+Checking patch tests/test_stft_latency.c...
+error: while searching for:
+  printf("  (Previously was incorrectly: frame_size - hop = %u samples)\n",
+         old_incorrect_latency);
+
+  stft_processor_free(processor);
+
+  return 0;
+
+error: patch failed: tests/test_stft_latency.c:65
+error: tests/test_stft_latency.c: patch does not apply
+patching file tests/test_audio_file_regression.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+The next patch would create the file tests/test_hpss_filter.c,
+which already exists!  Assuming -R.
+patching file tests/test_hpss_filter.c
+Hunk #1 FAILED at 1.
+Not deleting file tests/test_hpss_filter.c as content differs from patch
+1 out of 1 hunk FAILED -- saving rejects to file tests/test_hpss_filter.c.rej
+patching file tests/test_specbleach_2d_denoiser.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_specbleach_denoiser.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_specbleach_processor_core.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_spectral_circular_buffer.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_stft_latency.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+-- OpenMP: ENABLED (Multi-threaded NLM 2D filter enabled)
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /testbed/build
+Consolidate compiler generated dependencies of target specbleach_avx
+[  2%] Built target specbleach_avx
+Consolidate compiler generated dependencies of target libspecbleach
+[ 38%] Built target libspecbleach
+Consolidate compiler generated dependencies of target test_utils
+Consolidate compiler generated dependencies of target test_integration
+Consolidate compiler generated dependencies of target test_audio_regression
+Consolidate compiler generated dependencies of target test_audio_files
+[ 42%] Built target test_integration
+[ 42%] Built target test_utils
+[ 46%] Built target test_audio_files
+[ 46%] Built target test_audio_regression
+Consolidate compiler generated dependencies of target test_fft
+Consolidate compiler generated dependencies of target test_spectral_whitening
+Consolidate compiler generated dependencies of target test_gain_calculator
+Consolidate compiler generated dependencies of target test_stft_latency
+[ 50%] Built target test_fft
+[ 51%] Built target test_spectral_whitening
+[ 52%] Building C object CMakeFiles/test_stft_latency.dir/tests/test_stft_latency.c.o
+[ 54%] Built target test_gain_calculator
+Consolidate compiler generated dependencies of target test_spectral_smoother
+Consolidate compiler generated dependencies of target test_shared_utils
+Consolidate compiler generated dependencies of target test_spectral_utils
+[ 56%] Built target test_spectral_smoother
+[ 58%] Built target test_shared_utils
+[ 60%] Built target test_spectral_utils
+Consolidate compiler generated dependencies of target test_noise_profile
+Consolidate compiler generated dependencies of target test_specbleach_denoiser
+Consolidate compiler generated dependencies of target test_specbleach_processor_core
+[ 61%] Linking C executable test_stft_latency
+[ 63%] Built target test_noise_profile
+[ 64%] Building C object CMakeFiles/test_specbleach_denoiser.dir/tests/test_specbleach_denoiser.c.o
+[ 65%] Building C object CMakeFiles/test_specbleach_processor_core.dir/tests/test_specbleach_processor_core.c.o
+Consolidate compiler generated dependencies of target test_noise_floor_manager
+[ 67%] Built target test_noise_floor_manager
+Consolidate compiler generated dependencies of target test_adaptive_noise_estimator
+[ 68%] Built target test_stft_latency
+[ 69%] Built target test_adaptive_noise_estimator
+Consolidate compiler generated dependencies of target test_specbleach_2d_denoiser
+Consolidate compiler generated dependencies of target test_nlm_filter
+[ 70%] Building C object CMakeFiles/test_specbleach_2d_denoiser.dir/tests/test_specbleach_2d_denoiser.c.o
+[ 72%] Built target test_nlm_filter
+Consolidate compiler generated dependencies of target test_suppression_engine
+[ 74%] Built target test_suppression_engine
+Consolidate compiler generated dependencies of target test_masking_veto
+[ 75%] Linking C executable test_specbleach_processor_core
+[ 77%] Built target test_masking_veto
+Consolidate compiler generated dependencies of target test_transient_detector
+[ 79%] Built target test_transient_detector
+Consolidate compiler generated dependencies of target test_spectral_circular_buffer
+[ 80%] Building C object CMakeFiles/test_spectral_circular_buffer.dir/tests/test_spectral_circular_buffer.c.o
+[ 80%] Built target test_specbleach_processor_core
+Consolidate compiler generated dependencies of target test_martin
+[ 82%] Built target test_martin
+[ 83%] Linking C executable test_specbleach_denoiser
+Consolidate compiler generated dependencies of target test_brandt
+[ 85%] Built target test_brandt
+Consolidate compiler generated dependencies of target test_spp_mmse
+[ 86%] Linking C executable test_specbleach_2d_denoiser
+[ 88%] Built target test_spp_mmse
+Consolidate compiler generated dependencies of target test_tonal_detector
+[ 89%] Linking C executable test_spectral_circular_buffer
+[ 89%] Built target test_specbleach_denoiser
+[ 91%] Built target test_tonal_detector
+Consolidate compiler generated dependencies of target test_tonal_reducer
+Consolidate compiler generated dependencies of target test_hpss_filter
+[ 93%] Built target test_tonal_reducer
+[ 95%] Built target test_hpss_filter
+[ 95%] Built target test_specbleach_2d_denoiser
+Consolidate compiler generated dependencies of target test_denoiser_post_process
+Consolidate compiler generated dependencies of target test_audio_file_regression
+[ 96%] Built target test_spectral_circular_buffer
+[ 97%] Built target test_denoiser_post_process
+[ 98%] Building C object CMakeFiles/test_audio_file_regression.dir/tests/test_audio_file_regression.c.o
+[100%] Linking C executable test_audio_file_regression
+[100%] Built target test_audio_file_regression
+Internal ctest changing into directory: /testbed/build
+Test project /testbed/build
+    Start  7: test_stft_latency
+1/7 Test  #7: test_stft_latency ................   Passed    0.00 sec
+    Start 13: test_specbleach_processor_core
+2/7 Test #13: test_specbleach_processor_core ...***Failed    0.00 sec
+TEST FAILED: Float values not close enough
+Running specbleach processor core tests...
+Testing processor core init and free...
+✓ Processor core init and free tests passed
+Testing processor core noise profile accessors...
+✓ Processor core noise profile accessors tests passed
+Testing params sanitize functions...
+
+    Start 14: test_specbleach_denoiser
+3/7 Test #14: test_specbleach_denoiser .........   Passed    0.02 sec
+    Start 18: test_specbleach_2d_denoiser
+4/7 Test #18: test_specbleach_2d_denoiser ......   Passed    0.75 sec
+    Start 22: test_spectral_circular_buffer
+5/7 Test #22: test_spectral_circular_buffer ....   Passed    0.00 sec
+    Start 28: test_hpss_filter
+6/7 Test #28: test_hpss_filter .................   Passed    0.00 sec
+    Start 30: test_audio_file_regression
+7/7 Test #30: test_audio_file_regression .......   Passed    0.00 sec
+
+86% tests passed, 1 tests failed out of 7
+
+Total Test time (real) =   0.79 sec
+
+The following tests FAILED:
+	 13 - test_specbleach_processor_core (Failed)
+Errors while running CTest
+OMNIGRIL_EXIT_CODE=8

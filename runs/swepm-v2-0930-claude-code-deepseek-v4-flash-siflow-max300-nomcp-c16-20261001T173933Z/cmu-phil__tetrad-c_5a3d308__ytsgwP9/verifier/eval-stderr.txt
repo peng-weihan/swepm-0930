@@ -1,0 +1,359 @@
+Checking patch tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/NormalityTests.java...
+error: while searching for:
+     */
+    public static double[] kolmogorovSmirnov(DataSet dataSet, ContinuousVariable variable) {
+        int n = dataSet.getNumRows();
+        int columnIndex = dataSet.getColumn(variable);
+        NormalDistribution idealDistribution = NormalityTests.getNormal(dataSet, variable);
+
+        double[] ks = new double[6];
+
+error: patch failed: tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/NormalityTests.java:118
+error: tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/NormalityTests.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/DirichletEstimator.java...
+error: while searching for:
+
+            Node node = prior.getNode(n);
+            String name = node.getName();
+            varIndices[0] = dataSet.getColumn(dataSet.getVariable(name));
+
+            for (int p = 0; p < prior.getNumParents(n); p++) {
+                Node parentNode = prior.getNode(prior.getParent(n, p));
+                name = parentNode.getName();
+                varIndices[p + 1] =
+                        dataSet.getColumn(dataSet.getVariable(name));
+            }
+
+            // Loop over conditioning set.
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/DirichletEstimator.java:78
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/DirichletEstimator.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/estimate/v1/AdjustmentEffectEstimatorV1.java...
+error: while searching for:
+            Objects.requireNonNull(y, "v1: y");
+            Objects.requireNonNull(z, "v1: z");
+
+            int xCol = data.getColumn(x);
+            int yCol = data.getColumn(y);
+
+            // v1: enforce binary discrete X
+            if (!(x instanceof DiscreteVariable dx)) {
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/estimate/v1/AdjustmentEffectEstimatorV1.java:550
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/estimate/v1/AdjustmentEffectEstimatorV1.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/estimate/v1/AdjustmentEffectEstimatorV1SmokeTest.java...
+error: while searching for:
+            // v1: Z -> X (propensity depends on Z); Z -> Y (backdoor); X -> Y (causal effect)
+            double[] a = new double[]{-0.5, 0.4, 1.0};
+
+            int zCol = data.getColumn(Z);
+            int xCol = data.getColumn(X);
+            int yCol = data.getColumn(Y);
+
+            for (int i = 0; i < n; i++) {
+                int z = rng.nextInt(3);
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/estimate/v1/AdjustmentEffectEstimatorV1SmokeTest.java:237
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/estimate/v1/AdjustmentEffectEstimatorV1SmokeTest.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/search/blocks/GiveGoodLatentNamesTest.java...
+error: while searching for:
+    private static List<Integer> idxs(DataSet ds, String... varNames) {
+        List<Integer> out = new ArrayList<>();
+        for (String v : varNames) {
+            out.add(ds.getColumn(ds.getVariable(v)));
+        }
+        return out;
+    }
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/search/blocks/GiveGoodLatentNamesTest.java:81
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/search/blocks/GiveGoodLatentNamesTest.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/search/is/TestIGFCI_TCGA.java...
+error: while searching for:
+            Path outDir
+    ) {
+        final int n = trainData.getNumRows();
+        final int nameColIndex = trainWithNames.getColumn(trainWithNames.getVariable(DEFAULT_NAME_COLUMN));
+
+        BDeuScore populationScore = new BDeuScore(bs); // for structure prior only
+
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/search/is/TestIGFCI_TCGA.java:148
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/search/is/TestIGFCI_TCGA.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/search/is/TestISFGS_TCGA.java...
+error: while searching for:
+
+    private static DataSet stripNameColumn(DataSet withNames, String nameCol) {
+        DataSet copy = withNames.copy();
+        int idx = copy.getColumn(copy.getVariable(nameCol));
+        copy.removeColumn(idx);
+        return copy;
+    }
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/search/is/TestISFGS_TCGA.java:159
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/search/is/TestISFGS_TCGA.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/FfCi.java...
+error: while searching for:
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+
+import static java.lang.Double.NaN;
+
+/**
+ * FF-CI-Mixed: Feature-Function CI test for mixed continuous/discrete data.
+ *
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/FfCi.java:35
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/FfCi.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/FfCi1.java...
+error: while searching for:
+        final double[][] cont = new double[n][contVars.size()];
+        for (int j = 0; j < contVars.size(); j++) {
+            Node v = contVars.get(j);
+            int col = data.getColumn(v);
+            if (col < 0) col = data.getVariableNames().indexOf(v.getName());
+            if (col < 0) throw new IllegalArgumentException("Variable not found: " + v.getName());
+            for (int i = 0; i < n; i++) cont[i][j] = data.getDouble(activeRowIndex(i), col);
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/FfCi1.java:615
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/FfCi1.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/FfCiContinuous.java...
+error: while searching for:
+import edu.cmu.tetrad.util.RandomUtil;
+import edu.cmu.tetrad.util.TMath;
+import edu.cmu.tetrad.util.TetradLogger;
+import org.apache.commons.math3.distribution.GammaDistribution;
+import org.ejml.simple.SimpleEVD;
+import org.ejml.simple.SimpleMatrix;
+
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/FfCiContinuous.java:7
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/FfCiContinuous.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/IndTestGin.java...
+error: while searching for:
+     */
+    @Override
+    public IndependenceResult checkIndependence(Node x, Node y, Set<Node> cond) {
+        int ix = data.getColumn(x);
+        int iy = data.getColumn(y);
+
+        // Build S\{X} and S\{Y}
+        List<Node> sMinusX = new ArrayList<>(cond);
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/IndTestGin.java:184
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/IndTestGin.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/IndTestHsic.java...
+error: while searching for:
+        // shuffle data for approximate the null distribution
+        double[] nullapprox = new double[this.perms];
+        int[] zind = null;
+        int ycol = this.dataSet.getColumn(y);
+        List<List<Integer>> clusterAssign = null;
+        if (!z.isEmpty()) {
+            // get clusters for z
+            KMeans kmeans = KMeans.randomClusters((m / 3));
+            zind = new int[z.size()];
+            for (int j = 0; j < z.size(); j++) {
+                zind[j] = this.dataSet.getColumn(z.get(j));
+            }
+            kmeans.cluster(this.dataSet.subsetColumns(z).getDoubleData());
+            clusterAssign = kmeans.getClusters();
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/IndTestHsic.java:229
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/IndTestHsic.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/IndTestRcotCcaWilkes.java...
+error: while searching for:
+        SimpleMatrix M = new SimpleMatrix(n, d);
+
+        for (int j = 0; j < d; j++) {
+            int col = ds.getColumn(vv.get(j));
+            if (col < 0) {
+                col = ds.getVariableNames().indexOf(vv.get(j).getName());
+                if (col < 0) throw new IllegalArgumentException("Variable not found: " + vv.get(j).getName());
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/IndTestRcotCcaWilkes.java:417
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/IndTestRcotCcaWilkes.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/Rcit.java...
+error: while searching for:
+
+        for (int j = 0; j < d; j++) {
+            Node v = vs.get(j);
+            int col = data.getColumn(v);
+            if (col < 0) throw new IllegalArgumentException("Variable not found: " + v.getName());
+
+            for (int i = 0; i < n; i++) {
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/Rcit.java:777
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/Rcit.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/IndTestMixedMultipleTTest.java...
+error: while searching for:
+            variables.add(newVar);
+
+            dataSet.addVariable(newVar);
+            int newVarIndex = dataSet.getColumn(newVar);
+            int numCases = dataSet.getNumRows();
+
+            for (int l = 0; l < numCases; l++) {
+                Object dataCell = dataSet.getObject(l, dataSet.getColumn(node));
+                int dataCellIndex = ((DiscreteVariable) node).getIndex(dataCell.toString());
+
+                if (dataCellIndex == ((DiscreteVariable) node).getIndex(cat))
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/IndTestMixedMultipleTTest.java:282
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/IndTestMixedMultipleTTest.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/IndTestMultinomialLogisticRegression.java...
+error: while searching for:
+            variables.add(newVar);
+
+            dataSet.addVariable(newVar);
+            int newVarIndex = dataSet.getColumn(newVar);
+            int numCases = dataSet.getNumRows();
+
+            for (int l = 0; l < numCases; l++) {
+                Object dataCell = dataSet.getObject(l, dataSet.getColumn(node));
+                int dataCellIndex = ((DiscreteVariable) node).getIndex(dataCell.toString());
+
+                if (dataCellIndex == ((DiscreteVariable) node).getIndex(cat))
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/IndTestMultinomialLogisticRegression.java:175
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/IndTestMultinomialLogisticRegression.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/IndTestPositiveCorr.java...
+error: while searching for:
+
+        System.out.println(LogUtilsSearch.independenceFact(x0, y0, _z0));
+
+        double[] x = this.data[this.dataSet.getColumn(x0)];
+        double[] y = this.data[this.dataSet.getColumn(y0)];
+
+        List<Node> z0 = new ArrayList<>(_z0);
+        Collections.sort(z0);
+
+error: patch failed: tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/IndTestPositiveCorr.java:130
+error: tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/IndTestPositiveCorr.java: patch does not apply
+Checking patch tetrad-lib/src/main/java/edu/pitt/csb/mgm/IndTestMultinomialLogisticRegressionWald.java...
+error: while searching for:
+            variables.add(newVar);
+
+            dataSet.addVariable(newVar);
+            int newVarIndex = dataSet.getColumn(newVar);
+            int numCases = dataSet.getNumRows();
+
+            for (int l = 0; l < numCases; l++) {
+                Object dataCell = dataSet.getObject(l, dataSet.getColumn(node));
+                int dataCellIndex = ((DiscreteVariable) node).getIndex(dataCell.toString());
+
+                if (dataCellIndex == ((DiscreteVariable) node).getIndex(cat))
+
+error: patch failed: tetrad-lib/src/main/java/edu/pitt/csb/mgm/IndTestMultinomialLogisticRegressionWald.java:199
+error: tetrad-lib/src/main/java/edu/pitt/csb/mgm/IndTestMultinomialLogisticRegressionWald.java: patch does not apply
+Checking patch tetrad-lib/src/test/java/edu/cmu/tetrad/test/ExploreAutisticsNeurotypicals.java...
+error: while searching for:
+                    }
+                }
+
+                dataSet.setDouble(row, dataSet.getColumn(group), _group);
+            }
+        }
+
+
+error: patch failed: tetrad-lib/src/test/java/edu/cmu/tetrad/test/ExploreAutisticsNeurotypicals.java:87
+error: tetrad-lib/src/test/java/edu/cmu/tetrad/test/ExploreAutisticsNeurotypicals.java: patch does not apply
+Checking patch tetrad-lib/src/test/java/edu/cmu/tetrad/test/TestCliqueDetection.java...
+error: while searching for:
+import edu.cmu.tetrad.util.TMath;
+import org.ejml.simple.SimpleMatrix;
+import org.jetbrains.annotations.NotNull;
+import org.junit.Test;
+
+import java.util.*;
+import java.util.function.Supplier;
+
+error: patch failed: tetrad-lib/src/test/java/edu/cmu/tetrad/test/TestCliqueDetection.java:45
+error: tetrad-lib/src/test/java/edu/cmu/tetrad/test/TestCliqueDetection.java: patch does not apply
+Checking patch tetrad-lib/src/test/java/edu/cmu/tetrad/test/TestFci.java...
+error: while searching for:
+            RandomUtil.shuffle(variables);
+
+            for (int m = 0; m < numVarsToMarginalize; m++) {
+                marginalData.removeColumn(marginalData.getColumn(variables.get(m)));
+            }
+
+            Graph margPag = getPag(marginalData);
+
+error: patch failed: tetrad-lib/src/test/java/edu/cmu/tetrad/test/TestFci.java:493
+error: tetrad-lib/src/test/java/edu/cmu/tetrad/test/TestFci.java: patch does not apply
+Oct 01, 2026 6:30:29 PM java.util.prefs.FileSystemPreferences$1 run
+INFO: Created user preferences directory.
+Oct 01, 2026 6:30:29 PM java.util.prefs.FileSystemPreferences$6 run
+WARNING: Prefs file removed in background /root/.java/.userPrefs/prefs.xml
+SLF4J(W): No SLF4J providers were found.
+SLF4J(W): Defaulting to no-operation (NOP) logger implementation
+SLF4J(W): See https://www.slf4j.org/codes.html#noProviders for further details.
+java.lang.NullPointerException
+	at java.base/jdk.internal.reflect.DirectConstructorHandleAccessor.newInstance(DirectConstructorHandleAccessor.java:62)
+	at java.base/java.lang.reflect.Constructor.newInstanceWithCaller(Constructor.java:502)
+	at java.base/java.lang.reflect.Constructor.newInstance(Constructor.java:486)
+	at java.base/java.util.concurrent.ForkJoinTask.getThrowableException(ForkJoinTask.java:542)
+	at java.base/java.util.concurrent.ForkJoinTask.reportException(ForkJoinTask.java:567)
+	at java.base/java.util.concurrent.ForkJoinTask.invoke(ForkJoinTask.java:670)
+	at java.base/java.util.stream.ForEachOps$ForEachOp.evaluateParallel(ForEachOps.java:160)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateParallel(ForEachOps.java:174)
+	at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:233)
+	at java.base/java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:596)
+	at java.base/java.util.stream.ReferencePipeline$Head.forEach(ReferencePipeline.java:765)
+	at edu.cmu.tetrad.search.Fas.searchAtDepth(Fas.java:285)
+	at edu.cmu.tetrad.search.Fas.search(Fas.java:226)
+	at edu.cmu.tetrad.search.Fas.search(Fas.java:175)
+	at edu.cmu.tetrad.search.Rfci.search(Rfci.java:191)
+	at edu.cmu.tetrad.search.Rfci.search(Rfci.java:161)
+	at edu.cmu.tetrad.search.Rfci.search(Rfci.java:146)
+	at edu.pitt.dbmi.algo.bayesian.constraint.search.PagSamplingRfci$RfciSearchTask.call(PagSamplingRfci.java:257)
+	at edu.pitt.dbmi.algo.bayesian.constraint.search.PagSamplingRfci$RfciSearchTask.call(PagSamplingRfci.java:235)
+	at java.base/java.util.concurrent.ForkJoinTask$AdaptedInterruptibleCallable.exec(ForkJoinTask.java:1489)
+	at java.base/java.util.concurrent.ForkJoinTask.doExec(ForkJoinTask.java:387)
+	at java.base/java.util.concurrent.ForkJoinPool$WorkQueue.topLevelExec(ForkJoinPool.java:1312)
+	at java.base/java.util.concurrent.ForkJoinPool.scan(ForkJoinPool.java:1843)
+	at java.base/java.util.concurrent.ForkJoinPool.runWorker(ForkJoinPool.java:1808)
+	at java.base/java.util.concurrent.ForkJoinWorkerThread.run(ForkJoinWorkerThread.java:188)
+Caused by: java.lang.NullPointerException: Cannot invoke "java.lang.Double.doubleValue()" because the return value of "java.util.Map.get(Object)" is null
+	at edu.cmu.tetrad.search.test.IndTestProbabilistic.checkIndependence(IndTestProbabilistic.java:216)
+	at edu.cmu.tetrad.search.test.IndTestProbabilistic.checkIndependence(IndTestProbabilistic.java:157)
+	at edu.cmu.tetrad.search.Fas.decideOnePair(Fas.java:402)
+	at edu.cmu.tetrad.search.Fas.lambda$searchAtDepth$0(Fas.java:289)
+	at java.base/java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:184)
+	at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1708)
+	at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:509)
+	at java.base/java.util.stream.ForEachOps$ForEachTask.compute(ForEachOps.java:291)
+	at java.base/java.util.concurrent.CountedCompleter.exec(CountedCompleter.java:754)
+	... 5 more
+java.text.ParseException: Unexpected token, '(', in exp(1)
+	at edu.cmu.tetrad.calculator.parser.ExpressionParser.expect(ExpressionParser.java:473)
+	at edu.cmu.tetrad.calculator.parser.ExpressionParser.parseExpression(ExpressionParser.java:103)
+	at edu.cmu.tetrad.test.TestExpressionParser.test1(TestExpressionParser.java:151)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+	at org.apache.maven.surefire.junit4.JUnit4Provider.execute(JUnit4Provider.java:316)
+	at org.apache.maven.surefire.junit4.JUnit4Provider.executeWithRerun(JUnit4Provider.java:240)
+	at org.apache.maven.surefire.junit4.JUnit4Provider.executeTestSet(JUnit4Provider.java:214)
+	at org.apache.maven.surefire.junit4.JUnit4Provider.invoke(JUnit4Provider.java:155)
+	at org.apache.maven.surefire.booter.ForkedBooter.runSuitesInProcess(ForkedBooter.java:385)
+	at org.apache.maven.surefire.booter.ForkedBooter.execute(ForkedBooter.java:162)
+	at org.apache.maven.surefire.booter.ForkedBooter.run(ForkedBooter.java:507)
+	at org.apache.maven.surefire.booter.ForkedBooter.main(ForkedBooter.java:495)
+Oct 01, 2026 6:31:39 PM java.util.prefs.FileSystemPreferences$6 run
+WARNING: Prefs file removed in background /root/.java/.userPrefs/prefs.xml

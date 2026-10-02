@@ -1,0 +1,86 @@
+Checking patch src/function/table/system/test_vector_types.cpp...
+error: while searching for:
+		}
+		case PhysicalType::LIST: {
+			D_ASSERT(type.id() != LogicalTypeId::MAP);
+			auto data = FlatVector::GetData<list_entry_t>(result);
+			data[0].offset = 0;
+			data[0].length = 2;
+			data[1].offset = 2;
+
+error: patch failed: src/function/table/system/test_vector_types.cpp:187
+error: src/function/table/system/test_vector_types.cpp: patch does not apply
+Checking patch test/api/test_scalar_function_select_hook.cpp...
+error: while searching for:
+	UnifiedVectorFormat data;
+	args.data[0].ToUnifiedFormat(args.size(), data);
+	auto input_data = UnifiedVectorFormat::GetData<int32_t>(data);
+	auto result_data = FlatVector::GetData<bool>(result);
+	auto &result_validity = FlatVector::Validity(result);
+
+	if (data.validity.CanHaveNull()) {
+
+error: patch failed: test/api/test_scalar_function_select_hook.cpp:19
+error: test/api/test_scalar_function_select_hook.cpp: patch does not apply
+Checking patch test/api/udf_function/udf_functions_to_test.hpp...
+error: while searching for:
+	switch (GetTypeId<TYPE>()) {
+	case PhysicalType::VARCHAR: {
+		result.SetVectorType(VectorType::FLAT_VECTOR);
+		auto result_data = FlatVector::GetData<string_t>(result);
+		auto ldata = FlatVector::GetData<string_t>(input.data[0]);
+		auto &validity = FlatVector::Validity(input.data[0]);
+
+
+error: patch failed: test/api/udf_function/udf_functions_to_test.hpp:135
+error: test/api/udf_function/udf_functions_to_test.hpp: patch does not apply
+Checking patch test/appender/test_appender.cpp...
+error: while searching for:
+
+void setDataChunkInt32(DataChunk &chunk, idx_t col_idx, idx_t row_idx, int32_t value) {
+	auto &col = chunk.data[col_idx];
+	auto data = FlatVector::GetData<int32_t>(col);
+	data[row_idx] = value;
+}
+
+
+error: patch failed: test/appender/test_appender.cpp:575
+error: test/appender/test_appender.cpp: patch does not apply
+Checking patch test/extension/loadable_extension_demo.cpp...
+error: while searching for:
+	auto row_ids = UnifiedVectorFormat::GetData<int64_t>(vdata);
+
+	result.SetVectorType(VectorType::FLAT_VECTOR);
+	auto out = FlatVector::GetData<bool>(result);
+
+	for (idx_t i = 0; i < count; i++) {
+		auto idx = vdata.sel->get_index(i);
+
+error: patch failed: test/extension/loadable_extension_demo.cpp:673
+error: test/extension/loadable_extension_demo.cpp: patch does not apply
+Checking patch test/sql/parallelism/interquery/concurrent_attach_detach.cpp...
+error: while searching for:
+
+		// int
+		auto &col_ubigint = chunk.data[0];
+		auto data_ubigint = FlatVector::GetData<uint64_t>(col_ubigint);
+		// varchar
+		auto &col_varchar = chunk.data[1];
+		auto data_varchar = FlatVector::GetData<string_t>(col_varchar);
+		// timestamp
+		auto &col_ts = chunk.data[2];
+		auto data_ts = FlatVector::GetData<timestamp_t>(col_ts);
+		// struct
+		auto &col_struct = chunk.data[3];
+		auto &data_struct_entries = StructVector::GetEntries(col_struct);
+		auto &entry_ubigint = data_struct_entries[0];
+		auto data_struct_ubigint = FlatVector::GetData<uint64_t>(entry_ubigint);
+		auto &entry_varchar = data_struct_entries[1];
+		auto data_struct_varchar = FlatVector::GetData<string_t>(entry_varchar);
+
+		for (idx_t i = 0; i < task.ids.size(); i++) {
+			auto row_idx = task.ids[i];
+
+error: patch failed: test/sql/parallelism/interquery/concurrent_attach_detach.cpp:268
+error: test/sql/parallelism/interquery/concurrent_attach_detach.cpp: patch does not apply
+make: *** [Makefile:393: release] Error 1

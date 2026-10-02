@@ -1,0 +1,244 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch backend/src/__tests__/integration/chat.routes.test.ts...
+error: while searching for:
+            ]),
+        );
+        const call = vi.mocked(chatLib.buildMessages).mock.calls[0];
+        const systemPromptExtra = call[2] as string;
+        const nonce = call[5] as string;
+        expect(systemPromptExtra).toContain("WORD ADD-IN MODE");
+        expect(systemPromptExtra).toContain(
+            "<original>exact text copied from the active Word document</original>",
+        );
+        expect(systemPromptExtra).toContain(
+            `<untrusted-content nonce="${nonce}">\nGOVERNED BY DELAWARE LAW\n</untrusted-content nonce="${nonce}">`,
+        );
+        expect(
+            dbInserts.find(
+                ({ table, value }) =>
+
+error: patch failed: backend/src/__tests__/integration/chat.routes.test.ts:302
+error: backend/src/__tests__/integration/chat.routes.test.ts: patch does not apply
+Checking patch backend/src/lib/__tests__/documentContext.test.ts...
+error: while searching for:
+    parseOptionalDocumentContext,
+    generateSpotlightNonce,
+    spotlight,
+    buildWordDocumentContextPrompt,
+    buildMessages,
+} from "../chat/contextBuilders";
+
+// ---------------------------------------------------------------------------
+// parseOptionalDocumentContext — request parsing for POST /chat's
+
+error: patch failed: backend/src/lib/__tests__/documentContext.test.ts:4
+error: backend/src/lib/__tests__/documentContext.test.ts: patch does not apply
+patching file backend/src/__tests__/integration/chat.routes.test.ts
+Hunk #1 FAILED at 302.
+Hunk #2 FAILED at 631.
+Hunk #3 FAILED at 644.
+3 out of 3 hunks FAILED -- saving rejects to file backend/src/__tests__/integration/chat.routes.test.ts.rej
+patching file backend/src/lib/__tests__/documentContext.test.ts
+Hunk #1 FAILED at 4.
+Hunk #2 FAILED at 104.
+2 out of 2 hunks FAILED -- saving rejects to file backend/src/lib/__tests__/documentContext.test.ts.rej
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.10 [39m[90m/testbed/backend[39m
+
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mparseOptionalDocumentContext[2m > [22mtreats absent values as no document context[32m 2[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mparseOptionalDocumentContext[2m > [22mrejects non-string values[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mparseOptionalDocumentContext[2m > [22mnormalizes whitespace-only strings to undefined[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mparseOptionalDocumentContext[2m > [22mtrims surrounding whitespace[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mparseOptionalDocumentContext[2m > [22mcaps oversized documents at MAX_DOCUMENT_CONTEXT_CHARS[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mspotlight[2m > [22mwraps the text in nonce-carrying opening AND closing tags[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mspotlight[2m > [22mgenerates unpredictable per-request nonces[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mspotlight[2m > [22mneutralizes fence tags smuggled inside the text[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mspotlight[2m > [22mredacts an echoed nonce inside the text[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mregisterActiveWordDocument[2m > [22mexposes inline request text as a request-scoped document without a stored id[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mregisterActiveWordDocument[2m > [22mregisters nothing when the request carried no document context[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mregisterActiveWordDocument[2m > [22mreaches the model as an AVAILABLE DOCUMENTS listing, not as prompt text[32m 1[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mbuildWordChatSystemPrompt[2m > [22mkeeps the Word instructions and edit protocol but never the raw document text[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mbuildWordChatSystemPrompt[2m > [22mpoints the model at read_document for the active document[32m 0[2mms[22m[39m
+ [32m✓[39m src/lib/__tests__/documentContext.test.ts[2m > [22mbuildWordChatSystemPrompt[2m > [22momits the active-document access guidance when no context was supplied[32m 0[2mms[22m[39m
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mstreams SSE with a chat_id event on the happy path
+[22m[39m[chat/stream] incoming request {
+  userId: [32m'u1'[39m,
+  chat_id: [1mnull[22m,
+  project_id: [1mnull[22m,
+  model: [90mundefined[39m,
+  messageCount: [33m1[39m
+}
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mstreams SSE with a chat_id event on the happy path
+[22m[39m[chat/stream] resolved chatId chat-1
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mstreams SSE with a chat_id event on the happy path
+[22m[39m[chat/stream] starting LLM stream { apiMessageCount: [33m0[39m, docCount: [33m0[39m, workflowCount: [33m0[39m }
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mstreams SSE with a chat_id event on the happy path
+[22m[39m[chat/stream] LLM stream finished { fullTextLen: [33m8[39m, eventCount: [33m1[39m }
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mdoes not finish the SSE response until the terminal assistant update succeeds
+[22m[39m[chat/stream] incoming request {
+  userId: [32m'u1'[39m,
+  chat_id: [1mnull[22m,
+  project_id: [1mnull[22m,
+  model: [90mundefined[39m,
+  messageCount: [33m1[39m
+}
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mdoes not finish the SSE response until the terminal assistant update succeeds
+[22m[39m[chat/stream] resolved chatId chat-1
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mdoes not finish the SSE response until the terminal assistant update succeeds
+[22m[39m[chat/stream] starting LLM stream { apiMessageCount: [33m0[39m, docCount: [33m0[39m, workflowCount: [33m0[39m }
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mdoes not finish the SSE response until the terminal assistant update succeeds
+[22m[39m[chat/stream] LLM stream finished { fullTextLen: [33m8[39m, eventCount: [33m0[39m }
+
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mstreams SSE with a chat_id event on the happy path[32m 39[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mstores cloud Word chats only in the document-scoped Word tables[32m 7[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mstreams local Word chats without inserting any chat rows[32m 4[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mdoes not finish the SSE response until the terminal assistant update succeeds[32m 55[2mms[22m[39m
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mretries a failed terminal assistant update up to success
+[22m[39m[chat/stream] incoming request {
+  userId: [32m'u1'[39m,
+  chat_id: [1mnull[22m,
+  project_id: [1mnull[22m,
+  model: [90mundefined[39m,
+  messageCount: [33m1[39m
+}
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mretries a failed terminal assistant update up to success
+[22m[39m[chat/stream] resolved chatId chat-1
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mretries a failed terminal assistant update up to success
+[22m[39m[chat/stream] starting LLM stream { apiMessageCount: [33m0[39m, docCount: [33m0[39m, workflowCount: [33m0[39m }
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mretries a failed terminal assistant update up to success
+[22m[39m[chat/stream] LLM stream finished { fullTextLen: [33m8[39m, eventCount: [33m0[39m }
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mreports a terminal persistence failure before ending the SSE stream
+[22m[39m[chat/stream] incoming request {
+  userId: [32m'u1'[39m,
+  chat_id: [1mnull[22m,
+  project_id: [1mnull[22m,
+  model: [90mundefined[39m,
+  messageCount: [33m1[39m
+}
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mreports a terminal persistence failure before ending the SSE stream
+[22m[39m[chat/stream] resolved chatId chat-1
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mreports a terminal persistence failure before ending the SSE stream
+[22m[39m[chat/stream] starting LLM stream { apiMessageCount: [33m0[39m, docCount: [33m0[39m, workflowCount: [33m0[39m }
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mreports a terminal persistence failure before ending the SSE stream
+[22m[39m[chat/stream] LLM stream finished { fullTextLen: [33m8[39m, eventCount: [33m0[39m }
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mfails before advertising SSE metadata when the assistant row cannot be reserved
+[22m[39m[chat/stream] incoming request {
+  userId: [32m'u1'[39m,
+  chat_id: [1mnull[22m,
+  project_id: [1mnull[22m,
+  model: [90mundefined[39m,
+  messageCount: [33m1[39m
+}
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mfails before advertising SSE metadata when the assistant row cannot be reserved
+[22m[39m[chat/stream] resolved chatId chat-1
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mfails before advertising SSE metadata when the assistant row cannot be reserved
+[22m[39m[chat/stream] starting LLM stream { apiMessageCount: [33m0[39m, docCount: [33m0[39m, workflowCount: [33m0[39m }
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2msurfaces a stream failure as an in-stream error event, not an HTTP error
+[22m[39m[chat/stream] incoming request {
+  userId: [32m'u1'[39m,
+  chat_id: [1mnull[22m,
+  project_id: [1mnull[22m,
+  model: [90mundefined[39m,
+  messageCount: [33m1[39m
+}
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2msurfaces a stream failure as an in-stream error event, not an HTTP error
+[22m[39m[chat/stream] resolved chatId chat-1
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2msurfaces a stream failure as an in-stream error event, not an HTTP error
+[22m[39m[chat/stream] starting LLM stream { apiMessageCount: [33m0[39m, docCount: [33m0[39m, workflowCount: [33m0[39m }
+
+[90mstderr[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2msurfaces a stream failure as an in-stream error event, not an HTTP error
+[22m[39m[chat/stream] error: {
+  name: [32m'Error'[39m,
+  message: [32m'upstream LLM failure'[39m,
+  stack: [32m'Error: upstream LLM failure\n'[39m +
+    [32m'    at /testbed/backend/src/__tests__/integration/chat.routes.test.ts:468:40\n'[39m +
+    [32m'    at file:///testbed/backend/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n'[39m +
+    [32m'    at file:///testbed/backend/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n'[39m +
+    [32m'    at file:///testbed/backend/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at runWithCancel (file:///testbed/backend/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n'[39m +
+    [32m'    at file:///testbed/backend/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at runWithTimeout (file:///testbed/backend/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n'[39m +
+    [32m'    at file:///testbed/backend/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64'[39m
+}
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2muses the streamed assistant message id when persisting a cancelled partial response
+[22m[39m[chat/stream] incoming request {
+  userId: [32m'u1'[39m,
+  chat_id: [1mnull[22m,
+  project_id: [1mnull[22m,
+  model: [90mundefined[39m,
+  messageCount: [33m1[39m
+}
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2muses the streamed assistant message id when persisting a cancelled partial response
+[22m[39m[chat/stream] resolved chatId chat-1
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2muses the streamed assistant message id when persisting a cancelled partial response
+[22m[39m[chat/stream] starting LLM stream { apiMessageCount: [33m0[39m, docCount: [33m0[39m, workflowCount: [33m0[39m }
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2muses the streamed assistant message id when persisting a cancelled partial response
+[22m[39m[chat/stream] client aborted stream { chatId: [32m'chat-1'[39m }
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mdoes not allocate or insert a new assistant message for an ask-input continuation
+[22m[39m[chat/stream] incoming request {
+  userId: [32m'u1'[39m,
+  chat_id: [32m'chat-1'[39m,
+  project_id: [1mnull[22m,
+  model: [90mundefined[39m,
+  messageCount: [33m1[39m
+}
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mdoes not allocate or insert a new assistant message for an ask-input continuation
+[22m[39m[chat/stream] resolved chatId chat-1
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mdoes not allocate or insert a new assistant message for an ask-input continuation
+[22m[39m[chat/stream] starting LLM stream { apiMessageCount: [33m0[39m, docCount: [33m0[39m, workflowCount: [33m0[39m }
+
+[90mstdout[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2mdoes not allocate or insert a new assistant message for an ask-input continuation
+[22m[39m[chat/stream] LLM stream finished { fullTextLen: [33m8[39m, eventCount: [33m0[39m }
+
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mretries a failed terminal assistant update up to success[32m 7[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mreports a terminal persistence failure before ending the SSE stream[32m 5[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mfails before advertising SSE metadata when the assistant row cannot be reserved[32m 5[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22msurfaces a stream failure as an in-stream error event, not an HTTP error[32m 6[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22muses the streamed assistant message id when persisting a cancelled partial response[32m 6[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mdoes not allocate or insert a new assistant message for an ask-input continuation[32m 6[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mreturns 400 on an empty messages array (never starts a stream)[32m 6[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mreturns 400 when messages is missing entirely[32m 2[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mreturns 400 when chat_id is not a non-empty string[32m 2[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mshares strict request validation with project chat[32m 2[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mshares strict request validation with project chat[32m 2[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mreturns 400 from the Word route when document_context is not a string[32m 2[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mexposes document_context as a request-scoped active document, not prompt text[32m 3[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mexposes no active Word document when document_context is absent[32m 2[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPOST /chat — streaming endpoint[2m > [22mkeeps Word chats document-scoped: research tools off and no CourtListener key[32m 4[2mms[22m[39m
+ [32m✓[39m src/__tests__/integration/chat.routes.test.ts[2m > [22mPATCH /chat/:chatId[2m > [22mreturns 400 when title is missing[32m 2[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m2 passed[39m[22m[90m (2)[39m
+[2m      Tests [22m [1m[32m35 passed[39m[22m[90m (35)[39m
+[2m   Start at [22m 18:28:02
+[2m   Duration [22m 1.97s[2m (transform 1.31s, setup 0ms, import 1.84s, tests 179ms, environment 0ms)[22m
+
+OMNIGRIL_EXIT_CODE=0

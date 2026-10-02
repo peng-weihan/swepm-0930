@@ -1,0 +1,75 @@
+{
+  "instance_id": "EvoScientist__EvoScientist-376",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.72,
+  "gold_patch_assessment": "The gold patch is a massive refactor (29 files, ~3800 lines) that replaces ad-hoc event loop creation and nest_asyncio usage with a centralized AsyncRuntime model. It creates new modules (runtime.py, cancellation.py, cli/channel_sends.py), refactors shell execution in CustomSandboxBackend for cancellation support, threads an optional AsyncRuntime parameter through MCP loading/CLI agent creation/channel setup/serve paths, and removes the nest-asyncio dependency. The patch is coherent with the stated issue and addresses all described areas: streaming, MCP discovery, interactive prompts, shell execution cancellation, shutdown handling, and nest_asyncio removal.",
+  "base_vs_gold_expectation": "Tests should fail on the unpatched base because (1) new test files import EvoScientist.runtime and EvoScientist.cancellation which do not exist in the base, (2) modified tests reference _execute_prepared_command, ServeRuntimeState.async_runtime, _create_standalone_agent, and other symbols introduced by the gold patch, and (3) test_event_loop.py is completely rewritten to test the new _run_streaming interface rather than the old _create_event_loop/_get_event_loop functions. The gold patch should make all tests pass since it introduces all referenced modules, classes, functions, and API signatures.",
+  "too_narrow_risks": [
+    "No tests verify that nest_asyncio is actually removed or that importing it raises an error — the pyproject.toml change is only checked indirectly.",
+    "No tests for the complete interactive CLI streaming path (run_streaming through Rich/TUI) — only unit-level tests of individual components.",
+    "No test for the runtime shutdown drain behavior mentioned in the issue (draining outstanding executor work during serve shutdown).",
+    "No test for the claim that 'streaming send order should be preserved' end-to-end through a full streaming session.",
+    "Channel interrupt handling (reset between interactive turns) is only tested via two-turn SIGINT test, not for the full edge cases described in the issue."
+  ],
+  "too_broad_risks": [
+    "Multiple tests have timing-sensitive assertions (elapsed < 0.4s, elapsed < 1s, callback_elapsed < 0.5s) that may flake under CI load or slow Docker environments.",
+    "test_timeout_bounds_drain_when_detached_descendant_holds_pipes uses os.fork() and os.setsid() which can be fragile in container environments.",
+    "test_ctrl_c_can_cancel_two_separate_rich_cli_turns uses signal.raise_signal(SIGINT) which requires main thread and can interact with test runner signal handling.",
+    "test_cancel_terminates_active_shell_process_tree creates actual subprocesses (sleep 10) and polls for file creation — timing-dependent.",
+    "Test suite is 18 files run with -x (stop on first failure) — one flaky timing test can block all subsequent validation."
+  ],
+  "implementation_coupling": [
+    "Many tests check exact internal thread names ('evosci-async-runtime', 'evosci-stream-runtime', 'evosci-mcp-runtime', 'evosci-channel-adapter-runtime') — an alternative implementation using different thread names would fail.",
+    "Tests access private attributes: runtime._thread, runtime._loop, display_mod._stream_cancel_handles, display_mod._stream_cancel_events, backends._active_shell_processes_lock, backends._PROCESS_DRAIN_GRACE_SECONDS, backends._terminate_process_tree.",
+    "test_backends.py monkeypatches CustomSandboxBackend._execute_prepared_command — a private method name specific to the gold patch's refactor.",
+    "test_runtime.py subclasses AsyncRuntime and overrides _enqueue_locked — a private method.",
+    "test_mcp_client.py asserts exact error message text matching 'await aload_mcp_tools(config' — coupled to gold patch's specific error wording.",
+    "test_runtime.py checks 'not hasattr(runtime_module, \"runtime\")' — asserting the module structure has no singleton, which is an implementation choice.",
+    "test_cli_async_runtime.py verifies the exact thread name 'evosci-async-runtime' and checks that work executes on that named thread."
+  ],
+  "environment_risks": [
+    "The eval.sh uses 'uv run $PYTHON -m pytest' which depends on uv being installed and the virtual environment being properly configured.",
+    "POSIX-specific tests (process group killing, os.fork, os.setsid) skip on Windows but could still fail in restricted container environments.",
+    "The --timeout=30 per-test limit combined with timing-sensitive assertions could cause spurious failures on slow CI nodes.",
+    "The test patch is applied via 'git apply -p1 -v' with a fallback to 'patch --batch --fuzz=5' — fuzz-5 patching could misapply hunks if the base code has drifted.",
+    "nest-asyncio removal from pyproject.toml/uv.lock may require re-resolving dependencies; if the environment has nest-asyncio pre-installed, stale imports in base code paths not exercised by tests could still succeed."
+  ],
+  "mismatches": [
+    "The issue describes 'runtime shutdown must drain outstanding executor work, cancel active turns during serve shutdown' but the test suite has no dedicated test for the full serve-shutdown drain sequence — only partial cancellation tests.",
+    "The issue mentions 'channel sends and interactive sends must not run on the runtime loop in a way that can deadlock or reorder streaming output' but tests only verify PendingChannelSends ordering, not the full deadlock-free guarantee.",
+    "The issue scope is extremely broad (CLI/TUI streaming, MCP tool discovery, interactive prompts, channel sends, shell execution, shutdown/cancellation) and the gold patch is correspondingly massive (~3800 lines across 29 files), which is atypical for a single SWE benchmark instance and may be unreasonably difficult for an agent to solve."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/EvoScientist__EvoScientist-376/solution/solve.sh",
+      "detail": "Gold patch is ~3857 lines modifying 29 files — extremely large for a single benchmark instance"
+    },
+    {
+      "file": "/audit_tasks/EvoScientist__EvoScientist-376/tests/eval.sh",
+      "detail": "Runs 18 test files with -x flag and --timeout=30; uv run required"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch is 2974 lines creating 4 new test files and modifying 14 existing ones"
+    },
+    {
+      "file": "/audit_tasks/EvoScientist__EvoScientist-376/instruction.md",
+      "detail": "Issue describes a sweeping refactor across streaming, MCP, shell execution, cancellation, and shutdown subsystems"
+    },
+    {
+      "file": "/audit_tasks/EvoScientist__EvoScientist-376/task.toml",
+      "detail": "Agent timeout is 7200s (2 hours), verifier timeout is 3600s (1 hour) — unusually long, reflecting task complexity"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Tests import EvoScientist.runtime (AsyncRuntime, AsyncRuntimeError, AsyncRuntimeClosedError) and EvoScientist.cancellation — modules created only by the gold patch, ensuring base fails"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "test_runtime.py alone is 622 lines testing 30+ behaviors of the new AsyncRuntime class — deeply coupled to the gold implementation's class design"
+    }
+  ],
+  "recommended_action": "revise_instance",
+  "summary": "This instance represents an extremely large refactoring task (29 files, ~3800 lines) that replaces nest_asyncio with an owned AsyncRuntime model. While the gold patch is technically coherent with the issue and the tests would correctly reject the base while accepting the gold patch, the instance has significant quality concerns: (1) The task scope is unreasonably large for a single benchmark instance — it spans streaming, MCP, channels, CLI, shell execution, and shutdown subsystems. (2) Tests are heavily coupled to the gold implementation's internal design — exact thread names, private attributes, private method names, and specific exception message text. An alternative valid implementation (e.g., different class names, different threading model, different error messages) would fail these tests. (3) Several tests have timing-sensitive assertions that risk flakiness in CI/Docker. (4) The test_event_loop.py rewrite removes all old tests and replaces with gold-specific tests, which means the verifier cannot distinguish between 'correctly refactored' and 'tests only work with this exact implementation'. The combination of extreme scope, implementation coupling, and timing sensitivity makes this instance questionable for fair SWE benchmarking."
+}

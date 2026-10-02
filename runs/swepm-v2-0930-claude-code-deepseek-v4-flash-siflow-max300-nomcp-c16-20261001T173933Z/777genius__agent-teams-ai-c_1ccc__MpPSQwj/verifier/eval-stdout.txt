@@ -1,0 +1,37 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+
+ RUN  v3.2.4 /testbed
+
+ ✓ test/shared/utils/extensionNormalizers.test.ts (22 tests) 49ms
+ ❯ test/renderer/store/changeReviewSlice.test.ts (3 tests | 3 failed) 11ms
+   × changeReviewSlice task changes > does not cache errors as negative task-change results 7ms
+     → expected "spy" to be called 2 times, but got 1 times
+   × changeReviewSlice task changes > negative-caches confirmed empty results per request signature 1ms
+     → expected "spy" to be called 2 times, but got 0 times
+   × changeReviewSlice task changes > ignores stale fetchTaskChanges responses when a newer task request wins 2ms
+     → expected '1' to be '2' // Object.is equality
+ ❯ test/main/services/team/TaskBoundaryParser.test.ts (3 tests | 1 failed) 21ms
+   ✓ TaskBoundaryParser > detects MCP task boundaries for modern runtime sessions 8ms
+   ✓ TaskBoundaryParser > ignores legacy teamctl bash markers and keeps modern MCP markers only 3ms
+   × TaskBoundaryParser > accepts task_id for TaskUpdate and MCP task markers 8ms
+     → expected [] to have a length of 2 but got +0
+ ❯ test/main/services/team/TeamMcpConfigBuilder.test.ts (5 tests | 1 failed) 72ms
+   ✓ TeamMcpConfigBuilder > prefers the source MCP entry when workspace source is available 55ms
+   × TeamMcpConfigBuilder > merges top-level user MCP with generated agent-teams config 10ms
+     → expected [ 'agent-teams' ] to deeply equal [ 'agent-teams', …(2) ]
+   ✓ TeamMcpConfigBuilder > does not inline project MCP config to preserve native Claude precedence 2ms
+   ✓ TeamMcpConfigBuilder > generated agent-teams server overrides same-named user MCP entry 2ms
+   ✓ TeamMcpConfigBuilder > ignores malformed user MCP file 2ms
+ ❯ test/main/services/team/ChangeExtractorService.test.ts (2 tests | 2 failed) 24ms
+   × ChangeExtractorService > does not reuse detailed task-change cache across different scope inputs 16ms
+     → expected [] to have a length of 1 but got +0
+   × ChangeExtractorService > merges fallback changes for the same Windows file across slash variants 7ms
+     → expected [ { …(7) }, { …(7) } ] to have a length of 1 but got 2
+ ✓ test/renderer/store/extensionsSlice.test.ts (15 tests) 99ms
+
+ Test Files  5 failed | 2 passed (7)
+      Tests  7 failed | 43 passed (50)
+   Start at  18:12:21
+   Duration  7.70s (transform 1.52s, setup 92ms, collect 2.55s, tests 276ms, environment 3.87s, prepare 5.04s)
+
+OMNIGRIL_EXIT_CODE=1

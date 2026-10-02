@@ -1,0 +1,65 @@
+{
+  "instance_id": "RakuenSoftware__aimee-c_b59e070",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch performs a large-scale Go refactoring: extracting roundtable panel logic from internal/engine and internal/roundtable into a new self-contained package at modules/roundtable/panel. It creates 7 new files, renames 4 files, modifies 7 existing files, and introduces an adapter layer (panelDelegates) in internal/engine. The patch directly addresses the stated issue of making the roundtable panel self-contained. The change is approximately 2300 lines.",
+  "base_vs_gold_expectation": "The verifier should reject the unmodified base because the test patch introduces imports of modules/roundtable/panel (which does not exist at base), references types like panel.Run, panel.SeatRequest, RunAnalysis, RunChairman, RunDiscussion that are created by the gold patch, and adds panel_delegates_test.go which references panelDelegates (created by the gold patch). The tests would fail to compile on the base. With the gold patch applied, the test patch should apply cleanly and tests should pass.",
+  "too_narrow_risks": [
+    "Tests are deeply coupled to the gold patch's specific API design: exact exported type names (Run, SeatRequest, SeatResult, Analysis, ReviewFeedback, Finding, Seat, Panel, Artifact, Delegates), exact exported function names (RunAnalysis, RunChairman, RunDiscussion, Convene), and exact unexported names (panelResponse, seatDurableSlot, delegateMaxTurnsCap, chairmanDeadline, etc.).",
+    "An alternative valid refactoring that achieves the same behavioral extraction but uses different type/function names (e.g., PanelRun instead of Run, AnalyzeSeats instead of RunAnalysis) would fail all tests.",
+    "The adapter layer tests (panel_delegates_test.go) reference internal/engine types like panelDelegates that only exist in the gold patch's specific implementation.",
+    "The task is extremely large (~2300 lines gold patch, ~1500 lines test patch), making it nearly impossible to reproduce without essentially arriving at the exact same API design."
+  ],
+  "too_broad_risks": [
+    "The eval command runs tests across ./internal/api, ./internal/engine, and ./modules/roundtable/... which includes many pre-existing tests beyond the refactoring scope. While this is appropriate for verifying no regressions in a refactoring task, it increases the surface area for unrelated test failures."
+  ],
+  "implementation_coupling": [
+    "Panel package tests (analysis_test.go, chairman_test.go, discussion_test.go, response_test.go) are in-package tests that access unexported symbols like panelResponse, panelVerdictError, blockingFindingCount, chairmanDeadline, normalizeRoundtableStage, seatDurableSlot, delegateMaxTurnsCap - requiring exact internal naming.",
+    "Test doubles implement the Delegates interface with specific method signatures (One, Group) that must match exactly.",
+    "panel_delegates_test.go tests the adapter layer by name (panelDelegates) and checks field-level mapping (WorkItemID, Stage, ExecutionVersion, Workdir, ProvidedTarget, MaxCostUSD) between run identity and delegate requests.",
+    "Tests check for specific durable slot naming conventions, discussion issue ID formats, and prompt content strings that are implementation details of the gold patch."
+  ],
+  "environment_risks": [
+    "Go 1.25.0 is used which is a very recent version; t.Context() is used in tests which requires Go 1.24+.",
+    "CGO_ENABLED=0 is set which should make builds more portable.",
+    "No network dependencies or external services required for tests."
+  ],
+  "mismatches": [
+    "task.toml says language='c' but all modified code is Go (server-go/).",
+    "task.toml says category='debugging' but the issue is clearly a refactoring task ('refactor: extract the roundtable panel into a self-contained package').",
+    "The repository name suggests a C project (aimee-c) but the benchmark instance only modifies Go code."
+  ],
+  "evidence": [
+    {
+      "file": "task.toml",
+      "detail": "language='c' but gold patch and tests are entirely Go code in server-go/"
+    },
+    {
+      "file": "task.toml",
+      "detail": "category='debugging' but instruction.md describes a refactoring"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch creates 3 new files (panel_delegates_test.go, analysis_test.go, response_test.go) and renames 4 test files into modules/roundtable/panel/, all deeply coupled to gold patch's specific type/function naming"
+    },
+    {
+      "file": "solution/solve.sh",
+      "detail": "Gold patch is ~2300 lines touching 21 files - extremely large for a benchmark instance"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Tests reference 15+ exported types/functions and 10+ unexported symbols that only exist after the gold patch, making the specific API design the only possible passing implementation"
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "Test command runs 'go test ./internal/api ./internal/engine ./modules/roundtable/...' covering broad package set"
+    },
+    {
+      "file": "instruction.md",
+      "detail": "Issue statement describes extracting roundtable panel to modules/roundtable/panel with specific seam types (panel.Delegates, RunResult) - but the tests enforce far more specific API choices than the issue describes"
+    }
+  ],
+  "recommended_action": "revise_instance",
+  "summary": "This is an extremely large Go refactoring task (~2300-line gold patch) mislabeled as language 'c' and category 'debugging'. The tests are deeply coupled to the gold patch's specific API design: exact exported type names (Run, SeatRequest, RunAnalysis, etc.), exact unexported names (panelResponse, seatDurableSlot, etc.), and adapter internals (panelDelegates). While the verifier correctly rejects the base (test imports reference the non-existent panel package), any alternative refactoring that achieves the same behavioral extraction with different naming would fail. The task's size and API-coupling make it effectively require reproducing the exact gold patch rather than solving the stated problem. The metadata mismatches (language, category) further reduce instance quality."
+}

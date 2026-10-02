@@ -1,0 +1,1635 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/DefaultMemory.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/DefaultMemory.java
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/DefaultMemory.java
++++ b/memind-core/src/main/java/com/openmemind/ai/memory/core/DefaultMemory.java
+@@ -14,6 +14,7 @@
+ package com.openmemind.ai.memory.core;
+ 
+ import com.openmemind.ai.memory.core.data.MemoryId;
++import com.openmemind.ai.memory.core.data.MemoryItem;
+ import com.openmemind.ai.memory.core.data.ToolCallStats;
+ import com.openmemind.ai.memory.core.extraction.ExtractionConfig;
+ import com.openmemind.ai.memory.core.extraction.ExtractionRequest;
+@@ -30,6 +31,8 @@
+ import com.openmemind.ai.memory.core.retrieval.RetrievalResult;
+ import com.openmemind.ai.memory.core.stats.ToolStatsService;
+ import com.openmemind.ai.memory.core.store.MemoryStore;
++import com.openmemind.ai.memory.core.vector.MemoryVector;
++import java.util.Collection;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Objects;
+@@ -51,16 +54,19 @@ public class DefaultMemory implements Memory {
+     private final MemoryExtractionPipeline extractor;
+     private final MemoryRetriever retriever;
+     private final MemoryStore store;
++    private final MemoryVector vector;
+     private final ToolStatsService toolStatsService;
+ 
+     public DefaultMemory(
+             MemoryExtractionPipeline extractor,
+             MemoryRetriever retriever,
+             MemoryStore store,
++            MemoryVector vector,
+             ToolStatsService toolStatsService) {
+         this.extractor = Objects.requireNonNull(extractor, "extractor must not be null");
+         this.retriever = Objects.requireNonNull(retriever, "retriever must not be null");
+         this.store = Objects.requireNonNull(store, "store must not be null");
++        this.vector = Objects.requireNonNull(vector, "vector must not be null");
+         this.toolStatsService =
+                 Objects.requireNonNull(toolStatsService, "toolStatsService must not be null");
+     }
+@@ -116,6 +122,41 @@ public Mono<RetrievalResult> retrieve(RetrievalRequest request) {
+         return retriever.retrieve(request);
+     }
+ 
++    @Override
++    public Mono<Void> deleteItems(MemoryId memoryId, Collection<Long> itemIds) {
++        var requestedIds = List.copyOf(itemIds);
++        if (requestedIds.isEmpty()) {
++            return Mono.<Void>empty();
++        }
++
++        return Mono.fromCallable(() -> store.getItemsByIds(memoryId, requestedIds))
++                .map(
++                        items ->
++                                items.stream()
++                                        .map(MemoryItem::vectorId)
++                                        .filter(Objects::nonNull)
++                                        .distinct()
++                                        .toList())
++                .flatMap(
++                        vectorIds ->
++                                vectorIds.isEmpty()
++                                        ? Mono.<Void>empty()
++                                        : vector.deleteBatch(memoryId, vectorIds))
++                .then(Mono.<Void>fromRunnable(() -> store.deleteItems(memoryId, requestedIds)))
++                .doOnSuccess(ignored -> retriever.onDataChanged(memoryId));
++    }
++
++    @Override
++    public Mono<Void> deleteInsights(MemoryId memoryId, Collection<Long> insightIds) {
++        var requestedIds = List.copyOf(insightIds);
++        if (requestedIds.isEmpty()) {
++            return Mono.<Void>empty();
++        }
++
++        return Mono.<Void>fromRunnable(() -> store.deleteInsights(memoryId, requestedIds))
++                .doOnSuccess(ignored -> retriever.onDataChanged(memoryId));
++    }
++
+     // ===== Agent memory reporting =====
+ 
+     @Override
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/Memory.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/Memory.java
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/Memory.java
++++ b/memind-core/src/main/java/com/openmemind/ai/memory/core/Memory.java
+@@ -23,6 +23,7 @@
+ import com.openmemind.ai.memory.core.retrieval.RetrievalConfig;
+ import com.openmemind.ai.memory.core.retrieval.RetrievalRequest;
+ import com.openmemind.ai.memory.core.retrieval.RetrievalResult;
++import java.util.Collection;
+ import java.util.List;
+ import java.util.Map;
+ import reactor.core.publisher.Mono;
+@@ -157,6 +158,26 @@ Mono<RetrievalResult> retrieve(
+      */
+     Mono<RetrievalResult> retrieve(RetrievalRequest request);
+ 
++    // ===== Deletion =====
++
++    /**
++     * Deletes only the requested memory items for the given memory id.
++     *
++     * @param memoryId the memory identity
++     * @param itemIds the item ids to delete
++     * @return completion signal
++     */
++    Mono<Void> deleteItems(MemoryId memoryId, Collection<Long> itemIds);
++
++    /**
++     * Deletes only the requested insights for the given memory id.
++     *
++     * @param memoryId the memory identity
++     * @param insightIds the insight ids to delete
++     * @return completion signal
++     */
++    Mono<Void> deleteInsights(MemoryId memoryId, Collection<Long> insightIds);
++
+     // ===== Agent tool stats =====
+ 
+     /**
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/data/DefaultInsightTypes.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/data/DefaultInsightTypes.java
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/data/DefaultInsightTypes.java
++++ b/memind-core/src/main/java/com/openmemind/ai/memory/core/data/DefaultInsightTypes.java
+@@ -36,7 +36,6 @@ private DefaultInsightTypes() {}
+     public static MemoryInsightType identity() {
+         return new MemoryInsightType(
+                 1L,
+-                null,
+                 "identity",
+                 "Who the user IS as a person: stable traits, professional background,"
+                         + " education, skills, and self-description that remain true regardless"
+@@ -59,7 +58,6 @@ public static MemoryInsightType identity() {
+     public static MemoryInsightType preferences() {
+         return new MemoryInsightType(
+                 2L,
+-                null,
+                 "preferences",
+                 "What the user LIKES, DISLIKES, or VALUES: subjective opinions on tools,"
+                         + " technologies, food, lifestyle, aesthetics, and communication style."
+@@ -82,7 +80,6 @@ public static MemoryInsightType preferences() {
+     public static MemoryInsightType relationships() {
+         return new MemoryInsightType(
+                 3L,
+-                null,
+                 "relationships",
+                 "The user's social network: family members, friends, colleagues, mentors,"
+                         + " and their roles or dynamics. Groups might be: family, work_team,"
+@@ -104,7 +101,6 @@ public static MemoryInsightType relationships() {
+     public static MemoryInsightType experiences() {
+         return new MemoryInsightType(
+                 4L,
+-                null,
+                 "experiences",
+                 "What is HAPPENING or HAS HAPPENED: time-bound activities, projects, goals,"
+                         + " milestones, team context, and situational facts that may become"
+@@ -126,7 +122,6 @@ public static MemoryInsightType experiences() {
+     public static MemoryInsightType behavior() {
+         return new MemoryInsightType(
+                 9L,
+-                null,
+                 "behavior",
+                 "What the user DOES REPEATEDLY: habits, routines, rituals, and recurring"
+                         + " patterns with observable frequency (daily, weekly, always, usually)."
+@@ -151,7 +146,6 @@ public static MemoryInsightType behavior() {
+     public static MemoryInsightType procedural() {
+         return new MemoryInsightType(
+                 24L,
+-                null,
+                 "procedural",
+                 "Reusable HOW-TO knowledge: operational procedures, configuration recipes,"
+                         + " problem-solution pairs, and directives the user gave to the agent."
+@@ -176,7 +170,6 @@ public static MemoryInsightType procedural() {
+     public static MemoryInsightType profile() {
+         return new MemoryInsightType(
+                 20L,
+-                null,
+                 "profile",
+                 "Comprehensive user portrait synthesized from all BRANCH dimensions"
+                         + " (identity, preferences, relationships, experiences, behavior)"
+@@ -198,7 +191,6 @@ public static MemoryInsightType profile() {
+     public static MemoryInsightType interaction() {
+         return new MemoryInsightType(
+                 21L,
+-                null,
+                 "interaction",
+                 "Prescriptive directives for the AI agent: communication style calibration"
+                         + " (tone, verbosity, formality), domain-specific response strategies,"
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/data/MemoryInsightType.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/data/MemoryInsightType.java
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/data/MemoryInsightType.java
++++ b/memind-core/src/main/java/com/openmemind/ai/memory/core/data/MemoryInsightType.java
+@@ -22,7 +22,6 @@
+ 
+ public record MemoryInsightType(
+         Long id,
+-        String memoryId,
+ 
+         /* Name */
+         String name,
+@@ -72,7 +71,6 @@ public InsightTreeConfig resolveTreeConfig() {
+     public MemoryInsightType withTargetTokens(int targetTokens) {
+         return new MemoryInsightType(
+                 id,
+-                memoryId,
+                 name,
+                 description,
+                 descriptionVectorId,
+@@ -92,7 +90,6 @@ public MemoryInsightType withTargetTokens(int targetTokens) {
+     public MemoryInsightType withTreeConfig(InsightTreeConfig treeConfig) {
+         return new MemoryInsightType(
+                 id,
+-                memoryId,
+                 name,
+                 description,
+                 descriptionVectorId,
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/InsightLayer.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/InsightLayer.java
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/InsightLayer.java
++++ b/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/InsightLayer.java
+@@ -139,7 +139,7 @@ public void flush(MemoryId memoryId) {
+     public void flush(MemoryId memoryId, String language) {
+         scheduler.awaitPending(memoryId, 5, TimeUnit.MINUTES);
+ 
+-        var insightTypes = store.getAllInsightTypes(memoryId);
++        var insightTypes = store.listInsightTypes();
+         if (insightTypes.isEmpty()) {
+             insightTypes = DefaultInsightTypes.all();
+         }
+@@ -186,7 +186,7 @@ private List<MemoryInsightType> resolveInsightTypes(
+         if (!result.resolvedInsightTypes().isEmpty()) {
+             return result.resolvedInsightTypes();
+         }
+-        var stored = store.getAllInsightTypes(memoryId);
++        var stored = store.listInsightTypes();
+         return stored.isEmpty() ? DefaultInsightTypes.all() : stored;
+     }
+ 
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/scheduler/InsightBuildScheduler.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/scheduler/InsightBuildScheduler.java
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/scheduler/InsightBuildScheduler.java
++++ b/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/scheduler/InsightBuildScheduler.java
+@@ -352,7 +352,7 @@ private void doRunPipeline(
+                             itemIds.size());
+                 }
+ 
+-                insightType = store.getInsightType(memoryId, insightTypeName).orElse(null);
++                insightType = store.getInsightType(insightTypeName).orElse(null);
+                 if (insightType == null) {
+                     log.warn(
+                             "InsightType does not exist [type={}]，skipping subsequent phases",
+@@ -587,7 +587,7 @@ private MemoryInsight buildLeafForGroup(
+                             1);
+         }
+ 
+-        store.saveInsight(memoryId, leafInsight);
++        store.upsertInsights(memoryId, List.of(leafInsight));
+         bufferStore.markBuilt(memoryId, insightTypeName, unbuiltItemIds);
+         log.debug(
+                 "Phase 3 Build completed [type={}, group={}, points={}, version={}]",
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeContext.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeContext.java
+deleted file mode 100644
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeContext.java
++++ /dev/null
+@@ -1,61 +0,0 @@
+-/*
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- * http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-package com.openmemind.ai.memory.core.extraction.insight.tree;
+-
+-import com.openmemind.ai.memory.core.data.MemoryId;
+-import com.openmemind.ai.memory.core.data.MemoryInsight;
+-import com.openmemind.ai.memory.core.data.enums.InsightTier;
+-import com.openmemind.ai.memory.core.store.MemoryStore;
+-import java.util.List;
+-import java.util.Map;
+-import java.util.concurrent.ConcurrentHashMap;
+-
+-/**
+- * Single extraction process's Insight cache context
+- *
+- * <p>Cache the results of getInsightsByTier to avoid repeated queries in the same extraction. Lifecycle: a single generateTreeAwareInsight call.
+- */
+-public class InsightTreeContext {
+-
+-    private final MemoryStore store;
+-    private final MemoryId memoryId;
+-    private final String type;
+-    private final Map<InsightTier, List<MemoryInsight>> cache = new ConcurrentHashMap<>();
+-
+-    public InsightTreeContext(MemoryStore store, MemoryId memoryId, String type) {
+-        this.store = store;
+-        this.memoryId = memoryId;
+-        this.type = type;
+-    }
+-
+-    public List<MemoryInsight> getByTier(InsightTier tier) {
+-        return cache.computeIfAbsent(tier, t -> store.getInsightsByTier(memoryId, type, t));
+-    }
+-
+-    public void invalidate(InsightTier tier) {
+-        cache.remove(tier);
+-    }
+-
+-    public void invalidateAll() {
+-        cache.clear();
+-    }
+-
+-    public List<MemoryInsight> getRoots() {
+-        return store.getRoots(memoryId);
+-    }
+-
+-    public List<MemoryInsight> getAllBranches() {
+-        return store.getAllInsightsByTier(memoryId, InsightTier.BRANCH);
+-    }
+-}
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizer.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizer.java
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizer.java
++++ b/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizer.java
+@@ -13,6 +13,7 @@
+  */
+ package com.openmemind.ai.memory.core.extraction.insight.tree;
+ 
++import com.openmemind.ai.memory.core.data.DefaultInsightTypes;
+ import com.openmemind.ai.memory.core.data.InsightPoint;
+ import com.openmemind.ai.memory.core.data.MemoryId;
+ import com.openmemind.ai.memory.core.data.MemoryInsight;
+@@ -140,7 +141,7 @@ public void forceResummarizeBranchIfEmpty(
+         }
+ 
+         var allLeafs =
+-                store.getInsightsByTypeId(memoryId, insightType.name()).stream()
++                store.getInsightsByType(memoryId, insightType.name()).stream()
+                         .filter(i -> InsightTier.LEAF.equals(i.tier()))
+                         .toList();
+         if (allLeafs.isEmpty()) {
+@@ -215,7 +216,7 @@ public void onLeafsUpdated(
+ 
+         // 1. Query all LEAFs at once (eliminate duplicate queries)
+         var allLeafs =
+-                store.getInsightsByTypeId(memoryId, insightTypeName).stream()
++                store.getInsightsByType(memoryId, insightTypeName).stream()
+                         .filter(i -> InsightTier.LEAF.equals(i.tier()))
+                         .toList();
+ 
+@@ -332,7 +333,7 @@ private MemoryInsight batchLinkLeafsToBranch(
+         var toSave = new ArrayList<MemoryInsight>();
+         toSave.add(updatedBranch);
+         toSave.addAll(updatedLeafs);
+-        store.saveInsights(memoryId, toSave);
++        store.upsertInsights(memoryId, toSave);
+ 
+         return updatedBranch;
+     }
+@@ -347,11 +348,13 @@ private record RootContext(
+      * Query once within strip lock, result shared by link and bubble logic
+      */
+     private RootContext queryRootContext(MemoryId memoryId) {
+-        var allBranches = store.getAllInsightsByTier(memoryId, InsightTier.BRANCH);
++        var allBranches = store.getInsightsByTier(memoryId, InsightTier.BRANCH);
++        var configuredTypes = store.listInsightTypes();
+         var rootTypes =
+-                store.getAllInsightTypes(memoryId).stream()
+-                        .filter(t -> t.insightAnalysisMode() == InsightAnalysisMode.ROOT)
+-                        .toList();
++                (configuredTypes.isEmpty() ? DefaultInsightTypes.all() : configuredTypes)
++                        .stream()
++                                .filter(t -> t.insightAnalysisMode() == InsightAnalysisMode.ROOT)
++                                .toList();
+         return new RootContext(allBranches, rootTypes);
+     }
+ 
+@@ -424,7 +427,7 @@ private void resummarizeRootAndReset(
+             if (freshRoot == null) {
+                 return;
+             }
+-            var freshBranches = store.getAllInsightsByTier(memoryId, InsightTier.BRANCH);
++            var freshBranches = store.getInsightsByTier(memoryId, InsightTier.BRANCH);
+             resummarizeRoot(memoryId, p.rootType(), freshRoot, freshBranches, p.config(), language);
+             bubbleTracker.reset(p.rootKey());
+         } catch (Exception e) {
+@@ -467,7 +470,7 @@ private MemoryInsight ensureRoot(
+                                             null,
+                                             childIds,
+                                             1);
+-                            store.saveInsight(memoryId, root);
++                            store.upsertInsights(memoryId, List.of(root));
+                             log.info(
+                                     "Creating ROOT [type={}, id={}], containing {} BRANCHES",
+                                     rootType.name(),
+@@ -489,7 +492,7 @@ private void linkBranchToRoot(MemoryId memoryId, MemoryInsight branch, MemoryIns
+         }
+ 
+         childIds.add(branch.id());
+-        store.saveInsight(memoryId, latestRoot.withChildInsightIds(childIds));
++        store.upsertInsights(memoryId, List.of(latestRoot.withChildInsightIds(childIds)));
+         log.debug(
+                 "Linking BRANCH [id={}] → ROOT [type={}, id={}]",
+                 branch.id(),
+@@ -630,7 +633,7 @@ private MemoryInsight embedAndSave(
+                         .withLastReasonedAt(now)
+                         .withUpdatedAt(now)
+                         .withVersion(insight.version() + 1);
+-        store.saveInsight(memoryId, updated);
++        store.upsertInsights(memoryId, List.of(updated));
+         return updated;
+     }
+ 
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/item/MemoryItemLayer.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/item/MemoryItemLayer.java
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/item/MemoryItemLayer.java
++++ b/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/item/MemoryItemLayer.java
+@@ -114,7 +114,7 @@ public MemoryItemLayer(
+     public Mono<MemoryItemResult> extract(
+             MemoryId memoryId, RawDataResult rawDataResult, ItemExtractionConfig config) {
+ 
+-        List<MemoryInsightType> resolvedInsightTypes = resolveInsightTypes(memoryId);
++        List<MemoryInsightType> resolvedInsightTypes = resolveInsightTypes();
+ 
+         // Phase 1: LLM extraction + filtering
+         return extractor
+@@ -287,7 +287,7 @@ private Mono<MemoryItemResult> vectorizeAndPersist(
+                                                                     contentType))
+                                             .toList();
+ 
+-                            store.addItems(memoryId, newItems);
++                            store.insertItems(memoryId, newItems);
+ 
+                             return new MemoryItemResult(newItems, resolvedInsightTypes);
+                         });
+@@ -345,8 +345,8 @@ private Map<String, Object> buildItemMetadata(ExtractedMemoryEntry entry) {
+         return result.isEmpty() ? Map.of() : Map.copyOf(result);
+     }
+ 
+-    private List<MemoryInsightType> resolveInsightTypes(MemoryId memoryId) {
+-        List<MemoryInsightType> fromStore = store.getAllInsightTypes(memoryId);
++    private List<MemoryInsightType> resolveInsightTypes() {
++        List<MemoryInsightType> fromStore = store.listInsightTypes();
+         return fromStore.isEmpty() ? DefaultInsightTypes.all() : fromStore;
+     }
+ 
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/rawdata/RawDataLayer.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/rawdata/RawDataLayer.java
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/rawdata/RawDataLayer.java
++++ b/memind-core/src/main/java/com/openmemind/ai/memory/core/extraction/rawdata/RawDataLayer.java
+@@ -262,7 +262,7 @@ private RawDataProcessResult buildAndPersist(
+                         .toList();
+ 
+         // Persistence
+-        store.saveRawDataList(memoryId, rawDataList);
++        store.upsertRawData(memoryId, rawDataList);
+ 
+         return new RawDataProcessResult(rawDataList, parsedSegments, false);
+     }
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetriever.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetriever.java
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetriever.java
++++ b/memind-core/src/main/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetriever.java
+@@ -15,6 +15,7 @@
+ 
+ import com.github.benmanes.caffeine.cache.Cache;
+ import com.github.benmanes.caffeine.cache.Caffeine;
++import com.openmemind.ai.memory.core.data.DefaultInsightTypes;
+ import com.openmemind.ai.memory.core.data.MemoryId;
+ import com.openmemind.ai.memory.core.data.MemoryInsight;
+ import com.openmemind.ai.memory.core.data.MemoryInsightType;
+@@ -117,7 +118,7 @@ private Mono<TierResult> executeRouting(QueryContext context, RetrievalConfig co
+         List<MemoryInsight> allInsights =
+                 insightCache.get(
+                         context.memoryId().toIdentifier(),
+-                        key -> memoryStore.getAllInsights(context.memoryId()));
++                        key -> memoryStore.listInsights(context.memoryId()));
+ 
+         var candidateInsights =
+                 allInsights.stream()
+@@ -132,7 +133,10 @@ private Mono<TierResult> executeRouting(QueryContext context, RetrievalConfig co
+         }
+ 
+         // Load insight types to distinguish ROOT / BRANCH
+-        List<MemoryInsightType> insightTypes = memoryStore.getAllInsightTypes(context.memoryId());
++        List<MemoryInsightType> insightTypes = memoryStore.listInsightTypes();
++        if (insightTypes.isEmpty()) {
++            insightTypes = DefaultInsightTypes.all();
++        }
+         Map<String, InsightAnalysisMode> typeNameToMode =
+                 insightTypes.stream()
+                         .collect(
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/retrieval/tier/RawDataTierRetriever.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/retrieval/tier/RawDataTierRetriever.java
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/retrieval/tier/RawDataTierRetriever.java
++++ b/memind-core/src/main/java/com/openmemind/ai/memory/core/retrieval/tier/RawDataTierRetriever.java
+@@ -399,7 +399,7 @@ private Map<String, MemoryRawData> buildVectorIdToRawDataMap(
+                             .map(java.util.Optional::get)
+                             .toList();
+         } else {
+-            candidates = memoryStore.getAllRawData(context.memoryId());
++            candidates = memoryStore.listRawData(context.memoryId());
+         }
+         return candidates.stream()
+                 .filter(rd -> rd.captionVectorId() != null)
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/stats/DefaultToolStatsService.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/stats/DefaultToolStatsService.java
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/stats/DefaultToolStatsService.java
++++ b/memind-core/src/main/java/com/openmemind/ai/memory/core/stats/DefaultToolStatsService.java
+@@ -40,7 +40,7 @@ public Mono<ToolCallStats> getToolStats(MemoryId memoryId, String toolName) {
+         return Mono.fromCallable(
+                 () -> {
+                     var items =
+-                            store.getAllItems(memoryId).stream()
++                            store.listItems(memoryId).stream()
+                                     .filter(
+                                             item ->
+                                                     toolName.equals(
+@@ -56,7 +56,7 @@ public Mono<Map<String, ToolCallStats>> getAllToolStats(MemoryId memoryId) {
+         return Mono.fromCallable(
+                 () -> {
+                     var grouped =
+-                            store.getAllItems(memoryId).stream()
++                            store.listItems(memoryId).stream()
+                                     .filter(
+                                             item ->
+                                                     !extractMetadataString(item, "toolName")
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/store/InMemoryMemoryStore.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/store/InMemoryMemoryStore.java
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/store/InMemoryMemoryStore.java
++++ b/memind-core/src/main/java/com/openmemind/ai/memory/core/store/InMemoryMemoryStore.java
+@@ -18,7 +18,7 @@
+ import com.openmemind.ai.memory.core.data.MemoryInsightType;
+ import com.openmemind.ai.memory.core.data.MemoryItem;
+ import com.openmemind.ai.memory.core.data.MemoryRawData;
+-import com.openmemind.ai.memory.core.data.enums.MemoryScope;
++import com.openmemind.ai.memory.core.data.enums.InsightTier;
+ import java.time.Duration;
+ import java.util.ArrayList;
+ import java.util.Collection;
+@@ -29,35 +29,26 @@
+ import java.util.Optional;
+ import java.util.Set;
+ import java.util.concurrent.ConcurrentHashMap;
+-import java.util.stream.Collectors;
+ 
+ /**
+- * In-memory implementation of MemoryStore
+- *
++ * In-memory implementation of {@link MemoryStore}.
+  */
+ public class InMemoryMemoryStore implements MemoryStore {
+ 
+     private final Map<String, Map<String, MemoryRawData>> rawDataStore = new ConcurrentHashMap<>();
+     private final Map<String, Map<Long, MemoryItem>> itemStore = new ConcurrentHashMap<>();
+-    private final Map<String, Map<String, MemoryInsightType>> insightTypeStore =
+-            new ConcurrentHashMap<>();
++    private final Map<String, MemoryInsightType> insightTypeStore = new ConcurrentHashMap<>();
+     private final Map<String, Map<Long, MemoryInsight>> insightStore = new ConcurrentHashMap<>();
+ 
+     private String key(MemoryId id) {
+         return id.toIdentifier();
+     }
+ 
+-    // ===== MemoryRawData =====
+-
+-    @Override
+-    public void saveRawData(MemoryId id, MemoryRawData rawData) {
+-        rawDataStore
+-                .computeIfAbsent(key(id), k -> new ConcurrentHashMap<>())
+-                .put(rawData.id(), rawData);
+-    }
+-
+     @Override
+-    public void saveRawDataList(MemoryId id, List<MemoryRawData> rawDataList) {
++    public void upsertRawData(MemoryId id, List<MemoryRawData> rawDataList) {
++        if (rawDataList == null || rawDataList.isEmpty()) {
++            return;
++        }
+         Map<String, MemoryRawData> map =
+                 rawDataStore.computeIfAbsent(key(id), k -> new ConcurrentHashMap<>());
+         rawDataList.forEach(rawData -> map.put(rawData.id(), rawData));
+@@ -68,11 +59,6 @@ public Optional<MemoryRawData> getRawData(MemoryId id, String rawDataId) {
+         return Optional.ofNullable(rawDataStore.getOrDefault(key(id), Map.of()).get(rawDataId));
+     }
+ 
+-    @Override
+-    public List<MemoryRawData> getAllRawData(MemoryId id) {
+-        return List.copyOf(rawDataStore.getOrDefault(key(id), Map.of()).values());
+-    }
+-
+     @Override
+     public Optional<MemoryRawData> getRawDataByContentId(MemoryId id, String contentId) {
+         return rawDataStore.getOrDefault(key(id), Map.of()).values().stream()
+@@ -81,11 +67,8 @@ public Optional<MemoryRawData> getRawDataByContentId(MemoryId id, String content
+     }
+ 
+     @Override
+-    public void deleteRawData(MemoryId id, String rawDataId) {
+-        Map<String, MemoryRawData> map = rawDataStore.get(key(id));
+-        if (map != null) {
+-            map.remove(rawDataId);
+-        }
++    public List<MemoryRawData> listRawData(MemoryId id) {
++        return List.copyOf(rawDataStore.getOrDefault(key(id), Map.of()).values());
+     }
+ 
+     @Override
+@@ -121,48 +104,30 @@ public void updateRawDataVectorIds(
+                 });
+     }
+ 
+-    // ===== MemoryItem =====
+-
+-    @Override
+-    public void addItem(MemoryId id, MemoryItem item) {
+-        itemStore.computeIfAbsent(key(id), k -> new ConcurrentHashMap<>()).put(item.id(), item);
+-    }
+-
+     @Override
+-    public void addItems(MemoryId id, List<MemoryItem> items) {
++    public void insertItems(MemoryId id, List<MemoryItem> items) {
++        if (items == null || items.isEmpty()) {
++            return;
++        }
+         Map<Long, MemoryItem> map =
+                 itemStore.computeIfAbsent(key(id), k -> new ConcurrentHashMap<>());
+-        for (MemoryItem item : items) {
+-            map.put(item.id(), item);
+-        }
++        items.forEach(item -> map.put(item.id(), item));
+     }
+ 
+     @Override
+-    public Optional<MemoryItem> getItem(MemoryId id, Long itemId) {
+-        return Optional.ofNullable(itemStore.getOrDefault(key(id), Map.of()).get(itemId));
+-    }
+-
+-    @Override
+-    public Optional<MemoryItem> getItemByContentHash(MemoryId id, String contentHash) {
+-        return itemStore.getOrDefault(key(id), Map.of()).values().stream()
+-                .filter(i -> Objects.equals(i.contentHash(), contentHash))
+-                .findFirst();
+-    }
+-
+-    @Override
+-    public List<MemoryItem> getItemsByContentHashes(MemoryId id, Collection<String> contentHashes) {
+-        if (contentHashes.isEmpty()) {
++    public List<MemoryItem> getItemsByIds(MemoryId id, Collection<Long> itemIds) {
++        if (itemIds == null || itemIds.isEmpty()) {
+             return List.of();
+         }
+-        Set<String> hashSet = new HashSet<>(contentHashes);
++        var idSet = new HashSet<>(itemIds);
+         return itemStore.getOrDefault(key(id), Map.of()).values().stream()
+-                .filter(i -> i.contentHash() != null && hashSet.contains(i.contentHash()))
++                .filter(item -> idSet.contains(item.id()))
+                 .toList();
+     }
+ 
+     @Override
+     public List<MemoryItem> getItemsByVectorIds(MemoryId id, Collection<String> vectorIds) {
+-        if (vectorIds.isEmpty()) {
++        if (vectorIds == null || vectorIds.isEmpty()) {
+             return List.of();
+         }
+         Set<String> idSet = new HashSet<>(vectorIds);
+@@ -172,18 +137,18 @@ public List<MemoryItem> getItemsByVectorIds(MemoryId id, Collection<String> vect
+     }
+ 
+     @Override
+-    public List<MemoryItem> getItemsByIds(MemoryId id, List<Long> itemIds) {
+-        if (itemIds == null || itemIds.isEmpty()) {
++    public List<MemoryItem> getItemsByContentHashes(MemoryId id, Collection<String> contentHashes) {
++        if (contentHashes == null || contentHashes.isEmpty()) {
+             return List.of();
+         }
+-        var idSet = new HashSet<>(itemIds);
++        Set<String> hashSet = new HashSet<>(contentHashes);
+         return itemStore.getOrDefault(key(id), Map.of()).values().stream()
+-                .filter(item -> idSet.contains(item.id()))
++                .filter(i -> i.contentHash() != null && hashSet.contains(i.contentHash()))
+                 .toList();
+     }
+ 
+     @Override
+-    public List<MemoryItem> getAllItems(MemoryId id) {
++    public List<MemoryItem> listItems(MemoryId id) {
+         return new ArrayList<>(itemStore.getOrDefault(key(id), Map.of()).values());
+     }
+ 
+@@ -193,75 +158,43 @@ public boolean hasItems(MemoryId id) {
+     }
+ 
+     @Override
+-    public List<MemoryItem> getItemsByRawDataId(MemoryId id, String rawDataId) {
+-        return itemStore.getOrDefault(key(id), Map.of()).values().stream()
+-                .filter(i -> Objects.equals(i.rawDataId(), rawDataId))
+-                .toList();
+-    }
+-
+-    @Override
+-    public List<MemoryItem> getItemsByScope(MemoryId id, MemoryScope scope) {
+-        return itemStore.getOrDefault(key(id), Map.of()).values().stream()
+-                .filter(i -> i.scope() == scope)
+-                .collect(Collectors.toList());
+-    }
+-
+-    @Override
+-    public void updateItems(MemoryId id, List<MemoryItem> items) {
++    public void deleteItems(MemoryId id, Collection<Long> itemIds) {
++        if (itemIds == null || itemIds.isEmpty()) {
++            return;
++        }
+         Map<Long, MemoryItem> map = itemStore.get(key(id));
+         if (map == null) {
+             return;
+         }
+-        for (MemoryItem item : items) {
+-            if (map.containsKey(item.id())) {
+-                map.put(item.id(), item);
+-            }
+-        }
++        itemIds.forEach(map::remove);
+     }
+ 
+     @Override
+-    public void deleteItem(MemoryId id, Long itemId) {
+-        Map<Long, MemoryItem> map = itemStore.get(key(id));
+-        if (map != null) {
+-            map.remove(itemId);
++    public void upsertInsightTypes(List<MemoryInsightType> insightTypes) {
++        if (insightTypes == null || insightTypes.isEmpty()) {
++            return;
+         }
+-    }
+-
+-    // ===== MemoryInsightType =====
+-
+-    @Override
+-    public void saveInsightType(MemoryId id, MemoryInsightType insightType) {
+-        insightTypeStore
+-                .computeIfAbsent(key(id), k -> new ConcurrentHashMap<>())
+-                .put(insightType.name(), insightType);
++        insightTypes.forEach(insightType -> insightTypeStore.put(insightType.name(), insightType));
+     }
+ 
+     @Override
+-    public Optional<MemoryInsightType> getInsightType(MemoryId id, String insightType) {
+-        return Optional.ofNullable(
+-                insightTypeStore.getOrDefault(key(id), Map.of()).get(insightType));
++    public Optional<MemoryInsightType> getInsightType(String insightType) {
++        return Optional.ofNullable(insightTypeStore.get(insightType));
+     }
+ 
+     @Override
+-    public List<MemoryInsightType> getAllInsightTypes(MemoryId id) {
+-        return new ArrayList<>(insightTypeStore.getOrDefault(key(id), Map.of()).values());
++    public List<MemoryInsightType> listInsightTypes() {
++        return new ArrayList<>(insightTypeStore.values());
+     }
+ 
+     @Override
+-    public void deleteInsightType(MemoryId id, String insightType) {
+-        Map<String, MemoryInsightType> map = insightTypeStore.get(key(id));
+-        if (map != null) {
+-            map.remove(insightType);
++    public void upsertInsights(MemoryId id, List<MemoryInsight> insights) {
++        if (insights == null || insights.isEmpty()) {
++            return;
+         }
+-    }
+-
+-    // ===== MemoryInsight =====
+-
+-    @Override
+-    public void saveInsight(MemoryId id, MemoryInsight insight) {
+-        insightStore
+-                .computeIfAbsent(key(id), k -> new ConcurrentHashMap<>())
+-                .put(insight.id(), insight);
++        Map<Long, MemoryInsight> map =
++                insightStore.computeIfAbsent(key(id), k -> new ConcurrentHashMap<>());
++        insights.forEach(insight -> map.put(insight.id(), insight));
+     }
+ 
+     @Override
+@@ -270,29 +203,54 @@ public Optional<MemoryInsight> getInsight(MemoryId id, Long insightId) {
+     }
+ 
+     @Override
+-    public List<MemoryInsight> getAllInsights(MemoryId id) {
++    public List<MemoryInsight> listInsights(MemoryId id) {
+         return new ArrayList<>(insightStore.getOrDefault(key(id), Map.of()).values());
+     }
+ 
+     @Override
+-    public List<MemoryInsight> getInsightsByTypeId(MemoryId id, String insightType) {
++    public List<MemoryInsight> getInsightsByType(MemoryId id, String insightType) {
+         return insightStore.getOrDefault(key(id), Map.of()).values().stream()
+                 .filter(i -> Objects.equals(i.type(), insightType))
+-                .collect(Collectors.toList());
++                .toList();
+     }
+ 
+     @Override
+-    public List<MemoryInsight> getInsightsByScope(MemoryId id, MemoryScope scope) {
++    public List<MemoryInsight> getInsightsByTier(MemoryId id, InsightTier tier) {
+         return insightStore.getOrDefault(key(id), Map.of()).values().stream()
+-                .filter(i -> i.scope() == scope)
+-                .collect(Collectors.toList());
++                .filter(i -> tier.equals(i.tier()))
++                .toList();
+     }
+ 
+     @Override
+-    public void deleteInsight(MemoryId id, Long insightId) {
++    public Optional<MemoryInsight> getLeafByGroup(MemoryId id, String type, String group) {
++        return getInsightsByType(id, type).stream()
++                .filter(i -> InsightTier.LEAF.equals(i.tier()) && Objects.equals(group, i.group()))
++                .findFirst();
++    }
++
++    @Override
++    public Optional<MemoryInsight> getBranchByType(MemoryId id, String type) {
++        return getInsightsByType(id, type).stream()
++                .filter(i -> InsightTier.BRANCH.equals(i.tier()))
++                .findFirst();
++    }
++
++    @Override
++    public Optional<MemoryInsight> getRootByType(MemoryId id, String type) {
++        return getInsightsByType(id, type).stream()
++                .filter(i -> InsightTier.ROOT.equals(i.tier()))
++                .findFirst();
++    }
++
++    @Override
++    public void deleteInsights(MemoryId id, Collection<Long> insightIds) {
++        if (insightIds == null || insightIds.isEmpty()) {
++            return;
++        }
+         Map<Long, MemoryInsight> map = insightStore.get(key(id));
+-        if (map != null) {
+-            map.remove(insightId);
++        if (map == null) {
++            return;
+         }
++        insightIds.forEach(map::remove);
+     }
+ }
+diff --git a/memind-core/src/main/java/com/openmemind/ai/memory/core/store/MemoryStore.java b/memind-core/src/main/java/com/openmemind/ai/memory/core/store/MemoryStore.java
+--- a/memind-core/src/main/java/com/openmemind/ai/memory/core/store/MemoryStore.java
++++ b/memind-core/src/main/java/com/openmemind/ai/memory/core/store/MemoryStore.java
+@@ -19,283 +19,65 @@
+ import com.openmemind.ai.memory.core.data.MemoryItem;
+ import com.openmemind.ai.memory.core.data.MemoryRawData;
+ import com.openmemind.ai.memory.core.data.enums.InsightTier;
+-import com.openmemind.ai.memory.core.data.enums.MemoryScope;
+ import java.time.Duration;
+ import java.util.Collection;
+-import java.util.Comparator;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+ 
+ /**
+- * Memory data persistence storage interface
+- *
++ * Memory data persistence storage interface.
+  */
+ public interface MemoryStore {
+ 
+-    // ===== MemoryRawData =====
+-
+-    /**
+-     * Save raw data
+-     */
+-    void saveRawData(MemoryId id, MemoryRawData rawData);
++    void upsertRawData(MemoryId id, List<MemoryRawData> rawDataList);
+ 
+-    /**
+-     * Batch save raw data
+-     */
+-    void saveRawDataList(MemoryId id, List<MemoryRawData> rawDataList);
+-
+-    /**
+-     * Get raw data by ID
+-     */
+     Optional<MemoryRawData> getRawData(MemoryId id, String rawDataId);
+ 
+-    /**
+-     * Find raw data by content hash (for idempotent check)
+-     */
+     Optional<MemoryRawData> getRawDataByContentId(MemoryId id, String contentId);
+ 
+-    /**
+-     * Get all raw data
+-     */
+-    List<MemoryRawData> getAllRawData(MemoryId id);
+-
+-    /**
+-     * Delete raw data
+-     */
+-    void deleteRawData(MemoryId id, String rawDataId);
++    List<MemoryRawData> listRawData(MemoryId id);
+ 
+-    /**
+-     * Poll for raw data that has not been vectorized under the specified memory.
+-     *
+-     * <p>Implementation needs to ensure:
+-     * <ul>
+-     *   <li>Only return records that currently do not have {@code captionVectorId};
+-     *   <li>Only return records created earlier than the current time minus {@code minAge}, to avoid competition with the write path;
+-     *   <li>The same record should not be returned repeatedly by different worker threads before being updated by a worker thread (can be achieved through optimistic locking or "claim" marking).
+-     * </ul>
+-     *
+-     * @param id Memory identifier
+-     * @param limit Maximum number of records to return
+-     * @param minAge Minimum age, only records earlier than this time window will be returned
+-     * @return List of raw data to be vectorized
+-     */
+     List<MemoryRawData> pollRawDataWithoutVector(MemoryId id, int limit, Duration minAge);
+ 
+-    /**
+-     * Batch update the vector ID and additional metadata of raw data.
+-     *
+-     * <p>Implementation should use the keys in {@code vectorIds} as business IDs (i.e. {@link MemoryRawData#id()}),
+-     * and update the {@code captionVectorId} field and metadata of the corresponding records. Typically used for asynchronous vectorization worker threads to
+-     * fill back the vector ID after computation is complete, and increase retry count, recent attempt time, and other information.
+-     *
+-     * @param id Memory identifier
+-     * @param vectorIds Mapping from business ID to vector ID
+-     * @param metadataPatch Additional metadata patch, which will be merged with existing metadata
+-     */
+     void updateRawDataVectorIds(
+             MemoryId id, Map<String, String> vectorIds, Map<String, Object> metadataPatch);
+ 
+-    // ===== MemoryItem =====
+-
+-    /**
+-     * Add memory item
+-     */
+-    void addItem(MemoryId id, MemoryItem item);
+-
+-    /**
+-     * Batch add memory items
+-     */
+-    void addItems(MemoryId id, List<MemoryItem> items);
+-
+-    /**
+-     * Get memory item by ID
+-     */
+-    Optional<MemoryItem> getItem(MemoryId id, Long itemId);
++    void insertItems(MemoryId id, List<MemoryItem> items);
+ 
+-    /**
+-     * Find memory item by content hash (for deduplication)
+-     */
+-    Optional<MemoryItem> getItemByContentHash(MemoryId id, String contentHash);
++    List<MemoryItem> getItemsByIds(MemoryId id, Collection<Long> itemIds);
+ 
+-    /**
+-     * Batch find memory items by content hashes (for batch deduplication)
+-     *
+-     * @param id Memory identifier
+-     * @param contentHashes Set of content hashes
+-     * @return List of matching MemoryItem
+-     */
+-    List<MemoryItem> getItemsByContentHashes(MemoryId id, Collection<String> contentHashes);
+-
+-    /**
+-     * Batch get memory items by vector IDs
+-     *
+-     * @param id Memory identifier
+-     * @param vectorIds Set of vector IDs
+-     * @return List of matching MemoryItem
+-     */
+     List<MemoryItem> getItemsByVectorIds(MemoryId id, Collection<String> vectorIds);
+ 
+-    /**
+-     * Batch get memory items by list of IDs
+-     *
+-     * @param id Memory identifier
+-     * @param itemIds List of item IDs
+-     * @return List of matching MemoryItem
+-     */
+-    List<MemoryItem> getItemsByIds(MemoryId id, List<Long> itemIds);
+-
+-    /**
+-     * Get all memory items
+-     */
+-    List<MemoryItem> getAllItems(MemoryId id);
++    List<MemoryItem> getItemsByContentHashes(MemoryId id, Collection<String> contentHashes);
+ 
+-    /**
+-     * Get the most recent N memory items in reverse order of creation time
+-     */
+-    default List<MemoryItem> getRecentItems(MemoryId id, int limit) {
+-        return getAllItems(id).stream()
+-                .sorted(Comparator.comparing(MemoryItem::createdAt).reversed())
+-                .limit(limit)
+-                .toList();
+-    }
++    List<MemoryItem> listItems(MemoryId id);
+ 
+-    /**
+-     * Whether there are memory items
+-     */
+     boolean hasItems(MemoryId id);
+ 
+-    /**
+-     * Get associated memory items by source data ID
+-     */
+-    List<MemoryItem> getItemsByRawDataId(MemoryId id, String rawDataId);
+-
+-    /**
+-     * Get memory items by scope
+-     */
+-    List<MemoryItem> getItemsByScope(MemoryId id, MemoryScope scope);
+-
+-    /**
+-     * Batch update existing memory items (only overwrite existing items, skip if not present)
+-     */
+-    void updateItems(MemoryId id, List<MemoryItem> items);
++    void deleteItems(MemoryId id, Collection<Long> itemIds);
+ 
+-    /**
+-     * Delete memory item
+-     */
+-    void deleteItem(MemoryId id, Long itemId);
++    void upsertInsightTypes(List<MemoryInsightType> insightTypes);
+ 
+-    // ===== MemoryInsightType =====
++    Optional<MemoryInsightType> getInsightType(String insightType);
+ 
+-    /**
+-     * Save insight type
+-     */
+-    void saveInsightType(MemoryId id, MemoryInsightType insightType);
++    List<MemoryInsightType> listInsightTypes();
+ 
+-    /**
+-     * Get insight type by ID
+-     */
+-    Optional<MemoryInsightType> getInsightType(MemoryId id, String insightType);
++    void upsertInsights(MemoryId id, List<MemoryInsight> insights);
+ 
+-    /**
+-     * Get all insight types
+-     */
+-    List<MemoryInsightType> getAllInsightTypes(MemoryId id);
+-
+-    /**
+-     * Delete insight type
+-     */
+-    void deleteInsightType(MemoryId id, String insightType);
+-
+-    // ===== MemoryInsight CRUD =====
+-
+-    /**
+-     * Save insight
+-     */
+-    void saveInsight(MemoryId id, MemoryInsight insight);
+-
+-    /**
+-     * Batch save insights
+-     */
+-    default void saveInsights(MemoryId id, List<MemoryInsight> insights) {
+-        insights.forEach(insight -> saveInsight(id, insight));
+-    }
+-
+-    /**
+-     * Get insight by ID
+-     */
+     Optional<MemoryInsight> getInsight(MemoryId id, Long insightId);
+ 
+-    /**
+-     * Get all insights
+-     */
+-    List<MemoryInsight> getAllInsights(MemoryId id);
+-
+-    /**
+-     * Get insights by type
+-     */
+-    List<MemoryInsight> getInsightsByTypeId(MemoryId id, String insightType);
+-
+-    /**
+-     * Get insights by scope
+-     */
+-    List<MemoryInsight> getInsightsByScope(MemoryId id, MemoryScope scope);
+-
+-    /**
+-     * Delete insight
+-     */
+-    void deleteInsight(MemoryId id, Long insightId);
+-
+-    // ===== Insight Tree Operations =====
+-
+-    default List<MemoryInsight> getInsightsByTier(
+-            MemoryId memoryId, String type, InsightTier tier) {
+-        return getInsightsByTypeId(memoryId, type).stream()
+-                .filter(i -> tier.equals(i.tier()))
+-                .toList();
+-    }
+-
+-    default List<MemoryInsight> getChildInsights(MemoryId memoryId, Long parentInsightId) {
+-        return getAllInsights(memoryId).stream()
+-                .filter(i -> parentInsightId.equals(i.parentInsightId()))
+-                .toList();
+-    }
+-
+-    default Optional<MemoryInsight> getParentInsight(MemoryId memoryId, Long insightId) {
+-        return getInsight(memoryId, insightId)
+-                .filter(i -> i.parentInsightId() != null)
+-                .flatMap(i -> getInsight(memoryId, i.parentInsightId()));
+-    }
+-
+-    default void archiveInsight(MemoryId memoryId, Long insightId) {
+-        deleteInsight(memoryId, insightId);
+-    }
++    List<MemoryInsight> listInsights(MemoryId id);
+ 
+-    // ===== Shared Tree Query =====
++    List<MemoryInsight> getInsightsByType(MemoryId id, String insightType);
+ 
+-    default Optional<MemoryInsight> getLeafByGroup(MemoryId id, String type, String group) {
+-        return getInsightsByTypeId(id, type).stream()
+-                .filter(i -> InsightTier.LEAF.equals(i.tier()) && group.equals(i.group()))
+-                .findFirst();
+-    }
++    List<MemoryInsight> getInsightsByTier(MemoryId id, InsightTier tier);
+ 
+-    default Optional<MemoryInsight> getBranchByType(MemoryId id, String type) {
+-        return getInsightsByTypeId(id, type).stream()
+-                .filter(i -> InsightTier.BRANCH.equals(i.tier()))
+-                .findFirst();
+-    }
++    Optional<MemoryInsight> getLeafByGroup(MemoryId id, String type, String group);
+ 
+-    default Optional<MemoryInsight> getRootByType(MemoryId id, String type) {
+-        return getInsightsByTypeId(id, type).stream()
+-                .filter(i -> InsightTier.ROOT.equals(i.tier()))
+-                .findFirst();
+-    }
++    Optional<MemoryInsight> getBranchByType(MemoryId id, String type);
+ 
+-    default List<MemoryInsight> getRoots(MemoryId id) {
+-        return getAllInsightsByTier(id, InsightTier.ROOT);
+-    }
++    Optional<MemoryInsight> getRootByType(MemoryId id, String type);
+ 
+-    default List<MemoryInsight> getAllInsightsByTier(MemoryId id, InsightTier tier) {
+-        return getAllInsights(id).stream().filter(i -> tier.equals(i.tier())).toList();
+-    }
++    void deleteInsights(MemoryId id, Collection<Long> insightIds);
+ }
+diff --git a/memind-example/src/main/java/com/openmemind/ai/memory/example/common/ExamplePrinter.java b/memind-example/src/main/java/com/openmemind/ai/memory/example/common/ExamplePrinter.java
+--- a/memind-example/src/main/java/com/openmemind/ai/memory/example/common/ExamplePrinter.java
++++ b/memind-example/src/main/java/com/openmemind/ai/memory/example/common/ExamplePrinter.java
+@@ -141,7 +141,7 @@ public static void printAllToolStats(Map<String, ToolCallStats> allStats) {
+     // ── Insight tree ────────────────────────────────────────────────────
+ 
+     public static void printInsightTree(MemoryStore store, MemoryId memoryId) {
+-        var allInsights = store.getAllInsights(memoryId);
++        var allInsights = store.listInsights(memoryId);
+         if (allInsights.isEmpty()) {
+             log.info("  (no insights built yet)");
+             return;
+diff --git a/memind-plugin/memind-plugin-store-mybatis-plus/src/main/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStore.java b/memind-plugin/memind-plugin-store-mybatis-plus/src/main/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStore.java
+--- a/memind-plugin/memind-plugin-store-mybatis-plus/src/main/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStore.java
++++ b/memind-plugin/memind-plugin-store-mybatis-plus/src/main/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStore.java
+@@ -21,7 +21,6 @@
+ import com.openmemind.ai.memory.core.data.MemoryItem;
+ import com.openmemind.ai.memory.core.data.MemoryRawData;
+ import com.openmemind.ai.memory.core.data.enums.InsightTier;
+-import com.openmemind.ai.memory.core.data.enums.MemoryScope;
+ import com.openmemind.ai.memory.core.store.MemoryStore;
+ import com.openmemind.ai.memory.plugin.store.mybatis.converter.InsightConverter;
+ import com.openmemind.ai.memory.plugin.store.mybatis.converter.InsightTypeConverter;
+@@ -67,22 +66,7 @@ public MybatisPlusMemoryStore(
+     // ===== MemoryRawData =====
+ 
+     @Override
+-    public void saveRawData(MemoryId id, MemoryRawData rawData) {
+-        MemoryRawDataDO existing =
+-                rawDataMapper.selectOne(
+-                        memoryQuery(id, MemoryRawDataDO.class).eq("biz_id", rawData.id()));
+-        MemoryRawDataDO dataObject = RawDataConverter.toDO(id, rawData);
+-        if (existing != null) {
+-            dataObject.setId(existing.getId());
+-            rawDataMapper.updateById(dataObject);
+-        } else {
+-            rawDataMapper.insert(dataObject);
+-        }
+-    }
+-
+-    @Override
+-    @Transactional
+-    public void saveRawDataList(MemoryId id, List<MemoryRawData> rawDataList) {
++    public void upsertRawData(MemoryId id, List<MemoryRawData> rawDataList) {
+         if (rawDataList == null || rawDataList.isEmpty()) {
+             return;
+         }
+@@ -121,7 +105,7 @@ public Optional<MemoryRawData> getRawData(MemoryId id, String rawDataId) {
+     }
+ 
+     @Override
+-    public List<MemoryRawData> getAllRawData(MemoryId id) {
++    public List<MemoryRawData> listRawData(MemoryId id) {
+         return rawDataMapper.selectList(memoryQuery(id, MemoryRawDataDO.class)).stream()
+                 .map(RawDataConverter::toRecord)
+                 .toList();
+@@ -137,12 +121,6 @@ public Optional<MemoryRawData> getRawDataByContentId(MemoryId id, String content
+         return Optional.ofNullable(dataObject).map(RawDataConverter::toRecord);
+     }
+ 
+-    @Override
+-    public void deleteRawData(MemoryId id, String rawDataId) {
+-        rawDataMapper.delete(memoryQuery(id, MemoryRawDataDO.class).eq("biz_id", rawDataId));
+-    }
+-
+-    @Override
+     public List<MemoryRawData> pollRawDataWithoutVector(MemoryId id, int limit, Duration minAge) {
+         if (limit <= 0) {
+             return List.of();
+@@ -211,39 +189,18 @@ public void updateRawDataVectorIds(
+ 
+     // ===== MemoryItem =====
+ 
+-    @Override
+-    public void addItem(MemoryId id, MemoryItem item) {
+-        MemoryItemDO dataObject = ItemConverter.toDO(id, item);
+-        itemMapper.insert(dataObject);
+-    }
+-
+     @Override
+     @Transactional
+-    public void addItems(MemoryId id, List<MemoryItem> items) {
++    public void insertItems(MemoryId id, List<MemoryItem> items) {
+         if (items == null || items.isEmpty()) {
+             return;
+         }
+-        items.forEach(item -> addItem(id, item));
+-    }
+-
+-    @Override
+-    public Optional<MemoryItem> getItem(MemoryId id, Long itemId) {
+-        MemoryItemDO dataObject =
+-                itemMapper.selectOne(memoryQuery(id, MemoryItemDO.class).eq("biz_id", itemId));
+-        return Optional.ofNullable(dataObject).map(ItemConverter::toRecord);
+-    }
+-
+-    @Override
+-    public Optional<MemoryItem> getItemByContentHash(MemoryId id, String contentHash) {
+-        MemoryItemDO dataObject =
+-                itemMapper.selectOne(
+-                        memoryQuery(id, MemoryItemDO.class).eq("content_hash", contentHash));
+-        return Optional.ofNullable(dataObject).map(ItemConverter::toRecord);
++        items.forEach(item -> itemMapper.insert(ItemConverter.toDO(id, item)));
+     }
+ 
+     @Override
+     public List<MemoryItem> getItemsByContentHashes(MemoryId id, Collection<String> contentHashes) {
+-        if (contentHashes.isEmpty()) {
++        if (contentHashes == null || contentHashes.isEmpty()) {
+             return List.of();
+         }
+         return itemMapper
+@@ -255,7 +212,7 @@ public List<MemoryItem> getItemsByContentHashes(MemoryId id, Collection<String>
+ 
+     @Override
+     public List<MemoryItem> getItemsByVectorIds(MemoryId id, Collection<String> vectorIds) {
+-        if (vectorIds.isEmpty()) {
++        if (vectorIds == null || vectorIds.isEmpty()) {
+             return List.of();
+         }
+         return itemMapper
+@@ -266,7 +223,7 @@ public List<MemoryItem> getItemsByVectorIds(MemoryId id, Collection<String> vect
+     }
+ 
+     @Override
+-    public List<MemoryItem> getItemsByIds(MemoryId id, List<Long> itemIds) {
++    public List<MemoryItem> getItemsByIds(MemoryId id, Collection<Long> itemIds) {
+         if (itemIds == null || itemIds.isEmpty()) {
+             return List.of();
+         }
+@@ -278,142 +235,109 @@ public List<MemoryItem> getItemsByIds(MemoryId id, List<Long> itemIds) {
+     }
+ 
+     @Override
+-    public List<MemoryItem> getAllItems(MemoryId id) {
++    public List<MemoryItem> listItems(MemoryId id) {
+         return itemMapper.selectList(memoryQuery(id, MemoryItemDO.class)).stream()
+                 .map(ItemConverter::toRecord)
+                 .toList();
+     }
+ 
+-    @Override
+-    public List<MemoryItem> getRecentItems(MemoryId id, int limit) {
+-        return itemMapper
+-                .selectList(
+-                        memoryQuery(id, MemoryItemDO.class)
+-                                .orderByDesc("created_at")
+-                                .last("LIMIT " + limit))
+-                .stream()
+-                .map(ItemConverter::toRecord)
+-                .toList();
+-    }
+-
+     @Override
+     public boolean hasItems(MemoryId id) {
+         return itemMapper.selectCount(memoryQuery(id, MemoryItemDO.class)) > 0;
+     }
+ 
+     @Override
+-    public List<MemoryItem> getItemsByRawDataId(MemoryId id, String rawDataId) {
+-        return itemMapper
+-                .selectList(memoryQuery(id, MemoryItemDO.class).eq("raw_data_id", rawDataId))
+-                .stream()
+-                .map(ItemConverter::toRecord)
+-                .toList();
++    public void deleteItems(MemoryId id, Collection<Long> itemIds) {
++        if (itemIds == null || itemIds.isEmpty()) {
++            return;
++        }
++        itemMapper.delete(memoryQuery(id, MemoryItemDO.class).in("biz_id", itemIds));
+     }
+ 
+-    @Override
+-    public List<MemoryItem> getItemsByScope(MemoryId id, MemoryScope scope) {
+-        return itemMapper
+-                .selectList(memoryQuery(id, MemoryItemDO.class).eq("scope", scope.name()))
+-                .stream()
+-                .map(ItemConverter::toRecord)
+-                .toList();
+-    }
++    // ===== MemoryInsightType =====
+ 
+     @Override
+     @Transactional
+-    public void updateItems(MemoryId id, List<MemoryItem> items) {
+-        if (items == null || items.isEmpty()) {
++    public void upsertInsightTypes(List<MemoryInsightType> insightTypes) {
++        if (insightTypes == null || insightTypes.isEmpty()) {
+             return;
+         }
+ 
+-        Map<Long, MemoryItemDO> existingByBizId =
+-                itemMapper
++        Map<String, MemoryInsightTypeDO> existingByName =
++                insightTypeMapper
+                         .selectList(
+-                                memoryQuery(id, MemoryItemDO.class)
+-                                        .in("biz_id", items.stream().map(MemoryItem::id).toList()))
++                                appQuery(MemoryInsightTypeDO.class)
++                                        .in(
++                                                "name",
++                                                insightTypes.stream()
++                                                        .map(MemoryInsightType::name)
++                                                        .toList()))
+                         .stream()
+-                        .collect(Collectors.toMap(MemoryItemDO::getBizId, Function.identity()));
+-
+-        items.forEach(
+-                item -> {
+-                    MemoryItemDO existing = existingByBizId.get(item.id());
++                        .collect(
++                                Collectors.toMap(
++                                        MemoryInsightTypeDO::getName, Function.identity()));
++
++        insightTypes.forEach(
++                insightType -> {
++                    MemoryInsightTypeDO dataObject = InsightTypeConverter.toDO(insightType);
++                    MemoryInsightTypeDO existing = existingByName.get(insightType.name());
+                     if (existing != null) {
+-                        MemoryItemDO dataObject = ItemConverter.toDO(id, item);
+                         dataObject.setId(existing.getId());
+-                        itemMapper.updateById(dataObject);
++                        insightTypeMapper.updateById(dataObject);
++                    } else {
++                        insightTypeMapper.insert(dataObject);
+                     }
+                 });
+     }
+ 
+     @Override
+-    public void deleteItem(MemoryId id, Long itemId) {
+-        itemMapper.delete(memoryQuery(id, MemoryItemDO.class).eq("biz_id", itemId));
+-    }
+-
+-    // ===== MemoryInsightType =====
+-
+-    @Override
+-    public void saveInsightType(MemoryId id, MemoryInsightType insightType) {
+-        MemoryInsightTypeDO existing =
+-                insightTypeMapper.selectOne(
+-                        appQuery(id, MemoryInsightTypeDO.class).eq("name", insightType.name()));
+-        MemoryInsightTypeDO dataObject = InsightTypeConverter.toDO(id, insightType);
+-        if (existing != null) {
+-            dataObject.setId(existing.getId());
+-            insightTypeMapper.updateById(dataObject);
+-        } else {
+-            insightTypeMapper.insert(dataObject);
+-        }
+-    }
+-
+-    @Override
+-    public Optional<MemoryInsightType> getInsightType(MemoryId id, String insightType) {
++    public Optional<MemoryInsightType> getInsightType(String insightType) {
+         MemoryInsightTypeDO dataObject =
+                 insightTypeMapper.selectOne(
+-                        appQuery(id, MemoryInsightTypeDO.class).eq("name", insightType));
++                        appQuery(MemoryInsightTypeDO.class).eq("name", insightType));
+         if (dataObject == null) {
+             return Optional.empty();
+         }
+         return Optional.of(InsightTypeConverter.toRecord(dataObject));
+     }
+ 
+     @Override
+-    public List<MemoryInsightType> getAllInsightTypes(MemoryId id) {
+-        return insightTypeMapper.selectList(appQuery(id, MemoryInsightTypeDO.class)).stream()
++    public List<MemoryInsightType> listInsightTypes() {
++        return insightTypeMapper.selectList(appQuery(MemoryInsightTypeDO.class)).stream()
+                 .map(InsightTypeConverter::toRecord)
+                 .toList();
+     }
+ 
+-    @Override
+-    public void deleteInsightType(MemoryId id, String insightType) {
+-        MemoryInsightTypeDO existing =
+-                insightTypeMapper.selectOne(
+-                        appQuery(id, MemoryInsightTypeDO.class).eq("name", insightType));
+-        if (existing != null) {
+-            insightTypeMapper.deleteById(existing.getId());
+-        }
+-    }
+-
+     // ===== MemoryInsight =====
+ 
+     @Override
+-    public void saveInsight(MemoryId id, MemoryInsight insight) {
+-        MemoryInsightDO existing =
+-                insightMapper.selectOne(
+-                        memoryQuery(id, MemoryInsightDO.class).eq("biz_id", insight.id()));
+-        MemoryInsightDO dataObject = InsightConverter.toDO(id, insight);
+-        if (existing != null) {
+-            dataObject.setId(existing.getId());
+-            insightMapper.updateById(dataObject);
+-        } else {
+-            insightMapper.insert(dataObject);
++    @Transactional
++    public void upsertInsights(MemoryId id, List<MemoryInsight> insights) {
++        if (insights == null || insights.isEmpty()) {
++            return;
+         }
+-    }
+ 
+-    @Transactional
+-    @Override
+-    public void saveInsights(MemoryId id, List<MemoryInsight> insights) {
+-        insights.forEach(insight -> saveInsight(id, insight));
++        Map<Long, MemoryInsightDO> existingByBizId =
++                insightMapper
++                        .selectList(
++                                memoryQuery(id, MemoryInsightDO.class)
++                                        .in(
++                                                "biz_id",
++                                                insights.stream().map(MemoryInsight::id).toList()))
++                        .stream()
++                        .collect(Collectors.toMap(MemoryInsightDO::getBizId, Function.identity()));
++
++        insights.forEach(
++                insight -> {
++                    MemoryInsightDO dataObject = InsightConverter.toDO(id, insight);
++                    MemoryInsightDO existing = existingByBizId.get(insight.id());
++                    if (existing != null) {
++                        dataObject.setId(existing.getId());
++                        insightMapper.updateById(dataObject);
++                    } else {
++                        insightMapper.insert(dataObject);
++                    }
++                });
+     }
+ 
+     @Override
+@@ -428,40 +352,21 @@ public Optional<MemoryInsight> getInsight(MemoryId id, Long insightId) {
+     }
+ 
+     @Override
+-    public List<MemoryInsight> getAllInsights(MemoryId id) {
++    public List<MemoryInsight> listInsights(MemoryId id) {
+         return insightMapper.selectList(memoryQuery(id, MemoryInsightDO.class)).stream()
+                 .map(InsightConverter::toRecord)
+                 .toList();
+     }
+ 
+     @Override
+-    public List<MemoryInsight> getInsightsByTypeId(MemoryId id, String insightType) {
++    public List<MemoryInsight> getInsightsByType(MemoryId id, String insightType) {
+         return insightMapper
+                 .selectList(memoryQuery(id, MemoryInsightDO.class).eq("type", insightType))
+                 .stream()
+                 .map(InsightConverter::toRecord)
+                 .toList();
+     }
+ 
+-    @Override
+-    public List<MemoryInsight> getInsightsByScope(MemoryId id, MemoryScope scope) {
+-        return insightMapper
+-                .selectList(memoryQuery(id, MemoryInsightDO.class).eq("scope", scope.name()))
+-                .stream()
+-                .map(InsightConverter::toRecord)
+-                .toList();
+-    }
+-
+-    @Override
+-    public void deleteInsight(MemoryId id, Long insightId) {
+-        MemoryInsightDO existing =
+-                insightMapper.selectOne(
+-                        memoryQuery(id, MemoryInsightDO.class).eq("biz_id", insightId));
+-        if (existing != null) {
+-            insightMapper.deleteById(existing.getId());
+-        }
+-    }
+-
+     // ===== Shared tree query optimization =====
+ 
+     @Override
+@@ -499,14 +404,22 @@ public Optional<MemoryInsight> getRootByType(MemoryId id, String type) {
+     }
+ 
+     @Override
+-    public List<MemoryInsight> getAllInsightsByTier(MemoryId id, InsightTier tier) {
++    public List<MemoryInsight> getInsightsByTier(MemoryId id, InsightTier tier) {
+         return insightMapper
+                 .selectList(memoryQuery(id, MemoryInsightDO.class).eq("tier", tier.name()))
+                 .stream()
+                 .map(InsightConverter::toRecord)
+                 .toList();
+     }
+ 
++    @Override
++    public void deleteInsights(MemoryId id, Collection<Long> insightIds) {
++        if (insightIds == null || insightIds.isEmpty()) {
++            return;
++        }
++        insightMapper.delete(memoryQuery(id, MemoryInsightDO.class).in("biz_id", insightIds));
++    }
++
+     // ===== Helper methods =====
+ 
+     private <T> QueryWrapper<T> memoryQuery(MemoryId id, Class<T> clazz) {
+@@ -518,7 +431,7 @@ private <T> QueryWrapper<T> memoryQuery(MemoryId id, Class<T> clazz) {
+     /**
+      * InsightType is global (not scoped by userId/agentId), so no extra conditions needed.
+      */
+-    private <T> QueryWrapper<T> appQuery(MemoryId id, Class<T> clazz) {
++    private <T> QueryWrapper<T> appQuery(Class<T> clazz) {
+         return new QueryWrapper<>();
+     }
+ }
+diff --git a/memind-plugin/memind-plugin-store-mybatis-plus/src/main/java/com/openmemind/ai/memory/plugin/store/mybatis/converter/InsightTypeConverter.java b/memind-plugin/memind-plugin-store-mybatis-plus/src/main/java/com/openmemind/ai/memory/plugin/store/mybatis/converter/InsightTypeConverter.java
+--- a/memind-plugin/memind-plugin-store-mybatis-plus/src/main/java/com/openmemind/ai/memory/plugin/store/mybatis/converter/InsightTypeConverter.java
++++ b/memind-plugin/memind-plugin-store-mybatis-plus/src/main/java/com/openmemind/ai/memory/plugin/store/mybatis/converter/InsightTypeConverter.java
+@@ -13,7 +13,6 @@
+  */
+ package com.openmemind.ai.memory.plugin.store.mybatis.converter;
+ 
+-import com.openmemind.ai.memory.core.data.MemoryId;
+ import com.openmemind.ai.memory.core.data.MemoryInsightType;
+ import com.openmemind.ai.memory.core.data.enums.InsightAnalysisMode;
+ import com.openmemind.ai.memory.core.data.enums.MemoryScope;
+@@ -26,7 +25,7 @@ public final class InsightTypeConverter {
+ 
+     private InsightTypeConverter() {}
+ 
+-    public static MemoryInsightTypeDO toDO(MemoryId memoryId, MemoryInsightType record) {
++    public static MemoryInsightTypeDO toDO(MemoryInsightType record) {
+         MemoryInsightTypeDO dataObject = new MemoryInsightTypeDO();
+         dataObject.setBizId(record.id());
+         dataObject.setName(record.name());
+@@ -54,7 +53,6 @@ public static MemoryInsightType toRecord(MemoryInsightTypeDO dataObject) {
+         }
+         return new MemoryInsightType(
+                 dataObject.getBizId(),
+-                null,
+                 dataObject.getName(),
+                 dataObject.getDescription(),
+                 dataObject.getDescriptionVectorId(),
+diff --git a/memind-plugin/memind-plugin-store-mybatis-plus/src/main/java/com/openmemind/ai/memory/plugin/store/mybatis/initializer/DefaultTaxonomySeeder.java b/memind-plugin/memind-plugin-store-mybatis-plus/src/main/java/com/openmemind/ai/memory/plugin/store/mybatis/initializer/DefaultTaxonomySeeder.java
+--- a/memind-plugin/memind-plugin-store-mybatis-plus/src/main/java/com/openmemind/ai/memory/plugin/store/mybatis/initializer/DefaultTaxonomySeeder.java
++++ b/memind-plugin/memind-plugin-store-mybatis-plus/src/main/java/com/openmemind/ai/memory/plugin/store/mybatis/initializer/DefaultTaxonomySeeder.java
+@@ -14,8 +14,6 @@
+ package com.openmemind.ai.memory.plugin.store.mybatis.initializer;
+ 
+ import com.openmemind.ai.memory.core.data.DefaultInsightTypes;
+-import com.openmemind.ai.memory.core.data.DefaultMemoryId;
+-import com.openmemind.ai.memory.core.data.MemoryId;
+ import com.openmemind.ai.memory.core.store.MemoryStore;
+ import org.springframework.boot.context.event.ApplicationStartedEvent;
+ import org.springframework.context.ApplicationListener;
+@@ -36,9 +34,6 @@ public DefaultTaxonomySeeder(MemoryStore memoryStore) {
+ 
+     @Override
+     public void onApplicationEvent(ApplicationStartedEvent event) {
+-        MemoryId systemMemoryId = DefaultMemoryId.of("system", "system");
+-
+-        DefaultInsightTypes.all()
+-                .forEach(insightType -> memoryStore.saveInsightType(systemMemoryId, insightType));
++        memoryStore.upsertInsightTypes(DefaultInsightTypes.all());
+     }
+ }
+diff --git a/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java b/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java
+--- a/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java
++++ b/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java
+@@ -22,6 +22,7 @@
+ import com.openmemind.ai.memory.core.stats.DefaultToolStatsService;
+ import com.openmemind.ai.memory.core.stats.ToolStatsService;
+ import com.openmemind.ai.memory.core.store.MemoryStore;
++import com.openmemind.ai.memory.core.vector.MemoryVector;
+ import org.springframework.ai.chat.client.ChatClient;
+ import org.springframework.boot.autoconfigure.AutoConfiguration;
+ import org.springframework.boot.autoconfigure.AutoConfigureAfter;
+@@ -59,7 +60,8 @@ public Memory memind(
+             MemoryExtractionPipeline extractor,
+             MemoryRetriever retriever,
+             MemoryStore store,
++            MemoryVector vector,
+             ToolStatsService toolStatsService) {
+-        return new DefaultMemory(extractor, retriever, store, toolStatsService);
++        return new DefaultMemory(extractor, retriever, store, vector, toolStatsService);
+     }
+ }
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

@@ -1,0 +1,49 @@
+SPECBUILD_RESOLVED_PYTHON=python3
+Checking patch src/main_test/lit_file_runner_tests/runtime_regression_tests/complex_scalars.rs...
+error: while searching for:
+use super::*;
+
+#[test]
+fn complex_builtin_symbol_ids_are_stably_appended() {
+    let start = 1_u64 << 62;
+    let expected = [(C, 48), (I, 49), (RE, 50), (IMG, 51), (C_ABS, 52)];
+
+    for (name, offset) in expected {
+        let symbol = builtin_symbol_ref(name).expect("native complex name should have a symbol ID");
+        assert_eq!(symbol.id().value(), start + offset, "{name}");
+    }
+}
+
+
+error: patch failed: src/main_test/lit_file_runner_tests/runtime_regression_tests/complex_scalars.rs:1
+error: src/main_test/lit_file_runner_tests/runtime_regression_tests/complex_scalars.rs: patch does not apply
+patching file src/main_test/lit_file_runner_tests/runtime_regression_tests/complex_scalars.rs
+Hunk #1 FAILED at 1.
+Hunk #2 FAILED at 30.
+Hunk #3 succeeded at 47 (offset 3 lines).
+2 out of 3 hunks FAILED -- saving rejects to file src/main_test/lit_file_runner_tests/runtime_regression_tests/complex_scalars.rs.rej
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.01s
+   Compiling litex-lang v0.9.110-beta (/testbed)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.15s
+     Running unittests src/lib.rs (target/debug/deps/litex-5c67ab9fed4aaf77)
+
+running 9 tests
+test main_test::lit_file_runner_tests::runtime_regression_tests::complex_scalars::bare_native_complex_coordinate_names_are_not_first_class_objects ... ok
+test main_test::lit_file_runner_tests::runtime_regression_tests::complex_scalars::complex_latex_uses_native_notation ... ok
+test main_test::lit_file_runner_tests::runtime_regression_tests::complex_scalars::complex_extensionality_handles_composite_scalars ... ok
+test main_test::lit_file_runner_tests::runtime_regression_tests::complex_scalars::complex_python_and_evaluator_paths_fail_explicitly ... ok
+test main_test::lit_file_runner_tests::runtime_regression_tests::complex_scalars::native_complex_names_are_reserved_keywords_without_builtin_symbol_ids ... ok
+test main_test::lit_file_runner_tests::runtime_regression_tests::complex_scalars::native_complex_names_are_hard_reserved_in_binding_positions ... ok
+test main_test::lit_file_runner_tests::runtime_regression_tests::complex_scalars::complex_extensionality_does_not_intercept_set_equality ... ok
+test main_test::lit_file_runner_tests::runtime_regression_tests::complex_scalars::complex_expressions_do_not_acquire_real_only_properties ... ok
+test main_test::lit_file_runner_tests::runtime_regression_tests::complex_scalars::native_complex_scalar_contract_is_checkable ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 620 filtered out; finished in 2.57s
+
+     Running unittests src/main.rs (target/debug/deps/litex-bc19a4ceb913e9ae)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+OMNIGRIL_EXIT_CODE=0

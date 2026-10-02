@@ -1,0 +1,1925 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/DescriptiveStats.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/DescriptiveStats.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/DescriptiveStats.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/DescriptiveStats.java
+@@ -50,7 +50,7 @@ public static String generateDescriptiveStats(DataSet dataSet, Node variable,
+                                                   boolean precomputeCovariances) {
+         NumberFormat nf = NumberFormatUtil.getInstance().getNumberFormat();
+ 
+-        int col = dataSet.getColumn(variable);
++        int col = dataSet.getColumnIndex(variable);
+ 
+         double[] data = new double[dataSet.getNumRows()];
+         boolean continuous = false;
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/DescriptiveStatsModel.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/DescriptiveStatsModel.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/DescriptiveStatsModel.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/DescriptiveStatsModel.java
+@@ -73,7 +73,7 @@ public static Ret generateDescriptiveStats(DataSet dataSet, Node variable) {
+         List<String> names = new ArrayList<>();
+         List<Object> stats = new ArrayList<>();
+ 
+-        int col = dataSet.getColumn(variable);
++        int col = dataSet.getColumnIndex(variable);
+ 
+         // Extract the data.
+         double[] data = new double[dataSet.getNumRows()];
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/QQPlot.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/QQPlot.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/QQPlot.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/QQPlot.java
+@@ -240,7 +240,7 @@ private void calculateComparisonSet(NormalDistribution n, DataSet data) {
+      * Builds the q-q data if required, otherwise does nothing
+      */
+     private void buildQQPlotData(Node selectedNode) {
+-        int columnIndex = this.dataSet.getColumn(selectedNode);
++        int columnIndex = this.dataSet.getColumnIndex(selectedNode);
+ 
+         double mean = 0.0;
+         double sd = 0.0;
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/QQPlotDisplayPanel.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/QQPlotDisplayPanel.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/QQPlotDisplayPanel.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/QQPlotDisplayPanel.java
+@@ -162,7 +162,7 @@ public void paintComponent(Graphics graphics) {
+         g2d.drawLine(QQPlotDisplayPanel.PADDING - QQPlotDisplayPanel.DASH, height, QQPlotDisplayPanel.PADDING, height);
+ 
+         //draw the data points
+-        int dataColumn = this.qqPlot.getDataSet().getColumn(this.qqPlot.getSelectedVariable());
++        int dataColumn = this.qqPlot.getDataSet().getColumnIndex(this.qqPlot.getSelectedVariable());
+ 
+         //set selected variable if there is none
+         if (dataColumn == -1) {
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/RegressionParamsEditorPanel.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/RegressionParamsEditorPanel.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/RegressionParamsEditorPanel.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/RegressionParamsEditorPanel.java
+@@ -347,7 +347,7 @@ private Box buildAlphaArea(double alpha) {
+ 
+     private void buildMap(DataSet model) {
+         for (Node node : model.getVariables()) {
+-            if (DataUtils.isBinary(model, model.getColumn(node))) {
++            if (DataUtils.isBinary(model, model.getColumnIndex(node))) {
+                 RegressionParamsEditorPanel.getVarMap().put(node.getName(), 1);
+             } else if (node instanceof DiscreteVariable) {
+                 RegressionParamsEditorPanel.getVarMap().put(node.getName(), 2);
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/ScatterPlot.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/ScatterPlot.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/ScatterPlot.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/ScatterPlot.java
+@@ -146,8 +146,8 @@ public double getCorrelationCoeff() {
+         DataSet dataSet = getDataSet();
+         Matrix data = dataSet.getDoubleData();
+ 
+-        int _x = dataSet.getColumn(dataSet.getVariable(this.x));
+-        int _y = dataSet.getColumn(dataSet.getVariable(this.y));
++        int _x = dataSet.getColumnIndex(dataSet.getVariable(this.x));
++        int _y = dataSet.getColumnIndex(dataSet.getVariable(this.y));
+ 
+         double[] xdata = data.getColumn(_x).toArray();
+         double[] ydata = data.getColumn(_y).toArray();
+@@ -344,7 +344,7 @@ public void addConditioningVariable(String variable, int value) {
+     }
+ 
+     private List<Double> getUnconditionedDataContinuous(String target) {
+-        int index = this.dataSet.getColumn(this.dataSet.getVariable(target));
++        int index = this.dataSet.getColumnIndex(this.dataSet.getVariable(target));
+ 
+         List<Double> _data = new ArrayList<>();
+ 
+@@ -360,7 +360,7 @@ private List<Double> getConditionedDataContinuous(String target) {
+ 
+         List<Integer> rows = getConditionedRows();
+ 
+-        int index = this.dataSet.getColumn(this.dataSet.getVariable(target));
++        int index = this.dataSet.getColumnIndex(this.dataSet.getVariable(target));
+ 
+         List<Double> _data = new ArrayList<>();
+ 
+@@ -381,7 +381,7 @@ private List<Integer> getConditionedRows() {
+         for (int i = 0; i < this.dataSet.getNumRows(); i++) {
+             for (Node node : this.continuousIntervals.keySet()) {
+                 double[] range = this.continuousIntervals.get(node);
+-                int index = this.dataSet.getColumn(node);
++                int index = this.dataSet.getColumnIndex(node);
+                 double value = this.dataSet.getDouble(i, index);
+                 if (!(value >= range[0] && value <= range[1])) {
+                     continue I;
+@@ -390,7 +390,7 @@ private List<Integer> getConditionedRows() {
+ 
+             for (Node node : this.discreteValues.keySet()) {
+                 int value = this.discreteValues.get(node);
+-                int index = this.dataSet.getColumn(node);
++                int index = this.dataSet.getColumnIndex(node);
+                 int _value = this.dataSet.getInt(i, index);
+                 if (!(value == _value)) {
+                     continue I;
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/VariableConditioningEditor.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/VariableConditioningEditor.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/VariableConditioningEditor.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/VariableConditioningEditor.java
+@@ -480,7 +480,7 @@ public static VariableConditioningEditor.ContinuousConditioningPanel getDefault(
+          * @return an array of double
+          */
+         public static double[] getContinuousData(String variable, DataSet dataSet) {
+-            int index = dataSet.getColumn(dataSet.getVariable(variable));
++            int index = dataSet.getColumnIndex(dataSet.getVariable(variable));
+             List<Double> _data = new ArrayList<>();
+ 
+             for (int i = 0; i < dataSet.getNumRows(); i++) {
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/ContinuousDiscretizationEditor.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/ContinuousDiscretizationEditor.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/ContinuousDiscretizationEditor.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/ContinuousDiscretizationEditor.java
+@@ -96,7 +96,7 @@ public ContinuousDiscretizationEditor(DataSet dataSet,
+ 
+         this.method = Method.NONE;
+         this.data = new double[dataSet.getNumRows()];
+-        int col = dataSet.getColumn(variable);
++        int col = dataSet.getColumnIndex(variable);
+ 
+         for (int i = 0; i < dataSet.getNumRows(); i++) {
+             this.data[i] = dataSet.getDouble(i, col);
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/DeterminismEditor.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/DeterminismEditor.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/DeterminismEditor.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/DeterminismEditor.java
+@@ -325,7 +325,7 @@ private void mergeDeterministicVars(List<Set<Integer>> mergedList) {
+         List<Node> nodeList = new LinkedList<>();
+         Map<Node, Integer> origIndexMap = new HashMap<>();
+         this.sourceDataSetCopy.getVariables().forEach(node -> {
+-            int columnIndex = this.sourceDataSetCopy.getColumn(node);
++            int columnIndex = this.sourceDataSetCopy.getColumnIndex(node);
+             // Skip these columns when creating the new dataset
+             if (!toBeRemovedColumns.contains(columnIndex)) {
+                 nodeList.add(node);
+@@ -362,8 +362,8 @@ private boolean isDeterministic(Node x, Node y) {
+         if ((x instanceof DiscreteVariable) && (y instanceof DiscreteVariable)) {
+             Map<Object, Object> map = new HashMap<>();
+ 
+-            int xColumnIndex = this.sourceDataSet.getColumn(x);
+-            int yColumnIndex = this.sourceDataSet.getColumn(y);
++            int xColumnIndex = this.sourceDataSet.getColumnIndex(x);
++            int yColumnIndex = this.sourceDataSet.getColumnIndex(y);
+             int numRows = this.sourceDataSet.getNumRows();
+ 
+             for (int i = 0; i < numRows; i++) {
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/DataWrapper.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/DataWrapper.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/DataWrapper.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/DataWrapper.java
+@@ -295,11 +295,11 @@ public DataWrapper(RegressionResult result, DataSet data, Parameters parameters)
+                     throw new IllegalArgumentException("Expecting a continuous variable: " + variable);
+                 }
+ 
+-                x[j] = data.getDouble(i, data.getColumn(variable));
++                x[j] = data.getDouble(i, data.getColumnIndex(variable));
+             }
+ 
+             double yHat = result.getPredictedValue(x);
+-            data2.setDouble(i, data2.getColumn(data2.getVariable(predictedVariable)), yHat);
++            data2.setDouble(i, data2.getColumnIndex(data2.getVariable(predictedVariable)), yHat);
+         }
+ 
+         DataModelList dataModelList = new DataModelList();
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/DerivedTreatmentSpecV2.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/DerivedTreatmentSpecV2.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/DerivedTreatmentSpecV2.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/DerivedTreatmentSpecV2.java
+@@ -79,7 +79,7 @@ public int[] computeX01Full(DataSet data) {
+         Node src = data.getVariable(sourceName);
+         if (src == null) throw new IllegalArgumentException("v2.1: unknown source variable: " + sourceName);
+ 
+-        int col = data.getColumn(src);
++        int col = data.getColumnIndex(src);
+         int n = data.getNumRows();
+         int[] out = new int[n];
+         Arrays.fill(out, -1);
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/HybridCgPmWrapper.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/HybridCgPmWrapper.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/HybridCgPmWrapper.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/HybridCgPmWrapper.java
+@@ -153,7 +153,7 @@ private static void applyCutpointsFromDataInternal(HybridCgModel.HybridCgPm pm,
+         // Build name → column index map once
+         Map<Node, Integer> col = new HashMap<>();
+         for (Node n : nodes) {
+-            int c = data.getColumn(n);
++            int c = data.getColumnIndex(n);
+             if (c >= 0) col.put(n, c);
+         }
+ 
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/InterventionalHistogramModel.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/InterventionalHistogramModel.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/InterventionalHistogramModel.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/InterventionalHistogramModel.java
+@@ -11,7 +11,6 @@
+ 
+ import java.io.Serial;
+ import java.util.*;
+-import java.util.regex.Pattern;
+ 
+ /**
+  * Prototype model for displaying a histogram for Y | do(X=...).
+@@ -214,7 +213,7 @@ public double[] sampleY(DataSet data, Graph graph, Node yGraph, Map<Node, Intege
+ 
+             // collect matching row indices
+             int rows = data.getNumRows();
+-            int yCol = data.getColumn(y);
++            int yCol = data.getColumnIndex(y);
+ 
+             List<Integer> candidates = new ArrayList<>(rows);
+ 
+@@ -224,7 +223,7 @@ public double[] sampleY(DataSet data, Graph graph, Node yGraph, Map<Node, Intege
+                 for (Map.Entry<Node, Integer> e : doSpec.entrySet()) {
+                     Node xData = data.getVariable(e.getKey().getName());
+                     if (xData == null) throw new IllegalArgumentException("X not found in data: " + e.getKey().getName());
+-                    int xCol = data.getColumn(xData);
++                    int xCol = data.getColumnIndex(xData);
+ 
+                     if (!(xData instanceof DiscreteVariable)) {
+                         throw new IllegalArgumentException("Prototype sampler supports discrete X only: " + xData.getName());
+@@ -307,7 +306,7 @@ public double[] sampleY(DataSet data,
+             }
+ 
+             Node y = requireDataVar(data, yGraph.getName());
+-            int yCol = data.getColumn(y);
++            int yCol = data.getColumnIndex(y);
+ 
+             // --- build Z = union of parents of intervened X's
+             LinkedHashSet<String> zNames = new LinkedHashSet<>();
+@@ -331,7 +330,7 @@ public double[] sampleY(DataSet data,
+ 
+                 if (z instanceof DiscreteVariable dz) {
+                     zVars.add(dz);
+-                    zCols.add(data.getColumn(dz));
++                    zCols.add(data.getColumnIndex(dz));
+                 } else {
+                     TetradLogger.getInstance().log(
+                             "InterventionalHistogram: ignoring continuous Z (prototype exact-matching sampler): " + zn);
+@@ -354,7 +353,7 @@ public double[] sampleY(DataSet data,
+                 if (want < 0 || want >= k) throw new IllegalArgumentException("Bad do() value for " + xn + ": " + want);
+ 
+                 xVars.add(dx);
+-                xCols.add(data.getColumn(dx));
++                xCols.add(data.getColumnIndex(dx));
+                 xWant.add(want);
+             }
+ 
+@@ -421,7 +420,7 @@ private static double readY(DataSet data, Node y, int yCol, int row) {
+         private static double[] bootstrapYFromAllRows(DataSet data, Node yGraph, int n, Random rng) {
+             Node y = data.getVariable(yGraph.getName());
+             if (y == null) throw new IllegalArgumentException("Y not found in data: " + yGraph.getName());
+-            int yCol = data.getColumn(y);
++            int yCol = data.getColumnIndex(y);
+ 
+             int rows = data.getNumRows();
+             double[] out = new double[n];
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/LatentParentRecoveryGraphWrapper.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/LatentParentRecoveryGraphWrapper.java
+new file mode 100644
+--- /dev/null
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/LatentParentRecoveryGraphWrapper.java
+@@ -0,0 +1,104 @@
++/// ////////////////////////////////////////////////////////////////////////////
++// For information as to what this class does, see the Javadoc, below.       //
++//                                                                           //
++// Copyright (C) 2025 by Joseph Ramsey, Peter Spirtes, Clark Glymour,        //
++// and Richard Scheines.                                                     //
++//                                                                           //
++// This program is free software: you can redistribute it and/or modify      //
++// it under the terms of the GNU General Public License as published by      //
++// the Free Software Foundation, either version 3 of the License, or         //
++// (at your option) any later version.                                       //
++//                                                                           //
++// This program is distributed in the hope that it will be useful,           //
++// but WITHOUT ANY WARRANTY; without even the implied warranty of            //
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             //
++// GNU General Public License for more details.                              //
++//                                                                           //
++// You should have received a copy of the GNU General Public License         //
++// along with this program.  If not, see <https://www.gnu.org/licenses/>.    //
++///////////////////////////////////////////////////////////////////////////////
++
++package edu.cmu.tetradapp.model;
++
++import edu.cmu.tetrad.data.BoxDataSet;
++import edu.cmu.tetrad.data.DataSet;
++import edu.cmu.tetrad.data.DoubleDataBox;
++import edu.cmu.tetrad.graph.*;
++import edu.cmu.tetrad.search.LatentParentRecovery;
++import edu.cmu.tetrad.util.Parameters;
++import edu.cmu.tetrad.util.Params;
++import edu.cmu.tetrad.util.TetradLogger;
++import edu.cmu.tetradapp.session.DoNotAddOldModel;
++
++import java.util.ArrayList;
++
++/**
++ * <p>PagFromDagGraphWrapper class.</p>
++ *
++ * @author Tyler Gibson
++ * @version $Id: $Id
++ */
++public class LatentParentRecoveryGraphWrapper extends GraphWrapper implements DoNotAddOldModel {
++    private static final long serialVersionUID = 23L;
++
++
++    /**
++     * <p>Constructor for PagFromDagGraphWrapper.</p>
++     *
++     * @param source     a {@link GraphSource} object
++     * @param parameters a {@link Parameters} object
++     */
++    public LatentParentRecoveryGraphWrapper(GraphSource source, DataWrapper dataWrapper, Parameters parameters) {
++        this(source.getGraph(), (DataSet) dataWrapper.getSelectedDataModel(), parameters);
++    }
++
++
++    /**
++     * <p>Constructor for PagFromDagGraphWrapper.</p>
++     *
++     * @param graph a {@link Graph} object
++     */
++    public LatentParentRecoveryGraphWrapper(Graph graph, DataSet data, Parameters parameters) {
++        super(graph);
++
++        graph = GraphUtils.replaceNodes(graph, data.getVariables());
++
++        for (Node node : data.getVariables()) {
++            if (graph.getNode(node.getName()) == null) {
++                graph.addNode(node);
++            }
++        }
++
++        LatentParentRecovery latentParentRecovery = new LatentParentRecovery(data, graph);
++        setGraph(latentParentRecovery.search());
++
++        TetradLogger.getInstance().log("\nLatent Parent Recovery.");
++    }
++
++    /**
++     * <p>serializableInstance.</p>
++     *
++     * @return a {@link LatentParentRecoveryGraphWrapper} object
++     */
++    public static LatentParentRecoveryGraphWrapper serializableInstance() {
++        EdgeListGraph edgeListGraph = EdgeListGraph.serializableInstance();
++        DoubleDataBox doubleDataBox = new DoubleDataBox(0, 0);
++        BoxDataSet boxDataSet = new BoxDataSet(doubleDataBox, new ArrayList<>());
++        return new LatentParentRecoveryGraphWrapper(edgeListGraph, boxDataSet, new Parameters());
++    }
++
++    //======================== Private Method ======================//
++
++
++    /**
++     * {@inheritDoc}
++     */
++    @Override
++    public boolean allowRandomGraph() {
++        return false;
++    }
++}
++
++
++
++
+diff --git a/tetrad-gui/src/main/resources/config/prodConfig.xml b/tetrad-gui/src/main/resources/config/prodConfig.xml
+--- a/tetrad-gui/src/main/resources/config/prodConfig.xml
++++ b/tetrad-gui/src/main/resources/config/prodConfig.xml
+@@ -213,6 +213,17 @@
+                 <editor-class>edu.cmu.tetradapp.editor.GraphEditor
+                 </editor-class>
+             </model>
++            <model name="Latent Parents" acronym="Latent Parents"
++                   help="graph" category="Graph Manipulations">
++                <logger>
++                    <event id="info" description="Information" default="on"/>
++                    <event id="pag" description="PAG" default="on"/>
++                </logger>
++                <model-class>edu.cmu.tetradapp.model.LatentParentRecoveryGraphWrapper
++                </model-class>
++                <editor-class>edu.cmu.tetradapp.editor.GraphEditor
++                </editor-class>
++            </model>
+         </models>
+         <display-component image="graphIcon.gif"/>
+         <model-chooser title="Graphs and Graph Manipulations">
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/algorithm/oracle/cpdag/IsFges.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/algorithm/oracle/cpdag/IsFges.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/algorithm/oracle/cpdag/IsFges.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/algorithm/oracle/cpdag/IsFges.java
+@@ -87,7 +87,7 @@ private static DataSet alignByName(DataSet ref, DataSet other) {
+             if (instVar == null) {
+                 throw new IllegalArgumentException("Instance dataset missing variable: " + name);
+             }
+-            cols[i] = other.getColumn(instVar);
++            cols[i] = other.getColumnIndex(instVar);
+         }
+ 
+         DataSet projected = other.subsetColumns(cols);
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/algorithm/oracle/pag/IsGfci.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/algorithm/oracle/pag/IsGfci.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/algorithm/oracle/pag/IsGfci.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/algorithm/oracle/pag/IsGfci.java
+@@ -107,7 +107,7 @@ private static DataSet alignByName(DataSet ref, DataSet other) {
+             if (instVar == null) {
+                 throw new IllegalArgumentException("Instance dataset missing variable: " + name);
+             }
+-            cols[i] = other.getColumn(instVar);
++            cols[i] = other.getColumnIndex(instVar);
+         }
+ 
+         DataSet projected = other.subsetColumns(cols);
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/score/InstanceAugmentedSemBicScoreWrapper.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/score/InstanceAugmentedSemBicScoreWrapper.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/score/InstanceAugmentedSemBicScoreWrapper.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/score/InstanceAugmentedSemBicScoreWrapper.java
+@@ -77,7 +77,7 @@ public Score getScore(DataModel dataModel, Parameters parameters) {
+         double[] x = new double[vars.size()];
+         for (int j = 0; j < vars.size(); j++) {
+             Node v = vars.get(j);
+-            int col = testing.getColumn(testing.getVariable(v.getName()));
++            int col = testing.getColumnIndex(testing.getVariable(v.getName()));
+             x[j] = testing.getDouble(row, col);
+         }
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/score/IsBDeuScoreWrapper.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/score/IsBDeuScoreWrapper.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/score/IsBDeuScoreWrapper.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/score/IsBDeuScoreWrapper.java
+@@ -51,7 +51,7 @@ private static DataSet alignByNameAndCategories(DataSet ref, DataSet other) {
+             if (ov == null) {
+                 throw new IllegalArgumentException("Testing dataset missing variable: " + name);
+             }
+-            cols[j] = other.getColumn(ov);
++            cols[j] = other.getColumnIndex(ov);
+         }
+ 
+         DataSet projected = other.subsetColumns(cols);
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/ConditionalGaussianSimulation.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/ConditionalGaussianSimulation.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/ConditionalGaussianSimulation.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/ConditionalGaussianSimulation.java
+@@ -394,7 +394,7 @@ private DataSet simulate(Graph G, Parameters parameters) {
+                         ContinuousVariable orig = erstatzNodesReverse.get(_parent.getName());
+ 
+                         if (orig != null) {
+-                            int mixedParentColumn = mixedData.getColumn(orig);
++                            int mixedParentColumn = mixedData.getColumnIndex(orig);
+                             double d = mixedData.getDouble(i, mixedParentColumn);
+                             double[] breakpoints = breakpointsMap.get(mixedParentColumn);
+ 
+@@ -412,7 +412,7 @@ private DataSet simulate(Graph G, Parameters parameters) {
+                                 }
+                             }
+                         } else {
+-                            int mixedColumn = mixedData.getColumn(bayesParent);
++                            int mixedColumn = mixedData.getColumnIndex(bayesParent);
+                             value = mixedData.getInt(i, mixedColumn);
+                         }
+ 
+@@ -455,8 +455,8 @@ private DataSet simulate(Graph G, Parameters parameters) {
+                     Combination muComb = new Combination(muParam);
+ 
+                     for (DiscreteVariable v : discreteParents) {
+-                        varComb.addParamValue(v, mixedData.getInt(i, mixedData.getColumn(v)));
+-                        muComb.addParamValue(v, mixedData.getInt(i, mixedData.getColumn(v)));
++                        varComb.addParamValue(v, mixedData.getInt(i, mixedData.getColumnIndex(v)));
++                        muComb.addParamValue(v, mixedData.getInt(i, mixedData.getColumnIndex(v)));
+                     }
+ 
+                     double value = RandomUtil.getInstance().nextGaussian(0, getParamValue(varComb, paramValues));
+@@ -466,7 +466,7 @@ private DataSet simulate(Graph G, Parameters parameters) {
+                         Combination coefComb = new Combination(coefParam);
+ 
+                         for (DiscreteVariable v : discreteParents) {
+-                            coefComb.addParamValue(v, mixedData.getInt(i, mixedData.getColumn(v)));
++                            coefComb.addParamValue(v, mixedData.getInt(i, mixedData.getColumnIndex(v)));
+                         }
+ 
+                         int parent = nodes.indexOf(x);
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/LinearSineSimulation.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/LinearSineSimulation.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/LinearSineSimulation.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/LinearSineSimulation.java
+@@ -332,11 +332,11 @@ private DataSet simulate(Graph G, Parameters parameters) {
+             for (int j = 1; j <= continuousParents.size(); j++) {
+                 String key = continuousParents.get(j - 1).toString();
+                 if (!bounds.containsKey(key)) {
+-                    double m0 = mixedData.getDouble(0, mixedData.getColumn(continuousParents.get(j - 1)));
+-                    double m1 = mixedData.getDouble(0, mixedData.getColumn(continuousParents.get(j - 1)));
++                    double m0 = mixedData.getDouble(0, mixedData.getColumnIndex(continuousParents.get(j - 1)));
++                    double m1 = mixedData.getDouble(0, mixedData.getColumnIndex(continuousParents.get(j - 1)));
+                     for (int i = 1; i < parameters.getInt(Params.SAMPLE_SIZE); i++) {
+-                        m0 = TMath.min(m0, mixedData.getDouble(i, mixedData.getColumn(continuousParents.get(j - 1))));
+-                        m1 = TMath.max(m1, mixedData.getDouble(i, mixedData.getColumn(continuousParents.get(j - 1))));
++                        m0 = TMath.min(m0, mixedData.getDouble(i, mixedData.getColumnIndex(continuousParents.get(j - 1))));
++                        m1 = TMath.max(m1, mixedData.getDouble(i, mixedData.getColumnIndex(continuousParents.get(j - 1))));
+                     }
+                     double[] temp = new double[3];
+                     temp[0] = m0;
+@@ -356,7 +356,7 @@ private DataSet simulate(Graph G, Parameters parameters) {
+                 final String key = "";
+ 
+                 for (int j = 1; j <= continuousParents.size(); j++)
+-                    parents[j - 1] = mixedData.getDouble(i, mixedData.getColumn(continuousParents.get(j - 1)));
++                    parents[j - 1] = mixedData.getDouble(i, mixedData.getColumnIndex(continuousParents.get(j - 1)));
+ 
+                 if (!intercept.containsKey(key)) {
+                     double[] interceptCoefficients = new double[1];
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/BdeMetricCache.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/BdeMetricCache.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/BdeMetricCache.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/BdeMetricCache.java
+@@ -470,7 +470,7 @@ private void computeObservedCounts(Node node, Node[] parentArray) {
+      * in the above code the name comes from a node in the graph of the BayesPm.
+      */
+     private int getVarIndex(String name) {
+-        return this.dataSet.getColumn(this.dataSet.getVariable(name));
++        return this.dataSet.getColumnIndex(this.dataSet.getVariable(name));
+     }
+ 
+     /**
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/EmBayesEstimator.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/EmBayesEstimator.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/EmBayesEstimator.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/EmBayesEstimator.java
+@@ -215,7 +215,7 @@ private void initialize() {
+             } else {
+                 String name = this.bayesPm.getVariable(this.nodes[j]).getName();
+                 Node variable = this.dataSet.getVariable(name);
+-                int index = this.dataSet.getColumn(variable);
++                int index = this.dataSet.getColumnIndex(variable);
+ 
+                 for (int i = 0; i < numFullCases; i++) {
+                     dsMixed.setInt(i, j, this.dataSet.getInt(i, index));
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/calculator/Transformation.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/calculator/Transformation.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/calculator/Transformation.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/calculator/Transformation.java
+@@ -79,7 +79,7 @@ private static void transformEquation(DataSet data, String eq) throws ParseExcep
+         if (variable == null) {
+             throw new IllegalStateException("Unknown variable " + equation.getVariable());
+         }
+-        int column = data.getColumn(variable);
++        int column = data.getColumnIndex(variable);
+         // build the context pairs.
+         List<String> contextVars = Transformation.getContextVariables(expression);
+         // now do the transformation row by row.
+@@ -148,7 +148,7 @@ public DataBackedContext(DataSet data, List<String> vars) {
+             this.data = data;
+             for (String v : vars) {
+                 Node n = data.getVariable(v);
+-                this.indexes.put(v, data.getColumn(n));
++                this.indexes.put(v, data.getColumnIndex(n));
+             }
+         }
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/data/BoxDataSet.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/data/BoxDataSet.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/data/BoxDataSet.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/data/BoxDataSet.java
+@@ -472,7 +472,7 @@ public Node getVariable(int col) {
+     /**
+      * {@inheritDoc}
+      */
+-    public int getColumn(Node variable) {
++    public int getColumnIndex(Node variable) {
+         return this.variables.indexOf(variable);
+     }
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/data/DataSet.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/data/DataSet.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/data/DataSet.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/data/DataSet.java
+@@ -101,7 +101,7 @@ public interface DataSet extends DataModel {
+      * @param variable The variable to check.
+      * @return the column index of the given variable.
+      */
+-    int getColumn(Node variable);
++    int getColumnIndex(Node variable);
+ 
+     /**
+      * If this is a continuous data set, returns the correlation matrix.
+@@ -432,9 +432,9 @@ public interface DataSet extends DataModel {
+      * @param name The name of the variable.
+      * @return The column index of the variable, or -1 if the variable is not found.
+      */
+-    default int getColumn(String name) {
++    default int getColumnIndex(String name) {
+         Node v = getVariable(name);
+-        return v == null ? -1 : getColumn(v);
++        return v == null ? -1 : getColumnIndex(v);
+     }
+ }
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/data/DataTransforms.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/data/DataTransforms.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/data/DataTransforms.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/data/DataTransforms.java
+@@ -1153,8 +1153,8 @@ public static Matrix getBootstrapSample(Matrix data, int sampleSize) {
+      * @param dest   a {@link edu.cmu.tetrad.data.DataSet} object
+      */
+     public static void copyColumn(Node node, DataSet source, DataSet dest) {
+-        int sourceColumn = source.getColumn(node);
+-        int destColumn = dest.getColumn(node);
++        int sourceColumn = source.getColumnIndex(node);
++        int destColumn = dest.getColumnIndex(node);
+         if (sourceColumn < 0) {
+             throw new NullPointerException("The given node was not in the source dataset");
+         }
+@@ -1315,7 +1315,7 @@ public static DataSet scale(DataSet dataSet, double scaleMin, double scaleMax) {
+      */
+     public static void scale(DataSet dataSet, double scaleMin, double scaleMax, Node node) {
+         if (node instanceof ContinuousVariable) {
+-            int j = dataSet.getColumn(node);
++            int j = dataSet.getColumnIndex(node);
+ 
+             double min = Double.POSITIVE_INFINITY;
+             double max = Double.NEGATIVE_INFINITY;
+@@ -1379,7 +1379,7 @@ public static DataSet scale(DataSet dataSet, double[] scales) {
+ 
+         for (Node node : dataSet.getVariables()) {
+             if (node instanceof ContinuousVariable) {
+-                int j = dataSet.getColumn(node);
++                int j = dataSet.getColumnIndex(node);
+ 
+                 double scale = scales[j];
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/data/Discretizer.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/data/Discretizer.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/data/Discretizer.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/data/Discretizer.java
+@@ -320,15 +320,15 @@ public DataSet discretize() {
+                     String name = variable.getName();
+ 
+                     double[] trimmedData = new double[newDataSet.getNumRows()];
+-                    int col = newDataSet.getColumn(variable);
++                    int col = newDataSet.getColumnIndex(variable);
+ 
+                     for (int j = 0; j < this.sourceDataSet.getNumRows(); j++) {
+                         trimmedData[j] = this.sourceDataSet.getDouble(j, col);
+                     }
+                     Discretization discretization = Discretizer.discretize(trimmedData,
+                             breakpoints, name, categories);
+ 
+-                    int _col = newDataSet.getColumn(variable);
++                    int _col = newDataSet.getColumnIndex(variable);
+                     int[] _data = discretization.getData();
+                     for (int j = 0; j < _data.length; j++) {
+                         newDataSet.setInt(j, _col, _data[j]);
+@@ -339,13 +339,13 @@ public DataSet discretize() {
+                     int[] remap = spec.getRemap();
+ 
+                     int[] trimmedData = new int[newDataSet.getNumRows()];
+-                    int col = newDataSet.getColumn(variable);
++                    int col = newDataSet.getColumnIndex(variable);
+ 
+                     for (int j = 0; j < this.sourceDataSet.getNumRows(); j++) {
+                         trimmedData[j] = this.sourceDataSet.getInt(j, col);
+                     }
+ 
+-                    int _col = newDataSet.getColumn(variable);
++                    int _col = newDataSet.getColumnIndex(variable);
+ 
+                     for (int j = 0; j < trimmedData.length; j++) {
+                         try {
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/data/Histogram.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/data/Histogram.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/data/Histogram.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/data/Histogram.java
+@@ -1,7 +1,6 @@
+ package edu.cmu.tetrad.data;
+ 
+ import edu.cmu.tetrad.graph.Node;
+-import edu.cmu.tetrad.util.StatUtils;
+ 
+ import java.util.*;
+ 
+@@ -336,7 +335,7 @@ private int[] frequenciesDiscrete(DiscreteVariable dv) {
+         int[] counts = new int[dv.getNumCategories()];
+         // Precompute condition arrays
+         Cond cond = buildCond();
+-        int tcol = dataSet.getColumn(target);
++        int tcol = dataSet.getColumnIndex(target);
+ 
+         for (int i = 0; i < dataSet.getNumRows(); i++) {
+             if (!cond.passes(i)) continue;
+@@ -349,7 +348,7 @@ private int[] frequenciesDiscrete(DiscreteVariable dv) {
+     private int[] frequenciesContinuous() {
+         int[] counts = new int[numBins];
+         Cond cond = buildCond();
+-        int tcol = dataSet.getColumn(target);
++        int tcol = dataSet.getColumnIndex(target);
+ 
+         final boolean hasBounds = hasContinuousBounds();
+         double min = hasBounds ? continuousBoundLow : Double.POSITIVE_INFINITY;
+@@ -435,7 +434,7 @@ private Cond buildCond() {
+                 // Defensive: skip malformed ranges
+                 if (range == null || range.length < 2) continue;
+ 
+-                contCol[k] = dataSet.getColumn(node);
++                contCol[k] = dataSet.getColumnIndex(node);
+                 contLow[k] = range[0];
+                 contHigh[k] = range[1];
+                 k++;
+@@ -457,7 +456,7 @@ private Cond buildCond() {
+                 Integer val = e.getValue();
+                 if (val == null) continue;
+ 
+-                discCol[k] = dataSet.getColumn(node);
++                discCol[k] = dataSet.getColumnIndex(node);
+                 discVal[k] = val;
+                 k++;
+             }
+@@ -524,7 +523,7 @@ private List<Double> removeZeroPointsPerPlot(List<Double> data) {
+      * @return the maximum value in the unconditioned continuous data
+      */
+     public double getMax() {
+-        int col = dataSet.getColumn(target);
++        int col = dataSet.getColumnIndex(target);
+         double max = Double.NEGATIVE_INFINITY;
+         for (int i = 0; i < dataSet.getNumRows(); i++) {
+             double v = dataSet.getDouble(i, col);
+@@ -541,7 +540,7 @@ public double getMax() {
+      * @return The minimum value from the unconditioned continuous data as a double.
+      */
+     public double getMin() {
+-        int col = dataSet.getColumn(target);
++        int col = dataSet.getColumnIndex(target);
+         double min = Double.POSITIVE_INFINITY;
+         for (int i = 0; i < dataSet.getNumRows(); i++) {
+             double v = dataSet.getDouble(i, col);
+@@ -559,7 +558,7 @@ public double getMin() {
+      */
+     public int getN() {
+         Cond cond = buildCond();
+-        int tcol = dataSet.getColumn(target);
++        int tcol = dataSet.getColumnIndex(target);
+ 
+         int n = 0;
+         for (int i = 0; i < dataSet.getNumRows(); i++) {
+@@ -586,7 +585,7 @@ public int getN() {
+      * @return an array of double values representing the continuous data for the specified variable
+      */
+     public double[] getContinuousData(String variable) {
+-        int index = this.dataSet.getColumn(this.dataSet.getVariable(variable));
++        int index = this.dataSet.getColumnIndex(this.dataSet.getVariable(variable));
+         List<Double> data = new ArrayList<>(this.dataSet.getNumRows());
+         for (int i = 0; i < this.dataSet.getNumRows(); i++) {
+             data.add(this.dataSet.getDouble(i, index));
+@@ -638,7 +637,7 @@ private double[] asDoubleArray(List<Double> data) {
+     }
+ 
+     private List<Double> getUnconditionedDataContinuous() {
+-        int index = this.dataSet.getColumn(this.target);
++        int index = this.dataSet.getColumnIndex(this.target);
+         List<Double> data = new ArrayList<>(this.dataSet.getNumRows());
+         for (int i = 0; i < this.dataSet.getNumRows(); i++) {
+             data.add(this.dataSet.getDouble(i, index));
+@@ -648,7 +647,7 @@ private List<Double> getUnconditionedDataContinuous() {
+ 
+     private List<Double> getConditionedDataContinuous() {
+         List<Integer> rows = getConditionedRows();
+-        int index = this.dataSet.getColumn(this.target);
++        int index = this.dataSet.getColumnIndex(this.target);
+ 
+         List<Double> data = new ArrayList<>(rows.size());
+         for (Integer row : rows) {
+@@ -659,7 +658,7 @@ private List<Double> getConditionedDataContinuous() {
+ 
+     private List<Integer> getConditionedDataDiscrete() {
+         List<Integer> rows = getConditionedRows();
+-        int index = this.dataSet.getColumn(this.target);
++        int index = this.dataSet.getColumnIndex(this.target);
+ 
+         List<Integer> data = new ArrayList<>(rows.size());
+         for (Integer row : rows) {
+@@ -676,7 +675,7 @@ private List<Integer> getConditionedRows() {
+         for (int i = 0; i < this.dataSet.getNumRows(); i++) {
+             for (Node node : this.continuousIntervals.keySet()) {
+                 double[] range = this.continuousIntervals.get(node);
+-                int index = this.dataSet.getColumn(node);
++                int index = this.dataSet.getColumnIndex(node);
+                 double value = this.dataSet.getDouble(i, index);
+                 if (!(value >= range[0] && value <= range[1])) {
+                     continue I;
+@@ -685,7 +684,7 @@ private List<Integer> getConditionedRows() {
+ 
+             for (Node node : this.discreteValues.keySet()) {
+                 int value = this.discreteValues.get(node);
+-                int index = this.dataSet.getColumn(node);
++                int index = this.dataSet.getColumnIndex(node);
+                 int _value = this.dataSet.getInt(i, index);
+                 if (value != _value) {
+                     continue I;
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/data/NumberObjectDataSet.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/data/NumberObjectDataSet.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/data/NumberObjectDataSet.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/data/NumberObjectDataSet.java
+@@ -501,7 +501,7 @@ public Node getVariable(int col) {
+     /**
+      * {@inheritDoc}
+      */
+-    public int getColumn(Node variable) {
++    public int getColumnIndex(Node variable) {
+         return this.variables.indexOf(variable);
+     }
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgEstimator.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgEstimator.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgEstimator.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgEstimator.java
+@@ -115,14 +115,14 @@ private static void setAllCutpoints(HybridCgPm pm, DataSet data, String policy,
+     private static void verifyAlignment(HybridCgPm pm, DataSet data) {
+         var nodes = pm.getNodes();
+         for (var v : nodes) {
+-            int col = data.getColumn(v);
++            int col = data.getColumnIndex(v);
+             if (col < 0) {
+                 // Retry by name, safely
+                 var byNameVar = data.getVariable(v.getName());
+                 if (byNameVar == null) {
+                     throw new IllegalArgumentException("Variable from PM not found in dataset: " + v.getName());
+                 }
+-                col = data.getColumn(byNameVar);
++                col = data.getColumnIndex(byNameVar);
+                 if (col < 0) {
+                     throw new IllegalArgumentException("Variable from PM not found in dataset: " + v.getName());
+                 }
+@@ -131,13 +131,13 @@ private static void verifyAlignment(HybridCgPm pm, DataSet data) {
+     }
+ 
+     private static double[] columnAsDoubles(DataSet data, Node contVar) {
+-        int c = data.getColumn(contVar);
++        int c = data.getColumnIndex(contVar);
+         if (c < 0) {
+             var byNameVar = data.getVariable(contVar.getName());
+             if (byNameVar == null) {
+                 throw new IllegalArgumentException("Variable not in dataset: " + contVar.getName());
+             }
+-            c = data.getColumn(byNameVar);
++            c = data.getColumnIndex(byNameVar);
+             if (c < 0) {
+                 throw new IllegalArgumentException("Variable not in dataset: " + contVar.getName());
+             }
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgModel.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgModel.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgModel.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgModel.java
+@@ -408,7 +408,7 @@ public void autoCutpointsForDiscreteChild(Node child, DataSet data, int binsPerP
+             double[][] cuts = new double[cps.length][];
+             for (int t = 0; t < cps.length; t++) {
+                 Node p = nodes[cps[t]];
+-                int col = data.getColumn(p);
++                int col = data.getColumnIndex(p);
+                 if (col < 0) throw new IllegalArgumentException("Data is missing column for parent: " + p.getName());
+ 
+                 // collect non-missing
+@@ -553,12 +553,12 @@ public int rowIndexForCase(int nodeIndex, edu.cmu.tetrad.data.DataSet data, int
+             int[] discStates = new int[dps.length];
+             for (int i = 0; i < dps.length; i++) {
+                 Node parent = nodes[dps[i]];
+-                int col = data.getColumn(parent);
++                int col = data.getColumnIndex(parent);
+                 if (col < 0) {
+                     Node byName = data.getVariable(parent.getName());
+                     if (byName == null)
+                         throw new IllegalArgumentException("Dataset missing parent: " + parent.getName());
+-                    col = data.getColumn(byName);
++                    col = data.getColumnIndex(byName);
+                 }
+                 discStates[i] = data.getInt(row, col);
+             }
+@@ -568,12 +568,12 @@ public int rowIndexForCase(int nodeIndex, edu.cmu.tetrad.data.DataSet data, int
+                 contVals = new double[cps.length];
+                 for (int t = 0; t < cps.length; t++) {
+                     Node parent = nodes[cps[t]];
+-                    int col = data.getColumn(parent);
++                    int col = data.getColumnIndex(parent);
+                     if (col < 0) {
+                         Node byName = data.getVariable(parent.getName());
+                         if (byName == null)
+                             throw new IllegalArgumentException("Dataset missing parent: " + parent.getName());
+-                        col = data.getColumn(byName);
++                        col = data.getColumnIndex(byName);
+                     }
+                     contVals[t] = data.getDouble(row, col);
+                 }
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/regression/LogisticRegression.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/regression/LogisticRegression.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/regression/LogisticRegression.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/regression/LogisticRegression.java
+@@ -114,7 +114,7 @@ public Result regress(DiscreteVariable x, List<Node> regressors) {
+         double[][] _regressors = new double[regressors.size()][getRows().length];
+ 
+         for (int j = 0; j < regressors.size(); j++) {
+-            int col = this.dataSet.getColumn(regressors.get(j));
++            int col = this.dataSet.getColumnIndex(regressors.get(j));
+             double[] dataCol = this.dataCols[col];
+ 
+             for (int i = 0; i < getRows().length; i++) {
+@@ -123,7 +123,7 @@ public Result regress(DiscreteVariable x, List<Node> regressors) {
+         }
+ 
+         int[] target = new int[getRows().length];
+-        int col = this.dataSet.getColumn(this.dataSet.getVariable(x.getName()));
++        int col = this.dataSet.getColumnIndex(this.dataSet.getVariable(x.getName()));
+ 
+         for (int i = 0; i < getRows().length; i++) {
+             target[i] = this.dataSet.getInt(getRows()[i], col);
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/AdjustmentHarness.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/AdjustmentHarness.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/AdjustmentHarness.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/AdjustmentHarness.java
+@@ -290,17 +290,17 @@ private static double olsCoefXGivenZ(DataSet data, Node y, Node x, Set<Node> Z)
+         for (int r = 0; r < n; r++) X[r][col] = 1.0; // intercept
+         col++;
+ 
+-        int xIdx = data.getColumn(data.getVariable(x.getName()));
++        int xIdx = data.getColumnIndex(data.getVariable(x.getName()));
+         for (int r = 0; r < n; r++) X[r][col] = data.getDouble(r, xIdx);
+         col++;
+ 
+         for (Node z : zList) {
+-            int zi = data.getColumn(data.getVariable(z.getName()));
++            int zi = data.getColumnIndex(data.getVariable(z.getName()));
+             for (int r = 0; r < n; r++) X[r][col] = data.getDouble(r, zi);
+             col++;
+         }
+ 
+-        int yIdx = data.getColumn(data.getVariable(y.getName()));
++        int yIdx = data.getColumnIndex(data.getVariable(y.getName()));
+         for (int r = 0; r < n; r++) Y[r] = data.getDouble(r, yIdx);
+ 
+         double lambda = 1e-8;
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/Fask.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/Fask.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/Fask.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/Fask.java
+@@ -804,7 +804,7 @@ private boolean breaksCyclePattern(double[] x, double[] y, List<Node> zNodes,
+     private double[][] buildZ(List<Node> zNodes) {
+         double[][] Z = new double[zNodes.size()][];
+         for (int i = 0; i < zNodes.size(); i++) {
+-            int col = dataSet.getColumn(zNodes.get(i));
++            int col = dataSet.getColumnIndex(zNodes.get(i));
+             Z[i] = data[col];
+         }
+         return Z;
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/FaskOrig.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/FaskOrig.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/FaskOrig.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/FaskOrig.java
+@@ -905,7 +905,7 @@ private boolean twoCycleTest(int i, int j, double[][] D, Graph G0, List<Node> V)
+ 
+             for (int f = 0; f < _adj.size(); f++) {
+                 Node _z = _adj.get(f);
+-                int column = this.dataSet.getColumn(_z);
++                int column = this.dataSet.getColumnIndex(_z);
+                 _Z[f] = D[column];
+             }
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/LatentParentRecovery.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/LatentParentRecovery.java
+new file mode 100644
+--- /dev/null
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/LatentParentRecovery.java
+@@ -0,0 +1,578 @@
++///////////////////////////////////////////////////////////////////////////////
++// For information as to what this class does, see the Javadoc, below.       //
++//                                                                           //
++// Copyright (C) 2025 by Joseph Ramsey, Peter Spirtes, Clark Glymour,        //
++// and Richard Scheines.                                                     //
++//                                                                           //
++// This program is free software: you can redistribute it and/or modify      //
++// it under the terms of the GNU General Public License as published by      //
++// the Free Software Foundation, either version 3 of the License, or         //
++// (at your option) any later version.                                       //
++//                                                                           //
++// This program is distributed in the hope that it will be useful,           //
++// but WITHOUT ANY WARRANTY; without even the implied warranty of            //
++// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the              //
++// GNU General Public License for more details.                              //
++//                                                                           //
++// You should have received a copy of the GNU General Public License         //
++// along with this program. If not, see <https://www.gnu.org/licenses/>.     //
++///////////////////////////////////////////////////////////////////////////////
++
++package edu.cmu.tetrad.search;
++
++import edu.cmu.tetrad.data.DataSet;
++import edu.cmu.tetrad.data.Knowledge;
++import edu.cmu.tetrad.graph.EdgeListGraph;
++import edu.cmu.tetrad.graph.Graph;
++import edu.cmu.tetrad.graph.Node;
++import edu.cmu.tetrad.graph.NodeType;
++import edu.cmu.tetrad.util.StatUtils;
++import edu.cmu.tetrad.util.TMath;
++
++import java.util.ArrayList;
++import java.util.LinkedHashSet;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.Set;
++
++/**
++ * Recovers measured parents of already recovered latent variables.
++ *
++ * <p>This class assumes that the input graph already contains latent variables,
++ * their measured indicators, and possibly some latent-to-latent edges. Its job
++ * is to attach measured parents to the latent variables using the supplied data.</p>
++ *
++ * <p>The procedure is:</p>
++ *
++ * <ol>
++ *   <li>For each latent, construct a proxy score from its measured children using
++ *   the mean of the standardized indicator columns.</li>
++ *   <li>For each latent, regress that latent proxy on the proxies of its directed
++ *   latent parents and keep the residual.</li>
++ *   <li>Among measured variables not used as indicators of any latent, select those
++ *   that are sufficiently correlated with the residualized latent proxy.</li>
++ *   <li>Add the selected variables as measured parents of the latent.</li>
++ *   <li>Optionally remove inherited measured-parent edges along latent ancestry.</li>
++ * </ol>
++ *
++ * <p>This is intended as a first-pass post-processing method for turning a recovered
++ * latent-indicator structure into a fuller MIMIC-style graph.</p>
++ */
++public final class LatentParentRecovery {
++
++    /**
++     * The dataset used to estimate latent proxies and measured-parent relations.
++     */
++    private final DataSet data;
++
++    /**
++     * The input graph containing latent variables, latent indicators, and optionally
++     * latent-to-latent edges.
++     */
++    private final Graph latentGraph;
++
++    /**
++     * Background knowledge, if any.
++     */
++    private Knowledge knowledge = new Knowledge();
++
++    /**
++     * Absolute correlation threshold for selecting a measured parent of a latent residual.
++     */
++    private double correlationThreshold = 0.10;
++
++    /**
++     * Whether to prune inherited measured-parent edges structurally after parent attachment.
++     */
++    private boolean pruneInheritedParents = true;
++
++    /**
++     * Constructs a latent-parent recovery procedure.
++     *
++     * @param data the dataset
++     * @param latentGraph the latent graph
++     */
++    public LatentParentRecovery(DataSet data, Graph latentGraph) {
++        if (data == null) {
++            throw new NullPointerException("Data must not be null.");
++        }
++
++        if (latentGraph == null) {
++            throw new NullPointerException("Latent graph must not be null.");
++        }
++
++        this.data = data;
++        this.latentGraph = latentGraph;
++    }
++
++    /**
++     * Sets the background knowledge.
++     *
++     * @param knowledge the background knowledge
++     */
++    public void setKnowledge(Knowledge knowledge) {
++        if (knowledge == null) {
++            throw new NullPointerException("Knowledge must not be null.");
++        }
++
++        this.knowledge = new Knowledge(knowledge);
++    }
++
++    /**
++     * Sets the absolute correlation threshold used to select measured parents.
++     *
++     * @param correlationThreshold the threshold
++     */
++    public void setCorrelationThreshold(double correlationThreshold) {
++        if (correlationThreshold < 0.0 || correlationThreshold > 1.0) {
++            throw new IllegalArgumentException("Correlation threshold must be between 0 and 1.");
++        }
++
++        this.correlationThreshold = correlationThreshold;
++    }
++
++    /**
++     * Sets whether inherited measured parents should be pruned structurally after selection.
++     *
++     * @param pruneInheritedParents true if inherited parents should be pruned
++     */
++    public void setPruneInheritedParents(boolean pruneInheritedParents) {
++        this.pruneInheritedParents = pruneInheritedParents;
++    }
++
++    /**
++     * Runs latent-parent recovery and returns the augmented graph.
++     *
++     * @return the augmented graph
++     */
++    public Graph search() {
++        Graph result = new EdgeListGraph(this.latentGraph);
++
++        Map<Node, double[]> latentScores = estimateLatentScores(result);
++        List<Node> latents = getLatentNodes(result);
++        List<Node> candidateMeasuredParents = getCandidateMeasuredParents(result);
++
++        Map<Node, Set<Node>> selectedParents = new LinkedHashMap<>();
++
++        for (Node latent : latents) {
++            double[] target = residualizeOnLatentParents(latent, result, latentScores);
++            Set<Node> parents = selectMeasuredParents(latent, target, candidateMeasuredParents);
++            selectedParents.put(latent, parents);
++        }
++
++//        attachMeasuredParents(result, selectedParents);
++//
++//        if (this.pruneInheritedParents) {
++//            pruneInheritedMeasuredParents(result);
++//        }
++//
++//        removeDegenerateLatents(result);
++//
++//        return result;
++
++        attachMeasuredParents(result, selectedParents);
++
++        if (this.pruneInheritedParents) {
++            pruneInheritedMeasuredParents(result);
++        }
++
++        return result;
++    }
++
++    /**
++     * Estimates a proxy score for each latent using the mean of the standardized
++     * indicator columns.
++     *
++     * @param graph the graph containing the latents
++     * @return a map from each latent to its proxy score vector
++     */
++    private Map<Node, double[]> estimateLatentScores(Graph graph) {
++        Map<Node, double[]> latentScores = new LinkedHashMap<>();
++
++        for (Node latent : getLatentNodes(graph)) {
++            Set<Node> indicators = getMeasuredChildren(latent, graph);
++
++            if (indicators.isEmpty()) {
++                continue;
++            }
++
++            List<double[]> indicatorColumns = new ArrayList<>();
++
++            for (Node indicator : indicators) {
++                int column = this.data.getColumnIndex(indicator);
++
++                if (column < 0) {
++                    continue;
++                }
++
++                double[] values = this.data.getDoubleData().getColumn(column).toArray();
++                indicatorColumns.add(standardize(values));
++            }
++
++            if (indicatorColumns.isEmpty()) {
++                continue;
++            }
++
++            int n = indicatorColumns.get(0).length;
++            double[] score = new double[n];
++
++            for (int i = 0; i < n; i++) {
++                double sum = 0.0;
++
++                for (double[] column : indicatorColumns) {
++                    sum += column[i];
++                }
++
++                score[i] = sum / indicatorColumns.size();
++            }
++
++            latentScores.put(latent, score);
++        }
++
++        return latentScores;
++    }
++
++    /**
++     * Residualizes the proxy score of a latent on the proxy scores of its directed
++     * latent parents.
++     *
++     * @param latent the latent
++     * @param graph the graph
++     * @param latentScores the latent proxy scores
++     * @return the residualized latent score
++     */
++    private double[] residualizeOnLatentParents(Node latent, Graph graph, Map<Node, double[]> latentScores) {
++        double[] target = latentScores.get(latent);
++
++        if (target == null) {
++            return new double[0];
++        }
++
++        List<Node> latentParents = new ArrayList<>();
++
++        for (Node parent : graph.getParents(latent)) {
++            if (parent.getNodeType() == NodeType.LATENT && latentScores.containsKey(parent)) {
++                latentParents.add(parent);
++            }
++        }
++
++        if (latentParents.isEmpty()) {
++            return target.clone();
++        }
++
++        double[] residual = target.clone();
++
++        for (Node parent : latentParents) {
++            double[] parentScore = latentScores.get(parent);
++            double beta = regressionCoefficient(parentScore, residual);
++
++            for (int i = 0; i < residual.length; i++) {
++                residual[i] -= beta * parentScore[i];
++            }
++        }
++
++        return residual;
++    }
++
++    /**
++     * Selects measured parents of a latent residual by marginal correlation screening.
++     *
++     * @param latent the latent whose parents are being selected
++     * @param target the residualized latent score
++     * @param candidateMeasuredParents the pool of candidate measured parents
++     * @return the selected measured parents
++     */
++    private Set<Node> selectMeasuredParents(Node latent, double[] target, List<Node> candidateMeasuredParents) {
++        Set<Node> parents = new LinkedHashSet<>();
++
++        if (target.length == 0) {
++            return parents;
++        }
++
++        for (Node candidate : candidateMeasuredParents) {
++            if (!isAllowedParent(candidate, latent)) {
++                continue;
++            }
++
++            int column = this.data.getColumnIndex(candidate);
++
++            if (column < 0) {
++                continue;
++            }
++
++            double[] predictor = this.data.getDoubleData().getColumn(column).toArray();
++            predictor = standardize(predictor);
++
++            double r = correlation(predictor, target);
++
++            if (Double.isNaN(r)) {
++                continue;
++            }
++
++            if (TMath.abs(r) >= this.correlationThreshold) {
++                parents.add(candidate);
++            }
++        }
++
++        return parents;
++    }
++
++    /**
++     * Returns true if the candidate measured variable is allowed to be a parent of the
++     * given latent according to the supplied knowledge.
++     *
++     * @param candidate the measured candidate parent
++     * @param latent the latent
++     * @return true if the edge is allowed
++     */
++    private boolean isAllowedParent(Node candidate, Node latent) {
++        String from = candidate.getName();
++        String to = latent.getName();
++
++        return !this.knowledge.isForbidden(from, to);
++    }
++
++    /**
++     * Attaches the selected measured parents to the corresponding latents.
++     *
++     * @param graph the graph to modify
++     * @param selectedParents the selected measured parents for each latent
++     */
++    private void attachMeasuredParents(Graph graph, Map<Node, Set<Node>> selectedParents) {
++        for (Map.Entry<Node, Set<Node>> entry : selectedParents.entrySet()) {
++            Node latent = entry.getKey();
++
++            for (Node parent : entry.getValue()) {
++                if (!graph.isAdjacentTo(parent, latent)) {
++                    graph.addDirectedEdge(parent, latent);
++                }
++            }
++        }
++    }
++
++    /**
++     * Returns all latent nodes in the graph.
++     *
++     * @param graph the graph
++     * @return the latent nodes
++     */
++    private List<Node> getLatentNodes(Graph graph) {
++        List<Node> latents = new ArrayList<>();
++
++        for (Node node : graph.getNodes()) {
++            if (node.getNodeType() == NodeType.LATENT) {
++                latents.add(node);
++            }
++        }
++
++        return latents;
++    }
++
++    /**
++     * Returns the measured variables that are not indicators of any latent and hence
++     * are eligible to become measured parents of latents.
++     *
++     * @param graph the graph
++     * @return the candidate measured parents
++     */
++    private List<Node> getCandidateMeasuredParents(Graph graph) {
++        Set<Node> indicators = new LinkedHashSet<>();
++
++        for (Node latent : getLatentNodes(graph)) {
++            indicators.addAll(getMeasuredChildren(latent, graph));
++        }
++
++        List<Node> candidates = new ArrayList<>();
++
++        for (Node node : graph.getNodes()) {
++            if (node.getNodeType() == NodeType.LATENT) {
++                continue;
++            }
++
++            if (!indicators.contains(node)) {
++                candidates.add(node);
++            }
++        }
++
++        return candidates;
++    }
++
++    /**
++     * Returns the measured parents of the given node in the supplied graph.
++     *
++     * @param node the node
++     * @param graph the graph
++     * @return the measured parents
++     */
++    private Set<Node> getMeasuredParents(Node node, Graph graph) {
++        Set<Node> measuredParents = new LinkedHashSet<>();
++
++        for (Node parent : graph.getParents(node)) {
++            if (parent.getNodeType() != NodeType.LATENT) {
++                measuredParents.add(parent);
++            }
++        }
++
++        return measuredParents;
++    }
++
++    /**
++     * Returns the measured children of the given node in the supplied graph.
++     *
++     * @param node the node
++     * @param graph the graph
++     * @return the measured children
++     */
++    private Set<Node> getMeasuredChildren(Node node, Graph graph) {
++        Set<Node> measuredChildren = new LinkedHashSet<>();
++
++        for (Node child : graph.getChildren(node)) {
++            if (child.getNodeType() != NodeType.LATENT) {
++                measuredChildren.add(child);
++            }
++        }
++
++        return measuredChildren;
++    }
++
++    /**
++     * Removes inherited measured-parent edges along latent ancestry.
++     *
++     * <p>If x is a measured parent of an immediate latent parent U of L, and x is also
++     * a measured parent of L, then x -> L is treated as inherited and is removed, but
++     * only if removing it leaves at least one other measured parent for L.</p>
++     *
++     * @param graph the graph to refine
++     */
++    private void pruneInheritedMeasuredParents(Graph graph) {
++        for (Node latent : new ArrayList<>(graph.getNodes())) {
++            if (latent.getNodeType() != NodeType.LATENT) {
++                continue;
++            }
++
++            Set<Node> measuredParents = getMeasuredParents(latent, graph);
++
++            if (measuredParents.size() <= 1) {
++                continue;
++            }
++
++            Set<Node> inheritedMeasuredParents = new LinkedHashSet<>();
++
++            for (Node parent : graph.getParents(latent)) {
++                if (parent.getNodeType() == NodeType.LATENT) {
++                    inheritedMeasuredParents.addAll(getMeasuredParents(parent, graph));
++                }
++            }
++
++            for (Node measuredParent : new ArrayList<>(measuredParents)) {
++                if (!inheritedMeasuredParents.contains(measuredParent)) {
++                    continue;
++                }
++
++                if (getMeasuredParents(latent, graph).size() > 1) {
++                    graph.removeEdge(measuredParent, latent);
++                }
++            }
++        }
++    }
++
++    /**
++     * Removes latent variables that no longer have both measured parents and measured children.
++     *
++     * @param graph the graph to modify
++     */
++//    private void removeDegenerateLatents(Graph graph) {
++//        for (Node node : new ArrayList<>(graph.getNodes())) {
++//            if (node.getNodeType() != NodeType.LATENT) {
++//                continue;
++//            }
++//
++//            Set<Node> measuredParents = getMeasuredParents(node, graph);
++//            Set<Node> measuredChildren = getMeasuredChildren(node, graph);
++//
++//            if (measuredParents.isEmpty() || measuredChildren.isEmpty()) {
++//                graph.removeNode(node);
++//            }
++//        }
++//    }
++
++    private void removeDegenerateLatents(Graph graph) {
++        for (Node node : new ArrayList<>(graph.getNodes())) {
++            if (node.getNodeType() != NodeType.LATENT) {
++                continue;
++            }
++
++            Set<Node> measuredChildren = getMeasuredChildren(node, graph);
++
++            if (measuredChildren.isEmpty()) {
++                graph.removeNode(node);
++            }
++        }
++    }
++
++    /**
++     * Returns a standardized copy of the supplied array.
++     *
++     * @param values the values
++     * @return the standardized values
++     */
++    private double[] standardize(double[] values) {
++        double mean = StatUtils.mean(values);
++        double sd = StatUtils.sd(values);
++
++        double[] z = new double[values.length];
++
++        if (sd == 0.0) {
++            return z;
++        }
++
++        for (int i = 0; i < values.length; i++) {
++            z[i] = (values[i] - mean) / sd;
++        }
++
++        return z;
++    }
++
++    /**
++     * Returns the Pearson correlation of the two arrays.
++     *
++     * @param x the first array
++     * @param y the second array
++     * @return the correlation
++     */
++    private double correlation(double[] x, double[] y) {
++        if (x.length != y.length || x.length == 0) {
++            return Double.NaN;
++        }
++
++        return StatUtils.correlation(x, y);
++    }
++
++    /**
++     * Returns the simple least-squares regression coefficient of y on x.
++     *
++     * @param x the predictor
++     * @param y the response
++     * @return the regression coefficient
++     */
++    private double regressionCoefficient(double[] x, double[] y) {
++        if (x.length != y.length || x.length == 0) {
++            return 0.0;
++        }
++
++        double sxx = 0.0;
++        double sxy = 0.0;
++
++        for (int i = 0; i < x.length; i++) {
++            sxx += x[i] * x[i];
++            sxy += x[i] * y[i];
++        }
++
++        if (sxx == 0.0) {
++            return 0.0;
++        }
++
++        return sxy / sxx;
++    }
++}
+\ No newline at end of file
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/Pairwise.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/Pairwise.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/Pairwise.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/Pairwise.java
+@@ -1311,8 +1311,8 @@ private double percentile(double[] x, double percent) {
+      * @return A List of double arrays containing the extracted x and y data.
+      */
+     private List<double[]> extractData(DataSet data, Node _x, Node _y) {
+-        int xIndex = data.getColumn(_x);
+-        int yIndex = data.getColumn(_y);
++        int xIndex = data.getColumnIndex(_x);
++        int yIndex = data.getColumnIndex(_y);
+ 
+         double[][] _data = data.getDoubleData().transpose().toArray();
+ 
+@@ -1366,8 +1366,8 @@ private double[] correctSkewnesses(double[] data) {
+      * @return A list containing the X-values and Y-values as double arrays.
+      */
+     private List<double[]> prepareData(DataSet concatData, Node _x, Node _y) {
+-        int xIndex = concatData.getColumn(_x);
+-        int yIndex = concatData.getColumn(_y);
++        int xIndex = concatData.getColumnIndex(_x);
++        int yIndex = concatData.getColumnIndex(_y);
+ 
+         double[] xData = concatData.getDoubleData().getColumn(xIndex).toArray();
+         double[] yData = concatData.getDoubleData().getColumn(yIndex).toArray();
+@@ -1827,7 +1827,7 @@ private double[] residuals(Node node, List<Node> parents, boolean standardize) {
+ 
+             DataSet dataSet = this.dataSets.get(m);
+ 
+-            int targetCol = dataSet.getColumn(target);
++            int targetCol = dataSet.getColumnIndex(target);
+ 
+             for (int i = 0; i < dataSet.getNumRows(); i++) {
+                 if (isNaN(dataSet.getDouble(i, targetCol))) {
+@@ -1840,7 +1840,7 @@ private double[] residuals(Node node, List<Node> parents, boolean standardize) {
+                     break;
+                 }
+ 
+-                int regressorCol = dataSet.getColumn(regressor);
++                int regressorCol = dataSet.getColumnIndex(regressor);
+ 
+                 for (int i = 0; i < dataSet.getNumRows(); i++) {
+                     if (isNaN(dataSet.getDouble(i, regressorCol))) {
+@@ -1930,7 +1930,7 @@ private double pValue(Node node, List<Node> parents) {
+ 
+             DataSet dataSet = this.dataSets.get(m);
+ 
+-            int targetCol = dataSet.getColumn(target);
++            int targetCol = dataSet.getColumnIndex(target);
+ 
+             for (int i = 0; i < dataSet.getNumRows(); i++) {
+                 if (isNaN(dataSet.getDouble(i, targetCol))) {
+@@ -1943,7 +1943,7 @@ private double pValue(Node node, List<Node> parents) {
+                     break;
+                 }
+ 
+-                int regressorCol = dataSet.getColumn(regressor);
++                int regressorCol = dataSet.getColumnIndex(regressor);
+ 
+                 for (int i = 0; i < dataSet.getNumRows(); i++) {
+                     if (isNaN(dataSet.getDouble(i, regressorCol))) {
+@@ -2039,8 +2039,8 @@ private void resolveEdgeConditional(Graph graph, Node x, Node y) {
+         if (this._data == null) {
+             this._data = DataTransforms.centerData(this.matrices.get(0));
+         }
+-        int xIndex = this.dataSets.getFirst().getColumn(this.dataSets.getFirst().getVariable(x.getName()));
+-        int yIndex = this.dataSets.getFirst().getColumn(this.dataSets.getFirst().getVariable(y.getName()));
++        int xIndex = this.dataSets.getFirst().getColumnIndex(this.dataSets.getFirst().getVariable(x.getName()));
++        int yIndex = this.dataSets.getFirst().getColumnIndex(this.dataSets.getFirst().getVariable(y.getName()));
+         double[] xCol = this._data.getColumn(xIndex).toArray();
+         double[] yCol = this._data.getColumn(yIndex).toArray();
+         int N = xCol.length;
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/is/IsGFci.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/is/IsGFci.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/is/IsGFci.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/is/IsGFci.java
+@@ -414,7 +414,7 @@ private static DataSet alignColumnsByName(DataSet instance, DataSet train) {
+             if (instVar == null) {
+                 throw new IllegalArgumentException("Instance dataset is missing variable: " + name);
+             }
+-            cols[i] = instance.getColumn(instVar);
++            cols[i] = instance.getColumnIndex(instVar);
+         }
+ 
+         DataSet reordered = instance.subsetColumns(cols);
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/score/ConditionalGaussianLikelihood.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/score/ConditionalGaussianLikelihood.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/score/ConditionalGaussianLikelihood.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/score/ConditionalGaussianLikelihood.java
+@@ -298,8 +298,8 @@ private Ret likelihoodJoint(List<ContinuousVariable> X, List<DiscreteVariable> A
+         int[] continuousCols = new int[k];
+         for (int j = 0; j < k; j++) {
+             // Use original dataset columns for continuous data
+-            int col = mixedDataSet.getColumn(X.get(j));
+-            if (col < 0) col = mixedDataSet.getColumn(X.get(j).getName()); // you added this default method
++            int col = mixedDataSet.getColumnIndex(X.get(j));
++            if (col < 0) col = mixedDataSet.getColumnIndex(X.get(j).getName()); // you added this default method
+             if (col < 0) throw new IllegalArgumentException("Cannot find continuous variable in dataset: " + X.get(j));
+             continuousCols[j] = col;
+         }
+@@ -431,7 +431,7 @@ private List<List<Integer>> partition(List<DiscreteVariable> discrete_parents, L
+             List<Integer> key = new ArrayList<>();
+ 
+             for (DiscreteVariable discrete_parent : discrete_parents) {
+-                key.add((this.dataSet.getInt(i, this.dataSet.getColumn(discrete_parent))));
++                key.add((this.dataSet.getInt(i, this.dataSet.getColumnIndex(discrete_parent))));
+             }
+ 
+             if (!keys.containsKey(key)) {
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/score/ConditionalGaussianScore.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/score/ConditionalGaussianScore.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/score/ConditionalGaussianScore.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/score/ConditionalGaussianScore.java
+@@ -239,10 +239,10 @@ private List<Integer> getRows(int i, int[] parents) {
+      */
+     private boolean isMissing(Node v, int row) {
+         if (v instanceof DiscreteVariable) {
+-            int val = this.dataSet.getInt(row, this.dataSet.getColumn(v));
++            int val = this.dataSet.getInt(row, this.dataSet.getColumnIndex(v));
+             return val == -99; // project convention
+         } else if (v instanceof ContinuousVariable) {
+-            double val = this.dataSet.getDouble(row, this.dataSet.getColumn(v));
++            double val = this.dataSet.getDouble(row, this.dataSet.getColumnIndex(v));
+             return Double.isNaN(val);
+         } else {
+             // default conservative
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/LinearQRRegressor.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/LinearQRRegressor.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/LinearQRRegressor.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/LinearQRRegressor.java
+@@ -111,8 +111,8 @@ private static double conditionNumberSymPD(SimpleMatrix A) {
+      */
+     @Override
+     public void fit(DataSet data, Node target, List<Node> parents) {
+-        this.yCol = data.getColumn(target);
+-        this.parentCols = parents.stream().mapToInt(data::getColumn).toArray();
++        this.yCol = data.getColumnIndex(target);
++        this.parentCols = parents.stream().mapToInt(data::getColumnIndex).toArray();
+ 
+         int n = data.getNumRows();
+         int p = parentCols.length;
+@@ -186,7 +186,7 @@ public double[] predict(DataSet data, Node target, List<Node> parents) {
+ 
+         // If schema differs, recompute column indices defensively
+         if (parents != null && (parentCols == null || parentCols.length != parents.size())) {
+-            this.parentCols = parents.stream().mapToInt(data::getColumn).toArray();
++            this.parentCols = parents.stream().mapToInt(data::getColumnIndex).toArray();
+         }
+ 
+         double[] out = new double[n];
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/ResidualRegressor.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/ResidualRegressor.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/ResidualRegressor.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/ResidualRegressor.java
+@@ -60,7 +60,7 @@ public interface ResidualRegressor {
+      */
+     default double[] residuals(DataSet data, Node target, List<Node> parents) {
+         double[] yhat = predict(data, target, parents);
+-        double[] y = data.getDoubleData().getColumn(data.getColumn(target)).toArray();
++        double[] y = data.getDoubleData().getColumn(data.getColumnIndex(target)).toArray();
+         double[] r = new double[y.length];
+         for (int i = 0; i < y.length; i++) r[i] = y[i] - yhat[i];
+         return r;
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/KernelGaussian.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/KernelGaussian.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/KernelGaussian.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/KernelGaussian.java
+@@ -93,7 +93,7 @@ public void setDefaultBw(DataSet dataset, Node node) {
+      * @param node    variable used to set bandwidth
+      */
+     public void setMedianBandwidth(DataSet dataset, Node node) {
+-        int col = dataset.getColumn(node);
++        int col = dataset.getColumnIndex(node);
+         int m = dataset.getNumRows();
+ 
+         double[] diff = new double[(int) TMath.pow(m, 2) - m];
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/KernelUtils.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/KernelUtils.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/KernelUtils.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/KernelUtils.java
+@@ -55,7 +55,7 @@ public static Matrix constructGramMatrix(List<Kernel> kernels, DataSet dataset,
+         Matrix gram = new Matrix(m, m);
+         for (int k = 0; k < nodes.size(); k++) {
+             Node node = nodes.get(k);
+-            int col = dataset.getColumn(node);
++            int col = dataset.getColumnIndex(node);
+             Kernel kernel = kernels.get(k);
+             for (int i = 0; i < m; i++) {
+                 for (int j = i; j < m; j++) {
+@@ -199,10 +199,10 @@ public static Matrix incompleteCholeskyGramMatrix(List<Kernel> kernels, DataSet
+     // evaluates tensor product for kernels
+ 
+     private static double evaluate(List<Kernel> kernels, DataSet dataset, List<Node> vars, int i, int j) {
+-        int col = dataset.getColumn(vars.get(0));
++        int col = dataset.getColumnIndex(vars.get(0));
+         double keval = kernels.get(0).eval(dataset.getDouble(i, col), dataset.getDouble(j, col));
+         for (int k = 1; k < vars.size(); k++) {
+-            col = dataset.getColumn(vars.get(k));
++            col = dataset.getColumnIndex(vars.get(k));
+             keval *= kernels.get(k).eval(dataset.getDouble(i, col), dataset.getDouble(j, col));
+         }
+         return keval;
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/LgMnarDataSimulator.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/LgMnarDataSimulator.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/LgMnarDataSimulator.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/LgMnarDataSimulator.java
+@@ -130,7 +130,7 @@ private LgMnarDataSimulator() {
+         // Threshold missingness variables to produce binary 0's and 1's
+         for (Node node : dataSet.getVariables()) {
+             if (node.getName().endsWith("_missing")) {
+-                int colIndex = dataSet.getColumn(node);
++                int colIndex = dataSet.getColumnIndex(node);
+ 
+                 // Retrieve the data for the node column as a double[] array.
+                 double[] data = new double[dataSet.getNumRows()];
+@@ -157,8 +157,8 @@ private LgMnarDataSimulator() {
+             if (indicator.getName().endsWith("_missing")) {
+                 Node associatedColumn = dataSet.getVariable(indicator.getName().replace("_missing", ""));
+                 if (associatedColumn != null) {
+-                    int indicatorIndex = dataSet.getColumn(indicator);
+-                    int columnIndex = dataSet.getColumn(associatedColumn);
++                    int indicatorIndex = dataSet.getColumnIndex(indicator);
++                    int columnIndex = dataSet.getColumnIndex(associatedColumn);
+ 
+                     IntStream.range(0, dataSet.getNumRows()).parallel().forEach(row -> {
+                         if (dataSet.getDouble(row, indicatorIndex) == 0.0) {
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/ResolveSepsets.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/ResolveSepsets.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/ResolveSepsets.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/ResolveSepsets.java
+@@ -443,7 +443,7 @@ private static boolean missingVariable(Node x, Node y, Set<Node> condSet, Indepe
+     private static boolean isMissing(Node node, DataSet dataSet) {
+         Node _node = dataSet.getVariable(node.getName());
+ 
+-        int col = dataSet.getColumn(_node);
++        int col = dataSet.getColumnIndex(_node);
+ 
+         for (int i = 0; i < dataSet.getNumRows(); i++) {
+             if (Double.isNaN(dataSet.getDouble(i, col))) {
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/TsUtils.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/TsUtils.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/TsUtils.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/TsUtils.java
+@@ -465,7 +465,7 @@ public static DataSet addIndex(DataSet data) {
+         data = data.copy();
+         ContinuousVariable timeVar = new ContinuousVariable("Time");
+         data.addVariable(timeVar);
+-        int c = data.getColumn(timeVar);
++        int c = data.getColumnIndex(timeVar);
+ 
+         for (int r = 0; r < data.getNumRows(); r++) {
+             data.setDouble(r, c, (r + 1));
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/ResolveSepsetsDci.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/ResolveSepsetsDci.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/ResolveSepsetsDci.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/ResolveSepsetsDci.java
+@@ -576,7 +576,7 @@ private static boolean missingVariable(Node x, Node y, Set<Node> condSet, Indepe
+     private static boolean isMissing(Node node, DataSet dataSet) {
+         Node _node = dataSet.getVariable(node.getName());
+ 
+-        int col = dataSet.getColumn(_node);
++        int col = dataSet.getColumnIndex(_node);
+ 
+         for (int i = 0; i < dataSet.getNumRows(); i++) {
+             if (Double.isNaN(dataSet.getDouble(i, col))) {
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/GeneralizedSemEstimator.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/GeneralizedSemEstimator.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/GeneralizedSemEstimator.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/GeneralizedSemEstimator.java
+@@ -127,7 +127,7 @@ private static double[][] getDataValues(DataSet data, List<Node> tierOrdering) {
+         int[] indices = new int[tierOrdering.size()];
+ 
+         for (int i = 0; i < tierOrdering.size(); i++) {
+-            indices[i] = data.getColumn(data.getVariable(tierOrdering.get(i).getName()));
++            indices[i] = data.getColumnIndex(data.getVariable(tierOrdering.get(i).getName()));
+         }
+ 
+         for (int i = 0; i < data.getNumRows(); i++) {
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/SemIm.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/SemIm.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/SemIm.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/SemIm.java
+@@ -1834,12 +1834,12 @@ private DataSet simulateDataRecursive(int sampleSize, DataSet initialValues,
+ 
+                 if (initialValues != null) {
+                     initNode = initialValues.getVariable(node1.getName());
+-                    initCol = initialValues.getColumn(initNode);
++                    initCol = initialValues.getColumnIndex(initNode);
+                 }
+ 
+                 if (_parents[col].length == 0 && initialValues != null
+                     && initCol != -1) {
+-                    int column = initialValues.getColumn(initNode);
++                    int column = initialValues.getColumnIndex(initNode);
+                     value = initialValues.getDouble(row, column);
+                 } else {
+                     if (distribution == null) {
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/TrainedDagAdequacy.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/TrainedDagAdequacy.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/TrainedDagAdequacy.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/TrainedDagAdequacy.java
+@@ -119,7 +119,7 @@ public static AdequacyReport mmd2(
+     private static double estimateBaseline(DataSet data,
+                                            TrainedDagSimulatorGNM.NodeReport r) {
+ 
+-        int col = data.getColumn(data.getVariable(r.node));
++        int col = data.getColumnIndex(data.getVariable(r.node));
+ 
+         if (!r.discreteChild) {
+             double mean = 0.0;
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/Gdistance.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/Gdistance.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/Gdistance.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/Gdistance.java
+@@ -76,8 +76,8 @@ private static double nodesDistance(Node node1, Node node2, DataSet locationMap,
+         //calculate distance between two nodes based on their locations
+         //simple starter is simply the taxicab distance:
+         //calc differences in X, Y, and Z axis, then sum them together.
+-        int column1 = locationMap.getColumn(node1);
+-        int column2 = locationMap.getColumn(node2);
++        int column1 = locationMap.getColumnIndex(node1);
++        int column2 = locationMap.getColumnIndex(node2);
+ 
+         //System.out.println(column1);
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/Hsim.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/Hsim.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/Hsim.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/Hsim.java
+@@ -172,7 +172,7 @@ public DataSet hybridsimulate() {
+                     int nodeIndex = evidence.getNodeIndex(i.getName());
+                     //how do i get the category index from a value in the data?
+                     //int catIndex =
+-                    int nodeColumn = this.data.getColumn(i);
++                    int nodeColumn = this.data.getColumnIndex(i);
+                     //Pray to whoever you can think of that the CategoryIndex is just the int in the data
+                     //According to this comment in the DataSet class, for the getInt method, we can do this:
+                     //"For discrete variables, this returns the category index of the datum for the variable at that column."
+@@ -232,7 +232,7 @@ public DataSet hybridsimulate() {
+                 }
+                 //then set the value of nodeX to newXvalue for this row
+                 //if (verbose) System.out.println(data.getInt(row,data.getColumn(nodeX)) + " old vs new " + newXvalue);
+-                this.data.setInt(row, this.data.getColumn(node), newValue);
++                this.data.setInt(row, this.data.getColumnIndex(node), newValue);
+                 //if (verbose) System.out.println(" and again?: " + data.getInt(row,data.getColumn(nodeX)) + " old vs new " + newXvalue);
+ 
+                 //at the end, at this node to the conditioning set
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/HsimContinuous.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/HsimContinuous.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/HsimContinuous.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/HsimContinuous.java
+@@ -165,7 +165,7 @@ public DataSet hybridsimulate() {
+             //loop through all the nodes being conditioned upon, and set their values in the evidence prop
+             for (Node i : mbAll) {
+                 //int nodeIndex = evidence.getNodeIndex(i.getName());
+-                int nodeColumn = this.data.getColumn(i);
++                int nodeColumn = this.data.getColumnIndex(i);
+                 evidence.getProposition().setValue(i, this.data.getDouble(row, nodeColumn));
+             }
+ 
+@@ -180,7 +180,7 @@ public DataSet hybridsimulate() {
+             //take these new simnodes values and replace the old values in the data set with them
+             for (Node node : this.simnodes) {
+                 //if (verbose) System.out.println(data.getInt(row,data.getColumn(nodeX)) + " old vs new " + newXvalue);
+-                this.data.setDouble(row, this.data.getColumn(node), newValues.getDouble(0, newValues.getColumn(node)));
++                this.data.setDouble(row, this.data.getColumnIndex(node), newValues.getDouble(0, newValues.getColumnIndex(node)));
+                 //if (verbose) System.out.println(" and again?: " + data.getInt(row,data.getColumn(nodeX)) + " old vs new " + newXvalue);
+             }
+         }
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/Vicinity.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/Vicinity.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/Vicinity.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/simulation/Vicinity.java
+@@ -339,17 +339,17 @@ private void add(Map<List<Integer>, Set<Edge>> Coords, Edge edge, List<Integer>
+     //this is where the loaded locationMap should be doing the work
+     private int getX(Node node, DataSet locationMap) {
+         //double output = locationMap.getDouble(0,locationMap.getColumn(node));
+-        return (int) locationMap.getDouble(0, locationMap.getColumn(node));
++        return (int) locationMap.getDouble(0, locationMap.getColumnIndex(node));
+     }
+ 
+     private int getY(Node node, DataSet locationMap) {
+         //double output = locationMap.getDouble(0,locationMap.getColumn(node));
+-        return (int) locationMap.getDouble(1, locationMap.getColumn(node));
++        return (int) locationMap.getDouble(1, locationMap.getColumnIndex(node));
+     }
+ 
+     private int getZ(Node node, DataSet locationMap) {
+         //double output = locationMap.getDouble(0,locationMap.getColumn(node));
+-        return (int) locationMap.getDouble(2, locationMap.getColumn(node));
++        return (int) locationMap.getDouble(2, locationMap.getColumnIndex(node));
+     }
+ 
+ }
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/study/RBExperiments.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/study/RBExperiments.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/study/RBExperiments.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/study/RBExperiments.java
+@@ -455,7 +455,7 @@ private DataSet createDepDataFiltering(Map<IndependenceFact, Double> H, DataSet
+             for (IndependenceFact f : HCopy.keySet()) {
+                 boolean ind = bsTest.checkIndependence(f.getX(), f.getY(), f.getZ()).isIndependent();
+                 int value = ind ? 1 : 0;
+-                depData.setInt(b, depData.getColumn(depData.getVariable(f.toString())), value);
++                depData.setInt(b, depData.getColumnIndex(depData.getVariable(f.toString())), value);
+             }
+         }
+         return depData;
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

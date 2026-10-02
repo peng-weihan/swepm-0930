@@ -1,0 +1,836 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch tests/api/test_dependencies.py...
+error: while searching for:
+    """Provider receives http timeouts from settings when creating client."""
+    with (
+        patch("api.dependencies.get_settings") as mock_settings,
+        patch("providers.openai_compat.AsyncOpenAI") as mock_openai,
+    ):
+        mock_settings.return_value = _make_mock_settings(
+            http_read_timeout=600.0,
+
+error: patch failed: tests/api/test_dependencies.py:381
+error: tests/api/test_dependencies.py: patch does not apply
+Checking patch tests/contracts/test_import_boundaries.py...
+Checking patch tests/providers/test_anthropic_messages.py...
+error: while searching for:
+from config.constants import ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS
+from core.anthropic.sse import format_sse_event
+from core.anthropic.stream_contracts import event_index, parse_sse_text
+from providers.anthropic_messages import AnthropicMessagesTransport
+from providers.base import ProviderConfig
+from tests.stream_contract import assert_canonical_stream_error_envelope
+
+
+
+error: patch failed: tests/providers/test_anthropic_messages.py:9
+error: tests/providers/test_anthropic_messages.py: patch does not apply
+Checking patch tests/providers/test_anthropic_messages_429_retry.py...
+error: while searching for:
+        async def _slot():
+            yield
+
+        with patch("providers.anthropic_messages.GlobalRateLimiter") as mock_gl:
+            instance = mock_gl.get_scoped_instance.return_value
+            real = GlobalRateLimiter(
+                rate_limit=100,
+
+error: patch failed: tests/providers/test_anthropic_messages_429_retry.py:165
+error: tests/providers/test_anthropic_messages_429_retry.py: patch does not apply
+Checking patch tests/providers/test_cerebras.py...
+error: while searching for:
+    async def _slot():
+        yield
+
+    with patch("providers.openai_compat.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+
+        async def _passthrough(fn, *args, **kwargs):
+
+error: patch failed: tests/providers/test_cerebras.py:50
+error: tests/providers/test_cerebras.py: patch does not apply
+Checking patch tests/providers/test_codestral.py...
+error: while searching for:
+    async def _slot():
+        yield
+
+    with patch("providers.openai_compat.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+
+        async def _passthrough(fn, *args, **kwargs):
+
+error: patch failed: tests/providers/test_codestral.py:50
+error: tests/providers/test_codestral.py: patch does not apply
+Checking patch tests/providers/test_deepseek.py...
+error: while searching for:
+    async def _slot():
+        yield
+
+    with patch("providers.anthropic_messages.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+
+        async def _passthrough(fn, *args, **kwargs):
+
+error: patch failed: tests/providers/test_deepseek.py:39
+error: tests/providers/test_deepseek.py: patch does not apply
+Checking patch tests/providers/test_error_mapping.py...
+error: while searching for:
+def test_streaming_transports_pass_scoped_rate_limiter_to_map_error():
+    """Guardrail: streaming adapters must scope reactive 429 handling per provider."""
+    root = Path(__file__).resolve().parents[2]
+    for name in ("anthropic_messages.py", "openai_compat.py"):
+        text = (root / "providers" / name).read_text(encoding="utf-8")
+        assert "map_error(" in text, name
+        assert "rate_limiter=self._global_rate_limiter" in text, name
+
+error: patch failed: tests/providers/test_error_mapping.py:291
+error: tests/providers/test_error_mapping.py: patch does not apply
+Checking patch tests/providers/test_fireworks.py...
+error: while searching for:
+    async def _slot():
+        yield
+
+    with patch("providers.anthropic_messages.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+
+        async def _passthrough(fn, *args, **kwargs):
+
+error: patch failed: tests/providers/test_fireworks.py:29
+error: tests/providers/test_fireworks.py: patch does not apply
+Checking patch tests/providers/test_gemini.py...
+error: while searching for:
+    async def _slot():
+        yield
+
+    with patch("providers.openai_compat.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+
+        async def _passthrough(fn, *args, **kwargs):
+
+error: patch failed: tests/providers/test_gemini.py:59
+error: tests/providers/test_gemini.py: patch does not apply
+Checking patch tests/providers/test_groq.py...
+error: while searching for:
+    async def _slot():
+        yield
+
+    with patch("providers.openai_compat.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+
+        async def _passthrough(fn, *args, **kwargs):
+
+error: patch failed: tests/providers/test_groq.py:50
+error: tests/providers/test_groq.py: patch does not apply
+Checking patch tests/providers/test_kimi.py...
+error: while searching for:
+    async def _slot():
+        yield
+
+    with patch("providers.anthropic_messages.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+
+        async def _passthrough(fn, *args, **kwargs):
+
+error: patch failed: tests/providers/test_kimi.py:30
+error: tests/providers/test_kimi.py: patch does not apply
+Checking patch tests/providers/test_llamacpp.py...
+error: while searching for:
+@pytest.fixture(autouse=True)
+def mock_rate_limiter():
+    """Mock the global rate limiter to prevent waiting."""
+    with patch("providers.anthropic_messages.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+        instance.wait_if_blocked = AsyncMock(return_value=False)
+
+
+error: patch failed: tests/providers/test_llamacpp.py:57
+error: tests/providers/test_llamacpp.py: patch does not apply
+Checking patch tests/providers/test_lmstudio.py...
+error: while searching for:
+@pytest.fixture(autouse=True)
+def mock_rate_limiter():
+    """Mock the global rate limiter to prevent waiting."""
+    with patch("providers.anthropic_messages.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+        instance.wait_if_blocked = AsyncMock(return_value=False)
+
+
+error: patch failed: tests/providers/test_lmstudio.py:57
+error: tests/providers/test_lmstudio.py: patch does not apply
+Checking patch tests/providers/test_mistral.py...
+error: while searching for:
+    async def _slot():
+        yield
+
+    with patch("providers.openai_compat.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+
+        async def _passthrough(fn, *args, **kwargs):
+
+error: patch failed: tests/providers/test_mistral.py:50
+error: tests/providers/test_mistral.py: patch does not apply
+Checking patch tests/providers/test_model_validation.py...
+error: while searching for:
+@pytest.mark.asyncio
+async def test_nim_lists_openai_compatible_model_ids() -> None:
+    config = ProviderConfig(api_key="test-key")
+    with patch("providers.openai_compat.AsyncOpenAI"):
+        provider = NvidiaNimProvider(config, nim_settings=NimSettings())
+
+    with patch.object(
+
+error: patch failed: tests/providers/test_model_validation.py:62
+error: tests/providers/test_model_validation.py: patch does not apply
+Checking patch tests/providers/test_nvidia_nim.py...
+error: while searching for:
+@pytest.fixture(autouse=True)
+def mock_rate_limiter():
+    """Mock the global rate limiter to prevent waiting."""
+    with patch("providers.openai_compat.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+        instance.wait_if_blocked = AsyncMock(return_value=False)
+
+
+error: patch failed: tests/providers/test_nvidia_nim.py:100
+error: tests/providers/test_nvidia_nim.py: patch does not apply
+Checking patch tests/providers/test_ollama.py...
+error: while searching for:
+@pytest.fixture(autouse=True)
+def mock_rate_limiter():
+    """Mock the global rate limiter to prevent waiting."""
+    with patch("providers.anthropic_messages.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+        instance.wait_if_blocked = AsyncMock(return_value=False)
+
+
+error: patch failed: tests/providers/test_ollama.py:63
+error: tests/providers/test_ollama.py: patch does not apply
+Checking patch tests/providers/test_open_router.py...
+error: while searching for:
+    async def _slot():
+        yield
+
+    with patch("providers.anthropic_messages.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+
+        async def _passthrough(fn, *args, **kwargs):
+
+error: patch failed: tests/providers/test_open_router.py:86
+error: tests/providers/test_open_router.py: patch does not apply
+Checking patch tests/providers/test_provider_transport_logging.py...
+error: while searching for:
+
+from config.constants import NATIVE_MESSAGES_ERROR_BODY_LOG_CAP_BYTES
+from config.nim import NimSettings
+from providers.anthropic_messages import AnthropicMessagesTransport
+from providers.base import ProviderConfig
+from providers.nvidia_nim import NvidiaNimProvider
+from tests.provider_request_mocks import make_openai_compat_stream_request
+from tests.providers.test_anthropic_messages import (
+    FakeResponse,
+
+error: patch failed: tests/providers/test_provider_transport_logging.py:8
+error: tests/providers/test_provider_transport_logging.py: patch does not apply
+Checking patch tests/providers/test_registry.py...
+error: while searching for:
+    }
+
+    with (
+        patch("providers.openai_compat.AsyncOpenAI"),
+        patch("httpx.AsyncClient"),
+    ):
+        for provider_id, provider_cls in cases.items():
+
+error: patch failed: tests/providers/test_registry.py:191
+error: tests/providers/test_registry.py: patch does not apply
+Checking patch tests/providers/test_streaming_errors.py...
+Checking patch tests/providers/test_subagent_interception.py...
+Checking patch tests/providers/test_wafer.py...
+error: while searching for:
+    async def _slot():
+        yield
+
+    with patch("providers.anthropic_messages.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+
+        async def _passthrough(fn, *args, **kwargs):
+
+error: patch failed: tests/providers/test_wafer.py:59
+error: tests/providers/test_wafer.py: patch does not apply
+Checking patch tests/providers/test_zai.py...
+error: while searching for:
+    async def _slot():
+        yield
+
+    with patch("providers.anthropic_messages.GlobalRateLimiter") as mock:
+        instance = mock.get_scoped_instance.return_value
+
+        async def _passthrough(fn, *args, **kwargs):
+
+error: patch failed: tests/providers/test_zai.py:30
+error: tests/providers/test_zai.py: patch does not apply
+patching file tests/api/test_dependencies.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/contracts/test_import_boundaries.py
+patching file tests/providers/test_anthropic_messages.py
+Hunk #1 FAILED at 9.
+Hunk #2 FAILED at 118.
+Hunk #3 succeeded at 435 (offset 2 lines).
+2 out of 3 hunks FAILED -- saving rejects to file tests/providers/test_anthropic_messages.py.rej
+patching file tests/providers/test_anthropic_messages_429_retry.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_cerebras.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_codestral.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_deepseek.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_error_mapping.py
+Hunk #1 FAILED at 291.
+1 out of 1 hunk FAILED -- saving rejects to file tests/providers/test_error_mapping.py.rej
+patching file tests/providers/test_fireworks.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_gemini.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_groq.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_kimi.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_llamacpp.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_lmstudio.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_mistral.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_model_validation.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_nvidia_nim.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_ollama.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_open_router.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_provider_transport_logging.py
+Hunk #1 FAILED at 8.
+Hunk #2 FAILED at 39.
+Hunk #3 succeeded at 172 (offset 2 lines).
+Hunk #4 succeeded at 185 (offset 2 lines).
+2 out of 4 hunks FAILED -- saving rejects to file tests/providers/test_provider_transport_logging.py.rej
+patching file tests/providers/test_registry.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_streaming_errors.py
+patching file tests/providers/test_subagent_interception.py
+patching file tests/providers/test_wafer.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_zai.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+============================= test session starts ==============================
+platform linux -- Python 3.14.0, pytest-9.0.3, pluggy-1.6.0 -- /testbed/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /testbed
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, anyio-4.12.1, cov-7.1.0, xdist-3.8.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+created: 192/192 workers
+[gw0] node down: Not properly terminated
+
+replacing crashed worker gw0
+[gw1] node down: Not properly terminated
+
+replacing crashed worker gw1
+[gw4] node down: Not properly terminated
+
+replacing crashed worker gw4
+[gw3] node down: Not properly terminated
+
+replacing crashed worker gw3
+[gw2] node down: Not properly terminated
+
+replacing crashed worker gw2
+[gw7] node down: Not properly terminated
+
+replacing crashed worker gw7
+[gw5] node down: Not properly terminated
+
+replacing crashed worker gw5
+[gw6] node down: Not properly terminated
+
+replacing crashed worker gw6
+[gw9] node down: Not properly terminated
+
+replacing crashed worker gw9
+[gw10] node down: Not properly terminated
+
+replacing crashed worker gw10
+[gw8] node down: Not properly terminated
+
+replacing crashed worker gw8
+[gw11] node down: Not properly terminated
+
+replacing crashed worker gw11
+[gw12] node down: Not properly terminated
+
+replacing crashed worker gw12
+[gw18] node down: Not properly terminated
+
+replacing crashed worker gw18
+[gw14] node down: Not properly terminated
+
+replacing crashed worker gw14
+[gw22] node down: Not properly terminated
+
+replacing crashed worker gw22
+[gw17] node down: Not properly terminated
+
+replacing crashed worker gw17
+[gw19] node down: Not properly terminated
+
+replacing crashed worker gw19
+[gw16] node down: Not properly terminated
+
+replacing crashed worker gw16
+[gw24] node down: Not properly terminated
+
+replacing crashed worker gw24
+[gw25] node down: Not properly terminated
+
+replacing crashed worker gw25
+[gw23] node down: Not properly terminated
+
+replacing crashed worker gw23
+[gw15] node down: Not properly terminated
+
+replacing crashed worker gw15
+[gw20] node down: Not properly terminated
+
+replacing crashed worker gw20
+[gw26] node down: Not properly terminated
+
+replacing crashed worker gw26
+[gw28] node down: Not properly terminated
+
+replacing crashed worker gw28
+[gw31] node down: Not properly terminated
+
+replacing crashed worker gw31
+[gw21] node down: Not properly terminated
+
+replacing crashed worker gw21
+[gw34] node down: Not properly terminated
+
+replacing crashed worker gw34
+[gw13] node down: Not properly terminated
+
+replacing crashed worker gw13
+[gw32] node down: Not properly terminated
+
+replacing crashed worker gw32
+[gw30] node down: Not properly terminated
+
+replacing crashed worker gw30
+[gw27] node down: Not properly terminated
+
+replacing crashed worker gw27
+[gw29] node down: Not properly terminated
+
+replacing crashed worker gw29
+[gw33] node down: Not properly terminated
+
+replacing crashed worker gw33
+[gw35] node down: Not properly terminated
+
+replacing crashed worker gw35
+[gw36] node down: Not properly terminated
+
+replacing crashed worker gw36
+[gw39] node down: Not properly terminated
+
+replacing crashed worker gw39
+[gw37] node down: Not properly terminated
+
+replacing crashed worker gw37
+[gw38] node down: Not properly terminated
+
+replacing crashed worker gw38
+[gw42] node down: Not properly terminated
+
+replacing crashed worker gw42
+[gw40] node down: Not properly terminated
+
+replacing crashed worker gw40
+[gw41] node down: Not properly terminated
+
+replacing crashed worker gw41
+[gw43] node down: Not properly terminated
+
+replacing crashed worker gw43
+[gw95] node down: Not properly terminated
+
+replacing crashed worker gw95
+[gw70] node down: Not properly terminated
+
+replacing crashed worker gw70
+[gw75] node down: Not properly terminated
+
+replacing crashed worker gw75
+[gw79] node down: Not properly terminated
+
+replacing crashed worker gw79
+[gw50] node down: Not properly terminated
+
+replacing crashed worker gw50
+[gw101] node down: Not properly terminated
+
+replacing crashed worker gw101
+[gw48] node down: Not properly terminated
+
+replacing crashed worker gw48
+[gw103] node down: Not properly terminated
+
+replacing crashed worker gw103
+[gw62] node down: Not properly terminated
+
+replacing crashed worker gw62
+[gw49] node down: Not properly terminated
+
+replacing crashed worker gw49
+[gw76] node down: Not properly terminated
+
+replacing crashed worker gw76
+[gw67] node down: Not properly terminated
+
+replacing crashed worker gw67
+[gw106] node down: Not properly terminated
+
+replacing crashed worker gw106
+[gw108] node down: Not properly terminated
+
+replacing crashed worker gw108
+[gw109] node down: Not properly terminated
+
+replacing crashed worker gw109
+[gw97] node down: Not properly terminated
+
+replacing crashed worker gw97
+[gw98] node down: Not properly terminated
+
+replacing crashed worker gw98
+[gw111] node down: Not properly terminated
+
+replacing crashed worker gw111
+[gw112] node down: Not properly terminated
+
+replacing crashed worker gw112
+[gw69] node down: Not properly terminated
+
+replacing crashed worker gw69
+[gw54] node down: Not properly terminated
+
+replacing crashed worker gw54
+[gw66] node down: Not properly terminated
+
+replacing crashed worker gw66
+[gw118] node down: Not properly terminated
+
+replacing crashed worker gw118
+[gw61] node down: Not properly terminated
+
+replacing crashed worker gw61
+[gw57] node down: Not properly terminated
+
+replacing crashed worker gw57
+[gw56] node down: Not properly terminated
+
+replacing crashed worker gw56
+[gw123] node down: Not properly terminated
+
+replacing crashed worker gw123
+[gw124] node down: Not properly terminated
+
+replacing crashed worker gw124
+[gw119] node down: Not properly terminated
+
+replacing crashed worker gw119
+[gw90] node down: Not properly terminated
+
+replacing crashed worker gw90
+[gw100] node down: Not properly terminated
+
+replacing crashed worker gw100
+[gw126] node down: Not properly terminated
+
+replacing crashed worker gw126
+[gw127] node down: Not properly terminated
+
+replacing crashed worker gw127
+[gw114] node down: Not properly terminated
+
+replacing crashed worker gw114
+[gw85] node down: Not properly terminated
+
+replacing crashed worker gw85
+[gw128] node down: Not properly terminated
+
+replacing crashed worker gw128
+[gw131] node down: Not properly terminated
+
+replacing crashed worker gw131
+[gw80] node down: Not properly terminated
+
+replacing crashed worker gw80
+[gw68] node down: Not properly terminated
+
+replacing crashed worker gw68
+[gw134] node down: Not properly terminated
+
+replacing crashed worker gw134
+[gw63] node down: Not properly terminated
+
+replacing crashed worker gw63
+[gw138] node down: Not properly terminated
+
+replacing crashed worker gw138
+[gw137] node down: Not properly terminated
+
+replacing crashed worker gw137
+[gw81] node down: Not properly terminated
+
+replacing crashed worker gw81
+[gw58] node down: Not properly terminated
+
+replacing crashed worker gw58
+[gw87] node down: Not properly terminated
+
+replacing crashed worker gw87
+[gw141] node down: Not properly terminated
+
+replacing crashed worker gw141
+[gw52] node down: Not properly terminated
+
+replacing crashed worker gw52
+[gw130] node down: Not properly terminated
+
+replacing crashed worker gw130
+[gw99] node down: Not properly terminated
+
+replacing crashed worker gw99
+[gw144] node down: Not properly terminated
+
+replacing crashed worker gw144
+[gw78] node down: Not properly terminated
+
+replacing crashed worker gw78
+[gw146] node down: Not properly terminated
+
+replacing crashed worker gw146
+[gw102] node down: Not properly terminated
+
+replacing crashed worker gw102
+[gw149] node down: Not properly terminated
+
+replacing crashed worker gw149
+[gw151] node down: Not properly terminated
+
+replacing crashed worker gw151
+[gw150] node down: Not properly terminated
+
+replacing crashed worker gw150
+[gw72] node down: Not properly terminated
+
+replacing crashed worker gw72
+[gw157] node down: Not properly terminated
+
+replacing crashed worker gw157
+[gw156] node down: Not properly terminated
+
+replacing crashed worker gw156
+[gw152] node down: Not properly terminated
+
+replacing crashed worker gw152
+[gw154] node down: Not properly terminated
+
+replacing crashed worker gw154
+[gw155] node down: Not properly terminated
+
+replacing crashed worker gw155
+[gw71] node down: Not properly terminated
+
+replacing crashed worker gw71
+[gw158] node down: Not properly terminated
+
+replacing crashed worker gw158
+[gw94] node down: Not properly terminated
+
+replacing crashed worker gw94
+[gw161] node down: Not properly terminated
+
+replacing crashed worker gw161
+[gw88] node down: Not properly terminated
+
+replacing crashed worker gw88
+[gw86] node down: Not properly terminated
+
+replacing crashed worker gw86
+[gw164] node down: Not properly terminated
+
+replacing crashed worker gw164
+[gw162] node down: Not properly terminated
+
+replacing crashed worker gw162
+[gw82] node down: Not properly terminated
+
+replacing crashed worker gw82
+[gw113] node down: Not properly terminated
+
+replacing crashed worker gw113
+[gw166] node down: Not properly terminated
+
+replacing crashed worker gw166
+[gw167] node down: Not properly terminated
+
+replacing crashed worker gw167
+[gw170] node down: Not properly terminated
+
+replacing crashed worker gw170
+[gw168] node down: Not properly terminated
+
+replacing crashed worker gw168
+[gw169] node down: Not properly terminated
+
+replacing crashed worker gw169
+[gw172] node down: Not properly terminated
+
+replacing crashed worker gw172
+[gw171] node down: Not properly terminated
+
+replacing crashed worker gw171
+[gw173] node down: Not properly terminated
+
+replacing crashed worker gw173
+[gw174] node down: Not properly terminated
+
+replacing crashed worker gw174
+[gw177] node down: Not properly terminated
+
+replacing crashed worker gw177
+[gw175] node down: Not properly terminated
+
+replacing crashed worker gw175
+[gw96] node down: Not properly terminated
+
+replacing crashed worker gw96
+[gw73] node down: Not properly terminated
+
+replacing crashed worker gw73
+[gw181] node down: Not properly terminated
+
+replacing crashed worker gw181
+[gw182] node down: Not properly terminated
+
+replacing crashed worker gw182
+[gw180] node down: Not properly terminated
+
+replacing crashed worker gw180
+[gw165] node down: Not properly terminated
+
+replacing crashed worker gw165
+[gw186] node down: Not properly terminated
+
+replacing crashed worker gw186
+[gw89] node down: Not properly terminated
+
+replacing crashed worker gw89
+[gw122] node down: Not properly terminated
+
+replacing crashed worker gw122
+[gw117] node down: Not properly terminated
+
+replacing crashed worker gw117
+[gw189] node down: Not properly terminated
+
+replacing crashed worker gw189
+[gw191] node down: Not properly terminated
+
+replacing crashed worker gw191
+[gw188] node down: Not properly terminated
+
+replacing crashed worker gw188
+[gw93] node down: Not properly terminated
+
+replacing crashed worker gw93
+collecting: 192/334 workers
+
+scheduling tests via LoadScheduling
+INTERNALERROR> Traceback (most recent call last):
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/execnet/gateway_base.py", line 1190, in _send
+INTERNALERROR>     message.to_io(self._io)
+INTERNALERROR>     ~~~~~~~~~~~~~^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/execnet/gateway_base.py", line 577, in to_io
+INTERNALERROR>     io.write(header + self.data)
+INTERNALERROR>     ~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/execnet/gateway_base.py", line 543, in write
+INTERNALERROR>     self._write(data)
+INTERNALERROR>     ~~~~~~~~~~~^^^^^^
+INTERNALERROR> ValueError: write to closed file
+INTERNALERROR> 
+INTERNALERROR> The above exception was the direct cause of the following exception:
+INTERNALERROR> 
+INTERNALERROR> Traceback (most recent call last):
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/_pytest/main.py", line 318, in wrap_session
+INTERNALERROR>     session.exitstatus = doit(config, session) or 0
+INTERNALERROR>                          ~~~~^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/_pytest/main.py", line 372, in _main
+INTERNALERROR>     config.hook.pytest_runtestloop(session=session)
+INTERNALERROR>     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/pluggy/_hooks.py", line 512, in __call__
+INTERNALERROR>     return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+INTERNALERROR>            ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/pluggy/_manager.py", line 120, in _hookexec
+INTERNALERROR>     return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+INTERNALERROR>            ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 167, in _multicall
+INTERNALERROR>     raise exception
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+INTERNALERROR>     teardown.throw(exception)
+INTERNALERROR>     ~~~~~~~~~~~~~~^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/_pytest/logging.py", line 801, in pytest_runtestloop
+INTERNALERROR>     return (yield)  # Run all the tests.
+INTERNALERROR>             ^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+INTERNALERROR>     teardown.throw(exception)
+INTERNALERROR>     ~~~~~~~~~~~~~~^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/_pytest/terminal.py", line 707, in pytest_runtestloop
+INTERNALERROR>     result = yield
+INTERNALERROR>              ^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 121, in _multicall
+INTERNALERROR>     res = hook_impl.function(*args)
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/xdist/dsession.py", line 138, in pytest_runtestloop
+INTERNALERROR>     self.loop_once()
+INTERNALERROR>     ~~~~~~~~~~~~~~^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/xdist/dsession.py", line 163, in loop_once
+INTERNALERROR>     call(**kwargs)
+INTERNALERROR>     ~~~~^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/xdist/dsession.py", line 306, in worker_collectionfinish
+INTERNALERROR>     self.sched.schedule()
+INTERNALERROR>     ~~~~~~~~~~~~~~~~~~~^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/xdist/scheduler/load.py", line 295, in schedule
+INTERNALERROR>     self._send_tests(node, node_chunksize)
+INTERNALERROR>     ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/xdist/scheduler/load.py", line 307, in _send_tests
+INTERNALERROR>     node.send_runtest_some(tests_per_node)
+INTERNALERROR>     ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/xdist/workermanage.py", line 367, in send_runtest_some
+INTERNALERROR>     self.sendcommand("runtests", indices=indices)
+INTERNALERROR>     ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/xdist/workermanage.py", line 386, in sendcommand
+INTERNALERROR>     self.channel.send((name, kwargs))
+INTERNALERROR>     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/execnet/gateway_base.py", line 912, in send
+INTERNALERROR>     self.gateway._send(Message.CHANNEL_DATA, self.id, dumps_internal(item))
+INTERNALERROR>     ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/execnet/gateway_base.py", line 1195, in _send
+INTERNALERROR>     raise OSError("cannot send (already closed?)") from e
+INTERNALERROR> OSError: cannot send (already closed?)
+
+========================= 1 error in 580.90s (0:09:40) =========================
+OMNIGRIL_EXIT_CODE=3

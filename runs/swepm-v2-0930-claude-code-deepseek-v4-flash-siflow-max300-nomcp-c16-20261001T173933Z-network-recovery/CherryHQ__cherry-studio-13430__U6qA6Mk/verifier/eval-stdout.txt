@@ -1,0 +1,103 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+
+ RUN  v3.2.4 /testbed
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+Migrators registered {
+  migrators: [
+    { id: [32m'boot'[39m, name: [32m'boot'[39m, order: [33m1[39m },
+    { id: [32m'chat'[39m, name: [32m'chat'[39m, order: [33m2[39m }
+  ]
+}
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+Starting migrator: boot { id: [32m'boot'[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+boot prepare completed { itemCount: [33m0[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+boot execute completed { processedCount: [33m0[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+boot validation passed { stats: { sourceCount: [33m0[39m, targetCount: [33m0[39m, skippedCount: [33m0[39m } }
+Starting migrator: chat { id: [32m'chat'[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+chat prepare completed { itemCount: [33m0[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+chat execute completed { processedCount: [33m0[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+chat validation passed { stats: { sourceCount: [33m0[39m, targetCount: [33m0[39m, skippedCount: [33m0[39m } }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+Migration completed successfully { totalDuration: [33m2[39m, migratorCount: [33m2[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+Starting migrator: boot { id: [32m'boot'[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+boot prepare completed { itemCount: [33m0[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+boot execute completed { processedCount: [33m0[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+boot validation passed { stats: { sourceCount: [33m0[39m, targetCount: [33m0[39m, skippedCount: [33m0[39m } }
+Starting migrator: chat { id: [32m'chat'[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+chat prepare completed { itemCount: [33m0[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+chat execute completed { processedCount: [33m0[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+chat validation passed { stats: { sourceCount: [33m0[39m, targetCount: [33m0[39m, skippedCount: [33m0[39m } }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > resets every migrator before each run starts
+Migration completed successfully { totalDuration: [33m0[39m, migratorCount: [33m2[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > logs failed runs with an Error object so stack/cause are preserved
+Migrators registered { migrators: [ { id: [32m'failing'[39m, name: [32m'failing'[39m, order: [33m1[39m } ] }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > logs failed runs with an Error object so stack/cause are preserved
+Starting migrator: failing { id: [32m'failing'[39m }
+
+stdout | src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts > MigrationEngine > logs failed runs with an Error object so stack/cause are preserved
+failing prepare completed { itemCount: [33m0[39m }
+
+ ❯ |main| src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts (3 tests | 2 failed) 17ms
+   ✓ MigrationEngine > resets every migrator before each run starts 6ms
+   × MigrationEngine > logs failed runs with an Error object so stack/cause are preserved 8ms
+     → expected "error" to be called with arguments: [ 'Migration failed', Any<Error> ][90m
+
+Received: 
+
+[1m  1st error call:
+
+[22m[2m  [[22m
+[2m    "Migration failed",[22m
+[32m-   Any<Error>,[90m
+[31m+   {[90m
+[31m+     "error": "failing execute failed: execute exploded",[90m
+[31m+   },[90m
+[2m  ][22m
+[39m[90m
+
+Number of calls: [1m1[22m
+[39m
+   × MigrationEngine > clears new architecture tables inside one transaction 3ms
+     → db.delete is not a function
+stdout | src/main/data/migration/v2/migrators/__tests__/MigratorResetContract.test.ts
+Boot config file not found at /mock/home/.cherrystudio/boot-config.json, using defaults
+
+
+ Test Files  10 failed (10)
+      Tests  2 failed | 1 passed (3)
+   Start at  21:45:47
+   Duration  1.85s (transform 671ms, setup 387ms, collect 566ms, tests 17ms, environment 880ms, prepare 530ms)
+
+OMNIGRIL_EXIT_CODE=1

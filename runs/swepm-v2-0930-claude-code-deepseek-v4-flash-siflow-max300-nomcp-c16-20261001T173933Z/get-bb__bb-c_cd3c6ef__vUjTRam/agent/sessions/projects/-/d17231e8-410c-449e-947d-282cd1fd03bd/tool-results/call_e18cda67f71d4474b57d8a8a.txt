@@ -1,0 +1,242 @@
+apps/app/src/hooks/usePromptDraftStorage.test.tsx:18:  it("clears the draft when it still matches the submitted snapshot", () => {
+apps/app/src/hooks/usePromptDraftStorage.ts:5:} from "@/lib/prompt-draft";
+apps/app/src/hooks/usePromptDraftStorage.ts:12:} from "@/lib/prompt-draft";
+apps/app/src/hooks/usePromptDraftStorage.ts:24:  draft: PromptDraftState;
+apps/app/src/hooks/usePromptDraftStorage.ts:46:    return cachedEntry.draft;
+apps/app/src/hooks/usePromptDraftStorage.ts:49:  const draft = parsePromptDraftStorage(rawValue);
+apps/app/src/hooks/usePromptDraftStorage.ts:52:    draft,
+apps/app/src/hooks/usePromptDraftStorage.ts:54:  return draft;
+apps/app/src/hooks/usePromptDraftStorage.ts:120:      draft: EMPTY_PROMPT_DRAFT,
+apps/app/src/hooks/usePromptDraftStorage.ts:129:    draft: value,
+apps/app/src/hooks/usePromptDraftStorage.ts:164:  return `${PROMPT_DRAFT_STORAGE_PREFIX}-${normalizedProjectId}-draft-${PROMPT_DRAFT_STORAGE_VERSION}`;
+apps/app/src/hooks/usePromptDraftStorage.ts:176:  const draft = useSyncExternalStore(
+apps/app/src/hooks/usePromptDraftStorage.ts:297:    value: draft.text,
+apps/app/src/hooks/usePromptDraftStorage.ts:298:    text: draft.text,
+apps/app/src/hooks/usePromptDraftStorage.ts:299:    attachments: draft.attachments,
+apps/app/src/hooks/system-cache-effects.test.ts:55:      drafts: [],
+apps/app/src/hooks/system-cache-effects.test.ts:86:      drafts: [],
+apps/app/src/hooks/realtime-cache-effects.test.ts:424:  it("invalidates drafts and prompt history but not thread detail for queue changes", () => {
+apps/app/src/hooks/realtime-cache-effects.test.ts:428:    const draftsKey = threadDraftsQueryKey("thr_1");
+apps/app/src/hooks/realtime-cache-effects.test.ts:431:    queryClient.setQueryData(draftsKey, []);
+apps/app/src/hooks/realtime-cache-effects.test.ts:443:    expect(queryClient.getQueryState(draftsKey)?.isInvalidated).toBe(true);
+apps/app/src/hooks/queries/thread-queries.test.tsx:245:    const drafts = [
+apps/app/src/hooks/queries/thread-queries.test.tsx:247:        id: "draft-1",
+apps/app/src/hooks/queries/thread-queries.test.tsx:248:        content: [{ type: "text", text: "queued follow-up" }],
+apps/app/src/hooks/queries/thread-queries.test.tsx:306:            drafts,
+apps/app/src/hooks/queries/thread-queries.test.tsx:321:        pathname: "/api/v1/threads/thread-1/drafts",
+apps/app/src/hooks/queries/thread-queries.test.tsx:324:          return jsonResponse(drafts);
+apps/app/src/hooks/queries/thread-queries.test.tsx:370:        const draftList = useThreadDrafts("thread-1", {
+apps/app/src/hooks/queries/thread-queries.test.tsx:397:          draftList,
+apps/app/src/hooks/queries/thread-queries.test.tsx:408:      expect(result.current.draftList.data).toEqual(drafts);
+apps/app/src/hooks/queries/thread-queries.test.tsx:425:      drafts,
+apps/app/src/hooks/queries/thread-queries.ts:268:      queryClient.setQueryData(threadDraftsQueryKey(id), bootstrap.drafts);
+apps/app/src/hooks/realtime-cache-registry.ts:72:      dirtyThreadPromptHistoryQueriesForTurnRequests, // Follow-up recall is built from client turn requests.
+apps/app/src/hooks/realtime-cache-registry.ts:99:      dirtyThreadDraftQueries, // Composer queue reads drafts directly.
+apps/app/src/hooks/realtime-cache-registry.ts:100:      dirtyThreadPromptHistoryQueries, // Composer recall includes queued drafts.
+apps/app/src/hooks/environment-cache-effects.test.ts:66:      drafts: [],
+apps/app/src/hooks/environment-cache-effects.test.ts:73:      drafts: [],
+apps/app/src/hooks/environment-cache-effects.test.ts:94:      drafts: [],
+apps/app/src/hooks/mutations/thread-runtime-mutations.ts:98:    id: `draft:${queuedMessage.id}`,
+apps/app/src/hooks/mutations/thread-runtime-mutations.ts:390:      errorMessage: "Failed to queue follow-up.",
+apps/app/src/hooks/mutations/thread-runtime-mutations.ts:424:      errorMessage: "Failed to send queued follow-up.",
+apps/app/src/hooks/mutations/thread-runtime-mutations.ts:444:      errorMessage: "Failed to delete queued follow-up.",
+apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:545:  it("adds thread follow-up history immediately after sending succeeds", async () => {
+apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:571:  it("does not create thread follow-up history when sending fails", async () => {
+apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:680:  it("adds queued follow-up history immediately after draft creation succeeds", async () => {
+apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx:698:        id: "draft:queued-1",
+apps/app/src/lib/thread-operation-prompts.ts:7:export function buildSquashMergeConflictFollowUpInstruction(
+apps/app/src/lib/thread-operation-prompts.ts:19:  return renderTemplate("threadOperationSquashMergeConflictFollowUp", {
+apps/app/src/lib/thread-operation-prompts.ts:25:export function buildSquashMergeCommitFailureFollowUpInstruction(
+apps/app/src/lib/thread-operation-prompts.ts:37:      return renderTemplate("threadOperationSquashMergeCommitFailureFollowUp", {
+apps/app/src/lib/thread-operation-prompts.ts:42:      return renderTemplate("threadOperationSquashMergeCommitFailureFollowUp", {
+apps/app/src/lib/thread-operation-prompts.ts:51:export function buildCommitFailureFollowUpInstruction(options?: {
+apps/app/src/lib/thread-operation-prompts.ts:56:  return renderTemplate("threadOperationCommitFailureFollowUp", {
+apps/app/src/lib/prompt-history.test.ts:9:  it("drops entries that cannot be edited back into a prompt draft", () => {
+apps/app/src/lib/prompt-history.test.ts:10:    const drafts = promptHistoryEntriesToDrafts([
+apps/app/src/lib/prompt-history.test.ts:23:    expect(drafts).toEqual([
+apps/app/src/lib/prompt-history.test.ts:31:  it("collapses consecutive history entries that map to the same editable draft", () => {
+apps/app/src/lib/prompt-history.test.ts:32:    const drafts = promptHistoryEntriesToDrafts([
+apps/app/src/lib/prompt-history.test.ts:48:    expect(drafts).toEqual([
+apps/app/src/lib/api.ts:788:    apiClient.threads[":id"].drafts.$post({ param: { id }, json: req }),
+apps/app/src/lib/api.ts:804:    apiClient.threads[":id"].drafts.$get({ param: { id } }),
+apps/app/src/lib/api.ts:826:    apiClient.threads[":id"].drafts[":draftId"].send.$post({
+apps/app/src/lib/api.ts:827:      param: { id, draftId: queuedMessageId },
+apps/app/src/lib/api.ts:838:    apiClient.threads[":id"].drafts[":draftId"].$delete({
+apps/app/src/lib/api.ts:839:      param: { id, draftId: queuedMessageId },
+apps/app/src/lib/prompt-history.ts:11:} from "./prompt-draft";
+apps/app/src/lib/prompt-history.ts:16:  const drafts: PromptDraftState[] = [];
+apps/app/src/lib/prompt-history.ts:19:    const draft = promptInputToDraft(entry.input);
+apps/app/src/lib/prompt-history.ts:20:    if (isPromptDraftEmpty(draft)) {
+apps/app/src/lib/prompt-history.ts:24:    const previousDraft = drafts[drafts.length - 1];
+apps/app/src/lib/prompt-history.ts:25:    if (previousDraft && arePromptDraftStatesEqual(previousDraft, draft)) {
+apps/app/src/lib/prompt-history.ts:29:    drafts.push(draft);
+apps/app/src/lib/prompt-history.ts:32:  return drafts;
+apps/app/src/lib/prompt-draft.test.ts:9:} from "./prompt-draft";
+apps/app/src/lib/prompt-draft.test.ts:11:describe("prompt draft helpers", () => {
+apps/app/src/lib/prompt-draft.test.ts:12:  it("drops invalid legacy raw text drafts", () => {
+apps/app/src/lib/prompt-draft.test.ts:20:  it("parses structured drafts with attachments", () => {
+apps/app/src/lib/prompt-draft.test.ts:50:  it("serializes empty drafts as null storage", () => {
+apps/app/src/lib/prompt-draft.test.ts:54:  it("detects whether a draft has any submittable state", () => {
+apps/app/src/lib/prompt-draft.test.ts:72:  it("maps draft text and attachments to prompt input list", () => {
+apps/app/src/lib/prompt-draft.test.ts:106:  it("maps prompt input back to an editable draft", () => {
+apps/app/src/lib/prompt-draft.test.ts:107:    const draft = promptInputToDraft([
+apps/app/src/lib/prompt-draft.test.ts:120:    expect(draft).toEqual({
+apps/app/src/lib/prompt-draft.ts:35:export function isPromptDraftEmpty(draft: PromptDraftState): boolean {
+apps/app/src/lib/prompt-draft.ts:36:  return draft.text.length === 0 && draft.attachments.length === 0;
+apps/app/src/lib/prompt-draft.ts:54:  draft: PromptDraftState,
+apps/app/src/lib/prompt-draft.ts:56:  const text = draft.text;
+apps/app/src/lib/prompt-draft.ts:57:  const attachments = draft.attachments;
+apps/app/src/lib/prompt-draft.ts:58:  if (isPromptDraftEmpty(draft)) {
+apps/app/src/lib/prompt-draft.ts:87:export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
+apps/app/src/lib/prompt-draft.ts:89:  const text = draft.text.trim();
+apps/app/src/lib/prompt-draft.ts:94:  for (const attachment of draft.attachments) {
+apps/app/src/components/thread/timeline/timeline-auto-expand.test.ts:199:    // User-role conversation rows (initial messages, follow-ups, pending
+apps/app/src/components/thread/timeline/timeline-auto-expand.ts:90://   follow-ups, accepted or pending steers — since those are inputs to
+apps/app/src/views/ProjectMainView.tsx:24:import { promptDraftToInput } from "@/lib/prompt-draft";
+apps/app/src/views/InternalReplayListView.tsx:113:              const kindLabel = isNewThread ? "new" : "follow-up";
+apps/app/src/components/promptbox/banner/QueuedMessagesList.stories.tsx:87:    text: "Walk through the entire follow-up composer file by file: PromptBoxInternal, FollowUpPromptBox, NewThreadPromptBox, ContextBanner, QueuedMessagesList, PromptStackCard. For each, audit prop names, identify dead fields, and propose a trim. Skip files we already cleaned up earlier this session.",
+apps/app/src/components/promptbox/banner/QueuedMessagesList.stories.tsx:94:      <StoryRow label="single message" hint="one queued follow-up">
+apps/app/src/components/promptbox/banner/QueuedMessagesList.stories.tsx:109:        hint="three queued follow-ups behind the active turn"
+apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx:7:  formatQueuedFollowUpPreview,
+apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx:33:      ariaLabel="Queued follow-up messages"
+apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx:43:          const preview = formatQueuedFollowUpPreview(queuedMessage.content);
+apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx:104: * FollowUpPromptBox to derive its elastic textarea target — keeping both
+apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx:394: * Single rounded strip rendered above the FollowUp prompt input. Hosts the
+apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.stories.tsx:36:    path: "apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
+apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.stories.tsx:83:  { path: "apps/app/src/components/promptbox/FollowUpPromptBox.tsx", status: "M", insertions: 42, deletions: 18 },
+apps/app/src/components/promptbox/banner/PromptStackCard.tsx:19: * Shared chrome for the stack of context cards rendered above the FollowUp
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:31:} from "@/lib/prompt-draft";
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:94:  onSelectEntry: (draft: PromptDraftState) => void;
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:136:   * above the textarea (see FollowUpPromptBox's elastic compensation for
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:143:   * "top" floats it above (used by FollowUp where the prompt sits at the
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:629:    (draft: PromptDraftState) => {
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:634:      history.onSelectEntry(draft);
+apps/app/src/components/promptbox/AttachmentPreview.tsx:4:import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+apps/app/src/views/thread-detail/threadQueuedMessages.test.ts:4:  formatQueuedFollowUpPreview,
+apps/app/src/views/thread-detail/threadQueuedMessages.test.ts:15:    expect(formatQueuedFollowUpPreview(input)).toBe(
+apps/app/src/views/thread-detail/threadQueuedMessages.test.ts:30:    expect(formatQueuedFollowUpPreview(input)).toBe(
+apps/app/src/views/thread-detail/threadQueuedMessages.test.ts:43:    expect(formatQueuedFollowUpPreview(input)).toBe(
+apps/app/src/views/thread-detail/threadQueuedMessages.test.ts:49:  it("restores editable drafts from queued messages", () => {
+apps/app/src/views/thread-detail/threadQueuedMessages.test.ts:50:    const draft = queuedInputToDraft([
+apps/app/src/views/thread-detail/threadQueuedMessages.test.ts:58:    expect(draft).toEqual({
+apps/app/src/components/promptbox/ExecutionControls.tsx:13:  /** Omit to render the provider as locked (used by FollowUp where the thread is committed). */
+apps/app/src/components/promptbox/ExecutionControls.tsx:62:  // Show read-only provider label when provider is locked (thread follow-up)
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:47:import { promptDraftToInput } from "@/lib/prompt-draft";
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:50:  FollowUpPromptBox,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:51:  type FollowUpSubmitMode,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:52:} from "@/components/promptbox/FollowUpPromptBox";
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:56:interface SendFollowUpInputParams {
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:125:      return "Retry by sending a follow-up message";
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:130:        : "Ask for follow-up changes. @ to mention files";
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:136:function shouldQueueFollowUpDraft(
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:260:  const isFollowUpSubmitting =
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:265:  const submitMode: FollowUpSubmitMode = (() => {
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:304:    !isFollowUpSubmitting &&
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:307:  const sendFollowUpInput = useCallback(
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:315:    }: SendFollowUpInputParams) => {
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:382:    const isQueuingDraft = shouldQueueFollowUpDraft(runtimeDisplayStatus);
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:394:        await sendFollowUpInput({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:409:            ? "Failed to queue follow-up."
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:410:            : "Failed to send follow-up.",
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:423:    sendFollowUpInput,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:456:      await sendFollowUpInput({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:478:    sendFollowUpInput,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:505:              fallbackMessage: "Failed to send queued follow-up.",
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:542:              fallbackMessage: "Failed to edit queued follow-up.",
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:567:              fallbackMessage: "Failed to delete queued follow-up.",
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:597:    <FollowUpPromptBox
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:644:              isFollowUpSubmitting ||
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:665:        isFollowUpSubmitting,
+apps/app/src/components/promptbox/FollowUpPromptBox.stories.tsx:9:  FollowUpPromptBox,
+apps/app/src/components/promptbox/FollowUpPromptBox.stories.tsx:10:  type FollowUpSubmitMode,
+apps/app/src/components/promptbox/FollowUpPromptBox.stories.tsx:11:} from "@/components/promptbox/FollowUpPromptBox";
+apps/app/src/components/promptbox/FollowUpPromptBox.stories.tsx:47:    // FollowUp omits onChange — the thread is committed to a provider, the
+apps/app/src/components/promptbox/FollowUpPromptBox.stories.tsx:174:        path: "apps/app/src/components/promptbox/FollowUpPromptBox.tsx",
+apps/app/src/components/promptbox/FollowUpPromptBox.stories.tsx:273:  submitMode: FollowUpSubmitMode;
+apps/app/src/components/promptbox/FollowUpPromptBox.stories.tsx:274:  isFollowUpSubmitting?: boolean;
+apps/app/src/components/promptbox/FollowUpPromptBox.stories.tsx:283:type ComposerCoreRuntimeStatus = Parameters<typeof FollowUpPromptBox>[0]["composer"]["threadRuntimeDisplayStatus"];
+apps/app/src/components/promptbox/FollowUpPromptBox.stories.tsx:295:  isFollowUpSubmitting = false,
+apps/app/src/components/promptbox/FollowUpPromptBox.stories.tsx:297:  promptPlaceholder = "Ask a follow-up...",
+apps/app/src/components/promptbox/FollowUpPromptBox.stories.tsx:306:      <FollowUpPromptBox
+apps/app/src/components/promptbox/FollowUpPromptBox.stories.tsx:315:          isFollowUpSubmitting,
+apps/app/src/components/promptbox/FollowUpPromptBox.stories.tsx:387:          isFollowUpSubmitting
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:6:  FollowUpPromptBox,
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:7:  type FollowUpPromptBoxProps,
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:8:} from "./FollowUpPromptBox";
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:10:function makeFollowUpPromptBoxProps(): FollowUpPromptBoxProps {
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:20:      isFollowUpSubmitting: false,
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:65:describe("FollowUpPromptBox", () => {
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:67:    const props = makeFollowUpPromptBoxProps();
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:75:      promptPlaceholder: "Ask for follow-up changes",
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:79:    render(<FollowUpPromptBox {...props} />);
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:93:    const props = makeFollowUpPromptBoxProps();
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:101:      promptPlaceholder: "Ask for follow-up changes",
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:105:    render(<FollowUpPromptBox {...props} />);
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:119:    const props = makeFollowUpPromptBoxProps();
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:127:      promptPlaceholder: "Ask for follow-up changes",
+apps/app/src/components/promptbox/FollowUpPromptBox.test.tsx:131:    render(<FollowUpPromptBox {...props} />);
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:16:import type { PromptDraftState } from "@/lib/prompt-draft";
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:74:  draft: PromptDraftState,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:77:    ...draft,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:82:    getCurrent: vi.fn(() => draft),
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:89:    storageKey: "prompt-draft-key",
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:90:    value: draft.text,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:330:  it("sends the current draft as a steer with Cmd+Enter", async () => {
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:399:  it("sends queued messages before the current draft, all as steers", async () => {
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:450:        input: [{ type: "text", text: "Queued follow-up" }],
+apps/app/src/views/thread-detail/useThreadGitActions.ts:18:  buildCommitFailureFollowUpInstruction,
+apps/app/src/views/thread-detail/useThreadGitActions.ts:19:  buildSquashMergeCommitFailureFollowUpInstruction,
+apps/app/src/views/thread-detail/useThreadGitActions.ts:20:  buildSquashMergeConflictFollowUpInstruction,
+apps/app/src/views/thread-detail/useThreadGitActions.ts:148:          text: buildCommitFailureFollowUpInstruction({
+apps/app/src/views/thread-detail/useThreadGitActions.ts:160:          text: buildSquashMergeConflictFollowUpInstruction(
+apps/app/src/views/thread-detail/useThreadGitActions.ts:178:          text: buildSquashMergeCommitFailureFollowUpInstruction(
+apps/app/src/components/promptbox/mentions/Mentions.stories.tsx:59:    title: "Wire up promptbox stories and trim FollowUp API",
+apps/app/src/components/thread/timeline/rows/FileChange.stories.tsx:135:// thr_4gfmxbsa64, sequence 1910 — large refactor of ThreadFollowUpComposer.tsx
+apps/app/src/components/thread/timeline/rows/FileChange.stories.tsx:136:// (extract QueuedFollowUpItem into a memoized component). Real unified diff
+apps/app/src/components/thread/timeline/rows/FileChange.stories.tsx:151:    "path": "/Users/michael/.bb-dev/worktrees/env_story/bb/apps/app/src/views/ThreadFollowUpComposer.tsx",
+apps/app/src/components/thread/timeline/rows/FileChange.stories.tsx:154:[Omitted long matching line]
+apps/app/src/components/thread/timeline/rows/FileChange.stories.tsx:301:        hint="extract-to-memo refactor of ThreadFollowUpComposer.tsx — full diff body inline"
+apps/app/src/components/thread/timeline/rows/UserMessage.stories.tsx:31:const longMarkdownText = `Audit \`apps/app/src/components/promptbox/FollowUpPromptBox.tsx\` for the same prop trims we did on the banner.
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:12:import type { PromptDraftState } from "@/lib/prompt-draft";
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:60:  const [draft, setDraft] = useState(args.initialDraft);
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:64:      value={draft.text}
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:74:        items: draft.attachments,
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:85:        currentDraft: draft,
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:149:  it("navigates selected history entries at the absolute end and restores the empty draft", async () => {
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:194:  it("does not intercept ArrowUp for an unselected non-empty draft at the absolute end", () => {
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:197:        initialDraft={{ text: "working draft", attachments: [] }}
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:205:      expectedValue: "working draft",
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:259:  it("does not navigate when the draft only matches a history entry without being selected", () => {
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:279:  it("does not intercept an unselected multiline draft at the absolute end", () => {
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:280:    const draftText = "first line\nsecond line";
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:284:        initialDraft={{ text: draftText, attachments: [] }}
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:292:      expectedValue: draftText,
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:380:  it("does not overwrite an attachment-only draft", () => {
+apps/app/src/components/promptbox/PromptBoxInternal.test.tsx:547:  it("preserves ordinary mention navigation for typed mention drafts", async () => {
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:79: * previous canSendFollowUp / canQueueFollowUp / canStopRuntime / onStop
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:84:export type FollowUpBlockedReason =
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:89:export type FollowUpSubmitMode =
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:97:  | { kind: "blocked"; reason: FollowUpBlockedReason };
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:99:export interface FollowUpComposerProps {
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:102:  isFollowUpSubmitting: boolean;
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:109:  submitMode: FollowUpSubmitMode;
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:118:export interface FollowUpPromptBoxProps {
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:127:  composer: FollowUpComposerProps;
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:139:   * renders the provider as locked — follow-ups can't change provider, the
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:150:export function FollowUpPromptBox({
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:160:}: FollowUpPromptBoxProps) {
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:162:  const canQueueFollowUp = submitMode.kind === "queue";
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:233:            isSubmitting: composer.isFollowUpSubmitting || isStopping,
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:234:            disabled: !canSubmit || composer.isFollowUpSubmitting,
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:236:            title: canQueueFollowUp
+apps/app/src/components/promptbox/FollowUpPromptBox.tsx:237:              ? "Queue follow-up (Enter)"
+apps/app/src/components/promptbox/PromptBoxInternal.stories.tsx:232:      placeholder="Queue a follow-up while the agent runs..."
+apps/app/src/components/promptbox/PromptBoxInternal.stories.tsx:240:        title: "Queue follow-up (Enter)",
+apps/app/src/components/promptbox/PromptBoxInternal.stories.tsx:287:      <StoryRow label="default" hint="empty draft, no in-flight state">
+apps/app/src/components/promptbox/PromptBoxInternal.stories.tsx:292:        hint="image + file attached to the draft"
+apps/app/src/views/thread-detail/threadQueuedMessages.ts:3:import { promptInputToDraft, type PromptDraftState } from "@/lib/prompt-draft";
+apps/app/src/views/thread-detail/threadQueuedMessages.ts:23:export function formatQueuedFollowUpPreview(input: PromptInput[]): string {
+apps/app/src/components/promptbox/ThreadEnvironmentSummary.tsx:20: * Inline strip shown in the follow-up composer that describes the thread's
+apps/app/src/components/secondary-panel/git-diff/gitDiffPanelHelpers.test.ts:107:        subject: "Follow-up",
+apps/app/src/components/secondary-panel/git-diff/gitDiffPanelHelpers.test.ts:114:      { value: "def456", label: "Follow-up", monoPrefix: "def456" },
+apps/app/src/components/secondary-panel/git-diff/useGitDiffFileRenderQueue.test.tsx:339:  it("drains batched render loading state in the initial and follow-up waves", () => {

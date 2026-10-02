@@ -1,0 +1,2367 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+--- a/ARCHITECTURE.md
++++ b/ARCHITECTURE.md
+@@ -115,8 +115,8 @@ new places to add unrelated behavior:
+ - [providers/transports/](providers/transports/) owns provider transport
+   families. The OpenAI-chat and native Anthropic transport packages split thin
+   transport bases from per-request stream runners, recovery event construction,
+-  and transport-specific parsing. Shared protocol rules should continue moving
+-  toward [core/](core/) when they are not provider-specific.
++  request policy, and transport-specific parsing. Shared protocol rules should
++  continue moving toward [core/](core/) when they are not provider-specific.
+ - [messaging/workflow.py](messaging/workflow.py) coordinates messaging runtime
+   dependencies. Inbound turn intake, queued node execution, slash command
+   dependencies, and tree queue internals live in separate modules so new
+@@ -337,13 +337,22 @@ There are two transport families under [providers/transports/](providers/transpo
+ - [providers/transports/openai_chat/](providers/transports/openai_chat/)
+   implements `OpenAIChatTransport` for providers with OpenAI-compatible
+   `/chat/completions` APIs. The package owns the thin transport base,
+-  per-request stream runner, OpenAI tool-call assembly, and OpenAI-chat recovery
+-  event construction.
++  per-request stream runner, OpenAI request policy, OpenAI tool-call assembly,
++  and OpenAI-chat recovery event construction.
+ - [providers/transports/anthropic_messages/](providers/transports/anthropic_messages/)
+   implements `AnthropicMessagesTransport` for providers with
+   Anthropic-compatible `/messages` APIs. The package owns the thin transport
+-  base, native stream runner, HTTP response helpers, and native recovery event
+-  construction.
++  base, native request policy, native stream runner, HTTP response helpers, and
++  native recovery event construction.
++
++Provider request construction mirrors the transport family split. OpenAI-chat
++providers call the OpenAI request policy for Anthropic-to-OpenAI conversion,
++thinking replay selection, `extra_body`, and chat-completion field normalization.
++Native Anthropic providers call the native request policy for raw request
++dumping, default tokens, stream flags, thinking payloads, and `extra_body`
++handling. Concrete provider packages keep only true upstream quirks such as
++Gemini thought signatures, NIM tool-schema aliases and retry downgrades, or
++DeepSeek attachment/tool/thinking compatibility.
+ 
+ Shared provider responsibilities include upstream rate limiting, model listing,
+ safe error mapping, transport cleanup, thinking/tool handling, retry or recovery
+@@ -373,6 +382,7 @@ where supported, and returning Anthropic SSE strings to the service layer.
+ [core/anthropic/](core/anthropic/) owns Anthropic-side protocol behavior:
+ 
+ - content and message conversion for OpenAI-compatible upstreams;
++- request serialization primitives shared by provider request policies;
+ - tool schema and tool-result handling;
+ - thinking block handling;
+ - stream lifecycle through `core/anthropic/streaming`, including the neutral
+diff --git a/core/anthropic/__init__.py b/core/anthropic/__init__.py
+--- a/core/anthropic/__init__.py
++++ b/core/anthropic/__init__.py
+@@ -14,6 +14,7 @@
+ )
+ from .native_messages_request import sanitize_native_messages_thinking_policy
+ from .provider_stream_error import iter_provider_stream_error_sse_events
++from .request_serialization import serialize_tool_result_content
+ from .streaming import (
+     AnthropicStreamLedger,
+     StreamBlockLedger,
+@@ -49,5 +50,6 @@
+     "iter_provider_stream_error_sse_events",
+     "map_stop_reason",
+     "sanitize_native_messages_thinking_policy",
++    "serialize_tool_result_content",
+     "set_if_not_none",
+ ]
+diff --git a/core/anthropic/conversion.py b/core/anthropic/conversion.py
+--- a/core/anthropic/conversion.py
++++ b/core/anthropic/conversion.py
+@@ -9,6 +9,7 @@
+ from pydantic import BaseModel
+ 
+ from .content import get_block_attr, get_block_type
++from .request_serialization import serialize_tool_result_content
+ from .utils import set_if_not_none
+ 
+ 
+@@ -53,27 +54,6 @@ def _tool_input_schema(tool: Any) -> dict[str, Any]:
+     return {"type": "object", "properties": {}}
+ 
+ 
+-def _serialize_tool_result_content(tool_content: Any) -> str:
+-    """Serialize tool_result content for OpenAI ``role: tool`` messages (stable JSON for structured values)."""
+-    if tool_content is None:
+-        return ""
+-    if isinstance(tool_content, str):
+-        return tool_content
+-    if isinstance(tool_content, dict):
+-        return json.dumps(tool_content, ensure_ascii=False)
+-    if isinstance(tool_content, list):
+-        parts: list[str] = []
+-        for item in tool_content:
+-            if isinstance(item, dict) and item.get("type") == "text":
+-                parts.append(str(item.get("text", "")))
+-            elif isinstance(item, dict):
+-                parts.append(json.dumps(item, ensure_ascii=False))
+-            else:
+-                parts.append(str(item))
+-        return "\n".join(parts)
+-    return str(tool_content)
+-
+-
+ def _clean_reasoning_content(value: Any) -> str | None:
+     if not isinstance(value, str):
+         return None
+@@ -435,7 +415,7 @@ def flush_text() -> None:
+             elif block_type == "tool_result":
+                 flush_text()
+                 tool_content = get_block_attr(block, "content", "")
+-                serialized = _serialize_tool_result_content(tool_content)
++                serialized = serialize_tool_result_content(tool_content)
+                 tuid = get_block_attr(block, "tool_use_id")
+                 tuid_s = str(tuid) if tuid is not None else ""
+                 result.append(
+@@ -485,7 +465,7 @@ def flush_text() -> None:
+             elif block_type == "tool_result":
+                 flush_text()
+                 tool_content = get_block_attr(block, "content", "")
+-                serialized = _serialize_tool_result_content(tool_content)
++                serialized = serialize_tool_result_content(tool_content)
+                 result.append(
+                     {
+                         "role": "tool",
+diff --git a/core/anthropic/request_serialization.py b/core/anthropic/request_serialization.py
+new file mode 100644
+--- /dev/null
++++ b/core/anthropic/request_serialization.py
+@@ -0,0 +1,27 @@
++"""Shared Anthropic request serialization helpers."""
++
++from __future__ import annotations
++
++import json
++from typing import Any
++
++
++def serialize_tool_result_content(content: Any) -> str:
++    """Serialize Anthropic ``tool_result.content`` into provider-safe text."""
++    if content is None:
++        return ""
++    if isinstance(content, str):
++        return content
++    if isinstance(content, dict):
++        return json.dumps(content, ensure_ascii=False)
++    if isinstance(content, list):
++        parts: list[str] = []
++        for item in content:
++            if isinstance(item, dict) and item.get("type") == "text":
++                parts.append(str(item.get("text", "")))
++            elif isinstance(item, dict):
++                parts.append(json.dumps(item, ensure_ascii=False))
++            else:
++                parts.append(str(item))
++        return "\n".join(parts)
++    return str(content)
+diff --git a/providers/cerebras/client.py b/providers/cerebras/client.py
+--- a/providers/cerebras/client.py
++++ b/providers/cerebras/client.py
+@@ -6,9 +6,17 @@
+ 
+ from providers.base import ProviderConfig
+ from providers.defaults import CEREBRAS_DEFAULT_BASE
+-from providers.transports.openai_chat import OpenAIChatTransport
++from providers.transports.openai_chat import (
++    OpenAIChatRequestPolicy,
++    OpenAIChatTransport,
++    build_openai_chat_request_body,
++)
+ 
+-from .request import build_request_body
++_REQUEST_POLICY = OpenAIChatRequestPolicy(
++    provider_name="CEREBRAS",
++    include_extra_body=True,
++    max_tokens_field="max_completion_tokens",
++)
+ 
+ 
+ class CerebrasProvider(OpenAIChatTransport):
+@@ -25,7 +33,8 @@ def __init__(self, config: ProviderConfig):
+     def _build_request_body(
+         self, request: Any, thinking_enabled: bool | None = None
+     ) -> dict:
+-        return build_request_body(
++        return build_openai_chat_request_body(
+             request,
+             thinking_enabled=self._is_thinking_enabled(request, thinking_enabled),
++            policy=_REQUEST_POLICY,
+         )
+diff --git a/providers/cerebras/request.py b/providers/cerebras/request.py
+deleted file mode 100644
+--- a/providers/cerebras/request.py
++++ /dev/null
+@@ -1,55 +0,0 @@
+-"""Request builder for Cerebras Inference (OpenAI-compatible chat completions).
+-
+-Docs: https://inference-docs.cerebras.ai/resources/openai — use ``max_completion_tokens``
+-in API examples; non-standard fields via ``extra_body`` with the OpenAI client.
+-"""
+-
+-from __future__ import annotations
+-
+-from typing import Any
+-
+-from loguru import logger
+-
+-from core.anthropic import ReasoningReplayMode, build_base_request_body
+-from core.anthropic.conversion import OpenAIConversionError
+-from providers.exceptions import InvalidRequestError
+-
+-
+-def _normalize_max_completion_tokens(body: dict[str, Any]) -> None:
+-    if "max_completion_tokens" in body:
+-        body.pop("max_tokens", None)
+-        return
+-    if "max_tokens" in body and body["max_tokens"] is not None:
+-        body["max_completion_tokens"] = body.pop("max_tokens")
+-
+-
+-def build_request_body(request_data: Any, *, thinking_enabled: bool) -> dict:
+-    """Build OpenAI-format request body from an Anthropic request for Cerebras."""
+-    logger.debug(
+-        "CEREBRAS_REQUEST: conversion start model={} msgs={}",
+-        getattr(request_data, "model", "?"),
+-        len(getattr(request_data, "messages", [])),
+-    )
+-    try:
+-        body = build_base_request_body(
+-            request_data,
+-            reasoning_replay=ReasoningReplayMode.REASONING_CONTENT
+-            if thinking_enabled
+-            else ReasoningReplayMode.DISABLED,
+-        )
+-    except OpenAIConversionError as exc:
+-        raise InvalidRequestError(str(exc)) from exc
+-
+-    request_extra = getattr(request_data, "extra_body", None)
+-    if isinstance(request_extra, dict) and request_extra:
+-        body["extra_body"] = dict(request_extra)
+-
+-    _normalize_max_completion_tokens(body)
+-
+-    logger.debug(
+-        "CEREBRAS_REQUEST: conversion done model={} msgs={} tools={}",
+-        body.get("model"),
+-        len(body.get("messages", [])),
+-        len(body.get("tools", [])),
+-    )
+-    return body
+diff --git a/providers/codestral/client.py b/providers/codestral/client.py
+--- a/providers/codestral/client.py
++++ b/providers/codestral/client.py
+@@ -6,15 +6,20 @@
+ 
+ from providers.base import ProviderConfig
+ from providers.defaults import CODESTRAL_DEFAULT_BASE
+-from providers.mistral.request import build_request_body
+-from providers.transports.openai_chat import OpenAIChatTransport
++from providers.transports.openai_chat import (
++    OpenAIChatRequestPolicy,
++    OpenAIChatTransport,
++    build_openai_chat_request_body,
++)
++
++_REQUEST_POLICY = OpenAIChatRequestPolicy(provider_name="CODESTRAL")
+ 
+ 
+ class CodestralProvider(OpenAIChatTransport):
+     """Codestral host using ``https://codestral.mistral.ai/v1/chat/completions``.
+ 
+     Uses a separate Codestral API key from La Plateforme (``MISTRAL_API_KEY``).
+-    Request shaping matches Mistral La Plateforme (shared ``build_request_body``).
++    Request shaping matches Mistral La Plateforme.
+     """
+ 
+     def __init__(self, config: ProviderConfig):
+@@ -28,7 +33,8 @@ def __init__(self, config: ProviderConfig):
+     def _build_request_body(
+         self, request: Any, thinking_enabled: bool | None = None
+     ) -> dict:
+-        return build_request_body(
++        return build_openai_chat_request_body(
+             request,
+             thinking_enabled=self._is_thinking_enabled(request, thinking_enabled),
++            policy=_REQUEST_POLICY,
+         )
+diff --git a/providers/deepseek/client.py b/providers/deepseek/client.py
+--- a/providers/deepseek/client.py
++++ b/providers/deepseek/client.py
+@@ -10,7 +10,7 @@
+ from providers.defaults import DEEPSEEK_ANTHROPIC_DEFAULT_BASE
+ from providers.transports.anthropic_messages import AnthropicMessagesTransport
+ 
+-from .request import build_request_body
++from .compat import build_deepseek_request_body
+ 
+ 
+ class DeepSeekProvider(AnthropicMessagesTransport):
+@@ -26,7 +26,7 @@ def __init__(self, config: ProviderConfig):
+     def _build_request_body(
+         self, request: Any, thinking_enabled: bool | None = None
+     ) -> dict:
+-        return build_request_body(
++        return build_deepseek_request_body(
+             request,
+             thinking_enabled=self._is_thinking_enabled(request, thinking_enabled),
+         )
+diff --git a/providers/deepseek/request.py b/providers/deepseek/compat.py
+rename from providers/deepseek/request.py
+rename to providers/deepseek/compat.py
+--- a/providers/deepseek/request.py
++++ b/providers/deepseek/compat.py
+@@ -1,18 +1,17 @@
+-"""Request builder and DeepSeek native Anthropic compatibility sanitizer."""
++"""DeepSeek native Anthropic compatibility request policy."""
+ 
+ from __future__ import annotations
+ 
+-import json
+ from collections.abc import Mapping
+ from typing import Any
+ 
+ from loguru import logger
+ 
+ from config.constants import ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS
++from core.anthropic import serialize_tool_result_content
+ from core.anthropic.native_messages_request import dump_raw_messages_request
+ from providers.exceptions import InvalidRequestError
+ 
+-# Block types not supported on DeepSeek partial Anthropic-compatible API.
+ _UNSUPPORTED_MESSAGE_BLOCK_TYPES = frozenset(
+     {
+         "image",
+@@ -22,24 +21,134 @@
+         "web_fetch_tool_result",
+     }
+ )
+-
+-# Block types silently stripped for DeepSeek since the content is typically
+-# also provided via tool_result (e.g. Claude Code attaches PDFs as document
+-# blocks alongside a Read tool_result containing the text).
+ _STRIPPABLE_MESSAGE_BLOCK_TYPES = frozenset({"image", "document"})
+ _OMITTED_ATTACHMENT_TEXT = (
+     "[attachment omitted: DeepSeek does not support image or document inputs]"
+ )
+ _OMITTED_ATTACHMENT_BLOCK = {"type": "text", "text": _OMITTED_ATTACHMENT_TEXT}
+ 
+ 
+-def _strip_unsupported_attachment_blocks(messages: Any) -> Any:
+-    """Remove image/document blocks that DeepSeek cannot process.
++def build_deepseek_request_body(request_data: Any, *, thinking_enabled: bool) -> dict:
++    """Build a DeepSeek ``/v1/messages`` JSON body (Anthropic format)."""
++    logger.debug(
++        "DEEPSEEK_REQUEST: native build model={} msgs={}",
++        getattr(request_data, "model", "?"),
++        len(getattr(request_data, "messages", [])),
++    )
++
++    data = dump_raw_messages_request(request_data)
++    if "messages" in data:
++        data["messages"] = _strip_unsupported_attachment_blocks(data["messages"])
++    _validate_deepseek_native_request_dict(data)
++    data.pop("extra_body", None)
++    _downgrade_forced_tool_choice(data)
++
++    has_tool_history = _has_tool_history(data)
++    has_replayable_tool_thinking = _has_replayable_tool_thinking(data)
++    unsafe_tool_followup = has_tool_history and not has_replayable_tool_thinking
++    effective_thinking_enabled = thinking_enabled and not unsafe_tool_followup
++    if thinking_enabled:
++        if unsafe_tool_followup:
++            logger.debug(
++                "DEEPSEEK_REQUEST: disabling thinking for tool follow-up without "
++                "replayable thinking model={} msgs={} tools={}",
++                data.get("model"),
++                len(data.get("messages", [])),
++                len(data.get("tools", [])),
++            )
++            _remove_deepseek_thinking_hints(data)
++        elif has_tool_history:
++            logger.debug(
++                "DEEPSEEK_REQUEST: keeping thinking for tool follow-up with "
++                "replayable thinking model={} msgs={} tools={}",
++                data.get("model"),
++                len(data.get("messages", [])),
++                len(data.get("tools", [])),
++            )
++        elif data.get("tools") or data.get("tool_choice"):
++            logger.debug(
++                "DEEPSEEK_REQUEST: keeping thinking for initial tool request "
++                "model={} msgs={} tools={}",
++                data.get("model"),
++                len(data.get("messages", [])),
++                len(data.get("tools", [])),
++            )
+ 
+-    Claude Code sends PDFs as ``document`` blocks alongside a Read ``tool_result``
+-    that already contains the extracted text. Stripping preserves the request
+-    instead of failing with an unsupported block error.
+-    """
++    thinking_cfg = data.pop("thinking", None)
++    if effective_thinking_enabled and isinstance(thinking_cfg, dict):
++        thinking_payload: dict[str, Any] = {"type": "enabled"}
++        budget_tokens = thinking_cfg.get("budget_tokens")
++        if isinstance(budget_tokens, int):
++            thinking_payload["budget_tokens"] = budget_tokens
++        data["thinking"] = thinking_payload
++
++    if "messages" in data:
++        data["messages"] = _strip_reasoning_content_when_native(
++            _normalize_tool_result_content(
++                sanitize_deepseek_messages_for_native(
++                    data["messages"],
++                    thinking_enabled=effective_thinking_enabled,
++                )
++            )
++        )
++    if "max_tokens" not in data or data.get("max_tokens") is None:
++        data["max_tokens"] = ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS
++
++    data["stream"] = True
++
++    logger.debug(
++        "DEEPSEEK_REQUEST: build done model={} msgs={} tools={}",
++        data.get("model"),
++        len(data.get("messages", [])),
++        len(data.get("tools", [])),
++    )
++    return data
++
++
++def sanitize_deepseek_messages_for_native(
++    messages: Any, *, thinking_enabled: bool
++) -> Any:
++    """Filter assistant content for DeepSeek's partial native Anthropic support."""
++    if not isinstance(messages, list):
++        return messages
++
++    sanitized: list[Any] = []
++    for message in messages:
++        if not isinstance(message, dict):
++            sanitized.append(message)
++            continue
++        if message.get("role") != "assistant":
++            sanitized.append(message)
++            continue
++        content = message.get("content")
++        if not isinstance(content, list):
++            sanitized.append(message)
++            continue
++
++        if not thinking_enabled:
++            filtered = [
++                block
++                for block in content
++                if not (
++                    isinstance(block, dict)
++                    and block.get("type") in ("thinking", "redacted_thinking")
++                )
++            ]
++        else:
++            filtered = [
++                block
++                for block in content
++                if not (
++                    isinstance(block, dict) and block.get("type") == "redacted_thinking"
++                )
++            ]
++        new_msg = dict(message)
++        new_msg["content"] = filtered or ""
++        sanitized.append(new_msg)
++    return sanitized
++
++
++def _strip_unsupported_attachment_blocks(messages: Any) -> Any:
+     if not isinstance(messages, list):
+         return messages
+ 
+@@ -109,7 +218,6 @@ def _strip_unsupported_attachment_blocks(messages: Any) -> Any:
+ 
+ 
+ def _is_server_listed_tool(tool: Mapping[str, Any]) -> bool:
+-    """True for Anthropic web_search / web_fetch-style tool definitions (listed tools)."""
+     name = (tool.get("name") or "").strip()
+     if name in ("web_search", "web_fetch"):
+         return True
+@@ -155,12 +263,9 @@ def _validate_deepseek_native_request_dict(data: dict[str, Any]) -> None:
+     for i, message in enumerate(data.get("messages") or ()):
+         if not isinstance(message, dict):
+             continue
+-        c = message.get("content")
+-        if isinstance(c, list):
+-            _walk_block_list_for_unsupported(c, where=f"messages[{i}].content")
+-        if isinstance(c, str) and "<think>" in c:
+-            # Unusual, but block encoded redacted content — treat as unsafe for DeepSeek.
+-            pass
++        content = message.get("content")
++        if isinstance(content, list):
++            _walk_block_list_for_unsupported(content, where=f"messages[{i}].content")
+ 
+     system = data.get("system")
+     if isinstance(system, list):
+@@ -221,7 +326,6 @@ def _has_replayable_tool_thinking(data: dict[str, Any]) -> bool:
+ 
+ 
+ def _remove_deepseek_thinking_hints(data: dict[str, Any]) -> None:
+-    """Remove request hints that can keep DeepSeek in thinking mode after fallback."""
+     output_config = data.get("output_config")
+     if isinstance(output_config, dict) and "effort" in output_config:
+         cleaned_output_config = dict(output_config)
+@@ -260,76 +364,7 @@ def _remove_deepseek_thinking_hints(data: dict[str, Any]) -> None:
+             data.pop("context_management", None)
+ 
+ 
+-def sanitize_deepseek_messages_for_native(
+-    messages: Any, *, thinking_enabled: bool
+-) -> Any:
+-    """Filter assistant content for DeepSeek: unsigned ``thinking`` is allowed; no ``redacted_thinking``."""
+-    if not isinstance(messages, list):
+-        return messages
+-
+-    sanitized: list[Any] = []
+-    for message in messages:
+-        if not isinstance(message, dict):
+-            sanitized.append(message)
+-            continue
+-        if message.get("role") != "assistant":
+-            sanitized.append(message)
+-            continue
+-        content = message.get("content")
+-        if not isinstance(content, list):
+-            sanitized.append(message)
+-            continue
+-
+-        if not thinking_enabled:
+-            filtered = [
+-                block
+-                for block in content
+-                if not (
+-                    isinstance(block, dict)
+-                    and block.get("type") in ("thinking", "redacted_thinking")
+-                )
+-            ]
+-        else:
+-            filtered = [
+-                block
+-                for block in content
+-                if not (
+-                    isinstance(block, dict) and block.get("type") == "redacted_thinking"
+-                )
+-            ]
+-        new_msg = dict(message)
+-        new_msg["content"] = filtered or ""
+-        sanitized.append(new_msg)
+-    return sanitized
+-
+-
+-def _serialize_tool_result_content(content: Any) -> str:
+-    """Serialize tool_result content to string for DeepSeek API.
+-
+-    DeepSeek's Anthropic-compatible API expects tool_result.content to be a string,
+-    not an array of content blocks.
+-    """
+-    if content is None:
+-        return ""
+-    if isinstance(content, str):
+-        return content
+-    if isinstance(content, dict):
+-        return json.dumps(content, ensure_ascii=False)
+-    if isinstance(content, list):
+-        parts: list[str] = []
+-        for item in content:
+-            if isinstance(item, dict) and item.get("type") == "text":
+-                parts.append(str(item.get("text", "")))
+-            elif isinstance(item, dict):
+-                parts.append(json.dumps(item, ensure_ascii=False))
+-            else:
+-                parts.append(str(item))
+-        return "\n".join(parts)
+-    return str(content)
+-
+-
+ def _normalize_tool_result_content(messages: Any) -> Any:
+-    """Normalize tool_result content to strings for DeepSeek API compatibility."""
+     if not isinstance(messages, list):
+         return messages
+ 
+@@ -344,17 +379,15 @@ def _normalize_tool_result_content(messages: Any) -> Any:
+             normalized.append(message)
+             continue
+ 
+-        # Process content blocks
+         new_content: list[Any] = []
+         for block in content:
+             if not isinstance(block, dict):
+                 new_content.append(block)
+                 continue
+ 
+             if block.get("type") == "tool_result":
+-                # Normalize tool_result content to string
+                 normalized_block = dict(block)
+-                normalized_block["content"] = _serialize_tool_result_content(
++                normalized_block["content"] = serialize_tool_result_content(
+                     block.get("content")
+                 )
+                 new_content.append(normalized_block)
+@@ -369,94 +402,17 @@ def _normalize_tool_result_content(messages: Any) -> Any:
+ 
+ 
+ def _strip_reasoning_content_when_native(messages: Any) -> Any:
+-    """``reasoning_content`` is OpenAI-helper metadata; not part of native Anthropic body."""
+     if not isinstance(messages, list):
+         return messages
+     out: list[Any] = []
+-    for m in messages:
+-        if not isinstance(m, dict):
+-            out.append(m)
++    for message in messages:
++        if not isinstance(message, dict):
++            out.append(message)
+             continue
+-        msg = {k: v for k, v in m.items() if k != "reasoning_content"}
+-        out.append(msg)
+-    return out
+-
+-
+-def build_request_body(request_data: Any, *, thinking_enabled: bool) -> dict:
+-    """Build a DeepSeek ``/v1/messages`` JSON body (Anthropic format)."""
+-    logger.debug(
+-        "DEEPSEEK_REQUEST: native build model={} msgs={}",
+-        getattr(request_data, "model", "?"),
+-        len(getattr(request_data, "messages", [])),
+-    )
+-
+-    data = dump_raw_messages_request(request_data)
+-    if "messages" in data:
+-        data["messages"] = _strip_unsupported_attachment_blocks(data["messages"])
+-    _validate_deepseek_native_request_dict(data)
+-    data.pop("extra_body", None)
+-    _downgrade_forced_tool_choice(data)
+-
+-    has_tool_history = _has_tool_history(data)
+-    has_replayable_tool_thinking = _has_replayable_tool_thinking(data)
+-    unsafe_tool_followup = has_tool_history and not has_replayable_tool_thinking
+-    effective_thinking_enabled = thinking_enabled and not unsafe_tool_followup
+-    if thinking_enabled:
+-        if unsafe_tool_followup:
+-            logger.debug(
+-                "DEEPSEEK_REQUEST: disabling thinking for tool follow-up without "
+-                "replayable thinking model={} msgs={} tools={}",
+-                data.get("model"),
+-                len(data.get("messages", [])),
+-                len(data.get("tools", [])),
+-            )
+-            _remove_deepseek_thinking_hints(data)
+-        elif has_tool_history:
+-            logger.debug(
+-                "DEEPSEEK_REQUEST: keeping thinking for tool follow-up with "
+-                "replayable thinking model={} msgs={} tools={}",
+-                data.get("model"),
+-                len(data.get("messages", [])),
+-                len(data.get("tools", [])),
+-            )
+-        elif data.get("tools") or data.get("tool_choice"):
+-            logger.debug(
+-                "DEEPSEEK_REQUEST: keeping thinking for initial tool request "
+-                "model={} msgs={} tools={}",
+-                data.get("model"),
+-                len(data.get("messages", [])),
+-                len(data.get("tools", [])),
+-            )
+-
+-    thinking_cfg = data.pop("thinking", None)
+-    if effective_thinking_enabled and isinstance(thinking_cfg, dict):
+-        thinking_payload: dict[str, Any] = {"type": "enabled"}
+-        budget_tokens = thinking_cfg.get("budget_tokens")
+-        if isinstance(budget_tokens, int):
+-            thinking_payload["budget_tokens"] = budget_tokens
+-        data["thinking"] = thinking_payload
+-
+-    if "messages" in data:
+-        data["messages"] = _strip_reasoning_content_when_native(
+-            _normalize_tool_result_content(
+-                sanitize_deepseek_messages_for_native(
+-                    data["messages"],
+-                    thinking_enabled=effective_thinking_enabled,
+-                )
+-            )
++        out.append(
++            {key: value for key, value in message.items() if key != "reasoning_content"}
+         )
+-    if "max_tokens" not in data or data.get("max_tokens") is None:
+-        data["max_tokens"] = ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS
+-
+-    data["stream"] = True
+-
+-    logger.debug(
+-        "DEEPSEEK_REQUEST: build done model={} msgs={} tools={}",
+-        data.get("model"),
+-        len(data.get("messages", [])),
+-        len(data.get("tools", [])),
+-    )
+-    return data
++    return out
+ 
+ 
+ def _downgrade_forced_tool_choice(data: dict[str, Any]) -> None:
+diff --git a/providers/fireworks/client.py b/providers/fireworks/client.py
+--- a/providers/fireworks/client.py
++++ b/providers/fireworks/client.py
+@@ -5,12 +5,18 @@
+ from typing import Any
+ 
+ from providers.base import ProviderConfig
+-from providers.transports.anthropic_messages import AnthropicMessagesTransport
+-
+-from .request import build_request_body
++from providers.transports.anthropic_messages import (
++    AnthropicMessagesTransport,
++    NativeMessagesRequestPolicy,
++    build_native_messages_request_body,
++)
+ 
+ FIREWORKS_BASE_URL = "https://api.fireworks.ai/inference/v1"
+ _ANTHROPIC_VERSION = "2023-06-01"
++_REQUEST_POLICY = NativeMessagesRequestPolicy(
++    provider_name="FIREWORKS",
++    extra_body="merge_validated",
++)
+ 
+ 
+ class FireworksProvider(AnthropicMessagesTransport):
+@@ -26,11 +32,10 @@ def __init__(self, config: ProviderConfig):
+     def _build_request_body(
+         self, request: Any, thinking_enabled: bool | None = None
+     ) -> dict:
+-        if thinking_enabled is None:
+-            thinking_enabled = self._is_thinking_enabled(request)
+-        return build_request_body(
++        return build_native_messages_request_body(
+             request,
+-            thinking_enabled=thinking_enabled,
++            thinking_enabled=self._is_thinking_enabled(request, thinking_enabled),
++            policy=_REQUEST_POLICY,
+         )
+ 
+     def _request_headers(self) -> dict[str, str]:
+diff --git a/providers/fireworks/request.py b/providers/fireworks/request.py
+deleted file mode 100644
+--- a/providers/fireworks/request.py
++++ /dev/null
+@@ -1,48 +0,0 @@
+-"""Native Anthropic Messages request builder for Fireworks AI."""
+-
+-from __future__ import annotations
+-
+-from typing import Any
+-
+-from loguru import logger
+-
+-from config.constants import ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS
+-from core.anthropic.native_messages_request import (
+-    OpenRouterExtraBodyError,
+-    build_base_native_anthropic_request_body,
+-    validate_openrouter_extra_body,
+-)
+-from providers.exceptions import InvalidRequestError
+-
+-
+-def build_request_body(request_data: Any, *, thinking_enabled: bool) -> dict:
+-    """Build JSON for Fireworks Anthropic-compat ``POST …/messages``."""
+-    logger.debug(
+-        "FIREWORKS_REQUEST: native build model={} msgs={}",
+-        getattr(request_data, "model", "?"),
+-        len(getattr(request_data, "messages", [])),
+-    )
+-
+-    body = build_base_native_anthropic_request_body(
+-        request_data,
+-        default_max_tokens=ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS,
+-        thinking_enabled=thinking_enabled,
+-    )
+-
+-    extra = getattr(request_data, "extra_body", None)
+-    if isinstance(extra, dict) and extra:
+-        try:
+-            validate_openrouter_extra_body(extra)
+-        except OpenRouterExtraBodyError as exc:
+-            raise InvalidRequestError(str(exc)) from exc
+-        body.update(extra)
+-
+-    body["stream"] = True
+-
+-    logger.debug(
+-        "FIREWORKS_REQUEST: build done model={} msgs={} tools={}",
+-        body.get("model"),
+-        len(body.get("messages", [])),
+-        len(body.get("tools", [])),
+-    )
+-    return body
+diff --git a/providers/gemini/client.py b/providers/gemini/client.py
+--- a/providers/gemini/client.py
++++ b/providers/gemini/client.py
+@@ -7,11 +7,16 @@
+ 
+ from providers.base import ProviderConfig
+ from providers.defaults import GEMINI_DEFAULT_BASE
+-from providers.transports.openai_chat import OpenAIChatTransport
++from providers.transports.openai_chat import (
++    OpenAIChatRequestPolicy,
++    OpenAIChatTransport,
++    build_openai_chat_request_body,
++)
+ 
+-from .request import build_request_body
++from .quirks import apply_gemini_request_quirks
+ 
+ _MAX_TOOL_CALL_EXTRA_CONTENT_CACHE = 4096
++_REQUEST_POLICY = OpenAIChatRequestPolicy(provider_name="GEMINI")
+ 
+ 
+ class GeminiProvider(OpenAIChatTransport):
+@@ -42,8 +47,16 @@ def _record_tool_call_extra_content(
+     def _build_request_body(
+         self, request: Any, thinking_enabled: bool | None = None
+     ) -> dict:
+-        return build_request_body(
++        return build_openai_chat_request_body(
+             request,
+             thinking_enabled=self._is_thinking_enabled(request, thinking_enabled),
+-            tool_call_extra_content_by_id=self._tool_call_extra_content_by_id,
++            policy=_REQUEST_POLICY,
++            postprocessors=(
++                lambda body, request_data, enabled: apply_gemini_request_quirks(
++                    body,
++                    request_data,
++                    enabled,
++                    tool_call_extra_content_by_id=self._tool_call_extra_content_by_id,
++                ),
++            ),
+         )
+diff --git a/providers/gemini/request.py b/providers/gemini/quirks.py
+rename from providers/gemini/request.py
+rename to providers/gemini/quirks.py
+--- a/providers/gemini/request.py
++++ b/providers/gemini/quirks.py
+@@ -1,17 +1,38 @@
+-"""Request builder for Google Gemini API (AI Studio OpenAI-compatible chat completions)."""
++"""Gemini request-body quirks for the OpenAI-compatible transport."""
+ 
+ from __future__ import annotations
+ 
+ from copy import deepcopy
+ from typing import Any, cast
+ 
+-from loguru import logger
++GEMINI_SKIP_THOUGHT_SIGNATURE_VALIDATOR = "skip_thought_signature_validator"
+ 
+-from core.anthropic import ReasoningReplayMode, build_base_request_body
+-from core.anthropic.conversion import OpenAIConversionError
+-from providers.exceptions import InvalidRequestError
+ 
+-GEMINI_SKIP_THOUGHT_SIGNATURE_VALIDATOR = "skip_thought_signature_validator"
++def apply_gemini_request_quirks(
++    body: dict[str, Any],
++    request_data: Any,
++    thinking_enabled: bool,
++    *,
++    tool_call_extra_content_by_id: dict[str, dict[str, Any]] | None = None,
++) -> None:
++    """Apply Google-specific request extensions after common OpenAI conversion."""
++    extra_body: dict[str, Any] = {}
++    request_extra = getattr(request_data, "extra_body", None)
++    if isinstance(request_extra, dict):
++        extra_body.update(deepcopy(request_extra))
++
++    if thinking_enabled:
++        _apply_thinking_config(extra_body)
++    else:
++        body["reasoning_effort"] = "none"
++
++    if extra_body:
++        body["extra_body"] = extra_body
++
++    _apply_gemini_tool_call_signatures(
++        body,
++        tool_call_extra_content_by_id=tool_call_extra_content_by_id,
++    )
+ 
+ 
+ def _ensure_dict(container: dict[str, Any], key: str) -> dict[str, Any]:
+@@ -148,52 +169,3 @@ def _apply_gemini_tool_call_signatures(
+         return
+     _apply_cached_tool_call_signatures(messages, tool_call_extra_content_by_id or {})
+     _apply_gemini_3_missing_current_turn_signatures(body, messages)
+-
+-
+-def build_request_body(
+-    request_data: Any,
+-    *,
+-    thinking_enabled: bool,
+-    tool_call_extra_content_by_id: dict[str, dict[str, Any]] | None = None,
+-) -> dict:
+-    """Build OpenAI-format request body from an Anthropic request for Gemini."""
+-    logger.debug(
+-        "GEMINI_REQUEST: conversion start model={} msgs={}",
+-        getattr(request_data, "model", "?"),
+-        len(getattr(request_data, "messages", [])),
+-    )
+-    try:
+-        body = build_base_request_body(
+-            request_data,
+-            reasoning_replay=ReasoningReplayMode.REASONING_CONTENT
+-            if thinking_enabled
+-            else ReasoningReplayMode.DISABLED,
+-        )
+-    except OpenAIConversionError as exc:
+-        raise InvalidRequestError(str(exc)) from exc
+-
+-    extra_body: dict[str, Any] = {}
+-    request_extra = getattr(request_data, "extra_body", None)
+-    if isinstance(request_extra, dict):
+-        extra_body.update(deepcopy(request_extra))
+-
+-    if thinking_enabled:
+-        _apply_thinking_config(extra_body)
+-    else:
+-        body["reasoning_effort"] = "none"
+-
+-    if extra_body:
+-        body["extra_body"] = extra_body
+-
+-    _apply_gemini_tool_call_signatures(
+-        body,
+-        tool_call_extra_content_by_id=tool_call_extra_content_by_id,
+-    )
+-
+-    logger.debug(
+-        "GEMINI_REQUEST: conversion done model={} msgs={} tools={}",
+-        body.get("model"),
+-        len(body.get("messages", [])),
+-        len(body.get("tools", [])),
+-    )
+-    return body
+diff --git a/providers/groq/client.py b/providers/groq/client.py
+--- a/providers/groq/client.py
++++ b/providers/groq/client.py
+@@ -6,9 +6,20 @@
+ 
+ from providers.base import ProviderConfig
+ from providers.defaults import GROQ_DEFAULT_BASE
+-from providers.transports.openai_chat import OpenAIChatTransport
+-
+-from .request import build_request_body
++from providers.transports.openai_chat import (
++    OpenAIChatRequestPolicy,
++    OpenAIChatTransport,
++    build_openai_chat_request_body,
++)
++
++_REQUEST_POLICY = OpenAIChatRequestPolicy(
++    provider_name="GROQ",
++    include_extra_body=True,
++    max_tokens_field="max_completion_tokens",
++    strip_message_names=True,
++    unsupported_body_keys=frozenset({"logprobs", "logit_bias", "top_logprobs"}),
++    normalize_n_to_one=True,
++)
+ 
+ 
+ class GroqProvider(OpenAIChatTransport):
+@@ -25,7 +36,8 @@ def __init__(self, config: ProviderConfig):
+     def _build_request_body(
+         self, request: Any, thinking_enabled: bool | None = None
+     ) -> dict:
+-        return build_request_body(
++        return build_openai_chat_request_body(
+             request,
+             thinking_enabled=self._is_thinking_enabled(request, thinking_enabled),
++            policy=_REQUEST_POLICY,
+         )
+diff --git a/providers/groq/request.py b/providers/groq/request.py
+deleted file mode 100644
+--- a/providers/groq/request.py
++++ /dev/null
+@@ -1,83 +0,0 @@
+-"""Request builder for Groq (OpenAI-compatible chat completions).
+-
+-See Groq docs: https://console.groq.com/docs/openai — ``messages[].name`` and
+-unsupported token fields yield 400; ``max_completion_tokens`` is preferred over
+-deprecated ``max_tokens``.
+-"""
+-
+-from __future__ import annotations
+-
+-from typing import Any
+-
+-from loguru import logger
+-
+-from core.anthropic import ReasoningReplayMode, build_base_request_body
+-from core.anthropic.conversion import OpenAIConversionError
+-from providers.exceptions import InvalidRequestError
+-
+-_GROQ_UNSUPPORTED_TOP_KEYS = frozenset({"logprobs", "logit_bias", "top_logprobs"})
+-
+-
+-def _strip_message_names(messages: Any) -> None:
+-    """Remove ``name`` from each chat message (Groq rejects ``messages[].name``)."""
+-    if not isinstance(messages, list):
+-        return
+-    for msg in messages:
+-        if isinstance(msg, dict):
+-            msg.pop("name", None)
+-
+-
+-def _strip_unsupported_body_keys(body: dict[str, Any]) -> None:
+-    for key in _GROQ_UNSUPPORTED_TOP_KEYS:
+-        body.pop(key, None)
+-
+-
+-def _normalize_max_completion_tokens(body: dict[str, Any]) -> None:
+-    if "max_completion_tokens" in body:
+-        body.pop("max_tokens", None)
+-        return
+-    if "max_tokens" in body and body["max_tokens"] is not None:
+-        body["max_completion_tokens"] = body.pop("max_tokens")
+-
+-
+-def _normalize_n_candidates(body: dict[str, Any]) -> None:
+-    """Groq only supports ``n`` = 1; coerce if present."""
+-    if body.get("n") is None:
+-        return
+-    body["n"] = 1
+-
+-
+-def build_request_body(request_data: Any, *, thinking_enabled: bool) -> dict:
+-    """Build OpenAI-format request body from an Anthropic request for Groq."""
+-    logger.debug(
+-        "GROQ_REQUEST: conversion start model={} msgs={}",
+-        getattr(request_data, "model", "?"),
+-        len(getattr(request_data, "messages", [])),
+-    )
+-    try:
+-        body = build_base_request_body(
+-            request_data,
+-            reasoning_replay=ReasoningReplayMode.REASONING_CONTENT
+-            if thinking_enabled
+-            else ReasoningReplayMode.DISABLED,
+-        )
+-    except OpenAIConversionError as exc:
+-        raise InvalidRequestError(str(exc)) from exc
+-
+-    request_extra = getattr(request_data, "extra_body", None)
+-    if isinstance(request_extra, dict) and request_extra:
+-        merged = dict(request_extra)
+-        body["extra_body"] = merged
+-
+-    _strip_message_names(body.get("messages"))
+-    _strip_unsupported_body_keys(body)
+-    _normalize_max_completion_tokens(body)
+-    _normalize_n_candidates(body)
+-
+-    logger.debug(
+-        "GROQ_REQUEST: conversion done model={} msgs={} tools={}",
+-        body.get("model"),
+-        len(body.get("messages", [])),
+-        len(body.get("tools", [])),
+-    )
+-    return body
+diff --git a/providers/kimi/client.py b/providers/kimi/client.py
+--- a/providers/kimi/client.py
++++ b/providers/kimi/client.py
+@@ -8,12 +8,21 @@
+ 
+ from providers.base import ProviderConfig
+ from providers.defaults import KIMI_DEFAULT_BASE
+-from providers.transports.anthropic_messages import AnthropicMessagesTransport
+-
+-from .request import build_request_body
++from providers.transports.anthropic_messages import (
++    AnthropicMessagesTransport,
++    NativeMessagesRequestPolicy,
++    build_native_messages_request_body,
++)
+ 
+ _MOONSHOT_OPENAI_MODELS_URL = "https://api.moonshot.ai/v1/models"
+ _ANTHROPIC_VERSION = "2023-06-01"
++_REQUEST_POLICY = NativeMessagesRequestPolicy(
++    provider_name="KIMI",
++    extra_body="reject",
++    reject_extra_body_message=(
++        "Kimi native Messages API does not support extra_body on requests."
++    ),
++)
+ 
+ 
+ class KimiProvider(AnthropicMessagesTransport):
+@@ -29,9 +38,10 @@ def __init__(self, config: ProviderConfig):
+     def _build_request_body(
+         self, request: Any, thinking_enabled: bool | None = None
+     ) -> dict:
+-        return build_request_body(
++        return build_native_messages_request_body(
+             request,
+             thinking_enabled=self._is_thinking_enabled(request, thinking_enabled),
++            policy=_REQUEST_POLICY,
+         )
+ 
+     def _request_headers(self) -> dict[str, str]:
+diff --git a/providers/kimi/request.py b/providers/kimi/request.py
+deleted file mode 100644
+--- a/providers/kimi/request.py
++++ /dev/null
+@@ -1,42 +0,0 @@
+-"""Native Anthropic Messages request builder for Kimi (Moonshot)."""
+-
+-from __future__ import annotations
+-
+-from typing import Any
+-
+-from loguru import logger
+-
+-from config.constants import ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS
+-from core.anthropic.native_messages_request import (
+-    build_base_native_anthropic_request_body,
+-)
+-from providers.exceptions import InvalidRequestError
+-
+-
+-def build_request_body(request_data: Any, *, thinking_enabled: bool) -> dict:
+-    """Build JSON for Kimi Anthropic-compat ``POST …/messages``."""
+-    logger.debug(
+-        "KIMI_REQUEST: native build model={} msgs={}",
+-        getattr(request_data, "model", "?"),
+-        len(getattr(request_data, "messages", [])),
+-    )
+-
+-    body = build_base_native_anthropic_request_body(
+-        request_data,
+-        default_max_tokens=ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS,
+-        thinking_enabled=thinking_enabled,
+-    )
+-    extra = getattr(request_data, "extra_body", None)
+-    if extra:
+-        raise InvalidRequestError(
+-            "Kimi native Messages API does not support extra_body on requests."
+-        )
+-    body["stream"] = True
+-
+-    logger.debug(
+-        "KIMI_REQUEST: build done model={} msgs={} tools={}",
+-        body.get("model"),
+-        len(body.get("messages", [])),
+-        len(body.get("tools", [])),
+-    )
+-    return body
+diff --git a/providers/mistral/client.py b/providers/mistral/client.py
+--- a/providers/mistral/client.py
++++ b/providers/mistral/client.py
+@@ -6,9 +6,13 @@
+ 
+ from providers.base import ProviderConfig
+ from providers.defaults import MISTRAL_DEFAULT_BASE
+-from providers.transports.openai_chat import OpenAIChatTransport
++from providers.transports.openai_chat import (
++    OpenAIChatRequestPolicy,
++    OpenAIChatTransport,
++    build_openai_chat_request_body,
++)
+ 
+-from .request import build_request_body
++_REQUEST_POLICY = OpenAIChatRequestPolicy(provider_name="MISTRAL")
+ 
+ 
+ class MistralProvider(OpenAIChatTransport):
+@@ -25,7 +29,8 @@ def __init__(self, config: ProviderConfig):
+     def _build_request_body(
+         self, request: Any, thinking_enabled: bool | None = None
+     ) -> dict:
+-        return build_request_body(
++        return build_openai_chat_request_body(
+             request,
+             thinking_enabled=self._is_thinking_enabled(request, thinking_enabled),
++            policy=_REQUEST_POLICY,
+         )
+diff --git a/providers/mistral/request.py b/providers/mistral/request.py
+deleted file mode 100644
+--- a/providers/mistral/request.py
++++ /dev/null
+@@ -1,37 +0,0 @@
+-"""Request builder for Mistral La Plateforme (OpenAI-compatible chat completions)."""
+-
+-from __future__ import annotations
+-
+-from typing import Any
+-
+-from loguru import logger
+-
+-from core.anthropic import ReasoningReplayMode, build_base_request_body
+-from core.anthropic.conversion import OpenAIConversionError
+-from providers.exceptions import InvalidRequestError
+-
+-
+-def build_request_body(request_data: Any, *, thinking_enabled: bool) -> dict:
+-    """Build OpenAI-format request body from Anthropic request for Mistral."""
+-    logger.debug(
+-        "MISTRAL_REQUEST: conversion start model={} msgs={}",
+-        getattr(request_data, "model", "?"),
+-        len(getattr(request_data, "messages", [])),
+-    )
+-    try:
+-        body = build_base_request_body(
+-            request_data,
+-            reasoning_replay=ReasoningReplayMode.REASONING_CONTENT
+-            if thinking_enabled
+-            else ReasoningReplayMode.DISABLED,
+-        )
+-    except OpenAIConversionError as exc:
+-        raise InvalidRequestError(str(exc)) from exc
+-
+-    logger.debug(
+-        "MISTRAL_REQUEST: conversion done model={} msgs={} tools={}",
+-        body.get("model"),
+-        len(body.get("messages", [])),
+-        len(body.get("tools", [])),
+-    )
+-    return body
+diff --git a/providers/nvidia_nim/client.py b/providers/nvidia_nim/client.py
+--- a/providers/nvidia_nim/client.py
++++ b/providers/nvidia_nim/client.py
+@@ -11,12 +11,14 @@
+ from providers.defaults import NVIDIA_NIM_DEFAULT_BASE
+ from providers.transports.openai_chat import OpenAIChatTransport
+ 
+-from .request import (
+-    body_without_nim_tool_argument_aliases,
+-    build_request_body,
++from .request_options import build_nim_request_body
++from .retry import (
+     clone_body_without_chat_template,
+     clone_body_without_reasoning_budget,
+     clone_body_without_reasoning_content,
++)
++from .tool_schema import (
++    body_without_nim_tool_argument_aliases,
+     nim_tool_argument_aliases_from_body,
+ )
+ 
+@@ -37,7 +39,7 @@ def _build_request_body(
+         self, request: Any, thinking_enabled: bool | None = None
+     ) -> dict:
+         """Internal helper for tests and shared building."""
+-        return build_request_body(
++        return build_nim_request_body(
+             request,
+             self._nim_settings,
+             thinking_enabled=self._is_thinking_enabled(request, thinking_enabled),
+diff --git a/providers/nvidia_nim/request_options.py b/providers/nvidia_nim/request_options.py
+new file mode 100644
+--- /dev/null
++++ b/providers/nvidia_nim/request_options.py
+@@ -0,0 +1,109 @@
++"""NVIDIA NIM request option injection."""
++
++from __future__ import annotations
++
++from typing import Any
++
++from config.nim import NimSettings
++from core.anthropic import set_if_not_none
++from providers.transports.openai_chat import (
++    OpenAIChatRequestPolicy,
++    build_openai_chat_request_body,
++)
++
++from .tool_schema import sanitize_nim_tool_schemas
++
++_REQUEST_POLICY = OpenAIChatRequestPolicy(provider_name="NIM")
++
++
++def build_nim_request_body(
++    request_data: Any, nim: NimSettings, *, thinking_enabled: bool
++) -> dict[str, Any]:
++    """Build OpenAI-format request body from Anthropic request plus NIM settings."""
++    return build_openai_chat_request_body(
++        request_data,
++        thinking_enabled=thinking_enabled,
++        policy=_REQUEST_POLICY,
++        postprocessors=(
++            lambda body, request, enabled: apply_nim_request_options(
++                body,
++                request,
++                enabled,
++                nim=nim,
++            ),
++        ),
++    )
++
++
++def apply_nim_request_options(
++    body: dict[str, Any],
++    request_data: Any,
++    thinking_enabled: bool,
++    *,
++    nim: NimSettings,
++) -> None:
++    """Apply NIM schema repairs and configured request defaults."""
++    sanitize_nim_tool_schemas(body)
++
++    max_tokens = body.get("max_tokens") or getattr(request_data, "max_tokens", None)
++    if max_tokens is None:
++        max_tokens = nim.max_tokens
++    elif nim.max_tokens:
++        max_tokens = min(max_tokens, nim.max_tokens)
++    set_if_not_none(body, "max_tokens", max_tokens)
++
++    if body.get("temperature") is None and nim.temperature is not None:
++        body["temperature"] = nim.temperature
++    if body.get("top_p") is None and nim.top_p is not None:
++        body["top_p"] = nim.top_p
++
++    if "stop" not in body and nim.stop:
++        body["stop"] = nim.stop
++
++    if nim.presence_penalty != 0.0:
++        body["presence_penalty"] = nim.presence_penalty
++    if nim.frequency_penalty != 0.0:
++        body["frequency_penalty"] = nim.frequency_penalty
++    if nim.seed is not None:
++        body["seed"] = nim.seed
++
++    body["parallel_tool_calls"] = nim.parallel_tool_calls
++
++    extra_body: dict[str, Any] = {}
++    request_extra = getattr(request_data, "extra_body", None)
++    if request_extra:
++        extra_body.update(request_extra)
++
++    if thinking_enabled:
++        chat_template_kwargs = extra_body.setdefault(
++            "chat_template_kwargs", {"thinking": True, "enable_thinking": True}
++        )
++        if isinstance(chat_template_kwargs, dict):
++            chat_template_kwargs.setdefault("reasoning_budget", max_tokens)
++
++    req_top_k = getattr(request_data, "top_k", None)
++    top_k = req_top_k if req_top_k is not None else nim.top_k
++    _set_extra(extra_body, "top_k", top_k, ignore_value=-1)
++    _set_extra(extra_body, "min_p", nim.min_p, ignore_value=0.0)
++    _set_extra(
++        extra_body, "repetition_penalty", nim.repetition_penalty, ignore_value=1.0
++    )
++    _set_extra(extra_body, "min_tokens", nim.min_tokens, ignore_value=0)
++    _set_extra(extra_body, "chat_template", nim.chat_template)
++    _set_extra(extra_body, "request_id", nim.request_id)
++    _set_extra(extra_body, "ignore_eos", nim.ignore_eos)
++
++    if extra_body:
++        body["extra_body"] = extra_body
++
++
++def _set_extra(
++    extra_body: dict[str, Any], key: str, value: Any, ignore_value: Any = None
++) -> None:
++    if key in extra_body:
++        return
++    if value is None:
++        return
++    if ignore_value is not None and value == ignore_value:
++        return
++    extra_body[key] = value
+diff --git a/providers/nvidia_nim/retry.py b/providers/nvidia_nim/retry.py
+new file mode 100644
+--- /dev/null
++++ b/providers/nvidia_nim/retry.py
+@@ -0,0 +1,71 @@
++"""NVIDIA NIM retry-body downgrade helpers."""
++
++from __future__ import annotations
++
++from collections.abc import Callable
++from copy import deepcopy
++from typing import Any
++
++
++def clone_body_without_reasoning_budget(body: dict[str, Any]) -> dict[str, Any] | None:
++    """Clone a request body and strip only reasoning_budget fields."""
++    return _clone_strip_extra_body(body, _strip_reasoning_budget_fields)
++
++
++def clone_body_without_chat_template(body: dict[str, Any]) -> dict[str, Any] | None:
++    """Clone a request body and strip only chat_template."""
++    return _clone_strip_extra_body(body, _strip_chat_template_field)
++
++
++def clone_body_without_reasoning_content(
++    body: dict[str, Any],
++) -> dict[str, Any] | None:
++    """Clone a request body and strip assistant message ``reasoning_content`` fields."""
++    cloned_body = deepcopy(body)
++    if not _strip_message_reasoning_content(cloned_body):
++        return None
++    return cloned_body
++
++
++def _clone_strip_extra_body(
++    body: dict[str, Any],
++    strip: Callable[[dict[str, Any]], bool],
++) -> dict[str, Any] | None:
++    cloned_body = deepcopy(body)
++    extra_body = cloned_body.get("extra_body")
++    if not isinstance(extra_body, dict):
++        return None
++    if not strip(extra_body):
++        return None
++    if not extra_body:
++        cloned_body.pop("extra_body", None)
++    return cloned_body
++
++
++def _strip_reasoning_budget_fields(extra_body: dict[str, Any]) -> bool:
++    removed = extra_body.pop("reasoning_budget", None) is not None
++    chat_template_kwargs = extra_body.get("chat_template_kwargs")
++    if (
++        isinstance(chat_template_kwargs, dict)
++        and chat_template_kwargs.pop("reasoning_budget", None) is not None
++    ):
++        removed = True
++    return removed
++
++
++def _strip_chat_template_field(extra_body: dict[str, Any]) -> bool:
++    return extra_body.pop("chat_template", None) is not None
++
++
++def _strip_message_reasoning_content(body: dict[str, Any]) -> bool:
++    removed = False
++    messages = body.get("messages")
++    if not isinstance(messages, list):
++        return False
++    for message in messages:
++        if (
++            isinstance(message, dict)
++            and message.pop("reasoning_content", None) is not None
++        ):
++            removed = True
++    return removed
+diff --git a/providers/nvidia_nim/request.py b/providers/nvidia_nim/tool_schema.py
+rename from providers/nvidia_nim/request.py
+rename to providers/nvidia_nim/tool_schema.py
+--- a/providers/nvidia_nim/request.py
++++ b/providers/nvidia_nim/tool_schema.py
+@@ -1,19 +1,8 @@
+-"""Request builder for NVIDIA NIM provider."""
++"""NVIDIA NIM tool schema sanitization and private argument aliases."""
+ 
+-from collections.abc import Callable
+-from copy import deepcopy
+-from typing import Any
+-
+-from loguru import logger
++from __future__ import annotations
+ 
+-from config.nim import NimSettings
+-from core.anthropic import (
+-    ReasoningReplayMode,
+-    build_base_request_body,
+-    set_if_not_none,
+-)
+-from core.anthropic.conversion import OpenAIConversionError
+-from providers.exceptions import InvalidRequestError
++from typing import Any
+ 
+ _SCHEMA_VALUE_KEYS = frozenset(
+     {
+@@ -39,52 +28,71 @@
+ _NIM_UNSAFE_TOOL_PARAMETER_NAMES = frozenset({"type"})
+ 
+ 
+-def _clone_strip_extra_body(
+-    body: dict[str, Any],
+-    strip: Callable[[dict[str, Any]], bool],
+-) -> dict[str, Any] | None:
+-    """Deep-clone ``body`` and remove fields via ``strip`` on ``extra_body`` only.
++def sanitize_nim_tool_schemas(body: dict[str, Any]) -> None:
++    """Sanitize only tool parameter schemas, preserving tool calls/history."""
++    tools = body.get("tools")
++    if not isinstance(tools, list):
++        return
+ 
+-    Returns ``None`` when there is no ``extra_body`` dict or ``strip`` reports no change.
+-    """
+-    cloned_body = deepcopy(body)
+-    extra_body = cloned_body.get("extra_body")
+-    if not isinstance(extra_body, dict):
+-        return None
+-    if not strip(extra_body):
+-        return None
+-    if not extra_body:
+-        cloned_body.pop("extra_body", None)
+-    return cloned_body
++    tool_argument_aliases: dict[str, dict[str, str]] = {}
++    sanitized_tools: list[Any] = []
++    for tool in tools:
++        if not isinstance(tool, dict):
++            sanitized_tools.append(tool)
++            continue
++        sanitized_tool = dict(tool)
++        function = tool.get("function")
++        if isinstance(function, dict):
++            sanitized_function = dict(function)
++            parameters = function.get("parameters")
++            if isinstance(parameters, dict):
++                _, sanitized_parameters = _sanitize_nim_schema_node(parameters)
++                sanitized_parameters, argument_aliases = _alias_nim_tool_parameters(
++                    sanitized_parameters
++                )
++                sanitized_function["parameters"] = sanitized_parameters
++                tool_name = function.get("name")
++                if argument_aliases and isinstance(tool_name, str) and tool_name:
++                    tool_argument_aliases[tool_name] = argument_aliases
++            sanitized_tool["function"] = sanitized_function
++        sanitized_tools.append(sanitized_tool)
+ 
++    body["tools"] = sanitized_tools
++    if tool_argument_aliases:
++        body[NIM_TOOL_ARGUMENT_ALIASES_KEY] = tool_argument_aliases
++    else:
++        body.pop(NIM_TOOL_ARGUMENT_ALIASES_KEY, None)
+ 
+-def _strip_reasoning_budget_fields(extra_body: dict[str, Any]) -> bool:
+-    removed = extra_body.pop("reasoning_budget", None) is not None
+-    chat_template_kwargs = extra_body.get("chat_template_kwargs")
+-    if (
+-        isinstance(chat_template_kwargs, dict)
+-        and chat_template_kwargs.pop("reasoning_budget", None) is not None
+-    ):
+-        removed = True
+-    return removed
+ 
++def nim_tool_argument_aliases_from_body(
++    body: dict[str, Any],
++) -> dict[str, dict[str, str]]:
++    """Return validated private NIM tool argument aliases from a built body."""
++    raw_aliases = body.get(NIM_TOOL_ARGUMENT_ALIASES_KEY)
++    if not isinstance(raw_aliases, dict):
++        return {}
+ 
+-def _strip_chat_template_field(extra_body: dict[str, Any]) -> bool:
+-    return extra_body.pop("chat_template", None) is not None
++    aliases: dict[str, dict[str, str]] = {}
++    for tool_name, tool_aliases in raw_aliases.items():
++        if not isinstance(tool_name, str) or not isinstance(tool_aliases, dict):
++            continue
++        sanitized_aliases = {
++            alias: original
++            for alias, original in tool_aliases.items()
++            if isinstance(alias, str) and isinstance(original, str)
++        }
++        if sanitized_aliases:
++            aliases[tool_name] = sanitized_aliases
++    return aliases
+ 
+ 
+-def _strip_message_reasoning_content(body: dict[str, Any]) -> bool:
+-    removed = False
+-    messages = body.get("messages")
+-    if not isinstance(messages, list):
+-        return False
+-    for message in messages:
+-        if (
+-            isinstance(message, dict)
+-            and message.pop("reasoning_content", None) is not None
+-        ):
+-            removed = True
+-    return removed
++def body_without_nim_tool_argument_aliases(body: dict[str, Any]) -> dict[str, Any]:
++    """Return a request body with private alias metadata stripped before upstream I/O."""
++    if NIM_TOOL_ARGUMENT_ALIASES_KEY not in body:
++        return body
++    upstream_body = dict(body)
++    upstream_body.pop(NIM_TOOL_ARGUMENT_ALIASES_KEY, None)
++    return upstream_body
+ 
+ 
+ def _sanitize_nim_schema_node(value: Any) -> tuple[bool, Any]:
+@@ -228,6 +236,7 @@ def _alias_nim_schema_property_names(
+             alias_to_original=alias_to_original,
+             original_to_alias=original_to_alias,
+         )
++
+     return aliased_value
+ 
+ 
+@@ -246,185 +255,3 @@ def _alias_nim_tool_parameters(
+     if not alias_to_original:
+         return parameters, {}
+     return aliased_parameters, alias_to_original
+-
+-
+-def _sanitize_nim_tool_schemas(body: dict[str, Any]) -> None:
+-    """Sanitize only tool parameter schemas, preserving tool calls/history."""
+-    tools = body.get("tools")
+-    if not isinstance(tools, list):
+-        return
+-
+-    tool_argument_aliases: dict[str, dict[str, str]] = {}
+-    sanitized_tools: list[Any] = []
+-    for tool in tools:
+-        if not isinstance(tool, dict):
+-            sanitized_tools.append(tool)
+-            continue
+-        sanitized_tool = dict(tool)
+-        function = tool.get("function")
+-        if isinstance(function, dict):
+-            sanitized_function = dict(function)
+-            parameters = function.get("parameters")
+-            if isinstance(parameters, dict):
+-                _, sanitized_parameters = _sanitize_nim_schema_node(parameters)
+-                sanitized_parameters, argument_aliases = _alias_nim_tool_parameters(
+-                    sanitized_parameters
+-                )
+-                sanitized_function["parameters"] = sanitized_parameters
+-                tool_name = function.get("name")
+-                if argument_aliases and isinstance(tool_name, str) and tool_name:
+-                    tool_argument_aliases[tool_name] = argument_aliases
+-            sanitized_tool["function"] = sanitized_function
+-        sanitized_tools.append(sanitized_tool)
+-
+-    body["tools"] = sanitized_tools
+-    if tool_argument_aliases:
+-        body[NIM_TOOL_ARGUMENT_ALIASES_KEY] = tool_argument_aliases
+-    else:
+-        body.pop(NIM_TOOL_ARGUMENT_ALIASES_KEY, None)
+-
+-
+-def nim_tool_argument_aliases_from_body(
+-    body: dict[str, Any],
+-) -> dict[str, dict[str, str]]:
+-    """Return validated private NIM tool argument aliases from a built body."""
+-    raw_aliases = body.get(NIM_TOOL_ARGUMENT_ALIASES_KEY)
+-    if not isinstance(raw_aliases, dict):
+-        return {}
+-
+-    aliases: dict[str, dict[str, str]] = {}
+-    for tool_name, tool_aliases in raw_aliases.items():
+-        if not isinstance(tool_name, str) or not isinstance(tool_aliases, dict):
+-            continue
+-        sanitized_aliases = {
+-            alias: original
+-            for alias, original in tool_aliases.items()
+-            if isinstance(alias, str) and isinstance(original, str)
+-        }
+-        if sanitized_aliases:
+-            aliases[tool_name] = sanitized_aliases
+-    return aliases
+-
+-
+-def body_without_nim_tool_argument_aliases(body: dict[str, Any]) -> dict[str, Any]:
+-    """Return a request body with private alias metadata stripped before upstream I/O."""
+-    if NIM_TOOL_ARGUMENT_ALIASES_KEY not in body:
+-        return body
+-    upstream_body = dict(body)
+-    upstream_body.pop(NIM_TOOL_ARGUMENT_ALIASES_KEY, None)
+-    return upstream_body
+-
+-
+-def _set_extra(
+-    extra_body: dict[str, Any], key: str, value: Any, ignore_value: Any = None
+-) -> None:
+-    if key in extra_body:
+-        return
+-    if value is None:
+-        return
+-    if ignore_value is not None and value == ignore_value:
+-        return
+-    extra_body[key] = value
+-
+-
+-def clone_body_without_reasoning_budget(body: dict[str, Any]) -> dict[str, Any] | None:
+-    """Clone a request body and strip only reasoning_budget fields."""
+-    return _clone_strip_extra_body(body, _strip_reasoning_budget_fields)
+-
+-
+-def clone_body_without_chat_template(body: dict[str, Any]) -> dict[str, Any] | None:
+-    """Clone a request body and strip only chat_template."""
+-    return _clone_strip_extra_body(body, _strip_chat_template_field)
+-
+-
+-def clone_body_without_reasoning_content(body: dict[str, Any]) -> dict[str, Any] | None:
+-    """Clone a request body and strip assistant message ``reasoning_content`` fields."""
+-    cloned_body = deepcopy(body)
+-    if not _strip_message_reasoning_content(cloned_body):
+-        return None
+-    return cloned_body
+-
+-
+-def build_request_body(
+-    request_data: Any, nim: NimSettings, *, thinking_enabled: bool
+-) -> dict:
+-    """Build OpenAI-format request body from Anthropic request."""
+-    logger.debug(
+-        "NIM_REQUEST: conversion start model={} msgs={}",
+-        getattr(request_data, "model", "?"),
+-        len(getattr(request_data, "messages", [])),
+-    )
+-    try:
+-        body = build_base_request_body(
+-            request_data,
+-            reasoning_replay=ReasoningReplayMode.REASONING_CONTENT
+-            if thinking_enabled
+-            else ReasoningReplayMode.DISABLED,
+-        )
+-    except OpenAIConversionError as exc:
+-        raise InvalidRequestError(str(exc)) from exc
+-
+-    _sanitize_nim_tool_schemas(body)
+-
+-    # NIM-specific max_tokens: cap against nim.max_tokens
+-    max_tokens = body.get("max_tokens") or getattr(request_data, "max_tokens", None)
+-    if max_tokens is None:
+-        max_tokens = nim.max_tokens
+-    elif nim.max_tokens:
+-        max_tokens = min(max_tokens, nim.max_tokens)
+-    set_if_not_none(body, "max_tokens", max_tokens)
+-
+-    # NIM-specific temperature/top_p: fall back to NIM defaults if request didn't set
+-    if body.get("temperature") is None and nim.temperature is not None:
+-        body["temperature"] = nim.temperature
+-    if body.get("top_p") is None and nim.top_p is not None:
+-        body["top_p"] = nim.top_p
+-
+-    # NIM-specific stop sequences fallback
+-    if "stop" not in body and nim.stop:
+-        body["stop"] = nim.stop
+-
+-    if nim.presence_penalty != 0.0:
+-        body["presence_penalty"] = nim.presence_penalty
+-    if nim.frequency_penalty != 0.0:
+-        body["frequency_penalty"] = nim.frequency_penalty
+-    if nim.seed is not None:
+-        body["seed"] = nim.seed
+-
+-    body["parallel_tool_calls"] = nim.parallel_tool_calls
+-
+-    # Handle non-standard parameters via extra_body
+-    extra_body: dict[str, Any] = {}
+-    request_extra = getattr(request_data, "extra_body", None)
+-    if request_extra:
+-        extra_body.update(request_extra)
+-
+-    if thinking_enabled:
+-        chat_template_kwargs = extra_body.setdefault(
+-            "chat_template_kwargs", {"thinking": True, "enable_thinking": True}
+-        )
+-        if isinstance(chat_template_kwargs, dict):
+-            chat_template_kwargs.setdefault("reasoning_budget", max_tokens)
+-
+-    req_top_k = getattr(request_data, "top_k", None)
+-    top_k = req_top_k if req_top_k is not None else nim.top_k
+-    _set_extra(extra_body, "top_k", top_k, ignore_value=-1)
+-    _set_extra(extra_body, "min_p", nim.min_p, ignore_value=0.0)
+-    _set_extra(
+-        extra_body, "repetition_penalty", nim.repetition_penalty, ignore_value=1.0
+-    )
+-    _set_extra(extra_body, "min_tokens", nim.min_tokens, ignore_value=0)
+-    _set_extra(extra_body, "chat_template", nim.chat_template)
+-    _set_extra(extra_body, "request_id", nim.request_id)
+-    _set_extra(extra_body, "ignore_eos", nim.ignore_eos)
+-
+-    if extra_body:
+-        body["extra_body"] = extra_body
+-
+-    logger.debug(
+-        "NIM_REQUEST: conversion done model={} msgs={} tools={}",
+-        body.get("model"),
+-        len(body.get("messages", [])),
+-        len(body.get("tools", [])),
+-    )
+-    return body
+diff --git a/providers/open_router/client.py b/providers/open_router/client.py
+--- a/providers/open_router/client.py
++++ b/providers/open_router/client.py
+@@ -21,12 +21,16 @@
+ )
+ from providers.transports.anthropic_messages import (
+     AnthropicMessagesTransport,
++    NativeMessagesRequestPolicy,
+     StreamChunkMode,
++    build_native_messages_request_body,
+ )
+ 
+-from .request import build_request_body
+-
+ _ANTHROPIC_VERSION = "2023-06-01"
++_REQUEST_POLICY = NativeMessagesRequestPolicy(
++    provider_name="OPENROUTER",
++    extra_body="openrouter",
++)
+ 
+ 
+ class OpenRouterProvider(AnthropicMessagesTransport):
+@@ -45,9 +49,10 @@ def _build_request_body(
+         self, request: Any, thinking_enabled: bool | None = None
+     ) -> dict:
+         """Internal helper for tests and direct request dispatch."""
+-        return build_request_body(
++        return build_native_messages_request_body(
+             request,
+             thinking_enabled=self._is_thinking_enabled(request, thinking_enabled),
++            policy=_REQUEST_POLICY,
+         )
+ 
+     def _request_headers(self) -> dict[str, str]:
+diff --git a/providers/open_router/request.py b/providers/open_router/request.py
+deleted file mode 100644
+--- a/providers/open_router/request.py
++++ /dev/null
+@@ -1,42 +0,0 @@
+-"""Native Anthropic Messages request builder for OpenRouter."""
+-
+-from __future__ import annotations
+-
+-from typing import Any
+-
+-from loguru import logger
+-
+-from config.constants import (
+-    ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS as OPENROUTER_DEFAULT_MAX_TOKENS,
+-)
+-from core.anthropic.native_messages_request import (
+-    OpenRouterExtraBodyError,
+-    build_openrouter_native_request_body,
+-)
+-from providers.exceptions import InvalidRequestError
+-
+-
+-def build_request_body(request_data: Any, *, thinking_enabled: bool) -> dict:
+-    """Build an Anthropic-format request body for OpenRouter's messages API."""
+-    logger.debug(
+-        "OPENROUTER_REQUEST: conversion start model={} msgs={}",
+-        getattr(request_data, "model", "?"),
+-        len(getattr(request_data, "messages", [])),
+-    )
+-
+-    try:
+-        body = build_openrouter_native_request_body(
+-            request_data,
+-            thinking_enabled=thinking_enabled,
+-            default_max_tokens=OPENROUTER_DEFAULT_MAX_TOKENS,
+-        )
+-    except OpenRouterExtraBodyError as exc:
+-        raise InvalidRequestError(str(exc)) from exc
+-
+-    logger.debug(
+-        "OPENROUTER_REQUEST: conversion done model={} msgs={} tools={}",
+-        body.get("model"),
+-        len(body.get("messages", [])),
+-        len(body.get("tools", [])),
+-    )
+-    return body
+diff --git a/providers/opencode/client.py b/providers/opencode/client.py
+--- a/providers/opencode/client.py
++++ b/providers/opencode/client.py
+@@ -6,9 +6,11 @@
+ 
+ from providers.base import ProviderConfig
+ from providers.defaults import OPENCODE_DEFAULT_BASE
+-from providers.transports.openai_chat import OpenAIChatTransport
+-
+-from .request import build_request_body
++from providers.transports.openai_chat import (
++    OpenAIChatRequestPolicy,
++    OpenAIChatTransport,
++    build_openai_chat_request_body,
++)
+ 
+ 
+ class OpenCodeProvider(OpenAIChatTransport):
+@@ -21,11 +23,13 @@ def __init__(self, config: ProviderConfig, provider_name: str = "OPENCODE"):
+             base_url=config.base_url or OPENCODE_DEFAULT_BASE,
+             api_key=config.api_key,
+         )
++        self._request_policy = OpenAIChatRequestPolicy(provider_name=provider_name)
+ 
+     def _build_request_body(
+         self, request: Any, thinking_enabled: bool | None = None
+     ) -> dict:
+-        return build_request_body(
++        return build_openai_chat_request_body(
+             request,
+             thinking_enabled=self._is_thinking_enabled(request, thinking_enabled),
++            policy=self._request_policy,
+         )
+diff --git a/providers/opencode/request.py b/providers/opencode/request.py
+deleted file mode 100644
+--- a/providers/opencode/request.py
++++ /dev/null
+@@ -1,35 +0,0 @@
+-"""Request builder for OpenCode Zen provider."""
+-
+-from typing import Any
+-
+-from loguru import logger
+-
+-from core.anthropic import ReasoningReplayMode, build_base_request_body
+-from core.anthropic.conversion import OpenAIConversionError
+-from providers.exceptions import InvalidRequestError
+-
+-
+-def build_request_body(request_data: Any, *, thinking_enabled: bool) -> dict:
+-    """Build OpenAI-format request body from Anthropic request for OpenCode Zen."""
+-    logger.debug(
+-        "OPENCODE_REQUEST: conversion start model={} msgs={}",
+-        getattr(request_data, "model", "?"),
+-        len(getattr(request_data, "messages", [])),
+-    )
+-    try:
+-        body = build_base_request_body(
+-            request_data,
+-            reasoning_replay=ReasoningReplayMode.REASONING_CONTENT
+-            if thinking_enabled
+-            else ReasoningReplayMode.DISABLED,
+-        )
+-    except OpenAIConversionError as exc:
+-        raise InvalidRequestError(str(exc)) from exc
+-
+-    logger.debug(
+-        "OPENCODE_REQUEST: conversion done model={} msgs={} tools={}",
+-        body.get("model"),
+-        len(body.get("messages", [])),
+-        len(body.get("tools", [])),
+-    )
+-    return body
+diff --git a/providers/transports/anthropic_messages/__init__.py b/providers/transports/anthropic_messages/__init__.py
+--- a/providers/transports/anthropic_messages/__init__.py
++++ b/providers/transports/anthropic_messages/__init__.py
+@@ -1,5 +1,14 @@
+ """Native Anthropic Messages transport family."""
+ 
++from .request_policy import (
++    NativeMessagesRequestPolicy,
++    build_native_messages_request_body,
++)
+ from .transport import AnthropicMessagesTransport, StreamChunkMode
+ 
+-__all__ = ["AnthropicMessagesTransport", "StreamChunkMode"]
++__all__ = [
++    "AnthropicMessagesTransport",
++    "NativeMessagesRequestPolicy",
++    "StreamChunkMode",
++    "build_native_messages_request_body",
++]
+diff --git a/providers/transports/anthropic_messages/request_policy.py b/providers/transports/anthropic_messages/request_policy.py
+new file mode 100644
+--- /dev/null
++++ b/providers/transports/anthropic_messages/request_policy.py
+@@ -0,0 +1,121 @@
++"""Request-body policy for native Anthropic-compatible providers."""
++
++from __future__ import annotations
++
++from collections.abc import Callable, Iterable
++from dataclasses import dataclass
++from typing import Any, Literal
++
++from loguru import logger
++
++from config.constants import ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS
++from core.anthropic.native_messages_request import (
++    OpenRouterExtraBodyError,
++    build_base_native_anthropic_request_body,
++    build_openrouter_native_request_body,
++    validate_openrouter_extra_body,
++)
++from providers.exceptions import InvalidRequestError
++
++NativeExtraBodyPolicy = Literal["drop", "reject", "merge_validated", "openrouter"]
++NativeMessagesPostprocessor = Callable[[dict[str, Any], Any, bool], None]
++
++
++@dataclass(frozen=True, slots=True)
++class NativeMessagesRequestPolicy:
++    """Provider policy for native Anthropic Messages request construction."""
++
++    provider_name: str
++    extra_body: NativeExtraBodyPolicy = "drop"
++    default_max_tokens: int = ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS
++    force_stream: bool = True
++    reject_extra_body_message: str | None = None
++
++
++def build_native_messages_request_body(
++    request_data: Any,
++    *,
++    thinking_enabled: bool,
++    policy: NativeMessagesRequestPolicy,
++    postprocessors: Iterable[NativeMessagesPostprocessor] = (),
++) -> dict[str, Any]:
++    """Build a native Anthropic-compatible Messages request body."""
++    logger.debug(
++        "{}_REQUEST: native build model={} msgs={}",
++        policy.provider_name,
++        getattr(request_data, "model", "?"),
++        len(getattr(request_data, "messages", [])),
++    )
++
++    if policy.extra_body == "openrouter":
++        body = _build_openrouter_body(
++            request_data,
++            thinking_enabled=thinking_enabled,
++            policy=policy,
++        )
++    else:
++        body = build_base_native_anthropic_request_body(
++            request_data,
++            default_max_tokens=policy.default_max_tokens,
++            thinking_enabled=thinking_enabled,
++        )
++        _apply_extra_body_policy(body, request_data, policy)
++        if policy.force_stream:
++            body["stream"] = True
++
++    for postprocess in postprocessors:
++        postprocess(body, request_data, thinking_enabled)
++
++    logger.debug(
++        "{}_REQUEST: build done model={} msgs={} tools={}",
++        policy.provider_name,
++        body.get("model"),
++        len(body.get("messages", [])),
++        len(body.get("tools", [])),
++    )
++    return body
++
++
++def _build_openrouter_body(
++    request_data: Any,
++    *,
++    thinking_enabled: bool,
++    policy: NativeMessagesRequestPolicy,
++) -> dict[str, Any]:
++    try:
++        return build_openrouter_native_request_body(
++            request_data,
++            thinking_enabled=thinking_enabled,
++            default_max_tokens=policy.default_max_tokens,
++        )
++    except OpenRouterExtraBodyError as exc:
++        raise InvalidRequestError(str(exc)) from exc
++
++
++def _apply_extra_body_policy(
++    body: dict[str, Any],
++    request_data: Any,
++    policy: NativeMessagesRequestPolicy,
++) -> None:
++    extra = getattr(request_data, "extra_body", None)
++    if not extra:
++        return
++
++    if policy.extra_body == "drop":
++        return
++    if policy.extra_body == "reject":
++        message = (
++            policy.reject_extra_body_message
++            or f"{policy.provider_name} native Messages API does not support extra_body on requests."
++        )
++        raise InvalidRequestError(message)
++    if policy.extra_body == "merge_validated":
++        if isinstance(extra, dict):
++            try:
++                validate_openrouter_extra_body(extra)
++            except OpenRouterExtraBodyError as exc:
++                raise InvalidRequestError(str(exc)) from exc
++            body.update(extra)
++        return
++
++    raise AssertionError(f"Unhandled native extra_body policy: {policy.extra_body}")
+diff --git a/providers/transports/anthropic_messages/transport.py b/providers/transports/anthropic_messages/transport.py
+--- a/providers/transports/anthropic_messages/transport.py
++++ b/providers/transports/anthropic_messages/transport.py
+@@ -7,11 +7,7 @@
+ 
+ import httpx
+ 
+-from config.constants import ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS
+ from core.anthropic import iter_provider_stream_error_sse_events
+-from core.anthropic.native_messages_request import (
+-    build_base_native_anthropic_request_body,
+-)
+ from core.anthropic.native_sse_block_policy import (
+     NativeSseBlockPolicyState,
+     transform_native_sse_block_event,
+@@ -31,6 +27,10 @@
+ from providers.transports.http import maybe_await_aclose
+ 
+ from .http import model_list_json, raise_for_status_with_body
++from .request_policy import (
++    NativeMessagesRequestPolicy,
++    build_native_messages_request_body,
++)
+ from .stream import AnthropicMessagesStreamAdapter
+ 
+ StreamChunkMode = Literal["line", "event"]
+@@ -52,6 +52,7 @@ def __init__(
+         self._provider_name = provider_name
+         self._api_key = config.api_key
+         self._base_url = (config.base_url or default_base_url).rstrip("/")
++        self._request_policy = NativeMessagesRequestPolicy(provider_name=provider_name)
+         self._global_rate_limiter = GlobalRateLimiter.get_scoped_instance(
+             provider_name.lower(),
+             rate_limit=config.rate_limit,
+@@ -129,10 +130,10 @@ def _build_request_body_with_resolved_thinking(
+         self, request: Any, *, thinking_enabled: bool
+     ) -> dict:
+         """Build a native Anthropic request body after thinking is resolved."""
+-        return build_base_native_anthropic_request_body(
++        return build_native_messages_request_body(
+             request,
+-            default_max_tokens=ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS,
+             thinking_enabled=thinking_enabled,
++            policy=self._request_policy,
+         )
+ 
+     async def _send_stream_request(self, body: dict) -> httpx.Response:
+diff --git a/providers/transports/openai_chat/__init__.py b/providers/transports/openai_chat/__init__.py
+--- a/providers/transports/openai_chat/__init__.py
++++ b/providers/transports/openai_chat/__init__.py
+@@ -1,5 +1,10 @@
+ """OpenAI-compatible chat transport family."""
+ 
++from .request_policy import OpenAIChatRequestPolicy, build_openai_chat_request_body
+ from .transport import OpenAIChatTransport
+ 
+-__all__ = ["OpenAIChatTransport"]
++__all__ = [
++    "OpenAIChatRequestPolicy",
++    "OpenAIChatTransport",
++    "build_openai_chat_request_body",
++]
+diff --git a/providers/transports/openai_chat/request_policy.py b/providers/transports/openai_chat/request_policy.py
+new file mode 100644
+--- /dev/null
++++ b/providers/transports/openai_chat/request_policy.py
+@@ -0,0 +1,105 @@
++"""Request-body policy for OpenAI-compatible chat providers."""
++
++from __future__ import annotations
++
++from collections.abc import Callable, Iterable
++from copy import deepcopy
++from dataclasses import dataclass, field
++from typing import Any, Literal
++
++from loguru import logger
++
++from core.anthropic import ReasoningReplayMode, build_base_request_body
++from core.anthropic.conversion import OpenAIConversionError
++from providers.exceptions import InvalidRequestError
++
++MaxTokensField = Literal["max_tokens", "max_completion_tokens"]
++OpenAIChatPostprocessor = Callable[[dict[str, Any], Any, bool], None]
++
++
++@dataclass(frozen=True, slots=True)
++class OpenAIChatRequestPolicy:
++    """Provider policy for Anthropic-to-OpenAI chat request conversion."""
++
++    provider_name: str
++    include_extra_body: bool = False
++    max_tokens_field: MaxTokensField = "max_tokens"
++    strip_message_names: bool = False
++    unsupported_body_keys: frozenset[str] = field(default_factory=frozenset)
++    normalize_n_to_one: bool = False
++
++
++def build_openai_chat_request_body(
++    request_data: Any,
++    *,
++    thinking_enabled: bool,
++    policy: OpenAIChatRequestPolicy,
++    postprocessors: Iterable[OpenAIChatPostprocessor] = (),
++) -> dict[str, Any]:
++    """Build an OpenAI-compatible chat request body from an Anthropic request."""
++    logger.debug(
++        "{}_REQUEST: conversion start model={} msgs={}",
++        policy.provider_name,
++        getattr(request_data, "model", "?"),
++        len(getattr(request_data, "messages", [])),
++    )
++    try:
++        body = build_base_request_body(
++            request_data,
++            reasoning_replay=ReasoningReplayMode.REASONING_CONTENT
++            if thinking_enabled
++            else ReasoningReplayMode.DISABLED,
++        )
++    except OpenAIConversionError as exc:
++        raise InvalidRequestError(str(exc)) from exc
++
++    if policy.include_extra_body:
++        request_extra = getattr(request_data, "extra_body", None)
++        if isinstance(request_extra, dict) and request_extra:
++            body["extra_body"] = deepcopy(request_extra)
++
++    _apply_common_openai_chat_policy(body, policy)
++
++    for postprocess in postprocessors:
++        postprocess(body, request_data, thinking_enabled)
++
++    logger.debug(
++        "{}_REQUEST: conversion done model={} msgs={} tools={}",
++        policy.provider_name,
++        body.get("model"),
++        len(body.get("messages", [])),
++        len(body.get("tools", [])),
++    )
++    return body
++
++
++def _apply_common_openai_chat_policy(
++    body: dict[str, Any], policy: OpenAIChatRequestPolicy
++) -> None:
++    if policy.strip_message_names:
++        _strip_message_names(body.get("messages"))
++
++    for key in policy.unsupported_body_keys:
++        body.pop(key, None)
++
++    if policy.max_tokens_field == "max_completion_tokens":
++        _normalize_max_completion_tokens(body)
++
++    if policy.normalize_n_to_one and body.get("n") is not None:
++        body["n"] = 1
++
++
++def _strip_message_names(messages: Any) -> None:
++    if not isinstance(messages, list):
++        return
++    for message in messages:
++        if isinstance(message, dict):
++            message.pop("name", None)
++
++
++def _normalize_max_completion_tokens(body: dict[str, Any]) -> None:
++    if "max_completion_tokens" in body:
++        body.pop("max_tokens", None)
++        return
++    if "max_tokens" in body and body["max_tokens"] is not None:
++        body["max_completion_tokens"] = body.pop("max_tokens")
+diff --git a/providers/zai/client.py b/providers/zai/client.py
+--- a/providers/zai/client.py
++++ b/providers/zai/client.py
+@@ -6,11 +6,20 @@
+ 
+ from providers.base import ProviderConfig
+ from providers.defaults import ZAI_DEFAULT_BASE
+-from providers.transports.anthropic_messages import AnthropicMessagesTransport
+-
+-from .request import build_request_body
++from providers.transports.anthropic_messages import (
++    AnthropicMessagesTransport,
++    NativeMessagesRequestPolicy,
++    build_native_messages_request_body,
++)
+ 
+ _ANTHROPIC_VERSION = "2023-06-01"
++_REQUEST_POLICY = NativeMessagesRequestPolicy(
++    provider_name="ZAI",
++    extra_body="reject",
++    reject_extra_body_message=(
++        "Z.ai native Messages API does not support extra_body on requests."
++    ),
++)
+ 
+ 
+ class ZaiProvider(AnthropicMessagesTransport):
+@@ -26,9 +35,10 @@ def __init__(self, config: ProviderConfig):
+     def _build_request_body(
+         self, request: Any, thinking_enabled: bool | None = None
+     ) -> dict:
+-        return build_request_body(
++        return build_native_messages_request_body(
+             request,
+             thinking_enabled=self._is_thinking_enabled(request, thinking_enabled),
++            policy=_REQUEST_POLICY,
+         )
+ 
+     def _request_headers(self) -> dict[str, str]:
+diff --git a/providers/zai/request.py b/providers/zai/request.py
+deleted file mode 100644
+--- a/providers/zai/request.py
++++ /dev/null
+@@ -1,42 +0,0 @@
+-"""Native Anthropic Messages request builder for Z.ai."""
+-
+-from __future__ import annotations
+-
+-from typing import Any
+-
+-from loguru import logger
+-
+-from config.constants import ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS
+-from core.anthropic.native_messages_request import (
+-    build_base_native_anthropic_request_body,
+-)
+-from providers.exceptions import InvalidRequestError
+-
+-
+-def build_request_body(request_data: Any, *, thinking_enabled: bool) -> dict:
+-    """Build JSON for Z.ai Anthropic-compat ``POST …/messages``."""
+-    logger.debug(
+-        "ZAI_REQUEST: native build model={} msgs={}",
+-        getattr(request_data, "model", "?"),
+-        len(getattr(request_data, "messages", [])),
+-    )
+-
+-    body = build_base_native_anthropic_request_body(
+-        request_data,
+-        default_max_tokens=ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS,
+-        thinking_enabled=thinking_enabled,
+-    )
+-    extra = getattr(request_data, "extra_body", None)
+-    if extra:
+-        raise InvalidRequestError(
+-            "Z.ai native Messages API does not support extra_body on requests."
+-        )
+-    body["stream"] = True
+-
+-    logger.debug(
+-        "ZAI_REQUEST: build done model={} msgs={} tools={}",
+-        body.get("model"),
+-        len(body.get("messages", [])),
+-        len(body.get("tools", [])),
+-    )
+-    return body
+diff --git a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
+ 
+ [project]
+ name = "free-claude-code"
+-version = "2.3.19"
++version = "2.3.20"
+ description = "Middleware between Claude Code CLI (Anthropic API) and NVIDIA NIM"
+ readme = "README.md"
+ requires-python = ">=3.14.0"
+diff --git a/uv.lock b/uv.lock
+--- a/uv.lock
++++ b/uv.lock
+@@ -561,7 +561,7 @@ wheels = [
+ 
+ [[package]]
+ name = "free-claude-code"
+-version = "2.3.19"
++version = "2.3.20"
+ source = { editable = "." }
+ dependencies = [
+     { name = "aiohttp" },
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

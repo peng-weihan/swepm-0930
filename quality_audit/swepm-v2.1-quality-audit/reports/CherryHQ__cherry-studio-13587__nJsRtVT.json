@@ -1,0 +1,62 @@
+{
+  "instance_id": "CherryHQ__cherry-studio-13587",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.85,
+  "gold_patch_assessment": "The gold patch is a massive overhaul (~3900 lines, 20 files) that correctly implements all requirements from instruction.md: new direct backup format (version 6) copying IndexedDB/LocalStorage/Data dirs, handleStartupRestore on startup, legacy backup compatibility (format auto-detection), LAN transfer delete rename (deleteTempBackup → deleteLanTransferBackup) with path safety, resolveAndValidatePath utility, factory reset through backup layer (resetData), config.json migration to Data directory, and extensive renderer-side changes. The patch is technically sound and addresses the stated issue comprehensively.",
+  "base_vs_gold_expectation": "The test patch renames test calls from deleteTempBackup to deleteLanTransferBackup and imports resolveAndValidatePath (which doesn't exist in the base). Both will cause compile/runtime failures on the unpatched base: the method and function don't exist. With the gold patch applied, both exist and work correctly. So the verifier should correctly accept gold and reject base.",
+  "too_narrow_risks": [
+    "Tests only cover 2 of ~9 major requirements from instruction.md: the deleteLanTransferBackup rename and the resolveAndValidatePath utility.",
+    "New direct backup format (version 6) with createDirectBackupMetadata() and rewritten backup() method is completely untested.",
+    "Static handleStartupRestore() method (safety-critical startup restore logic detecting .restore directories) is completely untested.",
+    "Legacy backup compatibility (backupLegacy, restoreLegacy, format auto-detection in restore()) is completely untested.",
+    "restoreDirect() method with cross-platform Windows .restore handling is completely untested.",
+    "Factory reset via resetData() method (including Windows-specific logic) is completely untested.",
+    "config.json migration to Data directory (migrateConfigToDataDir in ConfigManager.ts) is completely untested.",
+    "All renderer-side changes (12+ files including BackupService.ts rewrite, new BasicDataSettings.tsx component, BackupPopup backupType prop, NutstoreService changes) are completely untested.",
+    "Preload API surface changes (removing data parameter from backup methods) are untested.",
+    "A candidate could pass all tests by only renaming deleteTempBackup to deleteLanTransferBackup and adding resolveAndValidatePath, without implementing any of the core backup system overhaul."
+  ],
+  "too_broad_risks": [],
+  "implementation_coupling": [
+    "BackupManager tests are coupled to the exact method name 'deleteLanTransferBackup', but this is a specific requirement so coupling is acceptable.",
+    "resolveAndValidatePath tests mock path.resolve with custom implementation, tightly coupling to the function's internal resolution strategy, though this is standard unit test practice."
+  ],
+  "environment_risks": [
+    "Test patch modifies tests/main.setup.ts to add electron-store mock - if the mock conflicts with other test infrastructure changes by a candidate, it could cause spurious failures.",
+    "Tests depend on pnpm test:main and vitest infrastructure being functional in the Docker image."
+  ],
+  "mismatches": [
+    "Massive scope mismatch between instruction.md requirements (9+ distinct features across 20 files) and test coverage (only 2 features tested in 2 test files).",
+    "The instruction describes a comprehensive backup system overhaul, but the tests would pass with a minimal rename-only change that doesn't implement the core backup functionality.",
+    "The task.toml categorizes this as 'debugging' but it is clearly a major feature implementation/refactoring task."
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch only modifies BackupManager.test.ts (rename deleteTempBackup→deleteLanTransferBackup calls) and file.test.ts (add resolveAndValidatePath tests), plus a main.setup.ts mock addition."
+    },
+    {
+      "file": "/audit_tasks/CherryHQ__cherry-studio-13587/tests/eval.sh",
+      "detail": "Only runs 2 test files: BackupManager.test.ts and file.test.ts"
+    },
+    {
+      "file": "/audit_tasks/CherryHQ__cherry-studio-13587/instruction.md",
+      "detail": "Lists 9+ distinct requirements including backup format v6, startup restore, legacy compat, LAN transfer rename, path safety, resolveAndValidatePath, factory reset, config migration"
+    },
+    {
+      "file": "/testbed/src/main/services/BackupManager.ts:817",
+      "detail": "Base code has deleteTempBackup method - test patch calls deleteLanTransferBackup which doesn't exist on base, ensuring base rejection"
+    },
+    {
+      "file": "/testbed/src/main/utils/file.ts",
+      "detail": "Base code does NOT have resolveAndValidatePath - test patch imports it, ensuring base rejection"
+    },
+    {
+      "file": "/audit_tasks/CherryHQ__cherry-studio-13587/solution/solve.sh",
+      "detail": "Gold patch is ~3900 lines touching 20 files, but tests only validate ~5% of the changes"
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch is a correct and comprehensive implementation, and the verifier will properly accept the gold patch and reject the unmodified base. However, the test coverage is drastically insufficient: only 2 of ~9 major requirements are tested (method rename and a path utility). A candidate could pass all tests with a minimal 2-function change without implementing the core backup system overhaul (version 6 format, startup restore, legacy compatibility, factory reset, config migration). The tests need significant expansion to cover the untested critical functionality, or the instance scope should be narrowed to match what the tests actually verify."
+}

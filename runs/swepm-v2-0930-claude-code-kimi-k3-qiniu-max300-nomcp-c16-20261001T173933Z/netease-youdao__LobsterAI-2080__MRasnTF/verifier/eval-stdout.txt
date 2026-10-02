@@ -1,0 +1,54 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+patching file src/renderer/components/MarkdownContent.test.ts
+The next patch would create the file src/renderer/components/cowork/selectedKitContextPrompt.test.ts,
+which already exists!  Assuming -R.
+patching file src/renderer/components/cowork/selectedKitContextPrompt.test.ts
+Hunk #1 FAILED at 1.
+Not deleting file src/renderer/components/cowork/selectedKitContextPrompt.test.ts as content differs from patch
+1 out of 1 hunk FAILED -- saving rejects to file src/renderer/components/cowork/selectedKitContextPrompt.test.ts.rej
+patching file src/renderer/services/kitCapability.test.ts
+
+> lobsterai@2026.5.27 precompile:electron
+> electron-builder install-app-deps
+
+  • electron-builder  version=24.13.3
+  • loaded configuration  file=/testbed/electron-builder.json
+  • rebuilding native dependencies  dependencies=better-sqlite3@12.11.1, bufferutil@4.1.0, utf-8-validate@6.0.6 platform=linux arch=x64
+  • install prebuilt binary  name=better-sqlite3 version=12.11.1 platform=linux arch=x64 napi=
+
+> lobsterai@2026.5.27 compile:electron
+> tsc --project electron-tsconfig.json
+
+
+> lobsterai@2026.5.27 pretest
+> npm rebuild better-sqlite3
+
+rebuilt dependencies successfully
+
+> lobsterai@2026.5.27 test
+> vitest run src/renderer/components/MarkdownContent.test.ts src/renderer/components/cowork/selectedKitContextPrompt.test.ts src/renderer/services/kitCapability.test.ts --reporter=verbose
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.11 [39m[90m/testbed[39m
+
+ [32m✓[39m src/renderer/components/cowork/selectedKitContextPrompt.test.ts[2m > [22mbuildSelectedKitContextPrompt[2m > [22mreturns undefined when no kit is selected[32m 1[2mms[22m[39m
+ [32m✓[39m src/renderer/components/cowork/selectedKitContextPrompt.test.ts[2m > [22mbuildSelectedKitContextPrompt[2m > [22mbuilds a capability index with identity, skills, mcp servers, and connectors[32m 1[2mms[22m[39m
+ [32m✓[39m src/renderer/components/cowork/selectedKitContextPrompt.test.ts[2m > [22mbuildSelectedKitContextPrompt[2m > [22mfalls back to installed skill IDs when marketplace skill metadata is unavailable[32m 0[2mms[22m[39m
+ [32m✓[39m src/renderer/components/cowork/selectedKitContextPrompt.test.ts[2m > [22mbuildSelectedKitContextPrompt[2m > [22mnever includes tryAsking examples or SKILL.md references[32m 0[2mms[22m[39m
+ [32m✓[39m src/renderer/components/cowork/selectedKitContextPrompt.test.ts[2m > [22mbuildSelectedKitContextPrompt[2m > [22muses the localized kit name from marketplace metadata[32m 0[2mms[22m[39m
+ [32m✓[39m src/renderer/components/cowork/selectedKitContextPrompt.test.ts[2m > [22mbuildSelectedKitContextPrompt[2m > [22mscopes the index to the current turn selection only[32m 0[2mms[22m[39m
+ [32m✓[39m src/renderer/components/cowork/selectedKitContextPrompt.test.ts[2m > [22mbuildSelectedKitContextPrompt[2m > [22mskips kits with no marketplace or installed record[32m 0[2mms[22m[39m
+ [32m✓[39m src/renderer/components/cowork/selectedKitContextPrompt.test.ts[2m > [22mbuildSelectedKitContextPrompt[2m > [22mnormalizes null marketplace capability fields to empty lists[32m 0[2mms[22m[39m
+ [32m✓[39m src/renderer/components/MarkdownContent.test.ts[2m > [22mlarge markdown preview threshold only applies to oversized content[32m 1[2mms[22m[39m
+ [32m✓[39m src/renderer/components/MarkdownContent.test.ts[2m > [22mlarge markdown preview keeps the head and latest tail[32m 0[2mms[22m[39m
+ [31m×[39m src/renderer/components/MarkdownContent.test.ts[2m > [22mkit links are treated as safe internal links[32m 2[2mms[22m[39m
+[31m   → safeUrlTransform is not a function[39m
+ [31m×[39m src/renderer/components/MarkdownContent.test.ts[2m > [22munsafe markdown protocols are still stripped[32m 0[2mms[22m[39m
+[31m   → safeUrlTransform is not a function[39m
+
+[2m Test Files [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m1 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m10 passed[39m[22m[90m (12)[39m
+[2m   Start at [22m 19:12:44
+[2m   Duration [22m 2.77s[2m (transform 848ms, setup 0ms, import 1.52s, tests 11ms, environment 0ms)[22m
+
+OMNIGRIL_EXIT_CODE=1

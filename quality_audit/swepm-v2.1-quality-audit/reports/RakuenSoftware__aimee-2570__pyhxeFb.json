@@ -1,0 +1,61 @@
+{
+  "instance_id": "RakuenSoftware__aimee-2570",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.6,
+  "gold_patch_assessment": "The gold patch faithfully implements the issue: it creates promptwrites.go with PromptAllowsWrites and DelegateMayWrite, creates promptwrites_stage.go for the stage 15 handler (event 6671), registers the new stage in main.go and process-contracts.json, adds the C-side delegate_may_write seam with fail-closed provider pattern, replaces the inline two-line composition in server_compute.c with a single delegate_may_write call, and retains delegate_prompt_allows_writes in delegate_prompt.c for the CLI with a detailed retention comment. The four keyword lists match the C exactly, and the whole-prompt vs scoped prohibition distinction is preserved and tested.",
+  "base_vs_gold_expectation": "On the base code with the test patch applied, the Go tests will fail to compile because promptwrites.go and promptwrites_stage.go do not exist, so PromptAllowsWrites, DelegateMayWrite, StageMayWrite, and handleMayWrite are undefined symbols. This correctly rejects the base. With the gold patch applied, the Go tests should compile and pass. HOWEVER, the eval.sh chains Go tests with '&&' to a ctest command for test_server_compute, which is NOT a CMake test target (it exists only in Rules.mk). This means ctest would either find no matching test (exit 8) or fail because cmake configure itself fails. The gold patch may fail verification due to the ctest step.",
+  "too_narrow_risks": [
+    "The C-level integration test (test_server_compute.c modifications) cannot run because test_server_compute is not registered as a CMake test, so the eval never exercises the C-side delegate_may_write call path or verifies that server_compute.c correctly uses the provider pattern instead of inline composition.",
+    "No test verifies the C header API (aimee_delegates_maywrite_request_encode / _response_decode) which is how the server's stage adapter communicates with the module.",
+    "No test verifies the server-side stage adapter registration (module_stage_adapters.c changes) at any level."
+  ],
+  "too_broad_risks": [
+    "The test patch updates tests/baselines/refactor/index.json with specific sha256 hashes for delegate_launch_args.h and module_api.h. While not directly tested by the eval commands, these hash values are coupled to the exact gold patch content and would reject any alternative implementation that achieves the same behavior with different code.",
+    "The eval runs cmake build as a pre-test step, which builds the entire C project. If cmake fails (as observed due to missing _learn.c at CMakeLists.txt:683), the ctest step fails regardless of solution correctness."
+  ],
+  "implementation_coupling": [
+    "The main_test.go change requires event 6671 specifically, coupling to the exact event number chosen in the gold patch. An alternative using a different event ID would fail.",
+    "The promptwrites_stage_test.go tests reference internal constants (StageMayWrite=15, mayWriteRequestMagic=0x51575744, mayWriteResponseMagic=0x53575744, wireVersion, roleMax) by their package-internal names, testing through the Handle dispatcher. While this is standard Go testing practice, it couples to the exact stage handler implementation rather than testing through a public API.",
+    "The baselines/refactor/index.json sha256 updates are exact-hash matches for the gold patch's file modifications, rejecting any alternative that differs even in whitespace."
+  ],
+  "environment_risks": [
+    "CMake configure fails on the base repo (CMakeLists.txt:683 references non-existent _learn.c causing 'No SOURCES given to target: aimee-data'). Since eval.sh does not use 'set -e', the script continues but produces no working build directory.",
+    "test_server_compute is defined only in src/tests/Rules.mk, not in src/tests/CMakeLists.txt. The eval.sh runs 'ctest -R ^test_server_compute$' which will match zero tests. In CMake 3.25.1, ctest returns exit code 8 when no tests match the -R pattern.",
+    "The eval command chains Go tests and ctest with '&&', so even if Go tests pass, the ctest failure propagates as the final exit code, potentially causing the gold patch to fail verification.",
+    "The docker image (key4127/refactor-dockerhub:RakuenSoftware__aimee-2570) may have a different environment that resolves these issues, but this cannot be verified from the repository state alone."
+  ],
+  "mismatches": [
+    "eval.sh runs 'ctest -R ^test_server_compute$' but test_server_compute is not registered as a CMake test in src/tests/CMakeLists.txt — it is only defined in the Makefile-based build system (src/tests/Rules.mk).",
+    "The test patch modifies src/tests/test_server_compute.c (adding the may_write_provider and include), but the eval pipeline has no mechanism to build or run this C test since it uses cmake/ctest rather than make.",
+    "CMakeLists.txt:683 lists '_learn.c' (without the ${AIMEE_SRC_DIR}/ prefix or a valid path), and this file does not exist anywhere in the repository, causing cmake configure to fail."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/RakuenSoftware__aimee-2570/tests/eval.sh",
+      "detail": "Line 49: eval runs '(cd server-go && CGO_ENABLED=0 go test ./modules/delegates ./cmd/aimee-module) && ctest --test-dir build --output-on-failure -R ^test_server_compute$'. The && chain means both Go tests AND ctest must pass."
+    },
+    {
+      "file": "/testbed/src/tests/CMakeLists.txt",
+      "detail": "Complete file read: test_server_compute is NOT defined anywhere as an aimee_add_test or add_test/add_executable target. Only Rules.mk at line 1929 defines it."
+    },
+    {
+      "file": "/testbed/CMakeLists.txt",
+      "detail": "Line 683: DATA_SRCS includes '_learn.c' without proper path prefix; this file does not exist in the repository, causing cmake configure to fail with 'No SOURCES given to target: aimee-data'."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch creates promptwrites_test.go (95 lines) and promptwrites_stage_test.go (116 lines) with comprehensive behavioral tests for the Go module, and modifies test_server_compute.c (adding provider registration that can never run via the eval pipeline)."
+    },
+    {
+      "file": "/testbed/server-go/modules/delegates/delegates.go",
+      "detail": "Line 68-70: Base code dispatches to handleIsolation for StageIsolation but has no StageMayWrite case, confirming gold patch is needed for new stage handler."
+    },
+    {
+      "file": "/testbed/src/server/server_compute.c",
+      "detail": "Lines 1233-1234: Base code has inline composition 'delegate_role_is_write(role)' && 'delegate_prompt_allows_writes(prompt)' which the gold patch replaces with single delegate_may_write(role, prompt) call."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch is well-crafted and faithfully addresses the stated issue of composing delegate write permission in one place. The Go-level tests are thorough, covering prompt-writes logic (keyword matching, whole-prompt vs scoped prohibitions, empty prompt abstention), the composed DelegateMayWrite function, stage handler wire protocol (including malformed requests, cancellation, large briefs), and module registry consistency. However, the eval.sh has a critical environment issue: it chains Go tests with ctest for test_server_compute using '&&', but test_server_compute is not a CMake test (only defined in Rules.mk). Additionally, cmake configure fails due to a missing source file reference. These issues mean the ctest step will fail even when the gold patch is correctly applied, potentially causing false negatives. The recommended fix is to either (1) remove the ctest step from eval.sh and rely solely on Go tests, or (2) add test_server_compute to CMakeLists.txt. The C-side test modifications in test_server_compute.c are dead code in the current eval pipeline."
+}

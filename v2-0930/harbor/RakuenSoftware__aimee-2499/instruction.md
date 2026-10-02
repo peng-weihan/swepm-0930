@@ -1,0 +1,5 @@
+Delegate handoff validation should live in the delegates module process instead of being implemented as C-side prompt helper logic. Add a Go handoff stage that validates `delegate_result_v1` JSON, checks allowed statuses, counts changed and outside-owned files, recognizes passed test reports and command history, and marks invalid or unverifiable handoffs as needing supervisor review.
+
+Expose the handoff request and response wire helpers through the delegates module API, register the stage in `process-contracts.json`, and route server-side callers through the module-stage adapter. The C prompt code should keep only prompt construction and wrapper calls, delegating validation decisions to the new module stage.
+
+Update the coordinator, delegate economics metadata, patch coordinator, OAuth fallback handling, and tests so successful handoffs with verified tests are accepted, incomplete write handoffs are surfaced clearly, and changes outside owned files are not silently treated as valid. Existing delegate prompts and module registry checks must continue to agree with the advertised process contract.

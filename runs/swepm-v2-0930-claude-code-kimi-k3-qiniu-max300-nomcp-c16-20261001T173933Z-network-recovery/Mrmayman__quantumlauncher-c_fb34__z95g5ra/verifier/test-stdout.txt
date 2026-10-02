@@ -1,0 +1,184 @@
+SPECBUILD_RESOLVED_PYTHON=python3
+Checking patch tests/src/launch.rs...
+patching file tests/src/launch.rs
+Hunk #2 FAILED at 64.
+1 out of 2 hunks FAILED -- saving rejects to file tests/src/launch.rs.rej
+error: while searching for:
+}
+
+type ProcessExitResult = Option<
+    Result<
+        (ExitStatus, ql_core::InstanceSelection, Option<Diagnostic>),
+        ql_core::read_log::ReadError,
+    >,
+>;
+
+async fn handle_process_exit(handle: tokio::task::JoinHandle<ProcessExitResult>) -> bool {
+
+error: patch failed: tests/src/launch.rs:63
+error: tests/src/launch.rs: patch does not apply
+Checking patch tests/src/main.rs...
+error: while searching for:
+    fails: &mut Vec<(&'a str, Option<Loader>)>,
+    cli: &Cli,
+) {
+    let instance = ql_core::InstanceSelection::new(name, false);
+    attempt(ql_mod_manager::loaders::uninstall_loader(instance.clone()).await);
+    set_terminal(cli.verbose);
+    if !launch::launch(name.to_owned(), cli.timeout.unwrap_or(60.0), cli).await {
+        fails.push((name, None));
+    }
+    for loader in loaders {
+
+error: patch failed: tests/src/main.rs:116
+error: tests/src/main.rs: patch does not apply
+patching file tests/src/main.rs
+Hunk #1 FAILED at 116.
+1 out of 2 hunks FAILED -- saving rejects to file tests/src/main.rs.rej
+info: syncing channel updates for 1.89-x86_64-unknown-linux-gnu
+
+  1.89-x86_64-unknown-linux-gnu unchanged - rustc 1.89.0 (29483883e 2025-08-04)
+
+info: checking for self-update (current version: 1.29.0)
+info: downloading self-update (new version: 1.29.1)
+info: using existing install for 1.89-x86_64-unknown-linux-gnu
+info: default toolchain set to 1.89-x86_64-unknown-linux-gnu
+
+  1.89-x86_64-unknown-linux-gnu unchanged - rustc 1.89.0 (29483883e 2025-08-04)
+
+   Compiling zerofrom v0.1.6
+   Compiling zeroize v1.8.2
+   Compiling mio v1.1.1
+   Compiling futures-io v0.3.32
+   Compiling yoke v0.8.1
+   Compiling smallvec v1.15.1
+   Compiling rustls-pki-types v1.14.0
+   Compiling zerovec v0.11.5
+   Compiling tokio v1.50.0
+   Compiling tinystr v0.8.2
+   Compiling icu_locale_core v2.1.1
+   Compiling potential_utf v0.1.4
+   Compiling zerotrie v0.2.3
+   Compiling futures-util v0.3.32
+   Compiling aws-lc-rs v1.16.2
+   Compiling icu_provider v2.1.1
+   Compiling icu_collections v2.1.1
+   Compiling rustls-webpki v0.103.10
+   Compiling tracing v0.1.44
+   Compiling log v0.4.29
+   Compiling tokio-util v0.7.18
+   Compiling rustls v0.23.37
+   Compiling h2 v0.4.13
+   Compiling icu_properties v2.1.2
+   Compiling icu_normalizer v2.1.1
+   Compiling hyper v1.8.1
+   Compiling serde v1.0.228
+   Compiling idna_adapter v1.2.1
+   Compiling linux-raw-sys v0.12.1
+   Compiling idna v1.1.0
+   Compiling rustix v1.1.4
+   Compiling hyper-util v0.1.20
+   Compiling rustls-native-certs v0.8.3
+   Compiling tower v0.5.3
+   Compiling tokio-rustls v0.26.4
+   Compiling tower-http v0.6.8
+   Compiling hyper-rustls v0.27.7
+   Compiling serde_urlencoded v0.7.1
+   Compiling zopfli v0.8.3
+   Compiling rustls-platform-verifier v0.6.2
+   Compiling xattr v1.6.1
+   Compiling url v2.5.8
+   Compiling futures-executor v0.3.32
+   Compiling reqwest v0.13.2
+   Compiling zip v7.2.0
+   Compiling thiserror v2.0.18
+   Compiling tar v0.4.45
+   Compiling futures v0.3.32
+   Compiling quick-xml v0.39.2
+   Compiling ql_core v0.0.0 (/testbed/crates/ql_core)
+   Compiling dbus-secret-service v4.1.0
+   Compiling ql_java_handler v0.0.0 (/testbed/crates/ql_java_handler)
+   Compiling bytemuck v1.25.0
+   Compiling jpeg-decoder v0.3.2
+   Compiling keyring v3.6.3
+   Compiling image v0.24.9
+   Compiling ql_instances v0.0.0 (/testbed/crates/ql_instances)
+   Compiling ql_mod_manager v0.0.0 (/testbed/crates/ql_mod_manager)
+   Compiling clap v4.6.0
+   Compiling tests v0.1.0 (/testbed/tests)
+error[E0308]: mismatched types
+  --> tests/src/launch.rs:15:13
+   |
+14 |         ql_instances::launch(
+   |         -------------------- arguments to this function are incorrect
+15 |             Arc::from(name),
+   |             ^^^^^^^^^^^^^^^ expected `String`, found `Arc<_, _>`
+   |
+   = note: expected struct `std::string::String`
+              found struct `Arc<_, _>`
+note: function defined here
+  --> /testbed/crates/ql_instances/src/instance/launch/mod.rs:27:14
+   |
+27 | pub async fn launch(
+   |              ^^^^^^
+
+error[E0308]: mismatched types
+   --> tests/src/main.rs:122:24
+    |
+122 |     if !launch::launch(name.to_owned(), cli.timeout.unwrap_or(60.0), cli).await {
+    |         -------------- ^^^^^^^^^^^^^^^ expected `&str`, found `String`
+    |         |
+    |         arguments to this function are incorrect
+    |
+note: function defined here
+   --> tests/src/launch.rs:10:14
+    |
+10  | pub async fn launch(name: &str, timeout: f32, cli: &Cli) -> bool {
+    |              ^^^^^^ ----------
+help: try removing the method call
+    |
+122 -     if !launch::launch(name.to_owned(), cli.timeout.unwrap_or(60.0), cli).await {
+122 +     if !launch::launch(name, cli.timeout.unwrap_or(60.0), cli).await {
+    |
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `tests` (bin "tests") due to 2 previous errors
+   Compiling tests v0.1.0 (/testbed/tests)
+error[E0308]: mismatched types
+  --> tests/src/launch.rs:15:13
+   |
+14 |         ql_instances::launch(
+   |         -------------------- arguments to this function are incorrect
+15 |             Arc::from(name),
+   |             ^^^^^^^^^^^^^^^ expected `String`, found `Arc<_, _>`
+   |
+   = note: expected struct `std::string::String`
+              found struct `Arc<_, _>`
+note: function defined here
+  --> /testbed/crates/ql_instances/src/instance/launch/mod.rs:27:14
+   |
+27 | pub async fn launch(
+   |              ^^^^^^
+
+error[E0308]: mismatched types
+   --> tests/src/main.rs:122:24
+    |
+122 |     if !launch::launch(name.to_owned(), cli.timeout.unwrap_or(60.0), cli).await {
+    |         -------------- ^^^^^^^^^^^^^^^ expected `&str`, found `String`
+    |         |
+    |         arguments to this function are incorrect
+    |
+note: function defined here
+   --> tests/src/launch.rs:10:14
+    |
+10  | pub async fn launch(name: &str, timeout: f32, cli: &Cli) -> bool {
+    |              ^^^^^^ ----------
+help: try removing the method call
+    |
+122 -     if !launch::launch(name.to_owned(), cli.timeout.unwrap_or(60.0), cli).await {
+122 +     if !launch::launch(name, cli.timeout.unwrap_or(60.0), cli).await {
+    |
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `tests` (bin "tests" test) due to 2 previous errors
+OMNIGRIL_EXIT_CODE=101

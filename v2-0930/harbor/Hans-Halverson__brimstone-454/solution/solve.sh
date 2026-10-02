@@ -1,0 +1,1929 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/src/js/runtime/arguments_object.rs b/src/js/runtime/arguments_object.rs
+--- a/src/js/runtime/arguments_object.rs
++++ b/src/js/runtime/arguments_object.rs
+@@ -1,14 +1,16 @@
+ use std::mem::size_of;
+ 
+ use crate::{
+-    extend_object, must,
++    extend_object, must, must_a,
+     parser::scope_tree::SHADOWED_SCOPE_SLOT_NAME,
+     runtime::{
+-        Context, EvalResult, HeapItemKind, HeapPtr, PropertyFlags, Value,
+-        abstract_operations::{create_data_property_or_throw, define_property_or_throw},
++        Context, EvalResult, HeapPtr, Value,
++        abstract_operations::create_data_property_or_throw,
++        accessor::Accessor,
+         alloc_error::AllocResult,
+         bitmap::ValueBitmap,
+         bytecode::function::ClosureObject,
++        common_shapes::CommonShape,
+         gc::{Handle, HeapItem, HeapVisitor},
+         interned_strings::InternedStrings,
+         intrinsics::intrinsics::Intrinsic,
+@@ -35,12 +37,32 @@ extend_object! {
+ }
+ 
+ impl UnmappedArgumentsObject {
+-    pub fn new(cx: Context) -> AllocResult<Handle<ObjectValue>> {
+-        Ok(ObjectBuilder::<ObjectValue>::new(cx)
+-            .kind(HeapItemKind::UnmappedArgumentsObject)
+-            .intrinsic_proto(Intrinsic::ObjectPrototype)
++    /// CreateUnmappedArgumentsObject (https://tc39.es/ecma262/#sec-createunmappedargumentsobject)
++    pub fn new(cx: Context, arguments: &[Handle<Value>]) -> AllocResult<Handle<ObjectValue>> {
++        let mut object = ObjectBuilder::<ObjectValue>::new(cx)
++            .common_shape(CommonShape::UnmappedArguments)?
+             .build()?
+-            .to_handle())
++            .to_handle();
++
++        let length_value = cx.number(arguments.len());
++
++        // Set @@iterator to Array.prototype.values
++        let iterator_value = cx.get_intrinsic(Intrinsic::ArrayPrototypeValues);
++
++        // Set callee to throw a type error when accessed
++        let throw_type_error = cx.get_intrinsic(Intrinsic::ThrowTypeError);
++        let callee = Accessor::new(cx, Some(throw_type_error), Some(throw_type_error))?;
++
++        object.init_properties(cx, &[length_value, iterator_value.into(), callee.into()])?;
++
++        // Set indexed argument properties
++        let mut index_key = PropertyKey::uninit().to_handle(cx);
++        for (i, argument) in arguments.iter().enumerate() {
++            index_key.replace(PropertyKey::array_index(cx, i as u32)?);
++            must_a!(create_data_property_or_throw(cx, object, index_key, *argument));
++        }
++
++        Ok(object)
+     }
+ }
+ 
+@@ -73,7 +95,7 @@ impl MappedArgumentsObject {
+         let shadowed_name = InternedStrings::alloc_static_wtf8_str(cx, &SHADOWED_SCOPE_SLOT_NAME)?;
+ 
+         let mut object = ObjectBuilder::<MappedArgumentsObject>::new(cx)
+-            .intrinsic_proto(Intrinsic::ObjectPrototype)
++            .common_shape(CommonShape::MappedArguments)?
+             .build()?;
+ 
+         set_uninit!(object.scope, *scope);
+@@ -91,42 +113,25 @@ impl MappedArgumentsObject {
+                 .ptr_eq(&*shadowed_name)
+         })?;
+ 
+-        Self::init_properties(cx, object, callee, arguments)?;
++        let length_value = cx.number(arguments.len());
+ 
+-        Ok(object)
+-    }
++        // Set @@iterator to Array.prototype.values
++        let iterator_value = cx.get_intrinsic(Intrinsic::ArrayPrototypeValues);
+ 
+-    fn init_properties(
+-        cx: Context,
+-        object: Handle<MappedArgumentsObject>,
+-        callee: Handle<ClosureObject>,
+-        arguments: &[Handle<Value>],
+-    ) -> EvalResult<()> {
+-        // Property key is shared between iterations
+-        let mut index_key = PropertyKey::uninit().to_handle(cx);
++        // Set callee property to the enclosing function
++        object
++            .as_object()
++            .init_properties(cx, &[length_value, iterator_value.into(), callee.into()])?;
+ 
+-        // Set indexed argument properties
++        // Set indexed argument properties, which go through the exotic [[DefineOwnProperty]] so they
++        // are mapped to the enclosing scope.
++        let mut index_key = PropertyKey::uninit().to_handle(cx);
+         for (i, argument) in arguments.iter().enumerate() {
+             index_key.replace(PropertyKey::array_index(cx, i as u32)?);
+             must!(create_data_property_or_throw(cx, object.into(), index_key, *argument));
+         }
+ 
+-        // Set length property
+-        let length_value = cx.number(arguments.len());
+-        let length_desc = PropertyDescriptor::non_enumerable_data(length_value);
+-        must!(define_property_or_throw(cx, object.into(), cx.names.length(), length_desc));
+-
+-        // Set @@iterator to Array.prototype.values
+-        let iterator_key = cx.symbols.iterator();
+-        let iterator_value = cx.get_intrinsic(Intrinsic::ArrayPrototypeValues);
+-        let iterator_desc = PropertyDescriptor::non_enumerable_data(iterator_value.into());
+-        must!(define_property_or_throw(cx, object.into(), iterator_key, iterator_desc));
+-
+-        // Set callee property to the enclosing function
+-        let callee_desc = PropertyDescriptor::non_enumerable_data(callee.into());
+-        must!(define_property_or_throw(cx, object.into(), cx.names.callee(), callee_desc));
+-
+-        Ok(())
++        Ok(object)
+     }
+ 
+     /// If this key corresponds to the index of a mapped parameter, return the index in the scope
+@@ -269,45 +274,6 @@ impl VirtualObject for Handle<MappedArgumentsObject> {
+     }
+ }
+ 
+-/// CreateUnmappedArgumentsObject (https://tc39.es/ecma262/#sec-createunmappedargumentsobject)
+-pub fn create_unmapped_arguments_object(
+-    cx: Context,
+-    arguments: &[Handle<Value>],
+-) -> EvalResult<Handle<Value>> {
+-    let object = UnmappedArgumentsObject::new(cx)?;
+-
+-    // Set length property
+-    let length_value = cx.number(arguments.len());
+-    let length_desc = PropertyDescriptor::non_enumerable_data(length_value);
+-    must!(define_property_or_throw(cx, object, cx.names.length(), length_desc));
+-
+-    // Property key is shared between iterations
+-    let mut index_key = PropertyKey::uninit().to_handle(cx);
+-
+-    // Set indexed argument properties
+-    for (i, argument) in arguments.iter().enumerate() {
+-        index_key.replace(PropertyKey::array_index(cx, i as u32)?);
+-        must!(create_data_property_or_throw(cx, object, index_key, *argument));
+-    }
+-
+-    // Set @@iterator to Array.prototype.values
+-    let iterator_key = cx.symbols.iterator();
+-    let iterator_value = cx.get_intrinsic(Intrinsic::ArrayPrototypeValues);
+-    let iterator_desc = PropertyDescriptor::non_enumerable_data(iterator_value.into());
+-    must!(define_property_or_throw(cx, object, iterator_key, iterator_desc));
+-
+-    // Set callee to throw a type error when accessed
+-    let throw_type_error = cx.get_intrinsic(Intrinsic::ThrowTypeError);
+-    let callee_desc = PropertyDescriptor::accessor(
+-        Some(throw_type_error),
+-        Some(throw_type_error),
+-        PropertyFlags::empty(),
+-    );
+-    must!(define_property_or_throw(cx, object, cx.names.callee(), callee_desc));
+-
+-    Ok(object.into())
+-}
+-
+ impl HeapItem for MappedArgumentsObject {
+     fn byte_size(_: HeapPtr<Self>) -> usize {
+         size_of::<MappedArgumentsObject>()
+diff --git a/src/js/runtime/array_object.rs b/src/js/runtime/array_object.rs
+--- a/src/js/runtime/array_object.rs
++++ b/src/js/runtime/array_object.rs
+@@ -6,6 +6,7 @@ use crate::{
+         Context, EvalResult, Handle, HeapPtr, Realm, Value,
+         abstract_operations::{construct, create_data_property_or_throw, get_function_realm},
+         alloc_error::AllocResult,
++        common_shapes::CommonShape,
+         error::{range_error, type_error},
+         gc::{HeapItem, HeapVisitor},
+         get,
+@@ -34,15 +35,44 @@ extend_object! {
+     }
+ }
+ 
++pub enum ArrayCreateShape {
++    Default,
++    Common(CommonShape),
++    Proto(Option<Handle<ObjectValue>>),
++}
++
+ impl ArrayObject {
+     pub const VIRTUAL_OBJECT_VTABLE: *const () = extract_virtual_object_vtable::<Self>();
+ 
+-    pub fn new(cx: Context, proto: Handle<ObjectValue>) -> AllocResult<Handle<ArrayObject>> {
+-        let mut array = ObjectBuilder::<ArrayObject>::new(cx).proto(proto).build()?;
++    /// Create a new array object with the given length and shape. Note that if a common shape is
++    /// used the caller is responsible for initializing the object's properties.
++    pub fn new(
++        cx: Context,
++        mut realm: Handle<Realm>,
++        length: u32,
++        shape: ArrayCreateShape,
++    ) -> AllocResult<Handle<ArrayObject>> {
++        let mut array = match shape {
++            ArrayCreateShape::Default => {
++                let proto = realm.get_intrinsic(Intrinsic::ArrayPrototype);
++                ObjectBuilder::<ArrayObject>::new(cx).proto(proto).build()?
++            }
++            ArrayCreateShape::Common(common_shape) => {
++                let shape = realm.get_common_shape(cx, common_shape)?;
++                ObjectBuilder::<ArrayObject>::new(cx).shape(shape).build()?
++            }
++            ArrayCreateShape::Proto(proto) => {
++                let proto = proto.unwrap_or_else(|| realm.get_intrinsic(Intrinsic::ArrayPrototype));
++                ObjectBuilder::<ArrayObject>::new(cx).proto(proto).build()?
++            }
++        };
+ 
+         set_uninit!(array.is_length_writable, true);
+ 
+-        Ok(array.to_handle())
++        let array = array.to_handle();
++        array.as_object().set_array_properties_length(cx, length)?;
++
++        Ok(array)
+     }
+ }
+ 
+@@ -126,28 +156,20 @@ pub fn array_create(
+     proto: Option<Handle<ObjectValue>>,
+ ) -> EvalResult<Handle<ArrayObject>> {
+     let realm = cx.current_realm();
+-    array_create_in_realm(cx, realm, length, proto)
++    array_create_in_realm(cx, realm, length, ArrayCreateShape::Proto(proto))
+ }
+ 
+ pub fn array_create_in_realm(
+     cx: Context,
+     realm: Handle<Realm>,
+     length: u64,
+-    proto: Option<Handle<ObjectValue>>,
++    shape: ArrayCreateShape,
+ ) -> EvalResult<Handle<ArrayObject>> {
+     let Ok(length) = u32::try_from(length) else {
+         return range_error(cx, "array length out of range");
+     };
+ 
+-    let proto = proto.unwrap_or_else(|| realm.get_intrinsic(Intrinsic::ArrayPrototype));
+-
+-    let mut array_object = ArrayObject::new(cx, proto)?;
+-
+-    let length_value = cx.number(length);
+-    let length_desc = PropertyDescriptor::data(length_value, PropertyFlags::empty().writable());
+-    must!(array_object.define_own_property(cx, cx.names.length(), length_desc));
+-
+-    Ok(array_object)
++    Ok(ArrayObject::new(cx, realm, length, shape)?)
+ }
+ 
+ /// ArraySpeciesCreate (https://tc39.es/ecma262/#sec-arrayspeciescreate)
+diff --git a/src/js/runtime/bound_function_object.rs b/src/js/runtime/bound_function_object.rs
+--- a/src/js/runtime/bound_function_object.rs
++++ b/src/js/runtime/bound_function_object.rs
+@@ -44,7 +44,7 @@ impl BoundFunctionObject {
+ 
+         let bound_func = BuiltinFunction::create_builtin_function_without_properties(
+             cx,
+-            RuntimeFunction::BoundFunctionObject_call,
++            RuntimeFunction::BoundFunctionObject_call.to_id(),
+             /* name */ None,
+             // Use realm of calling function. GetFunctionRealm ignores this function and instead
+             // uses realm of bound target function.
+diff --git a/src/js/runtime/builtin_function.rs b/src/js/runtime/builtin_function.rs
+--- a/src/js/runtime/builtin_function.rs
++++ b/src/js/runtime/builtin_function.rs
+@@ -54,82 +54,28 @@ impl BuiltinFunction {
+         realm: Handle<Realm>,
+         prefix: Option<&str>,
+     ) -> AllocResult<Handle<ObjectValue>> {
+-        Ok(Self::create_builtin_function(
++        // Assumes that the name property for all built-in functions is within the string length
++        // limit, otherwise panic.
++        let name = must_a!(build_function_name(cx, name, prefix));
++
++        let bytecode_function = BytecodeFunction::new_rust_runtime_function(
+             cx,
+             builtin_func,
+-            length,
+-            name,
+             realm,
+-            // Default to Function.prototype
+-            Some(realm.get_intrinsic(Intrinsic::FunctionPrototype)),
+-            prefix,
+             /* is_constructor */ false,
+-        )?
+-        .as_object())
+-    }
+-
+-    fn create_builtin_function(
+-        cx: Context,
+-        builtin_func: RuntimeFunctionId,
+-        length: u32,
+-        name: Handle<PropertyKey>,
+-        realm: Handle<Realm>,
+-        prototype: Option<Handle<ObjectValue>>,
+-        prefix: Option<&str>,
+-        is_constructor: bool,
+-    ) -> AllocResult<Handle<ClosureObject>> {
+-        let func = Self::create_builtin_function_without_properties_impl(
+-            cx,
+-            builtin_func,
+             Some(name),
+-            realm,
+-            prototype,
+-            is_constructor,
++            length,
+         )?;
+-        Self::install_common_properties(cx, func.into(), length, name, prefix)?;
+ 
+-        Ok(func)
+-    }
++        let closure =
++            ClosureObject::new(cx, bytecode_function, realm.default_global_scope(), realm)?;
+ 
+-    fn install_common_properties(
+-        cx: Context,
+-        func: Handle<ObjectValue>,
+-        length: u32,
+-        name: Handle<PropertyKey>,
+-        prefix: Option<&str>,
+-    ) -> AllocResult<()> {
+-        set_function_length(cx, func, length)?;
+-
+-        // Assumes that the name property for all built-in functions is within the string length
+-        // limit, otherwise panic.
+-        must_a!(set_function_name(cx, func, name, prefix));
+-
+-        Ok(())
++        Ok(closure.as_object())
+     }
+ 
+     /// Create a function with the given internal slots but without installing the `length` and
+     /// `name` properties.
+-    ///
+-    /// Prototype is the raw value for the [[Prototype]] internal slot - n.
+     pub fn create_builtin_function_without_properties(
+-        cx: Context,
+-        builtin_func: RuntimeFunction,
+-        name: Option<Handle<PropertyKey>>,
+-        realm: Handle<Realm>,
+-        prototype: Option<Handle<ObjectValue>>,
+-        is_constructor: bool,
+-    ) -> AllocResult<Handle<ClosureObject>> {
+-        Self::create_builtin_function_without_properties_impl(
+-            cx,
+-            builtin_func.to_id(),
+-            name,
+-            realm,
+-            prototype,
+-            is_constructor,
+-        )
+-    }
+-
+-    fn create_builtin_function_without_properties_impl(
+         cx: Context,
+         builtin_func: RuntimeFunctionId,
+         name: Option<Handle<PropertyKey>>,
+@@ -148,9 +94,16 @@ impl BuiltinFunction {
+             realm,
+             is_constructor,
+             name,
++            // Function length is set later by caller if needed
++            0,
+         )?;
+ 
+-        ClosureObject::new_builtin(cx, bytecode_function, realm.default_global_scope(), prototype)
++        ClosureObject::new_without_properties(
++            cx,
++            bytecode_function,
++            realm.default_global_scope(),
++            prototype,
++        )
+     }
+ 
+     /// Create the constructor function for an intrinsic.
+@@ -162,16 +115,21 @@ impl BuiltinFunction {
+         realm: Handle<Realm>,
+         prototype: Intrinsic,
+     ) -> AllocResult<Handle<ObjectValue>> {
+-        Ok(Self::create_builtin_function(
++        let closure = Self::create_builtin_function_without_properties(
+             cx,
+             builtin_func.to_id(),
+-            length,
+-            name,
++            Some(name),
+             realm,
+             Some(realm.get_intrinsic(prototype)),
+-            None,
+             /* is_constructor */ true,
+-        )?
+-        .as_object())
++        )?;
++
++        set_function_length(cx, closure.into(), length)?;
++
++        // Assumes that the name property for all built-in functions is within the string length
++        // limit, otherwise panic.
++        must_a!(set_function_name(cx, closure.into(), name, None));
++
++        Ok(closure.as_object())
+     }
+ }
+diff --git a/src/js/runtime/bytecode/function.rs b/src/js/runtime/bytecode/function.rs
+--- a/src/js/runtime/bytecode/function.rs
++++ b/src/js/runtime/bytecode/function.rs
+@@ -5,7 +5,7 @@ use crate::{
+     extend_object, field_offset, impl_array_instance, must_a,
+     parser::loc::Pos,
+     runtime::{
+-        Context, Handle, HeapItemKind, HeapPtr, PropertyDescriptor, Realm,
++        Context, Handle, HeapItemKind, HeapPtr, PropertyDescriptor, Realm, Value,
+         abstract_operations::define_property_or_throw,
+         alloc_error::AllocResult,
+         bytecode::{
+@@ -14,11 +14,15 @@ use crate::{
+             source_map::BytecodeSourceMap,
+         },
+         collections::{ArrayInstance, InlineArray, array::ByteArray},
++        common_shapes::CommonShape,
+         debug_print::{DebugPrint, DebugPrintMode, DebugPrinter},
+         function::{set_function_length, set_simple_function_name},
+         gc::{HeapItem, HeapVisitor},
+         global_object::GlobalObject,
+-        intrinsics::{intrinsics::Intrinsic, rust_runtime::RuntimeFunctionId},
++        intrinsics::{
++            async_generator_prototype::AsyncGeneratorPrototype,
++            generator_prototype::GeneratorPrototype, rust_runtime::RuntimeFunctionId,
++        },
+         object_value::ObjectValue,
+         ordinary_object::ObjectBuilder,
+         property::{Property, PropertyFlags},
+@@ -40,64 +44,130 @@ extend_object! {
+ }
+ 
+ impl ClosureObject {
+-    pub fn new(
++    fn new_with_common_shape(
+         cx: Context,
+         function: Handle<BytecodeFunction>,
+         scope: Handle<Scope>,
++        shape: CommonShape,
++        mut realm: Handle<Realm>,
+     ) -> AllocResult<Handle<ClosureObject>> {
+         let mut object = ObjectBuilder::<ClosureObject>::new(cx)
+-            .intrinsic_proto(Intrinsic::FunctionPrototype)
++            .shape(realm.get_common_shape(cx, shape)?)
+             .build()?;
+ 
+         set_uninit!(object.function, *function);
+         set_uninit!(object.scope, *scope);
+ 
+-        let closure = object.to_handle();
+-        Self::init_common_properties(cx, closure, function, cx.current_realm())?;
++        Ok(object.to_handle())
++    }
++
++    pub fn new(
++        cx: Context,
++        function: Handle<BytecodeFunction>,
++        scope: Handle<Scope>,
++        realm: Handle<Realm>,
++    ) -> AllocResult<Handle<ClosureObject>> {
++        let is_constructor = function.is_constructor();
++        let shape = if is_constructor {
++            CommonShape::ConstructorClosure
++        } else {
++            CommonShape::Closure
++        };
++
++        let closure = Self::new_with_common_shape(cx, function, scope, shape, realm)?;
++
++        let (length, name) = Self::create_common_properties(cx, function)?;
++
++        if is_constructor {
++            let prototype = Self::new_constructor_prototype_property_object(cx, closure, realm)?;
++            closure
++                .as_object()
++                .init_properties(cx, &[length, name, prototype.as_value()])?;
++        } else {
++            closure.as_object().init_properties(cx, &[length, name])?;
++        }
+ 
+         Ok(closure)
+     }
+ 
+-    pub fn new_with_proto(
++    pub fn new_async(
+         cx: Context,
+         function: Handle<BytecodeFunction>,
+         scope: Handle<Scope>,
+-        prototype: Handle<ObjectValue>,
++        realm: Handle<Realm>,
+     ) -> AllocResult<Handle<ClosureObject>> {
+-        let mut object = ObjectBuilder::<ClosureObject>::new(cx)
+-            .proto(prototype)
+-            .build()?;
++        let closure =
++            Self::new_with_common_shape(cx, function, scope, CommonShape::AsyncClosure, realm)?;
+ 
+-        set_uninit!(object.function, *function);
+-        set_uninit!(object.scope, *scope);
++        let (length, name) = Self::create_common_properties(cx, function)?;
++        closure.as_object().init_properties(cx, &[length, name])?;
+ 
+-        let closure = object.to_handle();
+-        Self::init_common_properties(cx, closure, function, cx.current_realm())?;
++        Ok(closure)
++    }
++
++    pub fn new_generator(
++        cx: Context,
++        function: Handle<BytecodeFunction>,
++        scope: Handle<Scope>,
++        realm: Handle<Realm>,
++    ) -> AllocResult<Handle<ClosureObject>> {
++        let closure =
++            Self::new_with_common_shape(cx, function, scope, CommonShape::GeneratorClosure, realm)?;
++
++        let (length, name) = Self::create_common_properties(cx, function)?;
++        let prototype = GeneratorPrototype::new_prototype_property_object(cx)?.as_value();
++        closure
++            .as_object()
++            .init_properties(cx, &[length, name, prototype])?;
+ 
+         Ok(closure)
+     }
+ 
+-    pub fn new_in_realm(
++    pub fn new_async_generator(
+         cx: Context,
+         function: Handle<BytecodeFunction>,
+         scope: Handle<Scope>,
+         realm: Handle<Realm>,
+     ) -> AllocResult<Handle<ClosureObject>> {
+-        let proto = realm.get_intrinsic(Intrinsic::FunctionPrototype);
++        let closure = Self::new_with_common_shape(
++            cx,
++            function,
++            scope,
++            CommonShape::AsyncGeneratorClosure,
++            realm,
++        )?;
++
++        let (length, name) = Self::create_common_properties(cx, function)?;
++        let prototype = AsyncGeneratorPrototype::new_prototype_property_object(cx)?.as_value();
++        closure
++            .as_object()
++            .init_properties(cx, &[length, name, prototype])?;
++
++        Ok(closure)
++    }
++
++    pub fn new_with_proto(
++        cx: Context,
++        function: Handle<BytecodeFunction>,
++        scope: Handle<Scope>,
++        prototype: Handle<ObjectValue>,
++    ) -> AllocResult<Handle<ClosureObject>> {
+         let mut object = ObjectBuilder::<ClosureObject>::new(cx)
+-            .proto(proto)
++            .proto(prototype)
+             .build()?;
+ 
+         set_uninit!(object.function, *function);
+         set_uninit!(object.scope, *scope);
+ 
+         let closure = object.to_handle();
+-        Self::init_common_properties(cx, closure, function, realm)?;
++        Self::define_common_properties(cx, closure, function, cx.current_realm())?;
+ 
+         Ok(closure)
+     }
+ 
+-    pub fn new_builtin(
++    /// Create a closure object without the `name` or `length` properties. These must be set by the
++    /// caller if they are needed.
++    pub fn new_without_properties(
+         cx: Context,
+         function: Handle<BytecodeFunction>,
+         scope: Handle<Scope>,
+@@ -153,9 +223,43 @@ impl ClosureObject {
+         self.function_ptr().realm()
+     }
+ 
+-    /// Initialize the common properties of all functions - `name`, `length`, and `prototype` if
++    /// Create the values stored for the `name` and `length` properties common to all functions.
++    fn create_common_properties(
++        cx: Context,
++        function: Handle<BytecodeFunction>,
++    ) -> AllocResult<(Handle<Value>, Handle<Value>)> {
++        let length = cx.number(function.function_length());
++
++        // Default to the empty string if a name was not provided
++        let name = if let Some(name) = function.name {
++            name.to_handle()
++        } else {
++            cx.names.empty_string().as_string()
++        };
++
++        Ok((length, name.into()))
++    }
++
++    /// Each constructor function has a `prototype` property with an object that points back to the
++    /// constructor function with its `constructor` property.
++    fn new_constructor_prototype_property_object(
++        cx: Context,
++        constructor: Handle<ClosureObject>,
++        mut realm: Handle<Realm>,
++    ) -> AllocResult<Handle<ObjectValue>> {
++        let proto_shape = realm.get_common_shape(cx, CommonShape::ConstructorPrototype)?;
++        let mut prototype = ObjectBuilder::<ObjectValue>::new(cx)
++            .shape(proto_shape)
++            .build()?
++            .to_handle();
++        prototype.init_properties(cx, &[constructor.as_value()])?;
++
++        Ok(prototype)
++    }
++
++    /// Define the common properties of all functions - `name`, `length`, and `prototype` if
+     /// this is a constructor.
+-    fn init_common_properties(
++    fn define_common_properties(
+         cx: Context,
+         closure: Handle<ClosureObject>,
+         function: Handle<BytecodeFunction>,
+@@ -173,14 +277,7 @@ impl ClosureObject {
+ 
+         // MakeConstructor (https://tc39.es/ecma262/#sec-makeconstructor)
+         if function.is_constructor() {
+-            let proto = realm.get_intrinsic(Intrinsic::ObjectPrototype);
+-            let prototype = ObjectBuilder::<ObjectValue>::new(cx)
+-                .proto(proto)
+-                .build()?
+-                .to_handle();
+-
+-            let desc = PropertyDescriptor::non_enumerable_data(closure.into());
+-            must_a!(define_property_or_throw(cx, prototype, cx.names.constructor(), desc));
++            let prototype = Self::new_constructor_prototype_property_object(cx, closure, realm)?;
+ 
+             let desc =
+                 PropertyDescriptor::data(prototype.into(), PropertyFlags::empty().writable());
+@@ -326,6 +423,7 @@ impl BytecodeFunction {
+         realm: Handle<Realm>,
+         is_constructor: bool,
+         name: Option<Handle<StringValue>>,
++        function_length: u32,
+     ) -> AllocResult<Handle<BytecodeFunction>> {
+         let size = Self::calculate_size_in_bytes(0);
+         let mut object = cx.alloc_uninit_with_size::<BytecodeFunction>(size)?;
+@@ -346,7 +444,7 @@ impl BytecodeFunction {
+         set_uninit!(object.realm, *realm);
+         set_uninit!(object.num_registers, num_registers);
+         set_uninit!(object.num_parameters, 0);
+-        set_uninit!(object.function_length, 0);
++        set_uninit!(object.function_length, function_length);
+         set_uninit!(object.is_strict, true);
+         set_uninit!(object.is_constructor, is_constructor);
+         set_uninit!(object.is_class_constructor, false);
+diff --git a/src/js/runtime/bytecode/generator.rs b/src/js/runtime/bytecode/generator.rs
+--- a/src/js/runtime/bytecode/generator.rs
++++ b/src/js/runtime/bytecode/generator.rs
+@@ -961,7 +961,7 @@ impl<'a> BytecodeProgramGenerator<'a> {
+                 let module_scope = self.module.unwrap().module_scope();
+                 let realm = self.module.unwrap().program_function_ptr().realm();
+ 
+-                let closure = ClosureObject::new_in_realm(
++                let closure = ClosureObject::new(
+                     self.cx,
+                     emit_result.bytecode_function,
+                     module_scope,
+diff --git a/src/js/runtime/bytecode/vm.rs b/src/js/runtime/bytecode/vm.rs
+--- a/src/js/runtime/bytecode/vm.rs
++++ b/src/js/runtime/bytecode/vm.rs
+@@ -16,7 +16,7 @@ use crate::{
+             set,
+         },
+         accessor::Accessor,
+-        arguments_object::{MappedArgumentsObject, create_unmapped_arguments_object},
++        arguments_object::{MappedArgumentsObject, UnmappedArgumentsObject},
+         array_object::{ArrayObject, array_create},
+         async_generator_object::{AsyncGeneratorObject, async_generator_complete_step},
+         boxed_value::BoxedValue,
+@@ -115,9 +115,7 @@ use crate::{
+         generator_object::{GeneratorCompletionType, GeneratorObject, TGeneratorObject},
+         get,
+         intrinsics::{
+-            async_generator_prototype::AsyncGeneratorPrototype,
+             error_object::ErrorObject,
+-            generator_prototype::GeneratorPrototype,
+             intrinsics::Intrinsic,
+             native_error::{ReferenceError, TypeError},
+             regexp_object::RegExpObject,
+@@ -490,12 +488,8 @@ impl VM {
+         let global_scope = realm.new_global_scope(self.cx(), global_names.scope_names())?;
+ 
+         // Create program closure and execute in VM
+-        let program_closure = ClosureObject::new_in_realm(
+-            self.cx(),
+-            bytecode_script.script_function,
+-            global_scope,
+-            realm,
+-        )?;
++        let program_closure =
++            ClosureObject::new(self.cx(), bytecode_script.script_function, global_scope, realm)?;
+ 
+         // Evaluate with the global object as the receiver
+         let receiver = program_closure.global_object().into();
+@@ -513,8 +507,7 @@ impl VM {
+         let module_scope = module.module_scope();
+         let realm = program_function.realm();
+ 
+-        let module_closure =
+-            ClosureObject::new_in_realm(self.cx(), program_function, module_scope, realm)?;
++        let module_closure = ClosureObject::new(self.cx(), program_function, module_scope, realm)?;
+ 
+         self.execute(module_closure, self.cx.undefined(), arguments)
+     }
+@@ -3940,9 +3933,10 @@ impl VM {
+ 
+         let dest = instr.dest();
+         let scope = self.scope().to_handle();
++        let realm = self.cx().current_realm();
+ 
+         // Allocates
+-        let closure = ClosureObject::new(self.cx(), func, scope)?;
++        let closure = ClosureObject::new(self.cx(), func, scope, realm)?;
+ 
+         self.write_register(dest, *closure.as_value());
+ 
+@@ -3961,10 +3955,10 @@ impl VM {
+ 
+         let dest = instr.dest();
+         let scope = self.scope().to_handle();
++        let realm = self.cx().current_realm();
+ 
+         // Allocates
+-        let proto = self.cx().get_intrinsic(Intrinsic::AsyncFunctionPrototype);
+-        let closure = ClosureObject::new_with_proto(self.cx(), func, scope, proto)?;
++        let closure = ClosureObject::new_async(self.cx(), func, scope, realm)?;
+ 
+         self.write_register(dest, *closure.as_value());
+ 
+@@ -3983,14 +3977,10 @@ impl VM {
+ 
+         let dest = instr.dest();
+         let scope = self.scope().to_handle();
++        let realm = self.cx().current_realm();
+ 
+         // Allocates
+-        let func_proto = self
+-            .cx()
+-            .get_intrinsic(Intrinsic::GeneratorFunctionPrototype);
+-        let closure = ClosureObject::new_with_proto(self.cx(), func, scope, func_proto)?;
+-
+-        must!(GeneratorPrototype::install_on_generator_function(self.cx(), closure));
++        let closure = ClosureObject::new_generator(self.cx(), func, scope, realm)?;
+ 
+         self.write_register(dest, *closure.as_value());
+ 
+@@ -4009,14 +3999,10 @@ impl VM {
+ 
+         let dest = instr.dest();
+         let scope = self.scope().to_handle();
++        let realm = self.cx().current_realm();
+ 
+         // Allocates
+-        let func_proto = self
+-            .cx
+-            .get_intrinsic(Intrinsic::AsyncGeneratorFunctionPrototype);
+-        let closure = ClosureObject::new_with_proto(self.cx(), func, scope, func_proto)?;
+-
+-        must!(AsyncGeneratorPrototype::install_on_async_generator_function(self.cx(), closure));
++        let closure = ClosureObject::new_async_generator(self.cx(), func, scope, realm)?;
+ 
+         self.write_register(dest, *closure.as_value());
+ 
+@@ -4117,9 +4103,9 @@ impl VM {
+             .collect::<Vec<_>>();
+ 
+         // Allocates
+-        let arguments_object = create_unmapped_arguments_object(self.cx(), &arguments)?;
++        let arguments_object = UnmappedArgumentsObject::new(self.cx(), &arguments)?;
+ 
+-        self.write_register(dest, *arguments_object);
++        self.write_register(dest, *arguments_object.as_value());
+ 
+         Ok(())
+     }
+diff --git a/src/js/runtime/collections/vec.rs b/src/js/runtime/collections/vec.rs
+--- a/src/js/runtime/collections/vec.rs
++++ b/src/js/runtime/collections/vec.rs
+@@ -19,7 +19,7 @@ pub struct BsVec<T, E = ()> {
+     extra_data: E,
+     /// The number of elements stored in the array.
+     length: usize,
+-    /// The array along with its capacity, which is always a power of 2.
++    /// The array along with its capacity.
+     array: InlineArray<T>,
+ }
+ 
+diff --git a/src/js/runtime/common_shapes.rs b/src/js/runtime/common_shapes.rs
+new file mode 100644
+--- /dev/null
++++ b/src/js/runtime/common_shapes.rs
+@@ -0,0 +1,261 @@
++use crate::runtime::{
++    Context, Handle, HeapItemKind, HeapPtr, PropertyFlags, PropertyKey, Realm,
++    alloc_error::AllocResult, gc::HeapVisitor, intrinsics::intrinsics::Intrinsic,
++    property::DEFAULT_DATA_PROPERTY_FLAGS, shape::Shape, shape_registry::ShapeRegistry,
++};
++
++#[derive(Clone, Copy)]
++#[repr(u8)]
++pub enum CommonShape {
++    /// A closure object (not a constructor): { length, name }.
++    Closure,
++    /// A closure object for a constructor function: { length, name, prototype }.
++    ConstructorClosure,
++    /// A closure object for an async function: { length, name }.
++    AsyncClosure,
++    /// A closure object for a generator function: { length, name, prototype }.
++    GeneratorClosure,
++    /// A closure object for an async generator function: { length, name, prototype }.
++    AsyncGeneratorClosure,
++    /// The `prototype` property of a constructor: { constructor }.
++    ConstructorPrototype,
++    /// A complete data property descriptor: { value, writable, enumerable, configurable }.
++    DataPropertyDescriptor,
++    /// A complete accessor property descriptor: { get, set, enumerable, configurable }.
++    AccessorPropertyDescriptor,
++    /// A string object: { length }.
++    StringObject,
++    /// A RegExp match result array, with named properties: { index, input, groups }.
++    RegExpMatch,
++    /// An iterator result object: { value, done }.
++    IteratorResult,
++    /// A native error object: { message }.
++    EvalError,
++    RangeError,
++    ReferenceError,
++    SyntaxError,
++    TypeError,
++    URIError,
++    AggregateError,
++    /// An unmapped arguments object: { length, @@iterator, callee }.
++    UnmappedArguments,
++    /// A mapped arguments object: { length, @@iterator, callee }.
++    MappedArguments,
++}
++
++impl CommonShape {
++    const COUNT: u8 = CommonShape::MappedArguments as u8 + 1;
++}
++
++pub struct CommonShapes {
++    /// Common shapes indexed by CommonShape. Lazily created during realm initialization, but
++    /// guaranteed to be initialized after realm initialization is complete.
++    shapes: [Option<HeapPtr<Shape>>; CommonShape::COUNT as usize],
++}
++
++impl CommonShapes {
++    pub fn new_uninit() -> Self {
++        Self { shapes: [None; CommonShape::COUNT as usize] }
++    }
++
++    /// Initialize all common shapes. Some shapes
++    pub fn initialize(cx: Context, realm: Handle<Realm>) -> AllocResult<()> {
++        for i in 0..CommonShape::COUNT {
++            // Some shapes are already initialized during realm initialization
++            if realm.common_shapes.shapes[i as usize].is_some() {
++                continue;
++            }
++
++            let common_shape = unsafe { std::mem::transmute::<u8, CommonShape>(i) };
++            Self::get(cx, realm, common_shape)?;
++        }
++
++        Ok(())
++    }
++
++    pub fn visit_pointers(&mut self, visitor: &mut impl HeapVisitor) {
++        for shape in self.shapes.iter_mut() {
++            visitor.visit_pointer_opt(shape);
++        }
++    }
++
++    /// Return a common shape, building and caching it on first request.
++    pub fn get(
++        cx: Context,
++        mut realm: Handle<Realm>,
++        common_shape: CommonShape,
++    ) -> AllocResult<Handle<Shape>> {
++        if let Some(shape) = realm.common_shapes.shapes[common_shape as usize] {
++            return Ok(shape.to_handle());
++        }
++
++        let shape = Self::build(cx, realm, common_shape)?;
++        realm.common_shapes.shapes[common_shape as usize] = Some(*shape);
++
++        Ok(shape)
++    }
++
++    fn build(
++        cx: Context,
++        realm: Handle<Realm>,
++        common_shape: CommonShape,
++    ) -> AllocResult<Handle<Shape>> {
++        // Common attributes
++        let data = DEFAULT_DATA_PROPERTY_FLAGS;
++        let non_enum = PropertyFlags::empty().writable().configurable();
++        let writable = PropertyFlags::empty().writable();
++        let config = PropertyFlags::empty().configurable();
++        let accessor_none = PropertyFlags::empty().accessor();
++        let none = PropertyFlags::empty();
++
++        let (kind, intrinsic_proto, properties): (_, _, &[(Handle<PropertyKey>, PropertyFlags)]) =
++            match common_shape {
++                CommonShape::Closure => (
++                    HeapItemKind::ClosureObject,
++                    Intrinsic::FunctionPrototype,
++                    &[(cx.names.length(), config), (cx.names.name(), config)],
++                ),
++                CommonShape::ConstructorClosure => (
++                    HeapItemKind::ClosureObject,
++                    Intrinsic::FunctionPrototype,
++                    &[
++                        (cx.names.length(), config),
++                        (cx.names.name(), config),
++                        (cx.names.prototype(), writable),
++                    ],
++                ),
++                CommonShape::AsyncClosure => (
++                    HeapItemKind::ClosureObject,
++                    Intrinsic::AsyncFunctionPrototype,
++                    &[(cx.names.length(), config), (cx.names.name(), config)],
++                ),
++                CommonShape::GeneratorClosure => (
++                    HeapItemKind::ClosureObject,
++                    Intrinsic::GeneratorFunctionPrototype,
++                    &[
++                        (cx.names.length(), config),
++                        (cx.names.name(), config),
++                        (cx.names.prototype(), writable),
++                    ],
++                ),
++                CommonShape::AsyncGeneratorClosure => (
++                    HeapItemKind::ClosureObject,
++                    Intrinsic::AsyncGeneratorFunctionPrototype,
++                    &[
++                        (cx.names.length(), config),
++                        (cx.names.name(), config),
++                        (cx.names.prototype(), writable),
++                    ],
++                ),
++                CommonShape::ConstructorPrototype => (
++                    HeapItemKind::OrdinaryObject,
++                    Intrinsic::ObjectPrototype,
++                    &[(cx.names.constructor(), non_enum)],
++                ),
++                CommonShape::DataPropertyDescriptor => (
++                    HeapItemKind::OrdinaryObject,
++                    Intrinsic::ObjectPrototype,
++                    &[
++                        (cx.names.value(), data),
++                        (cx.names.writable(), data),
++                        (cx.names.enumerable(), data),
++                        (cx.names.configurable(), data),
++                    ],
++                ),
++                CommonShape::AccessorPropertyDescriptor => (
++                    HeapItemKind::OrdinaryObject,
++                    Intrinsic::ObjectPrototype,
++                    &[
++                        (cx.names.get(), data),
++                        (cx.names.set_(), data),
++                        (cx.names.enumerable(), data),
++                        (cx.names.configurable(), data),
++                    ],
++                ),
++                CommonShape::StringObject => (
++                    HeapItemKind::StringObject,
++                    Intrinsic::StringPrototype,
++                    &[(cx.names.length(), none)],
++                ),
++                CommonShape::RegExpMatch => (
++                    HeapItemKind::ArrayObject,
++                    Intrinsic::ArrayPrototype,
++                    &[
++                        (cx.names.index(), data),
++                        (cx.names.input(), data),
++                        (cx.names.groups(), data),
++                    ],
++                ),
++                CommonShape::IteratorResult => (
++                    HeapItemKind::OrdinaryObject,
++                    Intrinsic::ObjectPrototype,
++                    &[(cx.names.value(), data), (cx.names.done(), data)],
++                ),
++                CommonShape::EvalError => (
++                    HeapItemKind::ErrorObject,
++                    Intrinsic::EvalErrorPrototype,
++                    &[(cx.names.message(), non_enum)],
++                ),
++                CommonShape::RangeError => (
++                    HeapItemKind::ErrorObject,
++                    Intrinsic::RangeErrorPrototype,
++                    &[(cx.names.message(), non_enum)],
++                ),
++                CommonShape::ReferenceError => (
++                    HeapItemKind::ErrorObject,
++                    Intrinsic::ReferenceErrorPrototype,
++                    &[(cx.names.message(), non_enum)],
++                ),
++                CommonShape::SyntaxError => (
++                    HeapItemKind::ErrorObject,
++                    Intrinsic::SyntaxErrorPrototype,
++                    &[(cx.names.message(), non_enum)],
++                ),
++                CommonShape::TypeError => (
++                    HeapItemKind::ErrorObject,
++                    Intrinsic::TypeErrorPrototype,
++                    &[(cx.names.message(), non_enum)],
++                ),
++                CommonShape::URIError => (
++                    HeapItemKind::ErrorObject,
++                    Intrinsic::URIErrorPrototype,
++                    &[(cx.names.message(), non_enum)],
++                ),
++                CommonShape::AggregateError => (
++                    HeapItemKind::ErrorObject,
++                    Intrinsic::AggregateErrorPrototype,
++                    &[(cx.names.errors(), non_enum)],
++                ),
++                CommonShape::UnmappedArguments => (
++                    HeapItemKind::UnmappedArgumentsObject,
++                    Intrinsic::ObjectPrototype,
++                    &[
++                        (cx.names.length(), non_enum),
++                        (cx.symbols.iterator(), non_enum),
++                        (cx.names.callee(), accessor_none),
++                    ],
++                ),
++                CommonShape::MappedArguments => (
++                    HeapItemKind::MappedArgumentsObject,
++                    Intrinsic::ObjectPrototype,
++                    &[
++                        (cx.names.length(), non_enum),
++                        (cx.symbols.iterator(), non_enum),
++                        (cx.names.callee(), non_enum),
++                    ],
++                ),
++            };
++
++        let proto = realm.get_intrinsic(intrinsic_proto);
++        let mut shape = ShapeRegistry::get_root_object_shape(cx, kind, Some(proto))?;
++
++        for (key, attributes) in properties {
++            let (next_shape, _) = shape.define_own_property(cx, *key, *attributes)?;
++            shape = next_shape.to_handle();
++        }
++
++        debug_assert!(shape.num_properties() as usize == properties.len());
++
++        Ok(shape)
++    }
++}
+diff --git a/src/js/runtime/context.rs b/src/js/runtime/context.rs
+--- a/src/js/runtime/context.rs
++++ b/src/js/runtime/context.rs
+@@ -36,6 +36,7 @@ use crate::{
+             FastHasher, HashDosResistantHasher, HashMapInstance, VecInstance,
+             hash_map::BsHashMapField, index_map::IndexMapInstance, vec::ValueVec,
+         },
++        common_shapes::CommonShape,
+         error::BsResult,
+         gc::{GarbageCollector, Heap, HeapItem, HeapRootsDeserializer, HeapVisitor},
+         interned_strings::InternedStrings,
+@@ -48,6 +49,7 @@ use crate::{
+         },
+         object_value::{NamedPropertiesMap, ObjectValue},
+         realm::Realm,
++        shape::Shape,
+         shape_registry::ShapeRegistry,
+         string_value::{FlatString, StringValue},
+         tasks::TaskQueue,
+@@ -425,6 +427,10 @@ impl Context {
+         self.current_realm().get_intrinsic(intrinsic)
+     }
+ 
++    pub fn get_common_shape(&self, common_shape: CommonShape) -> AllocResult<Handle<Shape>> {
++        self.current_realm().get_common_shape(*self, common_shape)
++    }
++
+     pub fn current_function(&mut self) -> Handle<ObjectValue> {
+         self.vm().closure().to_handle().into()
+     }
+diff --git a/src/js/runtime/eval/eval.rs b/src/js/runtime/eval/eval.rs
+--- a/src/js/runtime/eval/eval.rs
++++ b/src/js/runtime/eval/eval.rs
+@@ -100,7 +100,8 @@ pub fn perform_eval(
+ 
+     // Eval function's parent scope is the global scope in an indirect eval
+     let eval_scope = direct_scope.unwrap_or_else(|| cx.current_realm().default_global_scope());
+-    let closure = ClosureObject::new(cx, bytecode_function, eval_scope)?;
++    let realm = cx.current_realm();
++    let closure = ClosureObject::new(cx, bytecode_function, eval_scope, realm)?;
+ 
+     // Determine the receiver for the eval function call
+     let receiver: Handle<Value> = if is_direct {
+diff --git a/src/js/runtime/eval/expression.rs b/src/js/runtime/eval/expression.rs
+--- a/src/js/runtime/eval/expression.rs
++++ b/src/js/runtime/eval/expression.rs
+@@ -12,7 +12,7 @@ use crate::{
+             ordinary_has_instance, set_integrity_level,
+         },
+         alloc_error::AllocResult,
+-        array_object::array_create_in_realm,
++        array_object::{ArrayCreateShape, array_create_in_realm},
+         bytecode::generator::alloc_wtf8_str_from_source,
+         error::{range_error, type_error},
+         eval_result::EvalResult,
+@@ -38,9 +38,11 @@ pub fn generate_template_object(
+ ) -> AllocResult<Handle<ObjectValue>> {
+     let num_strings = lit.quasis.len();
+     let template_object =
+-        must_a!(array_create_in_realm(cx, realm, num_strings as u64, None)).as_object();
++        must_a!(array_create_in_realm(cx, realm, num_strings as u64, ArrayCreateShape::Default))
++            .as_object();
+     let raw_object =
+-        must_a!(array_create_in_realm(cx, realm, num_strings as u64, None)).as_object();
++        must_a!(array_create_in_realm(cx, realm, num_strings as u64, ArrayCreateShape::Default))
++            .as_object();
+ 
+     // Property key is shared between iterations
+     let mut index_key = PropertyKey::uninit().to_handle(cx);
+diff --git a/src/js/runtime/intrinsics/array_prototype.rs b/src/js/runtime/intrinsics/array_prototype.rs
+--- a/src/js/runtime/intrinsics/array_prototype.rs
++++ b/src/js/runtime/intrinsics/array_prototype.rs
+@@ -10,7 +10,7 @@ use crate::{
+             has_property, invoke, length_of_array_like, set,
+         },
+         alloc_error::AllocResult,
+-        array_object::{ArrayObject, array_create, array_species_create},
++        array_object::{ArrayCreateShape, ArrayObject, array_create, array_species_create},
+         error::{range_error, type_error},
+         get,
+         intrinsic_builder::IntrinsicBuilder,
+@@ -41,7 +41,8 @@ impl ArrayPrototype {
+     /// Properties of the Array Prototype Object (https://tc39.es/ecma262/#sec-properties-of-the-array-prototype-object)
+     pub fn new(cx: Context, realm: Handle<Realm>) -> AllocResult<Handle<ObjectValue>> {
+         let object_proto = realm.get_intrinsic(Intrinsic::ObjectPrototype);
+-        let array = ArrayObject::new(cx, object_proto)?.as_object();
++        let array = ArrayObject::new(cx, realm, 0, ArrayCreateShape::Proto(Some(object_proto)))?
++            .as_object();
+         let mut builder = IntrinsicBuilder::ordinary(cx, realm, array);
+ 
+         // Constructor property is added once ArrayConstructor has been created
+diff --git a/src/js/runtime/intrinsics/async_generator_prototype.rs b/src/js/runtime/intrinsics/async_generator_prototype.rs
+--- a/src/js/runtime/intrinsics/async_generator_prototype.rs
++++ b/src/js/runtime/intrinsics/async_generator_prototype.rs
+@@ -141,17 +141,22 @@ impl AsyncGeneratorPrototype {
+         Ok(capability.promise().as_value())
+     }}
+ 
++    /// Every async generator function has a prototype property referencing an instance of the
++    /// async generator prototype.
++    pub fn new_prototype_property_object(cx: Context) -> AllocResult<Handle<ObjectValue>> {
++        Ok(ObjectBuilder::<ObjectValue>::new(cx)
++            .intrinsic_proto(Intrinsic::AsyncGeneratorPrototype)
++            .build()?
++            .to_handle())
++    }
++
+     /// Every async generator function has a prototype property referencing an instance of the
+     /// async generator prototype. Install this property on an async generator function.
+     pub fn install_on_async_generator_function(
+         cx: Context,
+         closure: Handle<ClosureObject>,
+     ) -> EvalResult<()> {
+-        let proto = ObjectBuilder::<ObjectValue>::new(cx)
+-            .intrinsic_proto(Intrinsic::AsyncGeneratorPrototype)
+-            .build()?
+-            .to_handle();
+-
++        let proto = Self::new_prototype_property_object(cx)?;
+         let proto_desc =
+             PropertyDescriptor::data(proto.to_handle().into(), PropertyFlags::empty().writable());
+         define_property_or_throw(cx, closure.into(), cx.names.prototype(), proto_desc)?;
+diff --git a/src/js/runtime/intrinsics/error_object.rs b/src/js/runtime/intrinsics/error_object.rs
+--- a/src/js/runtime/intrinsics/error_object.rs
++++ b/src/js/runtime/intrinsics/error_object.rs
+@@ -1,21 +1,19 @@
+ use std::mem::size_of;
+ 
+ use crate::{
+-    extend_object, must_a,
++    extend_object,
+     runtime::{
+         Context, Handle, HeapPtr, Value,
+-        abstract_operations::{
+-            create_data_property_or_throw, create_non_enumerable_data_property_or_throw,
+-        },
+         alloc_error::AllocResult,
++        common_shapes::CommonShape,
+         eval_result::EvalResult,
+         gc::{HeapItem, HeapVisitor},
+         intrinsics::intrinsics::Intrinsic,
+         object_value::ObjectValue,
+         ordinary_object::ObjectBuilder,
+         source_file::SourceFile,
+         stack_trace::{StackFrameInfoArray, create_current_stack_frame_info, create_stack_trace},
+-        string_value::FlatString,
++        string_value::{FlatString, StringValue},
+     },
+     set_uninit,
+ };
+@@ -52,21 +50,26 @@ pub struct CachedStackTraceInfo {
+ }
+ 
+ impl ErrorObject {
+-    pub fn new(
++    pub fn new_with_message(
+         cx: Context,
+-        prototype: Intrinsic,
++        shape: CommonShape,
++        message: Handle<StringValue>,
+         skip_current_frame: bool,
+     ) -> AllocResult<Handle<ErrorObject>> {
+-        let mut error = ObjectBuilder::<ErrorObject>::new(cx)
+-            .intrinsic_proto(prototype)
++        let mut error_object = ObjectBuilder::<ErrorObject>::new(cx)
++            .common_shape(shape)?
+             .build()?
+             .to_handle();
+ 
+-        set_uninit!(error.is_stack_overflow, false);
++        set_uninit!(error_object.is_stack_overflow, false);
+ 
+-        Self::initialize_stack_trace(cx, error, skip_current_frame)?;
++        Self::initialize_stack_trace(cx, error_object, skip_current_frame)?;
+ 
+-        Ok(error)
++        error_object
++            .as_object()
++            .init_properties(cx, &[message.as_value()])?;
++
++        Ok(error_object)
+     }
+ 
+     pub fn new_from_constructor(
+@@ -87,30 +90,20 @@ impl ErrorObject {
+         Ok(error)
+     }
+ 
+-    /// Return a generic error object with the given message.
+-    pub fn new_with_message(mut cx: Context, message: String) -> EvalResult<Handle<ErrorObject>> {
+-        let message_value = cx.alloc_string(&message)?.as_value();
+-        let error_object =
+-            Self::new(cx, Intrinsic::ErrorPrototype, /* skip_current_frame */ false)?;
+-
+-        create_non_enumerable_data_property_or_throw(
+-            cx,
+-            error_object.as_object(),
+-            cx.names.message(),
+-            message_value,
+-        )?;
+-
+-        Ok(error_object)
+-    }
+-
+     /// AggregateError Objects (https://tc39.es/ecma262/#sec-aggregate-error-objects)
+     pub fn new_aggregate(cx: Context, errors: Handle<Value>) -> AllocResult<Handle<ErrorObject>> {
+-        let object =
+-            Self::new(cx, Intrinsic::AggregateErrorPrototype, /* skip_current_frame */ true)?;
++        let mut error_object = ObjectBuilder::<ErrorObject>::new(cx)
++            .common_shape(CommonShape::AggregateError)?
++            .build()?
++            .to_handle();
++
++        set_uninit!(error_object.is_stack_overflow, false);
+ 
+-        must_a!(create_data_property_or_throw(cx, object.into(), cx.names.errors(), errors));
++        Self::initialize_stack_trace(cx, error_object, /* skip_current_frame */ true)?;
+ 
+-        Ok(object)
++        error_object.as_object().init_properties(cx, &[errors])?;
++
++        Ok(error_object)
+     }
+ 
+     fn initialize_stack_trace(
+diff --git a/src/js/runtime/intrinsics/function_prototype.rs b/src/js/runtime/intrinsics/function_prototype.rs
+--- a/src/js/runtime/intrinsics/function_prototype.rs
++++ b/src/js/runtime/intrinsics/function_prototype.rs
+@@ -16,7 +16,7 @@ use crate::{
+         intrinsic_builder::IntrinsicBuilder,
+         intrinsics::{intrinsics::Intrinsic, rust_runtime::RuntimeFunction},
+         object_value::ObjectValue,
+-        ordinary_object::{ObjectBuilder, init_object_fields},
++        ordinary_object::{ObjectBuilder, init_object_pointer_fields},
+         property::Property,
+         property_key::PropertyKey,
+         realm::Realm,
+@@ -55,7 +55,7 @@ impl FunctionPrototype {
+             HeapItemKind::ClosureObject,
+             Some(object_proto),
+         )?;
+-        init_object_fields(cx, *object, *shape);
++        init_object_pointer_fields(cx, *object, *shape);
+ 
+         // The prototype object is a function which accepts any arguments and returns undefined
+         // when invoked.
+@@ -65,6 +65,7 @@ impl FunctionPrototype {
+             realm,
+             /* is_constructor */ false,
+             /* name */ None,
++            /* function_length */ 0,
+         )?;
+         let scope = realm.default_global_scope();
+ 
+diff --git a/src/js/runtime/intrinsics/generator_prototype.rs b/src/js/runtime/intrinsics/generator_prototype.rs
+--- a/src/js/runtime/intrinsics/generator_prototype.rs
++++ b/src/js/runtime/intrinsics/generator_prototype.rs
+@@ -57,17 +57,22 @@ impl GeneratorPrototype {
+         generator_resume_abrupt(cx, this_value, error, GeneratorCompletionType::Throw)
+     }}
+ 
++    /// Every generator function has a prototype property referencing an instance of the generator
++    /// prototype.
++    pub fn new_prototype_property_object(cx: Context) -> AllocResult<Handle<ObjectValue>> {
++        Ok(ObjectBuilder::<ObjectValue>::new(cx)
++            .intrinsic_proto(Intrinsic::GeneratorPrototype)
++            .build()?
++            .to_handle())
++    }
++
+     /// Every generator function has a prototype property referencing an instance of the generator
+     /// prototype. Install this property on a generator function.
+     pub fn install_on_generator_function(
+         cx: Context,
+         closure: Handle<ClosureObject>,
+     ) -> EvalResult<()> {
+-        let proto = ObjectBuilder::<ObjectValue>::new(cx)
+-            .intrinsic_proto(Intrinsic::GeneratorPrototype)
+-            .build()?
+-            .to_handle();
+-
++        let proto = Self::new_prototype_property_object(cx)?;
+         let proto_desc =
+             PropertyDescriptor::data(proto.to_handle().into(), PropertyFlags::empty().writable());
+         define_property_or_throw(cx, closure.into(), cx.names.prototype(), proto_desc)?;
+diff --git a/src/js/runtime/intrinsics/intrinsics.rs b/src/js/runtime/intrinsics/intrinsics.rs
+--- a/src/js/runtime/intrinsics/intrinsics.rs
++++ b/src/js/runtime/intrinsics/intrinsics.rs
+@@ -592,7 +592,7 @@ fn create_throw_type_error_intrinsic(
+         let mut throw_type_error_func =
+             BuiltinFunction::create_builtin_function_without_properties(
+                 cx,
+-                RuntimeFunction::intrinsics_throw_type_error,
++                RuntimeFunction::intrinsics_throw_type_error.to_id(),
+                 /* name */ None,
+                 realm,
+                 /* prototype */ Some(realm.get_intrinsic(Intrinsic::FunctionPrototype)),
+diff --git a/src/js/runtime/intrinsics/native_error.rs b/src/js/runtime/intrinsics/native_error.rs
+--- a/src/js/runtime/intrinsics/native_error.rs
++++ b/src/js/runtime/intrinsics/native_error.rs
+@@ -2,6 +2,7 @@ use crate::runtime::{
+     Context, Handle, HeapPtr,
+     abstract_operations::{construct, create_non_enumerable_data_property_or_throw},
+     alloc_error::AllocResult,
++    common_shapes::CommonShape,
+     eval_result::EvalResult,
+     intrinsic_builder::IntrinsicBuilder,
+     intrinsics::{
+@@ -34,20 +35,12 @@ macro_rules! create_native_error {
+                 cx: Context,
+                 message: Handle<StringValue>,
+             ) -> AllocResult<Handle<ErrorObject>> {
+-                let object = ErrorObject::new(
++                ErrorObject::new_with_message(
+                     cx,
+-                    Intrinsic::$prototype,
++                    CommonShape::$native_error,
++                    message,
+                     /* skip_current_frame */ false,
+-                )?;
+-
+-                create_non_enumerable_data_property_or_throw(
+-                    cx,
+-                    object.as_object(),
+-                    cx.names.message(),
+-                    message.into(),
+-                )?;
+-
+-                Ok(object)
++                )
+             }
+ 
+             #[allow(dead_code)]
+diff --git a/src/js/runtime/intrinsics/object_prototype_object.rs b/src/js/runtime/intrinsics/object_prototype_object.rs
+--- a/src/js/runtime/intrinsics/object_prototype_object.rs
++++ b/src/js/runtime/intrinsics/object_prototype_object.rs
+@@ -15,7 +15,7 @@ use crate::{
+             number_object::NumberObject, regexp_object::RegExpObject,
+             rust_runtime::RuntimeFunction,
+         },
+-        ordinary_object::{init_object_fields, ordinary_object_create_without_proto},
++        ordinary_object::{init_object_pointer_fields, ordinary_object_create_without_proto},
+         property::DEFAULT_ACCESSOR_PROPERTY_FLAGS,
+         property_descriptor::PropertyDescriptor,
+         realm::Realm,
+@@ -52,7 +52,7 @@ impl ObjectPrototypeObject {
+ 
+         let shape =
+             ShapeRegistry::get_root_object_shape(cx, HeapItemKind::ObjectPrototypeObject, None)?;
+-        init_object_fields(cx, *object, *shape);
++        init_object_pointer_fields(cx, *object, *shape);
+ 
+         let mut builder = IntrinsicBuilder::ordinary(cx, realm, object);
+ 
+diff --git a/src/js/runtime/intrinsics/regexp_prototype.rs b/src/js/runtime/intrinsics/regexp_prototype.rs
+--- a/src/js/runtime/intrinsics/regexp_prototype.rs
++++ b/src/js/runtime/intrinsics/regexp_prototype.rs
+@@ -13,7 +13,10 @@ use crate::{
+             species_constructor,
+         },
+         alloc_error::AllocResult,
+-        array_object::{array_create, create_array_from_list},
++        array_object::{
++            ArrayCreateShape, array_create, array_create_in_realm, create_array_from_list,
++        },
++        common_shapes::CommonShape,
+         error::type_error,
+         eval_result::EvalResult,
+         get,
+@@ -882,32 +885,27 @@ fn regexp_builtin_exec(
+     }
+ 
+     // Build result array of matches
+-    let result_array = must!(array_create(cx, capture_groups.len() as u64, None)).as_object();
+-
+-    // Mark the start of the full match
+-    let index_value = cx.number(full_capture.start);
+-    must!(create_data_property_or_throw(cx, result_array, cx.names.index(), index_value));
+-
+-    // Include the input string in the result
+-    must!(create_data_property_or_throw(
++    let realm = cx.current_realm();
++    let mut result_array = must!(array_create_in_realm(
+         cx,
+-        result_array,
+-        cx.names.input(),
+-        string_value.into()
+-    ));
+-
+-    // Add the groups object to the result, or undefined if there are no named capture groups
++        realm,
++        capture_groups.len() as u64,
++        ArrayCreateShape::Common(CommonShape::RegExpMatch)
++    ))
++    .as_object();
++
++    // Match result always has:
++    // - `index` property which marks the start of the full match
++    // - `input` property which contains the original string
++    // - `groups` property which contains named capture groups
++    let index_value = cx.number(full_capture.start);
+     let named_groups_object = if compiled_regexp.has_named_capture_groups {
+         ordinary_object_create_without_proto(cx)?.into()
+     } else {
+         cx.undefined()
+     };
+-    must!(create_data_property_or_throw(
+-        cx,
+-        result_array,
+-        cx.names.groups(),
+-        named_groups_object
+-    ));
++
++    result_array.init_properties(cx, &[index_value, string_value.into(), named_groups_object])?;
+ 
+     let mut matched_group_names = HashSet::new();
+ 
+diff --git a/src/js/runtime/intrinsics/string_prototype.rs b/src/js/runtime/intrinsics/string_prototype.rs
+--- a/src/js/runtime/intrinsics/string_prototype.rs
++++ b/src/js/runtime/intrinsics/string_prototype.rs
+@@ -48,9 +48,7 @@ pub struct StringPrototype;
+ impl StringPrototype {
+     /// Properties of the String Prototype Object (https://tc39.es/ecma262/#sec-properties-of-the-string-prototype-object)
+     pub fn new(cx: Context, realm: Handle<Realm>) -> AllocResult<Handle<ObjectValue>> {
+-        let object_proto = realm.get_intrinsic(Intrinsic::ObjectPrototype);
+-        let empty_string = cx.names.empty_string().as_string();
+-        let object = StringObject::new_with_proto(cx, object_proto, empty_string)?.as_object();
++        let object = StringObject::new_string_prototype(cx, realm)?.as_object();
+         let mut builder = IntrinsicBuilder::ordinary(cx, realm, object);
+ 
+         // Constructor property is added once StringConstructor has been created
+diff --git a/src/js/runtime/iterator.rs b/src/js/runtime/iterator.rs
+--- a/src/js/runtime/iterator.rs
++++ b/src/js/runtime/iterator.rs
+@@ -2,14 +2,15 @@ use crate::{
+     must_a,
+     runtime::{
+         Context, EvalResult, Handle, HeapPtr, Value,
+-        abstract_operations::{call, call_object, create_data_property_or_throw, get_method},
++        abstract_operations::{call, call_object, get_method},
+         alloc_error::AllocResult,
++        common_shapes::CommonShape,
+         error::type_error,
+         gc::HeapVisitor,
+         get,
+         intrinsics::async_from_sync_iterator_object::AsyncFromSyncIteratorObject,
+         object_value::ObjectValue,
+-        ordinary_object::ordinary_object_create,
++        ordinary_object::ObjectBuilder,
+         type_utilities::to_boolean,
+     },
+ };
+@@ -256,12 +257,13 @@ pub fn create_iter_result_object(
+     value: Handle<Value>,
+     is_done: bool,
+ ) -> AllocResult<Handle<Value>> {
+-    let object = ordinary_object_create(cx)?;
+-
+-    must_a!(create_data_property_or_throw(cx, object, cx.names.value(), value));
+-
+     let is_done_value = cx.bool(is_done);
+-    must_a!(create_data_property_or_throw(cx, object, cx.names.done(), is_done_value));
++
++    let mut object = ObjectBuilder::<ObjectValue>::new(cx)
++        .common_shape(CommonShape::IteratorResult)?
++        .build()?
++        .to_handle();
++    object.init_properties(cx, &[value, is_done_value])?;
+ 
+     Ok(object.as_value())
+ }
+diff --git a/src/js/runtime/mod.rs b/src/js/runtime/mod.rs
+--- a/src/js/runtime/mod.rs
++++ b/src/js/runtime/mod.rs
+@@ -16,6 +16,7 @@ mod builtin_names;
+ pub mod bytecode;
+ mod class_names;
+ mod collections;
++mod common_shapes;
+ pub mod console_object;
+ mod context;
+ pub mod debug_print;
+diff --git a/src/js/runtime/module/execute.rs b/src/js/runtime/module/execute.rs
+--- a/src/js/runtime/module/execute.rs
++++ b/src/js/runtime/module/execute.rs
+@@ -169,7 +169,7 @@ fn callback(cx: Context, func: RuntimeFunction) -> AllocResult<Handle<ObjectValu
+     let realm = cx.current_realm();
+     Ok(BuiltinFunction::create_builtin_function_without_properties(
+         cx,
+-        func,
++        func.to_id(),
+         /* name */ None,
+         realm,
+         /* prototype */ Some(realm.get_intrinsic(Intrinsic::FunctionPrototype)),
+diff --git a/src/js/runtime/object_value.rs b/src/js/runtime/object_value.rs
+--- a/src/js/runtime/object_value.rs
++++ b/src/js/runtime/object_value.rs
+@@ -394,6 +394,24 @@ impl Handle<ObjectValue> {
+         Ok(())
+     }
+ 
++    /// Initialize the named properties of this object with the given values. Assumes the object
++    /// already has an array properties shape with the correct number of properties (e.g. a common
++    /// shape) and has no properties set yet.
++    pub fn init_properties(&mut self, cx: Context, values: &[Handle<Value>]) -> AllocResult<()> {
++        debug_assert!(values.len() == self.shape_ptr().num_properties() as usize);
++        debug_assert!(self.named_properties_array().len() == 0);
++
++        let mut properties = ValueVec::new(cx, values.len())?;
++        properties.set_len(values.len());
++        for (slot, value) in properties.as_mut_slice().iter_mut().zip(values) {
++            *slot = **value;
++        }
++
++        self.set_named_properties_array(properties);
++
++        Ok(())
++    }
++
+     fn set_named_property(
+         &mut self,
+         cx: Context,
+diff --git a/src/js/runtime/ordinary_object.rs b/src/js/runtime/ordinary_object.rs
+--- a/src/js/runtime/ordinary_object.rs
++++ b/src/js/runtime/ordinary_object.rs
+@@ -7,6 +7,7 @@ use crate::{
+         abstract_operations::{call_object, create_data_property, get, get_function_realm},
+         accessor::Accessor,
+         alloc_error::AllocResult,
++        common_shapes::CommonShape,
+         eval_result::EvalResult,
+         gc::{Handle, HeapItem, HeapPtr, HeapVisitor, WithHeapItemKind},
+         intrinsics::{intrinsics::Intrinsic, object_prototype_object::ObjectPrototypeObject},
+@@ -634,6 +635,7 @@ pub struct ObjectBuilder<T> {
+     cx: Context,
+     shape_kind: HeapItemKind,
+     proto: Option<Handle<ObjectValue>>,
++    shape: Option<Handle<Shape>>,
+     _phantom: PhantomData<T>,
+ }
+ 
+@@ -643,7 +645,13 @@ where
+ {
+     #[inline]
+     fn with_shape_kind(cx: Context, shape_kind: HeapItemKind) -> Self {
+-        Self { cx, shape_kind, proto: None, _phantom: PhantomData }
++        Self {
++            cx,
++            shape_kind,
++            proto: None,
++            shape: None,
++            _phantom: PhantomData,
++        }
+     }
+ 
+     /// Override the shape kind (which defaults to `T`'s own kind).
+@@ -686,12 +694,31 @@ where
+         Ok(self)
+     }
+ 
++    #[inline]
++    pub fn shape(mut self, shape: Handle<Shape>) -> Self {
++        self.shape = Some(shape);
++        self
++    }
++
++    #[inline]
++    pub fn common_shape(mut self, shape: CommonShape) -> AllocResult<Self> {
++        self.shape = Some(self.cx.get_common_shape(shape)?);
++        Ok(self)
++    }
++
+     #[inline]
+     pub fn build(self) -> AllocResult<HeapPtr<T>> {
+-        let shape = ShapeRegistry::get_root_object_shape(self.cx, self.shape_kind, self.proto)?;
++        let shape = if let Some(shape) = self.shape {
++            shape
++        } else {
++            ShapeRegistry::get_root_object_shape(self.cx, self.shape_kind, self.proto)?
++        };
+ 
++        // Allocate a new object with all fields initialized
+         let object = self.cx.alloc_uninit::<T>()?;
+-        init_object_fields(self.cx, object.into(), *shape);
++
++        init_object_pointer_fields(self.cx, object.into(), *shape);
++        object.into().set_uninit_hash_code();
+ 
+         Ok(object)
+     }
+@@ -717,7 +744,11 @@ impl ObjectBuilder<ObjectValue> {
+     }
+ }
+ 
+-pub fn init_object_fields(cx: Context, mut object: HeapPtr<ObjectValue>, shape: HeapPtr<Shape>) {
++pub fn init_object_pointer_fields(
++    cx: Context,
++    mut object: HeapPtr<ObjectValue>,
++    shape: HeapPtr<Shape>,
++) {
+     object.set_shape(shape);
+ 
+     if shape.is_map_mode() {
+@@ -727,7 +758,6 @@ pub fn init_object_fields(cx: Context, mut object: HeapPtr<ObjectValue>, shape:
+     }
+ 
+     object.set_array_properties(cx.default_array_properties);
+-    object.set_uninit_hash_code();
+ }
+ 
+ /// GetPrototypeFromConstructor (https://tc39.es/ecma262/#sec-getprototypefromconstructor)
+diff --git a/src/js/runtime/property.rs b/src/js/runtime/property.rs
+--- a/src/js/runtime/property.rs
++++ b/src/js/runtime/property.rs
+@@ -61,6 +61,12 @@ impl PropertyFlags {
+         self.union(PropertyFlags::IS_CONFIGURABLE)
+     }
+ 
++    /// Return these flags with the accessor attribute added.
++    #[inline]
++    pub const fn accessor(self) -> PropertyFlags {
++        self.union(PropertyFlags::IS_ACCESSOR)
++    }
++
+     #[inline]
+     pub fn from_data_attributes(
+         is_writable: bool,
+diff --git a/src/js/runtime/property_descriptor.rs b/src/js/runtime/property_descriptor.rs
+--- a/src/js/runtime/property_descriptor.rs
++++ b/src/js/runtime/property_descriptor.rs
+@@ -5,11 +5,12 @@ use crate::{
+         abstract_operations::{create_data_property_or_throw, get, has_property},
+         accessor::Accessor,
+         alloc_error::AllocResult,
++        common_shapes::CommonShape,
+         error::type_error,
+         eval_result::EvalResult,
+         gc::Handle,
+         object_value::ObjectValue,
+-        ordinary_object::ordinary_object_create,
++        ordinary_object::{ObjectBuilder, ordinary_object_create},
+         property::{DEFAULT_DATA_PROPERTY_FLAGS, Property, PropertyFlags},
+         type_utilities::{is_callable, to_boolean},
+     },
+@@ -339,47 +340,38 @@ pub fn to_property_descriptor_object(
+     cx: Context,
+     property: Property,
+ ) -> AllocResult<Handle<ObjectValue>> {
+-    let object = ordinary_object_create(cx)?;
++    let enumerable = cx.bool(property.is_enumerable());
++    let configurable = cx.bool(property.is_configurable());
+ 
+     if property.is_data() {
+-        must_a!(create_data_property_or_throw(cx, object, cx.names.value(), property.value()));
+-        must_a!(create_data_property_or_throw(
+-            cx,
+-            object,
+-            cx.names.writable(),
+-            cx.bool(property.is_writable())
+-        ));
++        let writable = cx.bool(property.is_writable());
++
++        let mut object = ObjectBuilder::<ObjectValue>::new(cx)
++            .common_shape(CommonShape::DataPropertyDescriptor)?
++            .build()?
++            .to_handle();
++        object.init_properties(cx, &[property.value(), writable, enumerable, configurable])?;
++
++        Ok(object)
+     } else {
+         let accessor = property.accessor_value();
+-
+         let get_value = if let Some(get) = accessor.get {
+             get.as_value().to_handle(cx)
+         } else {
+             cx.undefined()
+         };
+-
+         let set_value = if let Some(set) = accessor.set {
+             set.as_value().to_handle(cx)
+         } else {
+             cx.undefined()
+         };
+ 
+-        must_a!(create_data_property_or_throw(cx, object, cx.names.get(), get_value));
+-        must_a!(create_data_property_or_throw(cx, object, cx.names.set_(), set_value));
+-    }
++        let mut object = ObjectBuilder::<ObjectValue>::new(cx)
++            .common_shape(CommonShape::AccessorPropertyDescriptor)?
++            .build()?
++            .to_handle();
++        object.init_properties(cx, &[get_value, set_value, enumerable, configurable])?;
+ 
+-    must_a!(create_data_property_or_throw(
+-        cx,
+-        object,
+-        cx.names.enumerable(),
+-        cx.bool(property.is_enumerable())
+-    ));
+-    must_a!(create_data_property_or_throw(
+-        cx,
+-        object,
+-        cx.names.configurable(),
+-        cx.bool(property.is_configurable())
+-    ));
+-
+-    Ok(object)
++        Ok(object)
++    }
+ }
+diff --git a/src/js/runtime/realm.rs b/src/js/runtime/realm.rs
+--- a/src/js/runtime/realm.rs
++++ b/src/js/runtime/realm.rs
+@@ -10,6 +10,7 @@ use crate::{
+         builtin_function::BuiltinFunction,
+         bytecode::function::ClosureObject,
+         collections::{FastHasher, HashMapInstance, InlineArray, hash_map::BsHashMapField},
++        common_shapes::{CommonShape, CommonShapes},
+         error::{err_access_before_initialization, err_assign_constant, syntax_error},
+         gc::{Handle, HeapItem, HeapPtr, HeapVisitor},
+         gc_object::GcObject,
+@@ -50,6 +51,8 @@ pub struct Realm {
+     /// Timestamp when this realm was created. Times returned from `performance.now` are relative
+     /// to this timestamp.
+     time_origin: Instant,
++    /// Common shapes for objects with a known set of properties.
++    pub common_shapes: CommonShapes,
+     pub intrinsics: Intrinsics,
+ }
+ 
+@@ -80,12 +83,16 @@ impl Realm {
+             set_uninit!(realm.lexical_names, HeapPtr::uninit());
+             set_uninit!(realm.empty_function, HeapPtr::uninit());
+             set_uninit!(realm.time_origin, Instant::now());
++            set_uninit!(realm.common_shapes, CommonShapes::new_uninit());
+ 
+             let realm = realm.to_handle();
+ 
+             // Global object and scope are created here
+             Intrinsics::initialize(cx, realm)?;
+ 
++            // Build remaining common shapes after intrinsics are initialized
++            CommonShapes::initialize(cx, realm)?;
++
+             Ok(realm)
+         })
+     }
+@@ -332,7 +339,7 @@ impl Handle<Realm> {
+ 
+         let empty_function = BuiltinFunction::create_builtin_function_without_properties(
+             cx,
+-            RuntimeFunction::ReturnUndefined,
++            RuntimeFunction::ReturnUndefined.to_id(),
+             /* name */ None,
+             *self,
+             /* prototype */ Some(self.get_intrinsic(Intrinsic::FunctionPrototype)),
+@@ -366,6 +373,14 @@ impl Handle<Realm> {
+             Ok(())
+         })
+     }
++
++    pub fn get_common_shape(
++        &mut self,
++        cx: Context,
++        common_shape: CommonShape,
++    ) -> AllocResult<Handle<Shape>> {
++        CommonShapes::get(cx, *self, common_shape)
++    }
+ }
+ 
+ impl HeapItem for Realm {
+@@ -379,6 +394,7 @@ impl HeapItem for Realm {
+         visitor.visit_pointer(&mut realm.global_scopes);
+         visitor.visit_pointer(&mut realm.lexical_names);
+         visitor.visit_pointer(&mut realm.empty_function);
++        realm.common_shapes.visit_pointers(visitor);
+         realm.intrinsics.visit_pointers(visitor);
+     }
+ }
+diff --git a/src/js/runtime/string_object.rs b/src/js/runtime/string_object.rs
+--- a/src/js/runtime/string_object.rs
++++ b/src/js/runtime/string_object.rs
+@@ -3,8 +3,9 @@ use std::mem::size_of;
+ use crate::{
+     extend_object,
+     runtime::{
+-        Context, PropertyKey,
++        Context, PropertyKey, Realm,
+         alloc_error::AllocResult,
++        common_shapes::CommonShape,
+         eval_result::EvalResult,
+         gc::{Handle, HeapItem, HeapPtr, HeapVisitor},
+         intrinsics::intrinsics::Intrinsic,
+@@ -40,7 +41,7 @@ impl StringObject {
+         string_data_handle: Handle<StringValue>,
+     ) -> AllocResult<Handle<StringObject>> {
+         let mut object = ObjectBuilder::<StringObject>::new(cx)
+-            .intrinsic_proto(Intrinsic::StringPrototype)
++            .common_shape(CommonShape::StringObject)?
+             .build()?;
+ 
+         let string_data = *string_data_handle;
+@@ -50,7 +51,9 @@ impl StringObject {
+ 
+         let object = object.to_handle();
+ 
+-        Self::set_length_property(object, cx, string_length)?;
++        object
++            .as_object()
++            .init_properties(cx, &[cx.number(string_length)])?;
+ 
+         Ok(object)
+     }
+@@ -76,23 +79,22 @@ impl StringObject {
+         Ok(object)
+     }
+ 
+-    pub fn new_with_proto(
++    /// Create a new String prototype object for the realm.
++    pub fn new_string_prototype(
+         cx: Context,
+-        proto: Handle<ObjectValue>,
+-        string_data_handle: Handle<StringValue>,
++        realm: Handle<Realm>,
+     ) -> AllocResult<Handle<StringObject>> {
++        let proto = realm.get_intrinsic(Intrinsic::ObjectPrototype);
++
+         let mut object = ObjectBuilder::<StringObject>::new(cx)
+             .proto(proto)
+             .build()?;
+ 
+-        let string_data = *string_data_handle;
+-        let string_length = string_data.len();
+-
+-        set_uninit!(object.string_data, string_data);
++        set_uninit!(object.string_data, *cx.names.empty_string().as_string());
+ 
+         let object = object.to_handle();
+ 
+-        Self::set_length_property(object, cx, string_length)?;
++        Self::set_length_property(object, cx, 0)?;
+ 
+         Ok(object)
+     }
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

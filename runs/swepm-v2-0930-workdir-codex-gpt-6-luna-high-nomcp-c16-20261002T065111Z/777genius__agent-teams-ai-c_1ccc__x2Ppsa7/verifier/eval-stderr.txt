@@ -1,0 +1,84 @@
+Checking patch test/main/services/team/ChangeExtractorService.test.ts...
+Checking patch test/main/services/team/TaskBoundaryParser.test.ts...
+Checking patch test/main/services/team/TeamMcpConfigBuilder.test.ts...
+Checking patch test/renderer/store/changeReviewSlice.test.ts...
+Checking patch test/renderer/store/extensionsSlice.test.ts...
+Hunk #1 succeeded at 37 (offset 1 line).
+Checking patch test/renderer/utils/taskChangeRequest.test.ts...
+Checking patch test/shared/utils/extensionNormalizers.test.ts...
+Hunk #1 succeeded at 34 (offset -5 lines).
+Applied patch test/main/services/team/ChangeExtractorService.test.ts cleanly.
+Applied patch test/main/services/team/TaskBoundaryParser.test.ts cleanly.
+Applied patch test/main/services/team/TeamMcpConfigBuilder.test.ts cleanly.
+Applied patch test/renderer/store/changeReviewSlice.test.ts cleanly.
+Applied patch test/renderer/store/extensionsSlice.test.ts cleanly.
+Applied patch test/renderer/utils/taskChangeRequest.test.ts cleanly.
+Applied patch test/shared/utils/extensionNormalizers.test.ts cleanly.
+7:42:58 AM [vite] warning: Duplicate key "source" in object literal
+35 |      qualifiedName: 'test@marketplace',
+36 |      name: 'test',
+37 |      source: 'official',
+   |      ^
+38 |      description: 'test',
+39 |      category: 'development',
+
+  Plugin: vite:esbuild
+  File: /testbed/test/shared/utils/extensionNormalizers.test.ts
+7:42:58 AM [vite] warning: Duplicate key "source" in object literal
+38 |    qualifiedName: 'test@marketplace',
+39 |    name: 'Test Plugin',
+40 |    source: 'official',
+   |    ^
+41 |    description: 'A test plugin',
+42 |    category: 'testing',
+
+  Plugin: vite:esbuild
+  File: /testbed/test/renderer/store/extensionsSlice.test.ts
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/renderer/utils/taskChangeRequest.test.ts [ test/renderer/utils/taskChangeRequest.test.ts ]
+Error: Failed to resolve import "@renderer/utils/taskChangeRequest" from "test/renderer/utils/taskChangeRequest.test.ts". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /testbed/test/renderer/utils/taskChangeRequest.test.ts:7:7
+  4  |    buildTaskChangeRequestOptions,
+  5  |    deriveTaskSince
+  6  |  } from "@renderer/utils/taskChangeRequest";
+     |          ^
+  7  |  describe("taskChangeRequest", () => {
+  8  |    it("derives since from the earliest known task timestamp with grace window", () => {
+ ❯ TransformPluginContext._formatError node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41
+ ❯ TransformPluginContext.error node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16
+ ❯ normalizeUrl node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23
+ ❯ node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+ ❯ TransformPluginContext.transform node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7
+ ❯ PluginContainer.transform node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18
+ ❯ loadAndTransform node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > merges top-level user MCP with generated agent-teams config
+AssertionError: expected [ 'agent-teams' ] to deeply equal [ 'agent-teams', …(2) ]
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[2m    "agent-teams",[22m
+[32m-   "duplicateServer",[39m
+[32m-   "globalOnly",[39m
+[2m  ][22m
+
+ ❯ test/main/services/team/TeamMcpConfigBuilder.test.ts:104:51
+    102|     };
+    103| 
+    104|     expect(Object.keys(parsed.mcpServers).sort()).toEqual([
+       |                                                   ^
+    105|       'agent-teams',
+    106|       'duplicateServer',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+

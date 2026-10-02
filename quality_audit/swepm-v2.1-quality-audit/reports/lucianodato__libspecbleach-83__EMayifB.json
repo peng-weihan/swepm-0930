@@ -1,0 +1,72 @@
+{
+  "instance_id": "lucianodato__libspecbleach-83",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch is a large, multi-faceted change that introduces tonal detection (new tonal_detector.c/h), a morphed noise profile system replacing the discrete noise_reduction_mode selector, a new MINIMUM noise estimator type (mode 4), new utility functions (smooth_spectrum, interpolate_spectrum_gaps, get_morphed_profile), renames blocks_averaged to block_count throughout, removes several deprecated API functions, fixes a bug in critical_bands.c (opus_bands typo and off-by-one), and changes the noise_floor_manager_apply signature. The patch is internally consistent and addresses the stated issue of tonal detection and multiple noise reduction modes.",
+  "base_vs_gold_expectation": "Base + test patch will fail to compile because the test patch references struct fields (aggressiveness, tonal_reduction) and functions (specbleach_get_noise_profile_block_count_for_mode, specbleach_2d_get_noise_profile_block_count_for_mode, noise_floor_manager_apply with new signature) that only exist after the gold patch. Gold + test patch should compile and pass all tests. The verifier correctly distinguishes between the two states via compilation failure.",
+  "too_narrow_risks": [
+    "No dedicated test for the core tonal_detector (detect_tonal_components) - the central new feature has zero direct test coverage",
+    "No test for get_morphed_profile correctness - the profile interpolation logic is untested directly",
+    "No test for smooth_spectrum or interpolate_spectrum_gaps utility functions",
+    "No test for noise_estimation_finalize behavior",
+    "No test for the new MINIMUM noise estimator type behavior (mode 4)",
+    "No test for the was_learning state transition logic",
+    "No test for the critical_bands.c bug fix (opus_bands -> octave_bands typo, off-by-one fix)",
+    "Tests primarily verify API surface changes compile rather than testing new algorithmic behavior"
+  ],
+  "too_broad_risks": [
+    "Full test suite (meson test) runs all 20+ tests including unrelated ones (FFT, whitening, STFT latency, etc.) which could fail for unrelated reasons",
+    "Audio file regression tests depend on reference test data files being present and correct"
+  ],
+  "implementation_coupling": [
+    "Test patch hardcodes 44+ references to gold-specific naming: 'aggressiveness' field, 'tonal_reduction' field, 'block_count' naming convention",
+    "Tests require exact function names: specbleach_get_noise_profile_block_count_for_mode (not blocks_averaged_for_mode or any alternative)",
+    "Tests require exact noise_floor_manager_apply signature with tonal_reduction_amount and tonal_mask parameters in specific positions",
+    "Tests hardcode mode range 1-4 (MINIMUM = 4) - alternative implementations with different mode numbering would fail",
+    "Tests define ROLLING_MEAN = 1 constant matching gold implementation's enum values",
+    "An alternative implementation that achieves the same functional goals (tonal detection, multiple reduction modes) but uses different API names or parameter structures would completely fail"
+  ],
+  "environment_risks": [
+    "Depends on fftw3f and sndfile libraries being installed (verified present in docker image)",
+    "Audio file regression tests depend on test_data files which must be present in the image",
+    "Meson 0.61.2 is available - compatible with project requirements"
+  ],
+  "mismatches": [
+    "task.toml category is 'debugging' but this is clearly a feature enhancement (new tonal detection, API refactoring)",
+    "instruction.md contains only a PR title with no detailed requirements, acceptance criteria, or description of expected behavior - makes it nearly impossible to implement without seeing the gold patch",
+    "The instruction mentions '2D denoiser' specifically but the gold patch equally modifies the 1D denoiser (spectral_denoiser.c) with the same scope of changes"
+  ],
+  "evidence": [
+    {
+      "file": "instruction.md",
+      "detail": "Contains only 'feat: Introduce tonal detection and support multiple noise reduction modes for 2D denoiser' - a two-line PR title with no implementation guidance"
+    },
+    {
+      "file": "solution/solve.sh",
+      "detail": "Gold patch spans ~1450 lines across 18 files including 2 new files, header refactoring, algorithm changes, and bug fixes"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch modifies 8 test files with 44+ references to gold-specific API names (aggressiveness, tonal_reduction, block_count_for_mode)"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Zero grep hits for core new features: tonal_detector, morphed_profile, smooth_spectrum, interpolate_spectrum, noise_estimation_finalize, MINIMUM, detect_tonal"
+    },
+    {
+      "file": "/testbed/include/specbleach_denoiser.h",
+      "detail": "Base has noise_reduction_mode field and old API (specbleach_noise_profile_available, specbleach_get_noise_profile, blocks_averaged functions) that gold removes"
+    },
+    {
+      "file": "task.toml",
+      "detail": "Category marked as 'debugging' despite being a major feature enhancement"
+    },
+    {
+      "file": "/testbed/src/shared/pre_estimation/critical_bands.c",
+      "detail": "Gold patch includes a bug fix (opus_bands->octave_bands, off-by-one) that has zero test coverage in the test patch"
+    }
+  ],
+  "recommended_action": "revise_instance",
+  "summary": "The instance has significant quality issues. The instruction is a two-line PR title providing no actionable implementation guidance for a 1450-line, 18-file patch. Tests are heavily coupled to the gold implementation's exact API naming (44+ hardcoded references to specific field/function names), meaning any reasonable alternative implementation would fail. Core new features (tonal detection, morphed profiles, spectrum smoothing, MINIMUM estimator, critical_bands bug fix) have zero direct test coverage - tests only verify the API surface compiles. The category is mislabeled as 'debugging'. While the pass/fail mechanism works (base+tests won't compile, gold+tests should), the combination of vague instructions and implementation-coupled tests makes this instance unsuitable for evaluating whether a candidate truly solved the problem vs simply reverse-engineering the expected API."
+}

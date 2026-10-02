@@ -1,0 +1,5 @@
+The configuration schema test should validate the public Forge configuration format rather than the old workflow-only type. The generated JSON schema must be produced for `forge_config::ForgeConfig`, and the checked-in schema fixture should represent the full Forge config structure expected by users.
+
+When running the schema test in `crates/forge_config/tests/schema.rs`, it should call `schemars::schema_for!(ForgeConfig)` and compare the pretty-printed JSON against the repository’s schema fixture. The schema should include environment-level Forge configuration fields such as `tool_supported`, model sampling options (`temperature`, `top_p`, `top_k`, `max_tokens`), request/tool limits, retry and HTTP configuration definitions, update settings, and the required fields for a complete `ForgeConfig`.
+
+The previous workflow-centric schema generation no longer reflects the actual configuration API. Any tests or code that still generate or validate a schema for `forge_domain::Workflow` should be updated to use `forge_config::ForgeConfig` so that the schema exposed to users matches the current Forge configuration file format.

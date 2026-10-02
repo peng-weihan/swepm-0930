@@ -1,0 +1,68 @@
+{
+  "instance_id": "apache__devlake-8877",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.88,
+  "gold_patch_assessment": "The gold patch creates an entire new Rootly data source plugin from scratch (44 files: 30 Go source files, CSV test fixtures, config-ui components, Grafana dashboard). It implements connection APIs, remote scope discovery, service and incident collection/extraction/conversion, migration scripts, and UI registration. The patch addresses all requirements in the instruction. However, this is a massive 'create entire plugin from scratch' task (4049 lines in solve.sh), mislabeled as 'debugging' in task.toml.",
+  "base_vs_gold_expectation": "Base correctly fails: the rootly plugin directory does not exist at all, so tests cannot even compile (package imports would fail). Gold patch should pass the 3 unit tests that actually execute. However, 3 of 6 declared test files are always skipped: E2E incident_test.go and server_startup_test.go (skipped because E2E_DB_URL is not set in the Docker environment), and table_info_test.go (skipped because eval.sh explicitly refuses to run the meta-package ./plugins). This means pass/fail discrimination depends only on the unit tests in ./plugins/rootly/tasks.",
+  "too_narrow_risks": [
+    "Only 3 of 6 declared test files actually execute - E2E tests (incident_test.go, server_startup_test.go) are always skipped due to missing E2E_DB_URL, and table_info_test.go is skipped because the ./plugins meta-package is excluded.",
+    "Tests only cover incident extraction, incident conversion helpers (status/severity mapping, lead time, issue key, dedup), and incident collector query building. No tests verify: connection API CRUD, connection test endpoint, remote scope discovery, blueprint v2.0 pipeline plan generation, service collection/conversion, or migration schema correctness.",
+    "No tests verify the plugin's registration (impl.go, rootly.go) or that it loads correctly at startup - the server_startup_test.go that would check this is skipped.",
+    "The config-ui registration (4 frontend files) and Grafana dashboard (1 JSON file) are not tested at all.",
+    "A solution that implements only the tasks package with matching function signatures and models would pass, even if it lacks the connection API, scope API, blueprint pipeline, migrations, UI config, and Grafana dashboard."
+  ],
+  "too_broad_risks": [
+    "The task requires implementing an entire 44-file plugin from scratch, which is unusually large for a SWE benchmark instance (4049-line gold patch). This goes well beyond a typical bug fix or feature addition.",
+    "The instruction.md describes an enormous scope covering connection APIs, remote scope discovery, blueprint v2, collection, extraction, conversion, migration, UI registration, and Grafana dashboards - far more than the tests actually verify."
+  ],
+  "implementation_coupling": [
+    "Tests directly call 6 unexported (private) functions by exact name and signature: buildIncidentsQuery(), mapStatus(), mapSeverityToPriority(), computeLeadTime(), issueKeyFor(), extractRootlyIncident(). Any alternative implementation with different internal decomposition or naming will fail even if behavior is identical.",
+    "Tests call the exported method models.Incident.RoleUserIds() which requires the exact model struct and method name from the gold patch.",
+    "Tests reference exact model field names: CreatorUserId, StartedByUserId, MitigatedByUserId, ResolvedByUserId, ClosedByUserId, Number, ServiceId, Severity, AcknowledgedDate, MitigatedDate, ResolvedDate, StartedDate, UpdatedDate, Title, Summary, Url, Status, Id, ConnectionId. Different but semantically equivalent field naming would fail.",
+    "Tests require models.Incident, models.User, models.Service structs to exist in the exact import path plugins/rootly/models.",
+    "Tests require tasks.RootlyOptions, tasks.ExtractIncidentsMeta, tasks.ConvertServicesMeta, tasks.ConvertIncidentsMeta to exist with those exact names in plugins/rootly/tasks."
+  ],
+  "environment_risks": [
+    "E2E_DB_URL is never set in the Docker test environment, causing 2 of 6 test files to always be skipped. If it were somehow set, the E2E tests would require a running database.",
+    "The eval.sh explicitly skips the ./plugins meta-package, rendering the table_info_test.go patch ineffective. This is a known limitation at this commit.",
+    "Go compilation of the rootly package requires all dependencies to be resolvable. The gold patch imports many devlake framework packages - if go mod tidy fails or dependencies are missing, all tests fail regardless of solution correctness."
+  ],
+  "mismatches": [
+    "task.toml categorizes this as 'debugging' but the task is implementing an entirely new plugin from scratch - this is clearly a 'feature' or 'new_feature' category.",
+    "The instruction describes exhaustive requirements (connection APIs, scope discovery, blueprint v2, Grafana dashboard, config-ui) but the tests only verify incident extraction/conversion helper functions - a massive scope gap between instruction and verification.",
+    "3 of 6 test files are never run, creating a false impression of test coverage breadth."
+  ],
+  "evidence": [
+    {
+      "file": "tests/eval.sh",
+      "detail": "Lines 882-889: E2E packages are skipped when E2E_DB_URL is unset. Lines 904-906: the ./plugins meta-package is explicitly skipped."
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "Lines 13-20: 6 test files declared as RUNNABLE_TEST_FILES but only 3 in ./plugins/rootly/tasks actually execute."
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "Lines 170-216: incidents_collector_test.go calls buildIncidentsQuery() - an unexported function defined only in the gold patch."
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "Lines 221-431: incidents_converter_test.go calls mapStatus(), mapSeverityToPriority(), computeLeadTime(), issueKeyFor() - all unexported gold-patch functions."
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "Lines 436-818: incidents_extractor_test.go calls extractRootlyIncident() - an unexported gold-patch function."
+    },
+    {
+      "file": "solution/solve.sh",
+      "detail": "44 files modified/created, 4049 lines total - entire new plugin implementation."
+    },
+    {
+      "file": "task.toml",
+      "detail": "category = 'debugging' is incorrect for a new plugin implementation task."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "This instance asks solvers to implement an entire new 44-file Rootly plugin, but only 3 of 6 test files actually execute (E2E tests and the table_info meta-package test are always skipped). The 3 running unit tests exhibit extreme implementation coupling: they call 6 unexported helper functions and reference exact model field names from the gold patch. Any correct alternative implementation with different internal function names or decomposition will fail. The tests also cover only a small fraction of the stated requirements (incident extraction/conversion helpers), leaving connection APIs, scope discovery, blueprint pipeline, migrations, UI, and Grafana dashboard completely unverified. The task is miscategorized as 'debugging' when it's a new feature. Recommend revising tests to use public/behavioral interfaces or accepting the high coupling with clear documentation."
+}

@@ -1,0 +1,1050 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch server-go/cmd/aimee-module/main_test.go...
+error: while searching for:
+
+import (
+	"context"
+	"errors"
+	"testing"
+)
+
+
+error: patch failed: server-go/cmd/aimee-module/main_test.go:2
+error: server-go/cmd/aimee-module/main_test.go: patch does not apply
+Checking patch server-go/modules/delegates/container_test.go...
+error: server-go/modules/delegates/container_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/dockerargs_test.go...
+error: server-go/modules/delegates/dockerargs_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/economics_stage_test.go...
+error: server-go/modules/delegates/economics_stage_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/economics_test.go...
+error: server-go/modules/delegates/economics_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/handoff_test.go...
+error: server-go/modules/delegates/handoff_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/isolation_test.go...
+error: server-go/modules/delegates/isolation_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/patchcoord_stage_test.go...
+error: server-go/modules/delegates/patchcoord_stage_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/patchcoord_test.go...
+error: server-go/modules/delegates/patchcoord_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/proxyguard_test.go...
+error: server-go/modules/delegates/proxyguard_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/rescue_stage_test.go...
+error: server-go/modules/delegates/rescue_stage_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/rescue_test.go...
+error: server-go/modules/delegates/rescue_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/rolepolicy_test.go...
+error: server-go/modules/delegates/rolepolicy_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/sandbox_test.go...
+error: server-go/modules/delegates/sandbox_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/sandboximage_test.go...
+error: server-go/modules/delegates/sandboximage_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/verify_test.go...
+error: server-go/modules/delegates/verify_test.go: already exists in working directory
+Checking patch server-go/modules/delegates/worktreeplan_test.go...
+error: server-go/modules/delegates/worktreeplan_test.go: already exists in working directory
+Checking patch server-go/modules/git/forge_request_test.go...
+Hunk #1 succeeded at 259 (offset 85 lines).
+error: while searching for:
+	}
+}
+
+func TestHandleForgeRequestRoutesThroughStageFour(t *testing.T) {
+	stub := &forgeStub{reply: `{"default_branch":"testing"}`}
+	stub.start(t)
+
+error: patch failed: server-go/modules/git/forge_request_test.go:199
+error: server-go/modules/git/forge_request_test.go: patch does not apply
+Checking patch server-go/modules/workspace/runner_io_test.go...
+error: while searching for:
+
+// A tree nobody is serving must fail fast. Parking the caller on a rendezvous
+// that will never be drained would wedge the turn instead of failing it.
+func TestRunnerIORefusesATreeNobodyIsServing(t *testing.T) {
+	reset()
+	if _, status := io(IOOpSubmit, "/srv/unserved", []byte("op")); status != bus.ModuleStatusInvalidRequest {
+		t.Fatalf("submit to an unserved tree status = %d", status)
+	}
+	if _, status := io(IOOpPoll, "/srv/unserved", nil); status != bus.ModuleStatusInvalidRequest {
+		t.Fatalf("poll on an unserved tree status = %d", status)
+	}
+}
+
+
+error: patch failed: server-go/modules/workspace/runner_io_test.go:79
+error: server-go/modules/workspace/runner_io_test.go: patch does not apply
+Checking patch src/tests/Rules.mk...
+error: while searching for:
+               $(TESTPREFIX)/unit-test-kb-client-cache \
+               $(TESTPREFIX)/unit-test-openai-runs-store \
+               $(TESTPREFIX)/unit-test-cli-http-transport \
+               $(TESTPREFIX)/unit-test-delegate-xml-fallback \
+               $(TESTPREFIX)/unit-test-http-retry \
+               $(TESTPREFIX)/unit-test-cmd-doctor \
+               $(TESTPREFIX)/unit-test-diff \
+
+error: patch failed: src/tests/Rules.mk:307
+error: src/tests/Rules.mk: patch does not apply
+Checking patch src/tests/gen_xml_fallback_golden.c...
+error: src/tests/gen_xml_fallback_golden.c: No such file or directory
+Checking patch src/tests/support/rescue_fixture_provider.h...
+error: src/tests/support/rescue_fixture_provider.h: already exists in working directory
+Checking patch src/tests/support/xml_fallback_corpus.h...
+error: src/tests/support/xml_fallback_corpus.h: No such file or directory
+Checking patch src/tests/test_agent.c...
+error: while searching for:
+
+/* Containment: a DELEGATE (untrusted model) must never run a shell UNSANDBOXED on
+ * the aimee-server host — that host is uid 0 with the docker socket mounted, so an
+ * unsandboxed command is a host-root escalation. The test config's sandbox mode is
+ * OFF (default), so tool_bash would otherwise fork on the host; with a delegation
+ * active it must refuse instead. The primary session (no delegation) still runs. */
+static void test_tool_bash_delegate_unsandboxed_refused(void)
+{
+   g_test_delegation_id = "test-deleg";
+   char *result = tool_bash("echo escalated", 5000);
+   assert(result != NULL);
+   assert(strstr(result, "refused") != NULL);   /* fail-closed */
+   assert(strstr(result, "escalated") == NULL); /* the command did NOT run */
+   assert(strstr(result, "\"exit_code\":-1") != NULL);
+   free(result);
+
+   /* The trusted primary (operator) session still runs on the host. */
+
+error: patch failed: src/tests/test_agent.c:1288
+error: src/tests/test_agent.c: patch does not apply
+Checking patch src/tests/test_agent_http.c...
+error: while searching for:
+#include "platform_test_util.h"
+#include "cJSON.h"
+
+static cJSON *parse_json_or_die(const char *json)
+{
+   cJSON *root = cJSON_Parse(json);
+   assert(root != NULL);
+   return root;
+}
+
+static cJSON *make_dummy_tool(void)
+{
+   cJSON *tools = cJSON_CreateArray();
+
+error: patch failed: src/tests/test_agent_http.c:19
+error: src/tests/test_agent_http.c: patch does not apply
+Checking patch src/tests/test_agent_ir_parse.c...
+error: while searching for:
+
+/* Local copy of agent_free_parsed_response (agent_bridge.c) so the test stays
+ * self-contained rather than linking the whole legacy bridge. Same semantics. */
+/* Stub the tool registry: the dialect rescue consults it only on bare-JSON/bracket
+ * paths, which these explicit <tool_call> cases do not hit -- same pattern as
+ * test_delegate_xml_fallback.c. */
+struct cJSON *agent_tool_get_schema_cached(const char *tool_name)
+{
+   (void)tool_name;
+   return NULL;
+}
+
+void agent_free_parsed_response(parsed_response_t *p)
+{
+
+error: patch failed: src/tests/test_agent_ir_parse.c:16
+error: src/tests/test_agent_ir_parse.c: patch does not apply
+Checking patch src/tests/test_aimee_ir_rescue.c...
+error: while searching for:
+
+#include <aimee/ir/aimee_ir_metrics.h>
+#include <aimee/delegates/aimee_ir_rescue.h>
+#include "cJSON.h"
+
+/* The dialect parser consults the tool registry only on its bare-JSON/bracket rescue
+ * paths, to gate unknown tool names. These cases use the explicit <tool_call> form,
+ * which accepts any name, so a NULL stub keeps the test self-contained -- same shape
+ * as test_delegate_xml_fallback.c. */
+struct cJSON *agent_tool_get_schema_cached(const char *tool_name)
+{
+   (void)tool_name;
+   return NULL;
+}
+
+static aimee_response_t *resp_of(aimee_block_type_t t, const char *text)
+{
+   aimee_response_t *r = calloc(1, sizeof(*r));
+
+error: patch failed: src/tests/test_aimee_ir_rescue.c:11
+error: src/tests/test_aimee_ir_rescue.c: patch does not apply
+Checking patch src/tests/test_attention_guard.c...
+error: while searching for:
+   assert(attn_unregistered_lineage_blocked(0, 0) == 1);
+   assert(attn_unregistered_lineage_blocked(0, 1) == 1);
+
+   /* ---- Bash reaching outside the worktree (attn_bash_escapes_worktree) ----
+    * The observed bypass: cwd was a valid managed worktree, so the isolation check
+    * passed, while the command cd'd to the shared checkout and wrote there. */
+
+error: patch failed: src/tests/test_attention_guard.c:340
+error: src/tests/test_attention_guard.c: patch does not apply
+Checking patch src/tests/test_cmd_delegate.c...
+error: while searching for:
+   printf("  PASS: test_guarded_lxc_readonly_root_matching\n");
+}
+
+static void test_role_default_tools(void)
+{
+   assert(delegate_role_enable_tools_by_default("search") == 1);
+   assert(delegate_role_enable_tools_by_default("execute") == 1);
+   assert(delegate_role_enable_tools_by_default("diagnose") == 1);
+   assert(delegate_role_enable_tools_by_default("validate") == 1);
+   assert(delegate_role_enable_tools_by_default("inspect") == 1);
+   assert(delegate_role_enable_tools_by_default("test") == 1);
+   assert(delegate_role_enable_tools_by_default("check") == 1);
+   assert(delegate_role_enable_tools_by_default("research") == 1);
+   /* Write roles need a filesystem to do the job at all. This asserted 0 until a
+    * `code` delegate with no file tools answered with a per-file diff summary of
+    * code it never wrote -- see test_delegate_role.c. */
+   assert(delegate_role_enable_tools_by_default("code") == 1);
+   assert(delegate_role_enable_tools_by_default("refactor") == 1);
+   /* Prose generation is not a write role. */
+   assert(delegate_role_enable_tools_by_default("draft") == 0);
+   assert(delegate_role_enable_tools_by_default(NULL) == 0);
+   assert(delegate_role_enable_tools_by_default("") == 0);
+   printf("  PASS: test_role_default_tools\n");
+}
+
+static void test_role_result_cache_policy(void)
+{
+   assert(delegate_role_result_cache_enabled("review") == 0);
+   assert(delegate_role_result_cache_enabled("validate") == 0);
+   assert(delegate_role_result_cache_enabled("diagnose") == 0);
+   assert(delegate_role_result_cache_enabled("search") == 0);
+   assert(delegate_role_result_cache_enabled("execute") == 0);
+   assert(delegate_role_result_cache_enabled("code") == 0);
+   assert(delegate_role_result_cache_enabled("refactor") == 0);
+   assert(delegate_role_result_cache_enabled("inspect") == 0);
+   assert(delegate_role_result_cache_enabled("test") == 0);
+   assert(delegate_role_result_cache_enabled("summarize") == 1);
+   assert(delegate_role_result_cache_enabled("format") == 1);
+   assert(delegate_role_result_cache_enabled("draft") == 1);
+   assert(delegate_role_result_cache_enabled("reason") == 0);
+   assert(delegate_role_result_cache_enabled("custom-review") == 0);
+   assert(delegate_role_result_cache_enabled(NULL) == 0);
+   assert(delegate_role_result_cache_enabled("") == 0);
+   printf("  PASS: test_role_result_cache_policy\n");
+}
+
+static void test_prompt_plan_inline_prompt_only(void)
+{
+   delegate_prompt_plan_t plan;
+
+error: patch failed: src/tests/test_cmd_delegate.c:384
+error: src/tests/test_cmd_delegate.c: patch does not apply
+Checking patch src/tests/test_config.c...
+error: while searching for:
+      assert(strcmp(cfg2.sandbox.allow_paths[1], "/opt/b") == 0);
+   }
+
+   /* --- compact config: defaults --- */
+   {
+      static config_t cfg;
+
+error: patch failed: src/tests/test_config.c:1694
+error: src/tests/test_config.c: patch does not apply
+Checking patch src/tests/test_context_reduce.c...
+error: src/tests/test_context_reduce.c: No such file or directory
+Checking patch src/tests/test_coord_closet.c...
+error: while searching for:
+   PASS("disabled_returns_null");
+}
+
+int main(void)
+{
+   printf("coord_closet tests:\n");
+
+error: patch failed: src/tests/test_coord_closet.c:346
+error: src/tests/test_coord_closet.c: patch does not apply
+Checking patch src/tests/test_coord_jobs.c...
+error: while searching for:
+#include <assert.h>
+#include "platform_test_util.h"
+#include <stdio.h>
+
+error: patch failed: src/tests/test_coord_jobs.c:1
+error: src/tests/test_coord_jobs.c: patch does not apply
+Checking patch src/tests/test_delegate_driver.c...
+error: while searching for:
+   assert(caps.context_limit == DRIVER_CTX_LARGE);
+}
+
+static void test_xml_fallback(void)
+{
+   /* Import declarations */
+   extern int xml_parse_tool_calls(const char *text, parsed_response_t *out);
+   extern int xml_has_tool_calls(const char *text);
+
+   parsed_response_t pr;
+   memset(&pr, 0, sizeof(pr));
+
+   const char *text = "I will run the command now.\n"
+                      "<tool_call>\n"
+                      "  <name>bash</name>\n"
+                      "  <arguments>{\"command\": \"ls -la\"}</arguments>\n"
+                      "</tool_call>\n";
+
+   assert(xml_has_tool_calls(text) == 1);
+   assert(xml_has_tool_calls("no tool calls here") == 0);
+   assert(xml_has_tool_calls(NULL) == 0);
+
+   int n = xml_parse_tool_calls(text, &pr);
+   assert(n == 1);
+   assert(pr.is_tool_call == 1);
+   assert(pr.call_count == 1);
+   assert(strcmp(pr.calls[0].name, "bash") == 0);
+   assert(pr.calls[0].arguments != NULL);
+   assert(strstr(pr.calls[0].arguments, "ls -la") != NULL);
+
+   /* Pre-call text should be in content */
+   assert(pr.content != NULL);
+   assert(strstr(pr.content, "run the command") != NULL);
+
+   /* Cleanup */
+   agent_free_parsed_response(&pr);
+}
+
+static void test_channel_tool_fallback(void)
+{
+   extern int xml_parse_tool_calls(const char *text, parsed_response_t *out);
+   extern int xml_has_tool_calls(const char *text);
+
+   parsed_response_t pr;
+   memset(&pr, 0, sizeof(pr));
+
+   const char *text = "<|channel>call:bash{command:<|\"|>git show 0409c38e<|\"|>}<tool_call|>";
+
+   assert(xml_has_tool_calls(text) == 1);
+   int n = xml_parse_tool_calls(text, &pr);
+   assert(n == 1);
+   assert(pr.is_tool_call == 1);
+   assert(pr.call_count == 1);
+   assert(strcmp(pr.calls[0].name, "bash") == 0);
+   assert(pr.calls[0].arguments != NULL);
+   assert(strcmp(pr.calls[0].arguments, "{\"command\":\"git show 0409c38e\"}") == 0);
+
+   agent_free_parsed_response(&pr);
+}
+
+static void test_qwen_function_xml_fallback(void)
+{
+   extern int xml_parse_tool_calls(const char *text, parsed_response_t *out);
+   extern int xml_has_tool_calls(const char *text);
+
+   parsed_response_t pr;
+   memset(&pr, 0, sizeof(pr));
+
+   const char *text = "I need to read the file.\n"
+                      "<tool_call>\n"
+                      "<function=read_file>\n"
+                      "<parameter=path>/tmp/probe.txt</parameter>\n"
+                      "<parameter=offset>0</parameter>\n"
+                      "</function>\n"
+                      "</tool_call>";
+
+   assert(xml_has_tool_calls(text) == 1);
+   int n = xml_parse_tool_calls(text, &pr);
+   assert(n == 1);
+   assert(pr.is_tool_call == 1);
+   assert(pr.call_count == 1);
+   assert(strcmp(pr.calls[0].name, "read_file") == 0);
+   assert(strcmp(pr.calls[0].id, "xml_call_1") == 0);
+   assert(pr.calls[0].arguments != NULL);
+   assert(strstr(pr.calls[0].arguments, "\"path\":\"/tmp/probe.txt\"") != NULL);
+   assert(strstr(pr.calls[0].arguments, "\"offset\":0") != NULL);
+
+   agent_free_parsed_response(&pr);
+}
+
+static void test_mistral_bracket_tool_fallback(void)
+{
+   extern int xml_parse_tool_calls(const char *text, parsed_response_t *out);
+   extern int xml_has_tool_calls(const char *text);
+
+   parsed_response_t pr;
+   memset(&pr, 0, sizeof(pr));
+
+   const char *text =
+       "<think>I should inspect the file first.</think>\n"
+       "[TOOL_CALLS]read_file{\"path\":\"src/main.c\",\"limit\":20,\"meta\":{\"nested\":true}}";
+
+   assert(xml_has_tool_calls(text) == 1);
+   int n = xml_parse_tool_calls(text, &pr);
+   assert(n == 1);
+   assert(pr.is_tool_call == 1);
+   assert(pr.call_count == 1);
+   assert(strcmp(pr.calls[0].name, "read_file") == 0);
+   assert(strstr(pr.calls[0].arguments, "\"path\":\"src/main.c\"") != NULL);
+   assert(strstr(pr.calls[0].arguments, "\"nested\":true") != NULL);
+   assert(pr.content == NULL || strstr(pr.content, "think") == NULL);
+
+   agent_free_parsed_response(&pr);
+}
+
+static void test_minimax_invoke_tool_fallback(void)
+{
+   extern int xml_parse_tool_calls(const char *text, parsed_response_t *out);
+   extern int xml_has_tool_calls(const char *text
+error: patch failed: src/tests/test_delegate_driver.c:182
+error: src/tests/test_delegate_driver.c: patch does not apply
+Checking patch src/tests/test_delegate_economics.c...
+error: while searching for:
+#include <string.h>
+
+#include <aimee/delegates/delegate_economics.h>
+
+static void add_agent(agent_config_t *cfg, int idx, const char *name, int tier)
+{
+
+error: patch failed: src/tests/test_delegate_economics.c:4
+error: src/tests/test_delegate_economics.c: patch does not apply
+Checking patch src/tests/test_delegate_handoff.c...
+error: while searching for:
+#include <string.h>
+#include "cmd_agent_delegate_impl.h"
+
+static const char *valid_handoff =
+    "{"
+    "\"schema_version\":\"delegate_result_v1\","
+    "\"status\":\"done\","
+    "\"packet_id\":\"packet-one\","
+    "\"changed_files\":[\"src/foo.c\"],"
+    "\"owned_files_touched\":true,"
+    "\"outside_ownership_touches\":[],"
+    "\"commands_run\":[{\"command\":\"make -C src test\",\"exit_code\":0,"
+    "\"summary\":\"built focused test\"}],"
+    "\"tests\":[{\"name\":\"unit-test-foo\",\"status\":\"passed\","
+    "\"command\":\"./src/build/obj/tests/unit-test-foo\"}],"
+    "\"risks\":[],"
+    "\"supervisor_actions\":[],"
+    "\"summary\":\"Implemented focused change.\""
+    "}";
+
+static void test_valid_handoff_parses(void)
+{
+   delegate_handoff_validation_t v;
+   assert(delegate_handoff_validate_text(valid_handoff, "[\"src/foo.c\"]", 1, &v) == 0);
+   assert(v.valid == 1);
+   assert(strcmp(v.status, "done") == 0);
+   assert(strcmp(v.raw_status, "done") == 0);
+   assert(v.changed_files_count == 1);
+   assert(v.commands_run == 1);
+   assert(v.passed_tests == 1);
+   assert(v.outside_ownership_count == 0);
+   assert(v.needs_supervisor_review == 0);
+   printf("  PASS: test_valid_handoff_parses\n");
+}
+
+static void test_invalid_json_rejected(void)
+{
+   delegate_handoff_validation_t v;
+   assert(delegate_handoff_validate_text("not json", NULL, 1, &v) != 0);
+   assert(v.valid == 0);
+   assert(strcmp(v.status, "needs_supervisor_review") == 0);
+   assert(strstr(v.error, "valid JSON object") != NULL);
+   printf("  PASS: test_invalid_json_rejected\n");
+}
+
+static void test_missing_required_fields_rejected(void)
+{
+   const char *json = "{\"schema_version\":\"delegate_result_v1\",\"status\":\"done\"}";
+   delegate_handoff_validation_t v;
+   assert(delegate_handoff_validate_text(json, NULL, 1, &v) != 0);
+   assert(v.valid == 0);
+   assert(strcmp(v.status, "needs_supervisor_review") == 0);
+   assert(strstr(v.error, "required fields") != NULL);
+   printf("  PASS: test_missing_required_fields_rejected\n");
+}
+
+static void test_supervisor_actions_optional(void)
+{
+   const char *json = "{"
+                      "\"schema_version\":\"delegate_result_v1\","
+                      "\"status\":\"done\","
+                      "\"changed_files\":[\"src/foo.c\"],"
+                      "\"tests\":[{\"name\":\"unit-test-foo\",\"status\":\"passed\"}],"
+                      "\"summary\":\"Implemented focused change.\""
+                      "}";
+   delegate_handoff_validation_t v;
+   assert(delegate_handoff_validate_text(json, "[\"src/foo.c\"]", 1, &v) == 0);
+   assert(v.valid == 1);
+   assert(strcmp(v.status, "done") == 0);
+   assert(v.passed_tests == 1);
+   printf("  PASS: test_supervisor_actions_optional\n");
+}
+
+static void test_empty_summary_rejected(void)
+{
+   const char *json = "{"
+                      "\"schema_version\":\"delegate_result_v1\","
+                      "\"status\":\"done\","
+                      "\"changed_files\":[],"
+                      "\"tests\":[],"
+                      "\"supervisor_actions\":[],"
+                      "\"summary\":\"   \""
+                      "}";
+   delegate_handoff_validation_t v;
+   assert(delegate_handoff_validate_text(json, NULL, 1, &v) != 0);
+   assert(v.valid == 0);
+   assert(strstr(v.error, "required fields") != NULL);
+   printf("  PASS: test_empty_summary_rejected\n");
+}
+
+static void test_done_without_verification_downgrades(void)
+{
+   const char *json = "{"
+                      "\"schema_version\":\"delegate_result_v1\","
+                      "\"status\":\"done\","
+                      "\"changed_files\":[\"src/foo.c\"],"
+                      "\"tests\":[],"
+                      "\"supervisor_actions\":[],"
+                      "\"summary\":\"No verification was run.\""
+                      "}";
+   delegate_handoff_validation_t v;
+   assert(delegate_handoff_validate_text(json, "[\"src/foo.c\"]", 1, &v) == 0);
+   assert(v.valid == 1);
+   assert(strcmp(v.raw_status, "done") == 0);
+   assert(strcmp(v.status, "partial") == 0);
+   assert(v.done_without_verifi
+error: patch failed: src/tests/test_delegate_handoff.c:5
+error: src/tests/test_delegate_handoff.c: patch does not apply
+Checking patch src/tests/test_delegate_patch_coordinator.c...
+error: while searching for:
+/* test_delegate_patch_coordinator.c: read-only delegate patch-state report tests. */
+#include <aimee/delegates/delegate_patch_coordinator.h>
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+
+static void init_task(db1_coord_task_t *task, int id, const char *status, const char *files,
+                      const char *result)
+{
+   memset(task, 0, sizeof(*task));
+   task->id = id;
+   task->job_id = 1;
+   task->step_id = id + 100;
+   snprintf(task->status, sizeof(task->status), "%s", status);
+   snprintf(task->files, sizeof(task->files), "%s", files ? files : "[]");
+   if (result)
+      snprintf(task->result, sizeof(task->result), "%s", result);
+}
+
+static void make_handoff(char *buf, size_t len, const char *status, const char *changed,
+                         const char *tests, const char *extra)
+{
+   snprintf(buf, len,
+            "{"
+            "\"schema_version\":\"delegate_result_v1\","
+            "\"status\":\"%s\","
+            "\"packet_id\":\"packet-one\","
+            "\"changed_files\":[%s],"
+            "\"outside_ownership_touches\":[],"
+            "\"tests\":[%s],"
+            "\"supervisor_actions\":[],"
+            "\"summary\":\"result\"%s"
+            "}",
+            status, changed, tests, extra ? extra : "");
+}
+
+static void test_disjoint_verified_packets_are_reviewable(void)
+{
+   char h1[1024], h2[1024];
+   make_handoff(h1, sizeof(h1), "done", "\"src/a.c\"",
+                "{\"name\":\"unit-a\",\"status\":\"passed\"}", "");
+   make_handoff(h2, sizeof(h2), "done", "\"src/b.c\"",
+                "{\"name\":\"unit-b\",\"status\":\"passed\"}", "");
+
+   db1_coord_task_t tasks[2];
+   init_task(&tasks[0], 1, "done", "[\"src/a.c\"]", h1);
+   init_task(&tasks[1], 2, "done", "[\"src/b.c\"]", h2);
+
+   delegate_patch_report_t report;
+   delegate_patch_coordinator_build_report(NULL, tasks, 2, &report);
+   assert(report.implementation_packets == 2);
+   assert(report.reviewable == 2);
+   assert(report.needs_supervisor == 0);
+   assert(report.verified == 2);
+   assert(report.focused_tests_passed == 2);
+   assert(strcmp(report.tasks[0].patch_state, "reviewable") == 0);
+   assert(strcmp(report.tasks[1].patch_state, "reviewable") == 0);
+   printf("  PASS: test_disjoint_verified_packets_are_reviewable\n");
+}
+
+static void test_outside_owned_files_need_supervisor(void)
+{
+   char h[1024];
+   make_handoff(h, sizeof(h), "done", "\"src/a.c\",\"src/outside.c\"",
+                "{\"name\":\"unit-a\",\"status\":\"passed\"}", "");
+
+   db1_coord_task_t task;
+   init_task(&task, 3, "done", "[\"src/a.c\"]", h);
+
+   delegate_patch_report_t report;
+   delegate_patch_coordinator_build_report(NULL, &task, 1, &report);
+   assert(report.needs_supervisor == 1);
+   assert(report.outside_ownership_touches == 1);
+   assert(strcmp(report.tasks[0].patch_state, "needs_supervisor") == 0);
+   assert(strstr(report.tasks[0].note, "outside") != NULL);
+   printf("  PASS: test_outside_owned_files_need_supervisor\n");
+}
+
+static void test_overlapping_patches_need_supervisor(void)
+{
+   char h1[1024], h2[1024];
+   make_handoff(h1, sizeof(h1), "done", "\"src/shared.c\"",
+                "{\"name\":\"unit-a\",\"status\":\"passed\"}", "");
+   make_handoff(h2, sizeof(h2), "done", "\"src/shared.c\"",
+                "{\"name\":\"unit-b\",\"status\":\"passed\"}", "");
+
+   db1_coord_task_t tasks[2];
+   init_task(&tasks[0], 4, "done", "[\"src/shared.c\"]", h1);
+   init_task(&tasks[1], 5, "done", "[\"src/shared.c\"]", h2);
+
+   delegate_patch_report_t report;
+   delegate_patch_coordinator_build_report(NULL, tasks, 2, &report);
+   assert(report.reviewable == 1);
+   assert(report.needs_supervisor == 1);
+   assert(report.patch_overlaps == 1);
+   assert(report.tasks[1].overlap_task_id == 4);
+   assert(strcmp(report.tasks[1].patch_state, "needs_supervisor") == 0);
+   printf("  PASS: test_overlapping_patches_need_supervisor\n");
+}
+
+static void test_stale_base_metadata_needs_supervisor(void)
+{
+   char h[1024];
+   make_handoff(h, sizeof(h), "done", "\"src/a.c\"", "{\"name\":\"unit-a\",\"status\":\"passed\"}",
+                ",\"base
+error: patch failed: src/tests/test_delegate_patch_coordinator.c:1
+error: src/tests/test_delegate_patch_coordinator.c: patch does not apply
+Checking patch src/tests/test_delegate_role.c...
+error: while searching for:
+   printf("  PASS: test_empty_role\n");
+}
+
+static void test_is_write_code_role(void)
+{
+   assert(delegate_role_is_write("code") == 1);
+   printf("  PASS: test_is_write_code_role\n");
+}
+
+static void test_is_write_refactor_role(void)
+{
+   assert(delegate_role_is_write("refactor") == 1);
+   printf("  PASS: test_is_write_refactor_role\n");
+}
+
+static void test_is_write_implement_alias(void)
+{
+   assert(delegate_role_is_write("implement") == 1);
+   printf("  PASS: test_is_write_implement_alias\n");
+}
+
+static void test_is_write_read_only_roles(void)
+{
+   assert(delegate_role_is_write("review") == 0);
+   assert(delegate_role_is_write("validate") == 0);
+   assert(delegate_role_is_write("diagnose") == 0);
+   assert(delegate_role_is_write("execute") == 0);
+   assert(delegate_role_is_write("draft") == 0);
+   assert(delegate_role_is_write("planner") == 0);
+   printf("  PASS: test_is_write_read_only_roles\n");
+}
+
+static void test_is_write_null_empty(void)
+{
+   assert(delegate_role_is_write(NULL) == 0);
+   assert(delegate_role_is_write("") == 0);
+   printf("  PASS: test_is_write_null_empty\n");
+}
+
+static void test_novel_roles(void)
+{
+   /* continuity and beat-check survive the persona-vs-role cull: they are real
+    * read-only inspection actions a novel persona genuinely delegates, not
+    * restatements of who the delegate is. */
+   assert(delegate_role_is_write("continuity") == 0);
+   assert(delegate_role_is_write("beat-check") == 0);
+   assert(delegate_role_auto_tools_for_invocation("continuity", -1, 0) == 1);
+   assert(delegate_role_auto_tools_for_invocation("beat-check", 2, 0) == 1);
+   assert(delegate_role_auto_tools_for_invocation("continuity", 1, 0) == 0);
+   printf("  PASS: test_novel_roles\n");
+}
+
+/* The cull deleted the roles that only restated a persona. Writing prose or a
+ * lyric is the `draft` action performed BY a novel/songwriter persona, so these
+ * names must now be rejected outright rather than silently degrading to a
+
+error: patch failed: src/tests/test_delegate_role.c:148
+error: src/tests/test_delegate_role.c: patch does not apply
+Checking patch src/tests/test_delegate_verify.c...
+error: src/tests/test_delegate_verify.c: No such file or directory
+Checking patch src/tests/test_delegate_xml_fallback.c...
+error: src/tests/test_delegate_xml_fallback.c: No such file or directory
+Checking patch src/tests/test_fold_recall.c...
+error: src/tests/test_fold_recall.c: No such file or directory
+Checking patch src/tests/test_git_pr_ci_grade.c...
+error: while searching for:
+   /* end to end: an unreadable answer must not reach a merge */
+   assert(!git_pr_ci_permits_merge(grade_with("not json")));
+
+   /* --- terminal conflict vs retryable lost race (both arrive as 405/409) ---
+    * A content conflict is identical on every retry, so it must be terminal; a
+    * moved head/base is a lost race a retry wins. Getting this wrong in the
+    * retryable direction wedges a run forever (observed: 15 attempts over 3
+    * hours); getting it wrong in the terminal direction kills a run that would
+    * have merged. Hence the predicate fails SAFE toward retry. */
+   assert(git_pr_merge_err_is_conflict("github API (pr merge, HTTP 405): Pull Request has merge "
+                                       "conflicts"));
+   assert(git_pr_merge_err_is_conflict("merge conflict"));           /* minimal phrasing */
+   assert(git_pr_merge_err_is_conflict("MERGE CONFLICTS DETECTED")); /* case-insensitive */
+
+   /* Lost races must stay retryable — these are the messages a retry wins. */
+   assert(!git_pr_merge_err_is_conflict(
+       "github API (pr merge, HTTP 409): Head branch was modified. Review and try the merge "
+       "again."));
+   assert(!git_pr_merge_err_is_conflict("github API (pr merge, HTTP 405): Base branch was "
+                                        "modified. Review and try the merge again."));
+   /* The bare word must NOT terminate: HTTP 409 is named "Conflict", so a
+    * lost-race message can carry it with no content conflict involved. */
+   assert(!git_pr_merge_err_is_conflict("github API (pr merge, HTTP 409): Conflict"));
+   /* Unrecognised / empty degrade to retry, never to a terminal kill. */
+   assert(!git_pr_merge_err_is_conflict("github API (pr merge, HTTP 405): failed"));
+   assert(!git_pr_merge_err_is_conflict(""));
+   assert(!git_pr_merge_err_is_conflict(NULL));
+
+   printf("ok\n");
+   return 0;
+
+error: patch failed: src/tests/test_git_pr_ci_grade.c:99
+error: src/tests/test_git_pr_ci_grade.c: patch does not apply
+Checking patch src/tests/test_git_pr_stage.c...
+error: while searching for:
+                                     sizeof(urlbuf), err, sizeof(err)) == -1);
+   assert(module_bus_stub_calls() == before);
+
+   printf("git_pr_stage: all tests passed\n");
+   return 0;
+}
+
+error: patch failed: src/tests/test_git_pr_stage.c:215
+error: src/tests/test_git_pr_stage.c: patch does not apply
+Checking patch src/tests/test_log.c...
+error: while searching for:
+/* test_log.c: tests for logging infrastructure */
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+#include "log.h"
+
+static void test_log_parse_level(void)
+
+error: patch failed: src/tests/test_log.c:1
+error: src/tests/test_log.c: patch does not apply
+Checking patch src/tests/test_server_compute.c...
+error: while searching for:
+   printf("PASS: codex oauth vault server-principal fallback + D15 locked hard-miss\n");
+}
+
+int main(void)
+{
+   test_codex_oauth_vault_server_principal_fallback();
+   /* DB1 owns delegation_spawns + delegation_messages. */
+   assert(db1_init(":memory:") == 0);
+
+error: patch failed: src/tests/test_server_compute.c:3511
+error: src/tests/test_server_compute.c: patch does not apply
+Checking patch src/tests/test_session_compact.c...
+error: while searching for:
+   PASS("compact_summary_has_structured_sections");
+}
+
+static void test_compact_idempotent_on_small(void)
+{
+   /* Compacting an already-small array should be a no-op */
+
+error: patch failed: src/tests/test_session_compact.c:391
+error: src/tests/test_session_compact.c: patch does not apply
+Checking patch tests/baselines/refactor/index.json...
+error: while searching for:
+        },
+        {
+          "path": "src/server/server_main.c",
+          "sha256": "4afacbd65680ebcae084ebf86773f6b1af9a753cb1ec5eb5a1e7e226490475dd"
+        }
+      ]
+    },
+    "configuration": {
+      "files": [
+        {
+          "path": "docs/gen/configuration.md",
+          "sha256": "068f1334be46b49294133444c5c3553ea2b22c271fc5c2c761e90ee965fed598"
+        }
+      ]
+    },
+
+error: patch failed: tests/baselines/refactor/index.json:19
+error: tests/baselines/refactor/index.json: patch does not apply
+Checking patch tests/baselines/refactor/module-test-registration.json...
+error: while searching for:
+      "module": "delegates",
+      "test": "src/tests/test_delegate_sandbox_image.c"
+    },
+    {
+      "ctest": false,
+      "make": true,
+      "module": "delegates",
+      "test": "src/tests/test_delegate_xml_fallback.c"
+    },
+    {
+      "ctest": false,
+      "make": true,
+
+error: patch failed: tests/baselines/refactor/module-test-registration.json:145
+error: tests/baselines/refactor/module-test-registration.json: patch does not apply
+patching file server-go/cmd/aimee-module/main_test.go
+Reversed (or previously applied) patch detected!  Assuming -R.
+Hunk #2 FAILED at 15.
+Hunk #3 succeeded at 51 (offset 1 line).
+1 out of 3 hunks FAILED -- saving rejects to file server-go/cmd/aimee-module/main_test.go.rej
+The next patch would create the file server-go/modules/delegates/container_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/container_test.go
+The next patch would create the file server-go/modules/delegates/dockerargs_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/dockerargs_test.go
+The next patch would create the file server-go/modules/delegates/economics_stage_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/economics_stage_test.go
+The next patch would create the file server-go/modules/delegates/economics_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/economics_test.go
+The next patch would create the file server-go/modules/delegates/handoff_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/handoff_test.go
+The next patch would create the file server-go/modules/delegates/isolation_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/isolation_test.go
+The next patch would create the file server-go/modules/delegates/patchcoord_stage_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/patchcoord_stage_test.go
+The next patch would create the file server-go/modules/delegates/patchcoord_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/patchcoord_test.go
+The next patch would create the file server-go/modules/delegates/proxyguard_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/proxyguard_test.go
+The next patch would create the file server-go/modules/delegates/rescue_stage_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/rescue_stage_test.go
+The next patch would create the file server-go/modules/delegates/rescue_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/rescue_test.go
+The next patch would create the file server-go/modules/delegates/rolepolicy_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/rolepolicy_test.go
+The next patch would create the file server-go/modules/delegates/sandbox_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/sandbox_test.go
+Hunk #1 FAILED at 1.
+Not deleting file server-go/modules/delegates/sandbox_test.go as content differs from patch
+1 out of 1 hunk FAILED -- saving rejects to file server-go/modules/delegates/sandbox_test.go.rej
+The next patch would create the file server-go/modules/delegates/sandboximage_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/sandboximage_test.go
+The next patch would create the file server-go/modules/delegates/verify_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/verify_test.go
+The next patch would create the file server-go/modules/delegates/worktreeplan_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/worktreeplan_test.go
+Hunk #1 FAILED at 1.
+Not deleting file server-go/modules/delegates/worktreeplan_test.go as content differs from patch
+1 out of 1 hunk FAILED -- saving rejects to file server-go/modules/delegates/worktreeplan_test.go.rej
+patching file server-go/modules/git/forge_request_test.go
+Hunk #1 succeeded at 259 (offset 85 lines).
+Hunk #2 succeeded at 454 with fuzz 2 (offset 170 lines).
+patching file server-go/modules/workspace/runner_io_test.go
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file src/tests/Rules.mk
+Reversed (or previously applied) patch detected!  Assuming -R.
+Hunk #2 succeeded at 470 (offset -10 lines).
+Hunk #3 succeeded at 3889 (offset 1 line).
+Hunk #4 FAILED at 4340.
+Hunk #5 succeeded at 5634 (offset -44 lines).
+Hunk #6 FAILED at 6937.
+2 out of 6 hunks FAILED -- saving rejects to file src/tests/Rules.mk.rej
+The next patch would delete the file src/tests/gen_xml_fallback_golden.c,
+which does not exist!  Assuming -R.
+patching file src/tests/gen_xml_fallback_golden.c
+The next patch would create the file src/tests/support/rescue_fixture_provider.h,
+which already exists!  Assuming -R.
+patching file src/tests/support/rescue_fixture_provider.h
+The next patch would delete the file src/tests/support/xml_fallback_corpus.h,
+which does not exist!  Assuming -R.
+patching file src/tests/support/xml_fallback_corpus.h
+patching file src/tests/test_agent.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+Hunk #1 succeeded at 1289 (offset 1 line).
+Hunk #2 succeeded at 1308 (offset 1 line).
+patching file src/tests/test_agent_http.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file src/tests/test_agent_ir_parse.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file src/tests/test_aimee_ir_rescue.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file src/tests/test_attention_guard.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file src/tests/test_cmd_delegate.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+Hunk #1 succeeded at 385 (offset 1 line).
+Hunk #2 succeeded at 1281 (offset -40 lines).
+patching file src/tests/test_config.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+Hunk #1 succeeded at 1692 (offset -2 lines).
+can't find file to patch at input line 4098
+Perhaps you used the wrong -p or --strip option?
+The text leading up to this was:
+--------------------------
+|diff --git a/src/tests/test_context_reduce.c b/src/tests/test_context_reduce.c
+|--- a/src/tests/test_context_reduce.c
+|+++ b/src/tests/test_context_reduce.c
+--------------------------
+No file to patch.  Skipping patch.
+2 out of 2 hunks ignored
+patching file src/tests/test_coord_closet.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file src/tests/test_coord_jobs.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file src/tests/test_delegate_driver.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file src/tests/test_delegate_economics.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file src/tests/test_delegate_handoff.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file src/tests/test_delegate_patch_coordinator.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file src/tests/test_delegate_role.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+The next patch would delete the file src/tests/test_delegate_verify.c,
+which does not exist!  Assuming -R.
+patching file src/tests/test_delegate_verify.c
+The next patch would delete the file src/tests/test_delegate_xml_fallback.c,
+which does not exist!  Assuming -R.
+patching file src/tests/test_delegate_xml_fallback.c
+can't find file to patch at input line 6458
+Perhaps you used the wrong -p or --strip option?
+The text leading up to this was:
+--------------------------
+|diff --git a/src/tests/test_fold_recall.c b/src/tests/test_fold_recall.c
+|--- a/src/tests/test_fold_recall.c
+|+++ b/src/tests/test_fold_recall.c
+--------------------------
+No file to patch.  Skipping patch.
+1 out of 1 hunk ignored
+patching file src/tests/test_git_pr_ci_grade.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file src/tests/test_git_pr_stage.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file src/tests/test_log.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file src/tests/test_server_compute.c
+Hunk #1 succeeded at 3730 with fuzz 3 (offset 219 lines).
+patching file src/tests/test_session_compact.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/baselines/refactor/index.json
+Hunk #1 FAILED at 19.
+Hunk #3 FAILED at 299.
+Hunk #4 FAILED at 375.
+Hunk #5 FAILED at 491.
+Hunk #6 FAILED at 875.
+Hunk #7 FAILED at 1083.
+Hunk #8 FAILED at 1131.
+Hunk #9 FAILED at 1215.
+Hunk #10 FAILED at 1419.
+Hunk #11 FAILED at 1431.
+Hunk #12 FAILED at 1455.
+Hunk #13 FAILED at 1539.
+Hunk #14 FAILED at 1579.
+Hunk #15 FAILED at 1616.
+14 out of 15 hunks FAILED -- saving rejects to file tests/baselines/refactor/index.json.rej
+patching file tests/baselines/refactor/module-test-registration.json
+Reversed (or previously applied) patch detected!  Assuming -R.
+Hunk #1 succeeded at 133 (offset -12 lines).
+-- Found SQLite3: /usr/include (found version "3.40.1") 
+-- Checking for module 'libpq'
+--   Found libpq, version 15.19
+-- Looking for security/pam_appl.h
+-- Looking for security/pam_appl.h - found
+-- Looking for pam_start in pam
+-- Looking for pam_start in pam - found
+-- Found PkgConfig: /usr/bin/pkg-config (found version "1.8.1") 
+-- Checking for module 'libsecret-1'
+--   Found libsecret-1, version 0.20.5
+-- Configuring done
+CMake Error at CMakeLists.txt:1280 (add_library):
+  Cannot find source file:
+
+    _learn.c
+
+  Tried extensions .c .C .c++ .cc .cpp .cxx .cu .mpp .m .M .mm .ixx .cppm .h
+  .hh .h++ .hm .hpp .hxx .in .txx .f .F .for .f77 .f90 .f95 .f03 .hip .ispc
+
+
+CMake Error at CMakeLists.txt:1280 (add_library):
+  No SOURCES given to target: aimee-data
+
+
+CMake Generate step failed.  Build files cannot be regenerated correctly.
+[0/1] Re-running CMake...
+-- Configuring done
+CMake Error at CMakeLists.txt:1280 (add_library):
+  Cannot find source file:
+
+    _learn.c
+
+  Tried extensions .c .C .c++ .cc .cpp .cxx .cu .mpp .m .M .mm .ixx .cppm .h
+  .hh .h++ .hm .hpp .hxx .in .txx .f .F .for .f77 .f90 .f95 .f03 .hip .ispc
+
+
+CMake Error at CMakeLists.txt:1280 (add_library):
+  No SOURCES given to target: aimee-data
+
+
+CMake Generate step failed.  Build files cannot be regenerated correctly.
+FAILED: build.ninja 
+/usr/bin/cmake --regenerate-during-build -S/testbed -B/testbed/build
+ninja: error: rebuilding 'build.ninja': subcommand failed
+Internal ctest changing into directory: /testbed/build
+Test project /testbed/build
+No tests were found!!!
+# github.com/JBailes/aimee/server-go/modules/git [github.com/JBailes/aimee/server-go/modules/git.test]
+modules/git/forge_request_test.go:266:6: TestPRFindOpenFiltersByBaseAsWellAsHead redeclared in this block
+	modules/git/forge_request_test.go:181:6: other declaration of TestPRFindOpenFiltersByBaseAsWellAsHead
+modules/git/forge_request_test.go:292:6: TestPRListOpenAsksForMostRecentlyUpdatedFirst redeclared in this block
+	modules/git/forge_request_test.go:207:6: other declaration of TestPRListOpenAsksForMostRecentlyUpdatedFirst
+modules/git/forge_request_test.go:319:6: TestMergeConflictClassificationFailsSafeTowardRetry redeclared in this block
+	modules/git/forge_request_test.go:234:6: other declaration of TestMergeConflictClassificationFailsSafeTowardRetry
+modules/git/forge_request_test.go:462:6: TestPRInfoKeepsMergeableThreeValued redeclared in this block
+	modules/git/forge_request_test.go:377:6: other declaration of TestPRInfoKeepsMergeableThreeValued
+modules/git/forge_request_test.go:499:6: TestPRInfoCarriesTheRefsAndStateACallerNeeds redeclared in this block
+	modules/git/forge_request_test.go:414:6: other declaration of TestPRInfoCarriesTheRefsAndStateACallerNeeds
+modules/git/forge_request_test.go:526:6: TestNeverMergedHasNoMergedAt redeclared in this block
+	modules/git/forge_request_test.go:441:6: other declaration of TestNeverMergedHasNoMergedAt
+modules/git/forge_request_test.go:540:6: boolPtr redeclared in this block
+	modules/git/forge_request_test.go:455:6: other declaration of boolPtr
+ok  	github.com/JBailes/aimee/server-go/modules/delegates	0.006s
+FAIL	github.com/JBailes/aimee/server-go/modules/git [build failed]
+--- FAIL: TestRunnerIORefusesATreeNobodyIsServing (0.00s)
+    runner_io_test.go:85: submit to an unserved tree status = 1
+FAIL
+FAIL	github.com/JBailes/aimee/server-go/modules/workspace	0.054s
+ok  	github.com/JBailes/aimee/server-go/cmd/aimee-module	0.004s
+FAIL
+OMNIGRIL_EXIT_CODE=1

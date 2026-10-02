@@ -1,0 +1,61 @@
+{
+  "instance_id": "xremap__xremap-892",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.52,
+  "gold_patch_assessment": "The gold patch is massively over-scoped. The stated issue is about modifier alias consistency in the parser (key.rs and key_press.rs), but the patch includes extensive unrelated refactoring: moving run_command to a new CommandRunner struct, creating a MainController, renaming Device to DeviceMatcher, renaming remap.rs to nested_remap.rs, renaming fields (win_id→winid, app_id→app_class), restructuring WMClient parameter passing in event_handler.rs, and major main.rs refactoring. Only the changes to key.rs (adding parse_modifier_alias check with better error message) and key_press.rs (extracting parse_modifier_alias as public function, adding new aliases S/A/W) address the stated issue. The gold patch also introduces potentially breaking behavioral changes (S now means Shift instead of KEY_S as modifier, A means Alt instead of KEY_A, W means Windows instead of KEY_W) that are not discussed in the issue.",
+  "base_vs_gold_expectation": "Base code passes all 251 existing tests. The gold patch changes error messages in parse_key, which would cause test_yaml_fail_on_modifier_missing_sidedness and test_yaml_invalid_virtual_modifiers_1 in tests.rs to fail (they still expect old messages). A test patch must be injected at runtime to update these assertions. Without the test patch, base PASSES and gold FAILS — the inverse of correct behavior. The test patch file (/tmp/test.patch) is NOT present in the task directory and must be provided externally by the evaluation harness. This makes full verification impossible during audit.",
+  "too_narrow_risks": [
+    "Only 2-3 tests validate the modifier alias error message change (test_parse_key for 'Shift', test_yaml_fail_on_modifier_missing_sidedness for 'WIN' in modmap, test_yaml_invalid_virtual_modifiers_1 for 'WIN' in virtual_modifiers). No tests for other unsided aliases like 'SUPER', 'CTRL', 'CONTROL', 'ALT'.",
+    "No tests verify that newly added modifier aliases (S for Shift, A for Alt, W for Windows) work correctly in the modifier position of key presses.",
+    "No tests verify that existing sided aliases (WIN_L, WIN_R, SUPER_L, SUPER_R, etc.) continue to work as keys after the change — only implicit coverage through pre-existing tests.",
+    "The test patch is not visible for audit, so its actual coverage cannot be verified. It likely only updates 2 expected error message strings in tests.rs."
+  ],
+  "too_broad_risks": [
+    "cargo test --no-fail-fast runs the entire test suite (251+ tests), most of which are unrelated to modifier alias handling (e.g., multi-purpose key tests, operator tests, throttle emit tests, disguised event tests).",
+    "The gold patch's extensive refactoring (new modules, renamed types, restructured code) means compilation-breaking alternatives could fail tests for reasons unrelated to the modifier alias fix."
+  ],
+  "implementation_coupling": [
+    "test_parse_key is embedded in key.rs (the production file), not in a separate test file. The gold patch changes this assertion directly, so candidates must update it alongside the code change. This is reasonable but couples the 'test' to the exact file structure.",
+    "The gold patch adds specific new aliases (S, A, W) not mentioned in the issue. If the test patch tests these, candidates must implement these exact aliases. If it doesn't, these behavioral changes are untested.",
+    "The error message format 'Modifiers must have left/right specified when used as key: ...' is hardcoded in both the gold patch and the test assertions. Any reasonable alternative wording would fail."
+  ],
+  "environment_risks": [
+    "The test patch (/tmp/test.patch) must be injected by the evaluation harness at runtime. If the harness fails to provide it, both git apply and patch commands fail, and the evaluation runs against unchanged tests — causing base code to PASS (false positive).",
+    "eval.sh uses 'set -uo pipefail' (no -e), so test patch application failure is silent and does not abort the script.",
+    "Rust compilation is required; cargo and all dependencies must be available in the Docker image (verified: they are)."
+  ],
+  "mismatches": [
+    "The issue describes modifier alias consistency, but the gold patch includes massive unrelated refactoring (CommandRunner, MainController, field renames, module restructuring, import cleanup, logic restructuring in event_handler and main.rs).",
+    "The issue does not mention adding new modifier aliases S (Shift), A (Alt), W (Windows), but the gold patch adds them, potentially changing existing behavior (S-key as modifier was KEY_S, now means Shift).",
+    "The task is categorized as 'debugging' in task.toml, but the gold patch is primarily a refactoring with a small fix component."
+  ],
+  "evidence": [
+    {
+      "file": "/testbed/src/config/key.rs:138",
+      "detail": "Current parse_key returns 'unknown key' for unrecognized inputs. The gold patch adds a check calling parse_modifier_alias to detect unsided modifiers and give a specific error."
+    },
+    {
+      "file": "/testbed/src/config/key_press.rs:50-68",
+      "detail": "Current parse_modifier handles WIN, SUPER, SHIFT etc. as modifiers but these are not recognized by parse_key when used as keys. The gold patch extracts parse_modifier_alias as a public helper."
+    },
+    {
+      "file": "/testbed/src/config/tests.rs:195",
+      "detail": "test_yaml_fail_on_modifier_missing_sidedness expects 'unknown key' error. Must be changed by test patch to expect new message."
+    },
+    {
+      "file": "/testbed/src/config/tests.rs:222",
+      "detail": "test_yaml_invalid_virtual_modifiers_1 expects 'unknown key' error. Must be changed by test patch to expect new message."
+    },
+    {
+      "file": "/audit_tasks/xremap__xremap-892/tests/eval.sh:41",
+      "detail": "eval.sh applies /tmp/test.patch which does not exist in the task directory — must be provided by harness at runtime."
+    },
+    {
+      "file": "/audit_tasks/xremap__xremap-892/solution/solve.sh",
+      "detail": "Gold patch is ~700+ lines touching 17 files. Only ~40 lines in key.rs and key_press.rs address the stated issue."
+    }
+  ],
+  "recommended_action": "revise_instance",
+  "summary": "The instance has a valid core issue (better error messages for unsided modifier aliases) but significant quality concerns. The gold patch is massively over-scoped, including extensive unrelated refactoring across 17 files when only 2 files need changes for the stated issue. The test patch is not present in the task directory (injected at runtime by harness), making verification impossible during audit. If the test patch is missing at runtime, the base code silently passes all tests (false positive). The existing tests are narrow — only checking error message strings for 'Shift' and 'WIN', with no coverage of other aliases or the new S/A/W aliases added by the gold patch. The task is miscategorized as 'debugging' when it's primarily refactoring. Recommend revising: scope the gold patch to only the modifier alias fix, include the test patch in the task directory, and add tests for additional modifier aliases and edge cases."
+}

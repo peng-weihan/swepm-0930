@@ -1,0 +1,67 @@
+{
+  "instance_id": "EvoScientist__EvoScientist-307",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.8,
+  "gold_patch_assessment": "The gold patch is extremely large (32 files, ~7000 lines of diff, ~4480 additions, ~2570 deletions). It implements all the features described in the issue: MemoryFilesystemBackend with write guards, MemorySourceType replacing MemoryLifecycleRole, observation linking/relations infrastructure (ObservationRelation enum, linker agent, scheduler), status bar enhancements for linker indicators/counts, CLI shutdown wait for memory pipeline, refactoring of memory_lifecycle.py into separate modules (launch.py, source_context.py, scheduler.py, background_runs.py), and LangGraphServerThreadStore API simplification. The patch is coherent and addresses the stated requirements.",
+  "base_vs_gold_expectation": "The test patch modifies 8 test files, changing assertions from removed APIs (MemoryLifecycleRole -> MemorySourceType, client_factory -> client, _resolve_project_id -> resolve_project_id). On base code with test patch applied: tests will fail because they reference new APIs/classes (MemoryFilesystemBackend, MemorySourceType on _source_type, LangGraphServerThreadStore(client=...), BackgroundRunPayload, etc.) that don't exist. On gold patch + test patch: tests should pass as the new APIs are implemented. The base-reject/gold-accept contract appears sound.",
+  "too_narrow_risks": [
+    "Observation linking — the largest and most complex feature in the issue — has ZERO test coverage. No tests verify linking scheduling, relation semantics (directional supersedes vs bidirectional complements), POSIX-style paths in references, malformed frontmatter tolerance, concurrent write serialization, or any core linker behavior.",
+    "Memory tool results including related observations (explicitly required by the issue) has no test coverage at all.",
+    "CLI shutdown waiting for memory workers and linker (with 2-minute timeout and dim status messages) is not tested.",
+    "Rejection of unsupported worker source types and missing thread_id is not tested.",
+    "Empty project observation directories not being created when no observations are written is only partially tested (one assertion in profile bootstrap test).",
+    "The stream events tests only verify that clear_completed_memory_activity_counts is called (via monkeypatch), not that linker counts are actually included in what gets cleared.",
+    "The background_runs tests (344 lines, new file) test generic run infrastructure unrelated to the core memory/observation requirements stated in the issue."
+  ],
+  "too_broad_risks": [
+    "test_graph_gateway.py changes (~180 lines of diff) are entirely about LangGraphServerThreadStore API refactoring (client_factory -> client), which is a peripheral refactoring not mentioned in the issue statement. These tests could reject valid alternative implementations that preserve the old client_factory API.",
+    "test_gateway_background_runs.py (344 lines of new tests) tests background run launch/watch infrastructure that was extracted during the refactor but is not part of the stated issue requirements. Alternative implementations that keep this logic in memory_lifecycle.py would fail these tests.",
+    "The gold patch is so large (32 files) that many test changes are about incidental refactoring rather than the stated requirements."
+  ],
+  "implementation_coupling": [
+    "Tests assert on private attributes: lifecycle_middleware._source_type, lifecycle_middleware._source_agent, lifecycle_middleware._project_id — alternative implementations using different internal attribute names would fail.",
+    "Tests reference private class attribute MemoryFilesystemBackend._RAW_WRITE_ERROR directly instead of checking the error string content.",
+    "Tests import from specific new modules (EvoScientist.gateway.background_runs, EvoScientist.memory.worker_activity) with specific type names (BackgroundRunPayload, BackgroundRunHooks, etc.), coupling to the gold patch's module structure.",
+    "The test_graph_gateway.py changes couple to the specific constructor signature change (client= instead of base_url= + client_factory=)."
+  ],
+  "environment_risks": [
+    "The benchmark Docker image (key4127/refactor-dockerhub:EvoScientist__EvoScientist-307) may have pre-installed dependencies. If any required package (blockbuster, langgraph_sdk, etc.) is missing, tests will fail independently of the solution.",
+    "The test patch is located at /tmp/test.patch and is applied by eval.sh; if it's not present or gets corrupted, all tests fail.",
+    "The 30-second per-test timeout could be tight for tests that exercise async event loops or background worker status tracking."
+  ],
+  "mismatches": [
+    "The issue statement emphasizes observation linking as a core requirement, but the tests have zero coverage of linker logic. The test suite is focused on peripheral aspects (status bar display, API refactoring, backend guards) while missing the core feature.",
+    "The issue mentions 'memory tool results should include related observations where available' but no tests verify this.",
+    "The issue describes CLI shutdown behavior with a two-minute timeout and dim waiting messages, but no tests verify this behavior.",
+    "The category in task.toml is 'debugging' but this is clearly a feature implementation task, not a debugging task."
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "1148 lines modifying 8 test files. Zero tests for observation linker logic, relation semantics, or memory tool related-observation results."
+    },
+    {
+      "file": "/audit_tasks/EvoScientist__EvoScientist-307/solution/solve.sh",
+      "detail": "7806 lines, 32 files modified. Gold patch creates observation_linker.py, relations.py, scheduler.py among 13 new files, but none have corresponding test coverage."
+    },
+    {
+      "file": "/audit_tasks/EvoScientist__EvoScientist-307/tests/eval.sh",
+      "detail": "Runs 7 test files with -x -v --timeout=30. test_gateway_background_runs.py is entirely new and tests infrastructure not mentioned in the issue."
+    },
+    {
+      "file": "/audit_tasks/EvoScientist__EvoScientist-307/instruction.md",
+      "detail": "Issue requires observation linking with directional relations, POSIX paths, frontmatter tolerance, concurrent write serialization — none tested."
+    },
+    {
+      "file": "/testbed/tests/test_async_subagent_factory.py",
+      "detail": "Base tests reference MemoryLifecycleRole (removed by gold patch). Test patch updates these to MemorySourceType, confirming base-reject/gold-accept behavior."
+    },
+    {
+      "file": "/audit_tasks/EvoScientist__EvoScientist-307/task.toml",
+      "detail": "Category is 'debugging' but the instance is a large feature implementation task."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The instance has a massive gold patch (32 files, ~7000 lines) that implements a complex feature set including observation linking, memory filesystem guards, and API refactoring. The test patch provides reasonable coverage for some aspects (MemoryFilesystemBackend, MemorySourceType migration, status bar indicators, background run infrastructure) but critically misses the core observation linking logic — the largest and most complex requirement in the issue. No tests verify relation semantics, linker scheduling, concurrency serialization, frontmatter tolerance, or memory tool related-observation results. Additionally, the tests are coupled to implementation details (private attributes, specific module structure, constructor signatures) rather than observable behavior, and include substantial testing of peripheral refactoring not mentioned in the issue. A partial or no-op observation linker implementation could pass all tests. Tests should be revised to add coverage for observation linking and to reduce implementation coupling."
+}

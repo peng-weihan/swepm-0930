@@ -1,0 +1,71 @@
+{
+  "job_name": "swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-32g-oom-once-20261002T050646Z",
+  "jobs_dir": "/data/swepmv2-harbor-runtime/jobs",
+  "n_concurrent_trials": 16,
+  "retry": {
+    "max_retries": 0
+  },
+  "environment": {
+    "type": "docker",
+    "extra_docker_compose": [
+      "/data/swepmv2-harbor-runtime/campaigns/v2-0930-oom32g-once/compose.json"
+    ]
+  },
+  "verifier": {
+    "env": {
+      "HTTP_PROXY": "",
+      "HTTPS_PROXY": "",
+      "ALL_PROXY": "",
+      "http_proxy": "",
+      "https_proxy": "",
+      "all_proxy": ""
+    }
+  },
+  "agents": [
+    {
+      "model_name": "glm-5.3-siflow",
+      "kwargs": {
+        "version": "2.1.140",
+        "max_turns": 300,
+        "reasoning_effort": "max",
+        "config": {
+          "alwaysThinkingEnabled": true,
+          "enableAllProjectMcpServers": false
+        }
+      },
+      "env": {
+        "HTTP_PROXY": "",
+        "HTTPS_PROXY": "",
+        "ALL_PROXY": "",
+        "http_proxy": "",
+        "https_proxy": "",
+        "all_proxy": "",
+        "CLAUDE_CODE_EFFORT_LEVEL": "max",
+        "DISABLE_AUTOUPDATER": "1",
+        "ENABLE_CLAUDEAI_MCP_SERVERS": "false"
+      },
+      "import_path": "claude_no_mcp:ClaudeCodeNoMCP",
+      "mcp_servers": []
+    }
+  ],
+  "tasks": [
+    {
+      "path": "/data/swepmv2-harbor-runtime/datasets/v2-0930-32g/tasks/Alishahryar1__free-claude-code-845"
+    },
+    {
+      "path": "/data/swepmv2-harbor-runtime/datasets/v2-0930-32g/tasks/Alishahryar1__free-claude-code-929"
+    },
+    {
+      "path": "/data/swepmv2-harbor-runtime/datasets/v2-0930-32g/tasks/actor-framework__actor-framework-2360"
+    },
+    {
+      "path": "/data/swepmv2-harbor-runtime/datasets/v2-0930-32g/tasks/duckdb__duckdb-c_0e9c0eb"
+    },
+    {
+      "path": "/data/swepmv2-harbor-runtime/datasets/v2-0930-32g/tasks/google-gemini__gemini-cli-21776"
+    },
+    {
+      "path": "/data/swepmv2-harbor-runtime/datasets/v2-0930-32g/tasks/noctalia-dev__noctalia-c_13931d8"
+    }
+  ]
+}

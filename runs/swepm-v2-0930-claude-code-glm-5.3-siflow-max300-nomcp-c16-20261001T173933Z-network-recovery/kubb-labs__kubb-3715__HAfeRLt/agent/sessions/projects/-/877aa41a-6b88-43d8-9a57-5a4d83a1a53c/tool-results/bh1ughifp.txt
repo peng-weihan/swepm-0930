@@ -1,0 +1,585 @@
+commit 7f41b89800194d3a2ad009e1e22f8cb7d3ccdfd3
+Author: Stijn Van Hulle <stijn.vanhulle@robovision.eu>
+Date:   Mon Jul 6 11:22:18 2026 +0200
+
+    add Resolver class for createResolver
+
+ .changeset/kit-new-package.md                      |   2 +-
+ .changeset/rename-define-to-create.md              |  16 +-
+ .changeset/resolver-core-namespace.md              |  18 +-
+ packages/adapter-oas/src/resolvers.ts              |   4 +-
+ packages/core/src/FileProcessor.test.ts            | 123 ++-----
+ packages/core/src/FileProcessor.ts                 |  35 +-
+ packages/core/src/KubbDriver.ts                    |  29 +-
+ ...fineResolver.test.ts => createResolver.test.ts} |  70 +++-
+ .../src/{defineResolver.ts => createResolver.ts}   | 392 +++++++++------------
+ packages/core/src/defineGenerator.ts               |   2 +-
+ packages/core/src/definePlugin.ts                  |  27 +-
+ packages/core/src/diagnostics.ts                   |  10 +-
+ packages/core/src/index.ts                         |   2 +-
+ packages/core/src/types.ts                         |   8 +-
+ packages/kit/src/index.ts                          |   3 +-
+ packages/kubb/src/defineConfig.ts                  |   4 +-
+ packages/unplugin-kubb/src/unpluginFactory.ts      |   4 +-
+ 17 files changed, 311 insertions(+), 438 deletions(-)
+===
+52558cd52 Merge pull request #3890 from kubb-labs/claude/optimistic-davinci-64tk9j
+2a5a9e3e5 fix(release): use pnpm instead of npm to bump canary version
+a6215ba84 Merge pull request #3888 from kubb-labs/changeset-release/main
+4efc84292 docs: use minimal v5.0.0 changelog pointing to migration guide and blog
+cf41b09fb docs: use minimal v5.0.0 changelog pointing to migration guide and blog
+6128e7fa9 ci(changesets): version packages
+9ec5e5ff6 Merge pull request #3887 from kubb-labs/claude/cleanup-beta-alpha-changelogs-0gmc4i
+1cc2c6eee Remove beta and alpha changelog entries
+68b79d1bd Merge pull request #3885 from kubb-labs/claude/kubb-5-0-0-release-hfi9p3
+62aadf1a9 Prune stale entries from pre.json's changesets array
+===
+52558cd52 Merge pull request #3890 from kubb-labs/claude/optimistic-davinci-64tk9j
+2a5a9e3e5 fix(release): use pnpm instead of npm to bump canary version
+a6215ba84 Merge pull request #3888 from kubb-labs/changeset-release/main
+4efc84292 docs: use minimal v5.0.0 changelog pointing to migration guide and blog
+cf41b09fb docs: use minimal v5.0.0 changelog pointing to migration guide and blog
+6128e7fa9 ci(changesets): version packages
+9ec5e5ff6 Merge pull request #3887 from kubb-labs/claude/cleanup-beta-alpha-changelogs-0gmc4i
+1cc2c6eee Remove beta and alpha changelog entries
+68b79d1bd Merge pull request #3885 from kubb-labs/claude/kubb-5-0-0-release-hfi9p3
+62aadf1a9 Prune stale entries from pre.json's changesets array
+df10cd726 Fix stale/inaccurate claims found by fact-checking changesets against source
+467122df9 update packages
+db9448758 Add a changeset for the 5.4x faster generation headline
+e33c6582d Retrigger CI after codeload.github.com infra failure
+9e17091dc Polish changeset prose with humanizer and documentation passes
+57560d2fb Curate changesets for a clean 5.0.0 changelog
+fa5657cc8 Exit changesets pre mode for the 5.0.0 release
+85494e067 Merge pull request #3882 from kubb-labs/changeset-release/main
+1787c443d ci(changesets): version packages (beta)
+c66185d7c udpate packages
+a4553d103 test(cli): fold the dispose-batching test into the persistence test
+ba7070cd5 refactor(cli): keep the format-cache fix in the CLI
+9dc91e1d1 fix(core,cli): harden format-cache storage and watch-mode rebuilds
+60699efa0 fix(cli): stop output.format from defeating the write dedup check
+2cea6a99c fix(core): route barrel writes through the deduped storage path
+a40570d2f Merge pull request #3880 from kubb-labs/perf/skip-bundle-self-contained
+d2678bc13 Merge pull request #3881 from kubb-labs/perf/json-parse-fast-path
+a5b0d60b7 refactor(adapter-oas): simplify hasExternalRef
+755abd48c perf(adapter-oas): try JSON.parse before the YAML parser
+830528991 perf(adapter-oas): skip api-ref-bundler for self-contained documents
+29de2ee95 Merge pull request #3878 from kubb-labs/claude/v5-blog-migration-updates-1lk62i
+084faffd2 feat(core): let group use the inferred output.mode
+a32bcc189 feat(core): infer output.mode from the output path
+3bcd2f5bf Merge pull request #3877 from kubb-labs/claude/github-actions-readme-update-lebsyj
+70668ffd1 ci: bump kubb-labs/config pin to latest main
+89fbd5019 Merge pull request #3876 from kubb-labs/claude/aikido-safe-chain-security-pxt0ak
+6bf96e66b ci: bump kubb-labs/config pin to pick up safe-chain
+3a2c4f0b9 docs: fix stale .npmrc reference and simplify comments
+8d509cb41 fix: remove dead min-package-age .npmrc key
+3917141f6 docs: cross-reference safe-chain in package-age comments
+be75236b9 Merge pull request #3874 from kubb-labs/changeset-release/main
+c45352235 update packages
+98e285d1f ci(changesets): version packages (beta)
+e40bfcf64 Merge pull request #3870 from kubb-labs/claude/issue-3863-import-usage
+b45fc14da Merge pull request #3869 from kubb-labs/claude/issue-3867-v5-ytr0vv
+88e47f6f7 Merge pull request #3868 from kubb-labs/claude/issue-3863-streaming-updates
+ab254755a Merge pull request #3871 from kubb-labs/claude/issue-3863-lazy-validate
+2e8918e2c test(core): reduce the update-row case to the one thing that changed
+e00c545c3 test(ast): cover the index path instead of the scan it replaced
+422964abc refactor(adapter-oas): trim the lazy-import comment
+983615f5d ci: apply linting and formating
+e3d6cb782 refactor(core): drop the listener-count guard from the update hook
+6ae543366 docs: update the changeset with the simplified numbers
+356fd6acf refactor(ast): simplify the import-usage index
+ac5c29ee7 perf(ast): gate the identifier index on the file's import count
+1aded358d perf(ast): index the source for import usage once a file asks about enough names
+adc63cfbf perf(core): drop the parsed source from file-processing update rows
+b1b697cc4 fix(core): compare both sides trimmed so verbatim storages converge
+a3b34715f docs: trim the changeset
+e5383be4d docs: trim the changeset
+c32b471f0 docs: trim the changeset
+838d9ace0 test(core): drop the barrel build test in favor of the FileManager cases
+05b536a4d perf(adapter-oas): load the OpenAPI validator only when validation runs
+6e54c0447 refactor(core): extract the unchanged-file check into a named helper
+e571b1246 perf(ast): answer import usage from identifier runs instead of scanning the source
+332de56ea fix(core): skip unchanged writes for every storage driver
+8263df8d2 perf(core): stream file-processing updates instead of buffering the batch
+5259e60eb Merge pull request #3866 from kubb-labs/claude/issue-3863-fewer-syscalls
+5476c8ec4 chore: remove exports that no consumer uses (#3865)
+8676656b7 perf(core): write generated files without a mkdir syscall each
+26c469086 fix(core): skip writes a formatter already produced from the same source (#3861)
+891f1bd31 fix(core): stop rewriting the whole output tree after the format pass (#3860)
+45fa234e4 ci(changesets): version packages (beta) (#3858)
+54ebf0259 feat(adapter-oas): code URL input failures instead of KUBB_UNKNOWN (#3857)
+b2097291b Merge pull request #3856 from kubb-labs/changeset-release/main
+9d3fbcfa7 ci(changesets): version packages (beta)
+4256170b4 update packages
+8d5f5ec9b Merge pull request #3855 from kubb-labs/claude/kubb-v5-beta-eval-y2j22i
+1ae09e6d2 fix(adapter-oas): default unknownType and emptySchemaType to unknown
+88119a7f5 refactor(core): rename storage and cache methods to fs verbs (#3852)
+7ec088131 Merge pull request #3851 from kubb-labs/claude/hevy-mcp-kubb-v5-8kb68j
+c4dced5ab Merge pull request #3850 from kubb-labs/claude/adapter-oas-explanation-jgd09b
+3488427f5 fix: fail loudly when input is not a readable document
+f58b8cf2d docs: fix broken config examples in package READMEs
+bbac9f0ab Merge pull request #3849 from kubb-labs/claude/github-issue-362-pqgdx3
+e63ee2277 ci: bump kubb-labs/config SHA pin to latest main
+d110b6bb3 Merge pull request #3847 from kubb-labs/claude/semver-to-verkit-g8z60q
+d58e9716d fix(cli): replace hand-rolled semver comparison with verkit
+4a5ab5175 Merge pull request #3846 from kubb-labs/changeset-release/main
+1547e5e94 Merge remote-tracking branch 'origin/main'
+3ee2f02a9 update packages
+fb58475af ci(changesets): version packages (beta)
+5db056f5d Merge pull request #3840 from kubb-labs/claude/github-issue-3836-option-a-ssjd60
+42d2a251c update packages
+de5604927 Merge pull request #3845 from kubb-labs/changeset-release/v4
+b144faf81 ci(changesets): version packages
+6b601f582 fix: bump @kubb/fabric-core and @kubb/react-fabric to 0.16.1 (#3844)
+78226e2c9 Merge pull request #3843 from kubb-labs/claude/repo-dependency-upgrades-h80p5a
+693852dec chore: add changeset for adapter-oas dependency bump
+a81590b42 chore(deps): upgrade dependencies to latest
+c47c127c7 Merge pull request #3841 from kubb-labs/claude/github-issue-3839-qny42h
+d2785ba22 fix(cli): install kubb at the CLI version in the init wizard
+19049fbf3 fix(adapter-oas): respect type string when the format is numeric
+c01934020 Merge pull request #3838 from kubb-labs/changeset-release/main
+7c72cb50b ci(changesets): version packages (beta)
+4bf2da884 feat(adapter-oas): add uint64 format support alongside int64 (#3835)
+da9010a38 docs: add chuuddo as a contributor for code (#3837)
+8349acfe3 ci(changesets): version packages (beta) (#3831)
+293ddf11e feat(core,ast): add a match predicate to Generator, aligned with Macro (#3828)
+4f03d566a perf(core): walk each schema and operation once in a node-outer generate loop (#3829)
+75c5adde4 perf: walk a schema's $ref subtree once and share it across plugins (#3824)
+693312560 perf(adapter-oas): fold schema diagnostics and circular detection into one convert walk (#3825)
+947abc373 fix(plugin-barrel): build the barrel directory tree once per run (#3821)
+360368ba7 fix(core): maintain FileManager's sorted files view incrementally (#3822)
+62a9842d4 update packages
+55660ffb4 update packages
+c2c772dc6 chore: bump oxfmt to ^0.59.0 (#3811)
+7f45e4ddf Merge pull request #3810 from kubb-labs/changeset-release/main
+f1ebe792b update
+c2df111cd ci(changesets): version packages (beta)
+fc418e91b Merge pull request #3808 from kubb-labs/claude/kubb-event-ordering-v8co6z
+55d5af8e7 fix(core): write files through a bounded pool, keep generation order
+504fe02f6 docs: tighten core file-processing changeset
+6bea51dea chore: add changeset for core file-processing order fix
+f118bf7c0 fix(core): stream file-processing updates in generation order
+e326d4aad ci: pin kubb-labs/config actions to latest main (#3807)
+1ba398801 Merge pull request #3805 from kubb-labs/changeset-release/main
+41204f7c3 ci(changesets): version packages (beta)
+8b6f15746 Merge pull request #3806 from kubb-labs/claude/kubb-core-architecture-o5pn0c
+14a92b441 test(core): fold KubbDriver.generators.test.ts into KubbDriver.test.ts
+479a4dce8 update packages
+998d9ba12 refactor(adapter-oas): leaner shape — Load/Model/Emit with an immutable pass (#3795)
+1c878bed1 ci(changesets): version packages (beta) (#3804)
+1adf507e6 feat(core): add Kubb.generate and move every host onto it (#3803)
+68d4d931a refactor(core): reduce layers on the generation path (#3801)
+d15e74e4f refactor: consume release scripts from kubb-labs/config (#3799)
+81bf74110 feat(core)!: flip output.barrel default from { type: 'named' } to false (#3797)
+a6b30b855 ci(changesets): version packages (beta) (#3796)
+9fa6fba5e Move macros and externally-used utils from @kubb/ast to @kubb/kit (#3794)
+d9b6801b2 ci(changesets): version packages (beta) (#3792)
+be82ee429 feat(core)!: flip output.mode default from directory to file (#3791)
+ece99def4 Delete .github/canary.sh
+e2c8a2664 docs: tighten the Releasing section in CONTRIBUTING (#3790)
+6d6920bd5 ci(changesets): version packages (beta) (#3789)
+d897c1392 feat(kit): add Url.toSafeTemplate and Url.toGroupedTemplateString (#3788)
+c5d9d62fb update packages
+430519d8b refactor(ast): move schema-traversal helpers to the plugins repo (#3787)
+ba471f32a fix styling
+679588800 fix styling
+c2db3fb15 ci(changesets): version packages (beta) (#3785)
+6d6a70544 remove hook as this is loaded by Claude by default (hooks)
+5850a252e fix(core): stop output.clean from deleting the project root (#3784)
+5f8350c50 feat(cli): accept the validate spec as a positional argument (#3782)
+5005a22a4 ci(changesets): version packages (beta) (#3781)
+a3ed895af feat(kit): re-export the Hookable class (#3780)
+560d94861 update packages
+632350d15 feat(core): fold multiple overrides in Resolver.merge (#3777)
+cf56de9fc ci(changesets): version packages (beta) (#3774)
+68ac0dd20 refactor(core): replace adapter.getImports with resolver.imports (#3768)
+ae6ab9668 refactor: make Fallow-flagged unused exports module-private (#3769)
+8a5e7403c fix(cli): scaffold a v5 project from kubb init (#3765)
+7e875484e smarter types for pluginName
+27f815692 smarter types for pluginName
+7413de636 Merge pull request #3763 from kubb-labs/claude/update-oxfmt-oxlint-versions-goeqb1
+1b7fc2c33 ci: apply linting and formating
+bb5672ad8 Merge remote-tracking branch 'origin/main' into claude/update-oxfmt-oxlint-versions-goeqb1
+537e6cb7d chore: update lockfile for oxfmt bump
+e6956a62c chore: bump oxfmt to ^0.58.0
+b57be2299 update packages
+470d50b36 update packages
+72b120cab Merge pull request #3762 from kubb-labs/changeset-release/main
+d1a70784c ci(changesets): version packages (beta)
+a76e7e23e Merge branch 'main' of https://github.com/kubb-labs/kubb
+e60ebb76e Merge pull request #3761 from kubb-labs/claude/real-bugs-behavioral-risks-r0b3lq
+3c719d5b0 Merge pull request #3760 from kubb-labs/claude/validate-contributing-md-p34bim
+07c312566 fix: resolve verified behavioral bugs and type/doc mismatches across packages
+14b58cae6 docs: correct CONTRIBUTING repo tree (add parser-md, drop schemas/docs, add scripts)
+3d798f97f cleanup
+42ab8df8a Merge pull request #3759 from kubb-labs/claude/oxlint-oxfrmt-config-sync-cpq88x
+6a603205d Merge remote-tracking branch 'origin/main' into claude/oxlint-oxfrmt-config-sync-cpq88x
+6aed27a1f docs(renderer-jsx): explain why walkFiles can't call createFile early
+fd9c41466 chore: exempt JSX.ElementType's any from no-explicit-any
+4d6c27892 Update jsx-namespace.d.ts
+e866e4851 chore: sync oxlint rules with kubb-labs repos
+08b209c3d refactor(core): replace any/object-literal assertions flagged by oxlint
+4c2c642c8 Update timeout and verify interval in release workflow
+870c335a3 Merge pull request #3757 from kubb-labs/claude/workflow-skip-staging-rjegzi
+8becc27f0 revert(release): drop the remaining promote/staged-list note in CONTRIBUTING.md
+77cc5d9c1 revert(release): drop the promote/staged-list workflow feature
+70a77355a Merge pull request #3755 from kubb-labs/claude/typescript-casting-reduction-9yj94i
+c14237086 refactor(kubb): reduce type casting and any across core packages
+295d780ea Merge pull request #3756 from kubb-labs/claude/kubb-config-hash-update-tufab4
+6966b6b02 fix(release): stop the promote dispatch from 401ing on npm stage list
+12f2a7b2b ci: bump kubb-labs/config setup action to latest main
+a6298a8c6 Merge pull request #3754 from kubb-labs/claude/update-oxfmt-oxlint-37420m
+cad474252 chore: update oxfmt to 0.57.0 and oxlint to 1.72.0
+f91fe4bac Merge pull request #3753 from kubb-labs/claude/deslop-skill-command-225nmy
+b256b6587 feat(claude): add deslop skill and /deslop command
+c8dd04b4a Merge pull request #3752 from kubb-labs/chore/cleanup-oas
+929cb61ac cleanup
+790136460 cleanup
+05233d348 Merge pull request #3751 from kubb-labs/claude/promote-trigger-no-version-4orxis
+ef44c91e8 ci(release): skip creating a GitHub release that already exists
+482f8b1b3 ci(release): drop the version_pr workflow_dispatch input
+e27fa860e ci(release): allow promoting an already-staged version without restaging
+2cdfb737c Trim redundant @example blocks from guards.ts JSDoc (#3750)
+f59f938be Update release.yml
+ebb4ab3cb fix(security): update fast-uri from 3.1.2 to 3.1.3 (#3749)
+046b4b904 ci(changesets): version packages (beta) (#3748)
+9404b766c ci(changesets): version packages (beta) (#3747)
+d102f333e Replace hooks.done with output.postGenerate (#3745)
+5417491bf Chore/ponytail dead code (#3746)
+cc8289e56 update packages
+54ad96579 fix(parser-ts)!: drop the source extension from imports/exports by default (#3743)
+ae5d625d8 ci(changesets): version packages (beta) (#3742)
+379c918af ci(changesets): version packages (beta) (#3741)
+c75437692 feat(core)!: consolidate input.path and input.data into a single input (#3739)
+d7f0ce2ae Merge pull request #3740 from kubb-labs/claude/output-extension-refactor-ipj92c
+02bf5af3e refactor(parser): pass ParserTsOptions explicitly to defineParser
+5560f5cea refactor(parser): make defineParser a factory wrapper like definePlugin
+e9c858875 refactor(parser): move output.extension onto the parser
+09a8f1330 cleanup (#3736)
+2a58d2e73 Merge pull request #3735 from kubb-labs/claude/release-validate-retry-w0gvlk
+3d46ba765 Revert "feat(release): add SKIP_STAGED_PUBLISH flag to bypass staged publish"
+b08f0d9d2 feat(release): add SKIP_STAGED_PUBLISH flag to bypass staged publish
+4abf2f0aa ci(release): log retry attempts in verifyRegistry.mjs
+7b9896bec Merge pull request #3734 from kubb-labs/changeset-release/main
+e8c59cb5c ci(changesets): version packages (beta)
+5d7fd9c63 Merge pull request #3733 from kubb-labs/claude/simplify-name-override-j814rs
+f1b5d2dc3 cleanup
+38b525831 fix(core): keep resolver file override across @kubb/core copies
+5358df0a9 Merge pull request #3732 from kubb-labs/changeset-release/main
+bf58f3b80 ci(changesets): version packages (beta)
+dbcec6ce2 Merge pull request #3729 from kubb-labs/claude/simplify-name-override-j814rs
+9632edb85 cleanup
+935b200d2 update packages
+65693408e feat(core): merge resolver namespace overrides per method
+80f14c5b8 revert(core): drop ResolverOverride, keep ResolverPatch for overrides
+3879ebe42 feat(core): accept a createResolver result as a resolver override
+9f1fe31a3 docs(changeset): finalize resolver file API changeset
+f2979cb3c refactor(core): file.baseName returns the base name with extension
+3f984d39f refactor(core): file.path baseName includes the extension
+a0fcfaf9b refactor(core): file.path receives the resolved baseName
+eff817d30 refactor(core): rename resolver file.name to file.baseName
+cbfeae155 refactor(core): drop unused tag/path from file.path args
+b2950e62f refactor(core)!: file/path resolver methods take one options object, drop ResolverContext
+2f97bf47a refactor(core): rename ResolverFilePathContext to ResolverFilePathParams
+e8353ee4e refactor(core): trim file.path args to the minimal set
+2c6ac66c2 refactor(core): file.path takes a single merged options object
+b262f86c9 Merge pull request #3730 from kubb-labs/claude/kubbdriver-storage-options-397a6w
+2d7211ec1 feat(core): add file.path to override a generated file's full path
+8bc38cb0e Drop storage argument from KubbDriver.run()
+db7575975 chore: format and lint fixes
+e9ffe52c7 refactor(core)!: replace resolveName hook with file: { name }
+e1bdf2d3b feat(core): add file: { name } shorthand to resolver definitions
+2c054cfa0 Merge pull request #3727 from kubb-labs/changeset-release/main
+6965a728a ci(changesets): version packages (beta)
+78134a3d0 Merge pull request #3725 from kubb-labs/claude/github-action-promoto-verify-b1wa2r
+38c6b221f Merge pull request #3726 from kubb-labs/fix/cli-generate-subcommand
+bd97edb17 Delete index.test.ts
+0611bbfed fix(cli): resolve the OpenAPI path override correctly for `kubb generate`
+5b4ae4a67 ci(release): make npm verify polling interval configurable
+6093a884b Merge pull request #3724 from kubb-labs/changeset-release/main
+2b82303ee ci(changesets): version packages (beta)
+282ee6485 Merge pull request #3723 from kubb-labs/chore/reduce-kubbdriver
+c2be51dc4 use of callHook and hook for hookable
+01990f04b cleanup code
+995ad183a Merge pull request #3721 from kubb-labs/changeset-release/main
+8cdb090cb ci(changesets): version packages (beta)
+3b6afb3fb Merge pull request #3715 from kubb-labs/claude/resolver-namespace-helpers-lbdg3h
+6422bde4f update clack
+94f534b9e Merge pull request #3720 from kubb-labs/chore/remove-streaming
+8279e86ca remove streaming in adapter
+fbf279ec0 fix
+73310abb5 fix
+febb81c2d fix
+4dcf02283 fix
+1ebbf523d update pre
+c9fc4bd4b update changeset
+a072e0bd4 combine FIleManager and fileProcesor
+08dd244cb remove streaming in renderer
+6bea42186 remove streaming in renderer
+415e6fcee use flush inside fsStorage itself
+abce28052 fix url
+9149e29e9 cleanup
+12088a43e cleanup
+e13bbfbb7 kubbDriver cleanup
+1b0f53ae6 self cleanup
+eb8c21b31 cleanip
+f57a0e9fd Merge remote-tracking branch 'origin/main' into claude/resolver-namespace-helpers-lbdg3h
+eceb8172b Merge pull request #3718 from kubb-labs/fix/remove-custom-cli
+204438c4d use of gunshi
+f45d68d73 reduce complexity
+74e2d7b69 linting
+d9401fed9 cleanup types
+e9cd69747 move asyncEventEmitter back to @kubb/core
+fd41b6d32 move buildTree helper to plugin-barrel
+afb0b5337 cleanup jsx renderer
+e453220a1 move files
+02cb238ca ci: apply linting and formating
+ae22fb8e1 cleanup
+7f41b8980 add Resolver class for createResolver
+1c12159fc cleanup cli and kit
+9937766aa Merge pull request #3666 from kubb-labs/changeset-release/v4
+62c443c01 ci(changesets): version packages
+08fc3ccd8 Merge pull request #3665 from kubb-labs/claude/hopeful-keller-0ixsoh-v4
+36c91ed11 style(plugin-zod): apply biome formatting
+2a473cf5c fix(plugin-zod): wrap nullable allOf members instead of intersecting them
+2958bfc21 Merge pull request #3656 from kubb-labs/changeset-release/v4
+651baa4a4 ci(changesets): version packages
+6dd3223cc Merge pull request #3652 from kubb-labs/claude/issue-3649-v4-check-ifnpt5
+17392a907 fix(plugin-oas): close tuples when prefixItems has items: false
+41cdd4df5 Merge pull request #3645 from kubb-labs/changeset-release/v4
+828de01c2 ci(changesets): version packages
+dea1bb3a7 Merge pull request #3642 from kubb-labs/claude/trusting-bohr-6la2m7
+ed4cab9f0 docs(changeset): humanize wording and fix orphaned list item
+e40484e75 docs: name the v5-aligned value in removed-option deprecations
+ff9c33d24 feat(core): add output.barrel object and trim v5-only deprecations
+d16a2060f docs: reword v5 @deprecated messages to describe v5, not prescribe v4-unusable syntax
+e1a151b92 feat: add @deprecated v5 migration warnings across core and plugins
+9bd4e76b4 feat(core): deprecate defineConfig from @kubb/core in favor of kubb
+96514fcad ci(changesets): version packages (#3609)
+0646ef105 fix(plugin-ts): make typeGenerator snapshots deterministic (remove network-dependent $ref) (#3608)
+fd68364ca Merge pull request #3605 from kubb-labs/claude/kubb-empty-string-enum-42c93h
+fe112e357 fix(plugin-ts): add missing snapshots and fix spelling (colour → color)
+4064fcac9 fix(plugin-ts): preserve empty string values in enum type generation
+be1c82ce3 Merge pull request #3525 from kubb-labs/changeset-release/v4
+739a45464 ci(changesets): version packages
+9459be2dd Merge pull request #3522 from kubb-labs/claude/remove-kubb-agent-cli-j3na2n
+462552d93 ci: add Build step to Tests job
+6fcb56c67 ci: remove Build agent step from Tests job
+4dd7a57a5 chore: update lockfile after removing @kubb/agent dependencies
+043a0127f chore: downgrade changeset to minor bump
+eca5422d6 chore: add changeset for @kubb/agent removal (major)
+580ef4975 chore: remove @kubb/agent package, CLI commands, and AGPL license
+e812345c6 Merge pull request #3490 from kubb-labs/changeset-release/v4
+248089754 ci(changesets): version packages
+45a3bdb9c Merge pull request #3489 from kubb-labs/chore/update-generated-examples-3487
+34eb6840c Merge pull request #3487 from kubb-labs/claude/tender-newton-ba7dh
+e8d16f14e chore(examples): update generated files
+1cc9fa297 chore: trigger CI
+aa2d00cfe fix(plugin-react-query): drop enabled guard and optional path params from suspense hooks
+c2aef6105 Merge pull request #3485 from kubb-labs/changeset-release/v4
+9aa46f787 ci(changesets): version packages
+bbb4b0995 Merge pull request #3483 from kubb-labs/claude/charming-mendel-HXqgR-v4
+de45afd02 fix(plugin-mcp): keep server singleton export for backwards compat
+5f18f13cd fix(plugin-mcp): remove unused Server name prop
+3e88493ce chore: add changeset for plugin-mcp factory fix
+1fb8619c4 fix(plugin-mcp): export getServer factory instead of singleton
+7f20bd94c update packages
+6f26319ec Merge pull request #3478 from kubb-labs/changeset-release/v4
+7edeb37b8 ci(changesets): version packages
+32363fa7c Merge pull request #3476 from joaomlneto/fix/plugin-ts-quote-private-identifier-enum-keys
+8ab12065b Merge pull request #3475 from joaomlneto/fix/plugin-ts-array-of-objects-enum-collapse
+5e10e2674 fix(plugin-ts): quote enum keys that parse as private identifiers
+396d8bf22 fix(plugin-ts): preserve object-array types containing nested enums
+9aca29baa remove
+d4c4cbf73 nginx
+48a0a9a16 nixpack update
+eb3024d03 nixpack update
+6ea3ff30c nixpack update
+9730fd262 ci(changesets): version packages (#3429)
+f4cb90d5f update dependencies
+87a2ebfdb fix(ci): ensure NPM_TOKEN is used for npm publish (#3343)
+34226bb49 ci(changesets): version packages (#3341)
+ab5402272 ci(release): re-enable npm provenance for v4 publishes (#3339)
+79c47ef8b Merge pull request #3284 from kubb-labs/copilot/fix-npmrc-setup-issues
+f21c2a266 fix(ci): align changesets auth env and remove invalid setupNpmrc input
+d0c75efec Merge pull request #3283 from kubb-labs/claude/npm-token-release-Gch2I
+61e04055a ci(release): use NPM_TOKEN instead of npm provenance for publishing
+d5cc596ba ci(changesets): version packages (#3281)
+4e03f15fd Merge pull request #3278 from DesselBane/fix/3277-vue-query-enabled-toValue
+aadd21563 Merge pull request #3280 from kubb-labs/claude/fix-npm-provenance-release-82xbP
+1277fb491 ci: restore git checkout main in canary step
+b2a9e34f9 ci: align v4 release workflow with main, drop stray git checkout main in canary step
+1be5a77cd Update snapshots
+2552a8f4f Add changeset
+2ba3d87c3 use toValue for enabled flag
+d442509c1 Update index.md
+210d6fcf6 ci: fix v4 release workflow to use OIDC publishing without npm token (#3265)
+99b272798 ci(changesets): version packages (#3263)
+36d035de8 chore: add changeset for bunx cli argv parsing fix (#3262)
+e9a2da01b chore(examples): update generated files (#3260)
+cd532c9d1 Merge pull request #3259 from kubb-labs/copilot/fix-yaml-parse-error-again
+740937abc fix(cli): normalize bun argv like node runtime
+6e1f51ef5 fix: correct include paths in docs/plugins/plugin-client/index.md (#3206)
+6d70d38f1 fix(docs): resolve 403 on /plugins/plugin-client/ by moving to index.md (#3204)
+292c1461d ci(changesets): version packages (#3205)
+a39093573 Fix #3172 faker infinite recursion (#3191)
+8157f782e Merge pull request #3167 from kubb-labs/changeset-release/v4
+c5e0eeb0b ci(changesets): version packages
+ba6251e43 fix(plugin-oas): distribute `Generator` type over `Version` (#3165)
+41c07544b Merge pull request #3142 from kubb-labs/changeset-release/v4
+0c96adf55 ci(changesets): version packages
+a366348af Merge pull request #3072 from DesselBane/fix/3022-query-optional-params-v4
+80ec35d75 Update snapshots
+9ba2ac3e6 chore: add changeset for #3022 optional path params fix
+77828c4dd update snapshots
+4066478d4 add object param tests
+c2d3b2f80 fix(query): make path params optional when enabled guard is generated
+69fda86fb Update changelog.md
+6c9f6ef74 Merge pull request #2999 from kubb-labs/chore/update-generated-examples-2996
+a37e44172 Merge pull request #3001 from kubb-labs/changeset-release/v4
+9479e302f ci(changesets): version packages
+d4a87c69e Merge pull request #2996 from kubb-labs/copilot/fix-enum-path-parameter-issue
+6292c8c84 chore(examples): update generated files
+8aeecf34a chore: add changeset for plugin-mcp enum inputSchema fix
+d187e4435 fix(plugin-mcp): generate z.enum([...]) for enum path parameters in inputSchema
+e8d07dd44 Initial plan
+fa1a4a396 Update changelog.md
+4b86b6c66 Merge pull request #2955 from kubb-labs/changeset-release/v4
+c9f91b247 ci(changesets): version packages
+de86d8037 Merge pull request #2951 from kubb-labs/copilot/fix-unused-snake-case-variables
+81cd75cd4 fix: update test cases to follow pathParamsType convention (object vs inline)
+926e3d798 fix: skip path params mapping in client body when urlName is set
+dfbeccdc0 Initial plan
+42484fe46 Version Packages (#2917)
+117fe785e feat: enum type naming (#2916)
+99ede5e3e fix gitignore
+04e33285a ci(changesets): version packages (#2910)
+07416fdc3 feat: support kubb.config.mts and kubb.config.cts (#2909)
+62c045c87 ci(changesets): version packages (#2900)
+647cc7758 Fix: async listener error on `generation:summary` in IDE/TTY environments with zero columns (#2897)
+a20e82826 Merge pull request #2874 from kubb-labs/changeset-release/v4
+516b9964b ci(changesets): version packages
+ff162270a fix: update fabric
+3192bd320 Clean up changelog by removing extra lines
+06caca15b Merge pull request #2840 from kubb-labs/changeset-release/v4
+6defd1b9e ci(changesets): version packages
+d7c081af9 Merge pull request #2838 from kubb-labs/chore/upgrade-packages-v4
+f268873c4 cspell fix
+9e3332edd chore: upgrade packages and update examples to have the same format as v5
+5130d55b0 Add 'v4' branch to release workflow
+d23491b41 ci(changesets): version packages (#1373)
+5be43d467 Merge remote-tracking branch 'origin/v2' into v2
+3f0881277 fix: `InfiniteData` for react-query v5(disabled for v4)
+1d3b0b3b9 ci(changesets): version packages (#1350)
+729cfec05 docs: remove v3 parts
+0a5aa8d6a Merge remote-tracking branch 'origin/v2' into v2
+01738cf00 fix: Skiptoken support for suspense queries
+e8af66587 ci(changesets): version packages (#1348)
+d46aedca3 fix: Update oas to address path-to-regexp advisory (#1347)
+962d47851 ci(changesets): version packages (#1332)
+1fa6320ce fix: InfiniteData correct format
+116f80c2b ci(changesets): version packages (#1288)
+bd198fdeb Merge remote-tracking branch 'origin/v2' into v2
+f86ca64c8 feat: Added coercion for specific types only
+06495201f ci(changesets): version packages (#1285)
+636e756fb Merge remote-tracking branch 'origin/v2' into v2
+d6346a232 fix: escape `*/`
+bc235cdf7 ci(changesets): version packages (#1266)
+6732b8a4e fix: Respect order of `z.tuple`
+082f65a82 chore: add codesandbox pnpm with npm i
+d553edfc7 chore: add codesandbox pnpm
+0143ab97d chore: add codesandbox
+28133991b ci(changesets): version packages (#1256)
+2203c84e7 Merge remote-tracking branch 'origin/v2' into v2
+6bd3a30f4 feat: Support for discriminator
+f00aa4bb0 ci(changesets): version packages (#1254)
+ba3bc22ab fix: add missing freeform object definition to plugin-oas schema generator (#1250)
+ac1a99e3c ci(changesets): version packages (#1244)
+3631ce010 fix: Use of `readonly` for references($ref)
+449c985c0 ci(changesets): version packages (#1242)
+9b8dac948 fix: Use of `readonly` for references($ref)
+f544e64a5 ci(changesets): version packages (#1240)
+a17bf8abc chore: fix typecheck
+ae1cdf4a9 fix(msw): add missing extName to imports when generating operations files (#1198)
+653c80706 Merge remote-tracking branch 'origin/v2' into v2
+981ee87ec fix: Use of `x-nullable` and `nullable` for additionalProperties.
+df4f8b1f1 ci(changesets): version packages (#1235)
+0570178ae fix: remove experimentalSort and experimentalFilter (#1234)
+d9c77c33b ci(changesets): version packages (#1210)
+39e85f7ed Include 'null' in list of valid types (#1208)
+ae969d560 ci(changesets): version packages (#1207)
+452c3eb33 fix(msw): add missing extName to imports when generating operations files (#1198)
+9fa15e69e ci(changesets): version packages (#1191)
+87370f5b0 fix: Resolve issue with serverIndex and baseURL
+dd1cee8ab ci(changesets): version packages (#1184)
+06f79fd6b chore: correct naming
+0bfedae4d chore: Machines API has an invalid swagger file
+6be1e5996 chore: cherry-pick "Fixes/swr mutations key fn"
+df199e339 Update README.md
+f9d52c81e chore: prep v3 with a banner
+177185f87 ci(changesets): version packages (#1167)
+701814979 fix: Correct integer parser when used together with coerce + Set default property for schema AST when type of default is not string or boolean (#1166)
+f2eac2426 ci(changesets): version packages (#1161)
+3e79bc6a6 Merge branch 'v2' of https://github.com/kubb-labs/kubb into v2
+ddb988232 fix: always isTypeOnly for all typescript types
+9ce99f36b ci(changesets): version packages (#1150)
+c8d41d99a isTypeOnly set to true for all generated schema's(typescript) (#1148)
+8441af655 ci(changesets): version packages (#1142)
+11611287c chore: update release job
+eb84cc89a fix: latest tag
+6f32abc9c Merge branch 'main' into alpha
+633a1ea16 Merge branch 'main' into alpha
+bbbaf8c07 chore: cleanup e2e
+1ded070f6 Version Packages (alpha) (#1116)
+23171c2d3 chore: update snaps
+975256dbc chore: build:docs
+0341b799d chore: correct input
+234c25266 chore: cleanup
+73d008c72 feat!: removal of msw v2 and tanstack v4
+8344fc7eb chore: plugin for react-query v5
+fe02fab4a chore: regen react-query examples
+ef192590e chore: upgrade packages
+3c8b3222c chore: cleanup
+226ecc228 Merge branch 'refs/heads/main' into alpha
+6e17b4343 chore: validate
+9cb5bbca8 chore: cleanup react-query plugin
+68d7c80ff chore: cleanup react-query plugin
+3d532835d chore: cleanup react-query plugin
+53a4672ee chore: v3 docs
+6d634588b chore: cleanup
+4bf249442 chore: rename plugin-ts
+f321c8977 chore: rename plugin-zod
+f79d59945 chore: rename plugin-zodios
+3c0208694 chore: rename plugin-swr
+bb27f28d3 chore: rename plugin-msw
+db1151bb2 chore: rename plugin-faker
+3373aa9fe chore: update packages
+a6d1d1fba Merge branch 'refs/heads/main' into alpha
+b317dbd97 Merge remote-tracking branch 'origin/alpha' into alpha
+76b8d9969 Merge branch 'refs/heads/main' into alpha
+3d4322a75 Merge branch 'refs/heads/main' into alpha
+0e6046942 chore: rename
+c105cf1a9 feat!: removal of swagger package in favour of @kubb/plugin-oas
+c9c503a88 chore: prep alpha
+c99a5fb67 feat: add support nullable to faker (#699)
+dfc821bc0 feat: add support unicode to zod regexp pattern (#694)
+a0ffe27da Feature/more tests for corner cases (#662)
+0ae126844 docs: update to beta link
+f7c27dbad ignore idea files (#657)
+c0961c576 docs: removal of react-query v5
+207a8c269 chore: release main (#632)
+f5dbd2f5a fix: use of baseURL for Zodios (#631)
+426a3ff33 Merge pull request #616 from kubb-project/release-please--branches--main
+a8a3ea218 chore: release main
+637a2b191 Merge pull request #615 from kubb-project/fix/strictTypeSwaggerClient
+eacdd8c4c fix: strict type for swagger-client
+5b3cc030f Merge pull request #609 from kubb-project/release-please--branches--main
+6ed84e4bc chore: release main
+49cc42396 Merge pull request #608 from kubb-project/fix/js-runtime
+70785bdaa fix: upgrade js-runtime
+d33252089 Merge pull request #598 from koengommers/main
+216390fd4 docs: fix install command for swagger-tanstack-query plugin
+ec726d79f docs: add alpha docs
+3a4ea1873 ci: without depth check
+b0ecf63d9 chore: release main (#568)
+6222f599d fix: upgrade packages

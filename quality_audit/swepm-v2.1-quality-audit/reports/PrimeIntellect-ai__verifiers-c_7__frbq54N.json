@@ -1,0 +1,68 @@
+{
+  "instance_id": "PrimeIntellect-ai__verifiers-c_75990f2",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.72,
+  "gold_patch_assessment": "The gold patch (81 files) comprehensively addresses all five issue requirements: (1) renames instruction→prompt in Task and all tasksets/fixtures/harnesses, (2) renames Resources→TaskResources and adds TaskTimeout, (3) removes enable_bash from DefaultHarnessConfig and redirects to the bash harness, (4) moves CLI eval modules to verifiers.v1.cli.eval package, and (5) changes trace serialization by converting computed_field decorators to plain properties (so model_dump excludes derived values), removes to_wire(), and adds WireTrace type alias.",
+  "base_vs_gold_expectation": "Base correctly rejected: conftest.py imports from verifiers.v1.cli.eval.runner (fails on base since that module doesn't exist), causing ALL tests in the directory to fail at collection. Additionally, all test_graph.py and test_trace.py tests construct Tasks with prompt= which the base rejects (extra='forbid' and no prompt field). Gold patch should pass: it implements the CLI move, prompt rename, computed_field removal, and WireTrace addition that the tests require.",
+  "too_narrow_risks": [
+    "TaskResources rename (from Resources) is completely untested — no test constructs vf.TaskResources(...) or verifies the old Resources name is gone; a candidate can skip this rename entirely and pass",
+    "enable_bash removal and bash harness creation are only covered by test_e2e.py tests, which are all @pytest.mark.e2e and skip without PRIME_API_KEY/OPENAI_API_KEY (both unset in the Docker environment)",
+    "No negative test verifying that instruction= is rejected — tests only check prompt= works, so an implementation adding prompt as an additional accepted field (via alias or validator) while keeping instruction could pass, though extra='forbid' on Task makes this harder in practice",
+    "15+ environment taskset file changes (instruction→prompt in each) are not validated by any running test — the test fixtures are updated by the test patch itself, so the framework-level rename suffices to pass",
+    "TaskTimeout addition (consolidating per-task timeout fields) is not tested at all"
+  ],
+  "too_broad_risks": [],
+  "implementation_coupling": [
+    "Tests check observable behavior (field names in constructors, import paths, serialization output keys) rather than internal implementation details — low coupling overall",
+    "The test_trace.py assertion 'reward not in data and is_truncated not in data' couples to the specific approach of removing computed_field decorators, but this is the stated requirement from the issue so it's appropriate"
+  ],
+  "environment_risks": [
+    "All 7 test_e2e.py tests skip due to missing API keys (PRIME_API_KEY and OPENAI_API_KEY are unset), reducing effective test coverage to only test_graph.py (6 tests) and test_trace.py (3 tests)",
+    "The pytest command includes --cov flags which require the coverage package; if missing this could cause spurious failures (though likely pre-installed in the Docker image)",
+    "test_graph.py imports numpy — if numpy is not installed, all graph tests fail independently of the candidate's changes"
+  ],
+  "mismatches": [
+    "The issue mentions vf.Resources→vf.TaskResources rename but no test validates this change; there's a mismatch between issue requirements and test coverage on this point"
+  ],
+  "evidence": [
+    {
+      "file": "/testbed/verifiers/v1/task.py:45",
+      "detail": "Base code has 'instruction: str | Messages | None' — Task.prompt= is rejected by extra='forbid'"
+    },
+    {
+      "file": "/testbed/verifiers/v1/task.py:16",
+      "detail": "Base code has 'class Resources(StrictBaseModel)' — TaskResources does not exist"
+    },
+    {
+      "file": "/testbed/verifiers/v1/cli/runner.py",
+      "detail": "Base code has runner.py at verifiers.v1.cli.runner — verifiers.v1.cli.eval.runner doesn't exist"
+    },
+    {
+      "file": "/testbed/verifiers/v1/trace.py:227-234",
+      "detail": "Base code uses @computed_field on reward, error — model_dump() includes them, failing test_trace.py assertions"
+    },
+    {
+      "file": "/testbed/verifiers/v1/trace.py:379",
+      "detail": "Base code has to_wire() method — model_dump() returns different output than what tests expect after gold patch"
+    },
+    {
+      "file": "/tmp/test.patch:238-324",
+      "detail": "test_trace.py (new file, 82 lines) covers bare trace round-trip, custom task+state round-trip, and WireTrace round-trip"
+    },
+    {
+      "file": "/testbed/tests/v1/conftest.py:154-164",
+      "detail": "pytest_collection_modifyitems skips e2e-marked tests when no API key is present — all test_e2e.py tests skip"
+    },
+    {
+      "file": "/tmp/test.patch:8-9",
+      "detail": "conftest.py top-level import changed to verifiers.v1.cli.eval.runner — fails at collection if CLI move not done"
+    },
+    {
+      "file": "/audit_tasks/PrimeIntellect-ai__verifiers-c_75990f2/tests/eval.sh:48",
+      "detail": "eval.sh runs test_e2e.py, test_graph.py, test_trace.py with -m 'not prime_sandbox' filter"
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The instance tests a large multi-faceted API rename/refactor (81 files in gold patch) but the effective test suite is thin — only 9 unit tests across test_graph.py (6) and test_trace.py (3) actually run, while all 7 e2e tests skip due to missing API keys. The tests reliably reject the unpatched base (conftest import failure + prompt= rejection) and validate core requirements (instruction→prompt rename, CLI module move, trace serialization changes, WireTrace addition). However, the TaskResources rename (from Resources) and the enable_bash→bash harness migration are entirely untested by running tests, meaning a candidate could omit those requirements and still pass. Adding a simple test for TaskResources construction and a negative test for instruction= rejection would significantly improve coverage."
+}

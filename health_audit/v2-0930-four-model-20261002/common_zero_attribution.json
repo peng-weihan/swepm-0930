@@ -1,0 +1,1202 @@
+{
+  "scope": "之前四组主批次共同reward=0的55题，网络恢复结果已合并；排除32GiB补跑以及55题之外的案例。",
+  "method": "逐题读取220份verifier结果/错误摘要；重点因果案例对照原始工具轨迹、输入test_patch与eval.sh；未逐题重新执行、未认证最终工作树。",
+  "counts_nonexclusive": {
+    "直接verifier破坏证据": 13,
+    "实现或测试契约待区分": 22,
+    "环境或运行器异常": 6,
+    "agent终止异常": 12,
+    "agent只规划或澄清": 6,
+    "外部依赖网络失败": 1
+  },
+  "important": "6/13/1/6等是已确认现象的保守下界，类别可重叠，不是55题互斥根因分区。52题补丁标记是风险筛查，不等于52题的所有零分均为verifier所致。 原始自动标记可能漏报；例如微软题Luna的补丁拒绝已在人工复核发现，原始patch_flag_models保留原扫描结果。",
+  "all_four_reward_zero": 55,
+  "all_four_without_harbor_exception": 43,
+  "tasks_with_any_harbor_exception": 12,
+  "any_patch_marker_tasks": 52,
+  "all_four_patch_marker_tasks": 21,
+  "tasks": [
+    {
+      "task": "0xPlaygrounds__rig-2301",
+      "tags": [
+        "直接verifier破坏证据"
+      ],
+      "finding": "四组均反向恢复serde_policy_allowlist.txt的两条旧记录，driver_adoption随后仅因stale allowlist失败；属于直接可追踪的verifier改坏测试辅助数据。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/0xPlaygrounds__rig-2301__PYL8yRf",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/0xPlaygrounds__rig-2301__ucYmwhU",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/0xPlaygrounds__rig-2301__TDu6VLL",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/0xPlaygrounds__rig-2301__CVK9hHn"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "777genius__agent-teams-ai-246",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "四组实际执行约1250个测试，56/67/66/69个失败；Luna补丁干净仍有行为断言失败，其他三组叠加补丁问题。优先核对实现与测试行为契约，不是缺依赖的证据。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/777genius__agent-teams-ai-246__jFh7S7p",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/777genius__agent-teams-ai-246__zh92Phm",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/777genius__agent-teams-ai-246__hZJKSbg",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/777genius__agent-teams-ai-246__P4KGPkE"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "777genius__agent-teams-ai-c_1ccc143",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "Luna干净应用补丁后49过1败：用户顶层MCP配置未按测试合并；GLM/Kimi另有createdDirs未定义且补丁部分拒绝。实现/测试混合，非外部API限流。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/777genius__agent-teams-ai-c_1ccc__UWnBDni",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/777genius__agent-teams-ai-c_1ccc__pfJioiu",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/777genius__agent-teams-ai-c_1ccc__a8Tf43V",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/777genius__agent-teams-ai-c_1ccc__ZtT8tsL"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "Alishahryar1__free-claude-code-883",
+      "tags": [
+        "环境或运行器异常",
+        "agent终止异常"
+      ],
+      "finding": "Qwen/GLM/Luna verifier发生pytest-xdist/execnet INTERNALERROR、worker异常退出；Kimi agent曾OOM、verifier exit137。测试运行器/资源执行失败，不能按正常断言失败解释。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {
+        "kimi-k3-qiniu": "agent_killed_confirmed_oom_in_prior_kernel_audit"
+      },
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/Alishahryar1__free-claude-code-8__nZraxKk",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/Alishahryar1__free-claude-code-8__ztW7Z3c",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/Alishahryar1__free-claude-code-8__HJRgA4c",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/Alishahryar1__free-claude-code-8__Q9dGJ7F"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "Alishahryar1__free-claude-code-929",
+      "tags": [
+        "环境或运行器异常",
+        "agent终止异常"
+      ],
+      "finding": "三组Claude agent曾OOM；四组verifier均发生pytest-xdist worker崩溃或内部错误。Luna日志明确created192/192workers，最终no tests ran、exit3。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {
+        "qwen3.8-max-qiniu": "agent_killed_confirmed_oom_in_prior_kernel_audit",
+        "glm-5.3-siflow": "agent_killed_confirmed_oom_in_prior_kernel_audit",
+        "kimi-k3-qiniu": "agent_killed_confirmed_oom_in_prior_kernel_audit"
+      },
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/Alishahryar1__free-claude-code-9__5MkQr5i",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/Alishahryar1__free-claude-code-9__twpL9AM",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/Alishahryar1__free-claude-code-9__HjfbTtd",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/Alishahryar1__free-claude-code-9__KMS2NVt"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "CherryHQ__cherry-studio-13430",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "失败包括db.delete非函数、迁移日志形状、UI元素断言；Qwen/GLM另有补丁拒绝。Kimi主轨迹主要探索且无记录Edit/Write，但仅凭此不能证明shell没有改代码。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/CherryHQ__cherry-studio-13430__RSADACA",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/CherryHQ__cherry-studio-13430__uCcjhon",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/CherryHQ__cherry-studio-13430__aG9yGx3",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/CherryHQ__cherry-studio-13430__BwRX9oP"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "CherryHQ__cherry-studio-13587",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "四组有测试补丁反向/拒绝；随后BackupManager路径安全和resolveAndValidatePath断言失败。不是系统文件权限故障的直接证据，需对照被改动后的测试。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/CherryHQ__cherry-studio-13587__NN4qitW",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/CherryHQ__cherry-studio-13587__MrWUXwu",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/CherryHQ__cherry-studio-13587__K5ZS2GS",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/CherryHQ__cherry-studio-13587__8cci6wV"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "DeepLabCut__DeepLabCut-3303",
+      "tags": [
+        "直接verifier破坏证据"
+      ],
+      "finding": "Qwen/GLM verifier反向删除新测试文件，pytest无法找到目标；Kimi/Luna真正执行34例、33过1败（空扩展名未发弃用警告）。同题四个零分不同原因。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/DeepLabCut__DeepLabCut-3303__vpLBCMz",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/DeepLabCut__DeepLabCut-3303__TCd6iJi",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/DeepLabCut__DeepLabCut-3303__hS5v4oP",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/DeepLabCut__DeepLabCut-3303__tREo6tv"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "EvoScientist__EvoScientist-152",
+      "tags": [
+        "直接verifier破坏证据"
+      ],
+      "finding": "Qwen反向补丁后目标tests/test_context_window.py丢失；GLM测试中auto_approve重复参数；Kimi/Luna缺项目内EvoScientist.llm.context_window。后者可能实现布局/测试契约不匹配，不是pip依赖缺失。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/EvoScientist__EvoScientist-152__ukvAYWr",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/EvoScientist__EvoScientist-152__cvmJbJk",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/EvoScientist__EvoScientist-152__qN9pguk",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/EvoScientist__EvoScientist-152__UAMgcK5"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "EvoScientist__EvoScientist-171",
+      "tags": [
+        "直接verifier破坏证据"
+      ],
+      "finding": "Qwen反向应用后目标test_agent_loader.py丢失；GLM/Kimi执行150余例仅_MAX_CONCURRENT_CONNECTIONS相关失败；Luna缺项目内cli._agent_loader。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/EvoScientist__EvoScientist-171__eG5gXJi",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/EvoScientist__EvoScientist-171__77DJVna",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/EvoScientist__EvoScientist-171__24w2JfK",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/EvoScientist__EvoScientist-171__zCUiceM"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "EvoScientist__EvoScientist-307",
+      "tags": [
+        "直接verifier破坏证据"
+      ],
+      "finding": "git apply报patch with only garbage但GNU patch fallback继续；Kimi反向删除test_gateway_background_runs.py，其余缺项目内gateway.background_runs。存在测试安装与实现布局两类问题。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/EvoScientist__EvoScientist-307__8bvdebL",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/EvoScientist__EvoScientist-307__7CaguUz",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/EvoScientist__EvoScientist-307__3pxxVFa",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/EvoScientist__EvoScientist-307__AT2UaxW"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "EvoScientist__EvoScientist-376",
+      "tags": [
+        "直接verifier破坏证据"
+      ],
+      "finding": "Kimi反向删除test_channel_sends.py；其余三组缺项目内EvoScientist.runtime。不是外部Python包缺失，需核对题面是否约束内部模块布局。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/EvoScientist__EvoScientist-376__KkaZGL3",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/EvoScientist__EvoScientist-376__PnaUFYx",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/EvoScientist__EvoScientist-376__8HMxiSv",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/EvoScientist__EvoScientist-376__U4r3zKU"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "Hans-Halverson__brimstone-412",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "三组Claude主要为bytecode snapshot失败，Luna是Rust trait编译错误；四组均有补丁异常。快照/实现/补丁污染待分离，没有外部网络阻断证据。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/Hans-Halverson__brimstone-412__E6FsJG7",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/Hans-Halverson__brimstone-412__Akwza27",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/Hans-Halverson__brimstone-412__vCctPfc",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/Hans-Halverson__brimstone-412__rHQfVMa"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "Mrmayman__quantumlauncher-c_fb3452c",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "四组有补丁拒绝；Claude组测试二进制类型不匹配，Luna库代码类型不匹配。更接近API/实现或被混合的测试问题，未证实缺系统依赖。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/Mrmayman__quantumlauncher-c_fb34__nrEgNdK",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/Mrmayman__quantumlauncher-c_fb34__b6WLSTx",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/Mrmayman__quantumlauncher-c_fb34__z95g5ra",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/Mrmayman__quantumlauncher-c_fb34__d54AL94"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "RakuenSoftware__aimee-2499",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "四组CMake构建有_GNU_SOURCE重定义、sandbox.h/rules.h/db2头文件缺失，同时Go断言失败；agent使用Make构建有通过记录。优先检查verifier构建目标与include配置，不能把项目头文件缺失简单算第三方依赖。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/RakuenSoftware__aimee-2499__6ikhjB8",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/RakuenSoftware__aimee-2499__i4r2ex6",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/RakuenSoftware__aimee-2499__Si3hDUw",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/RakuenSoftware__aimee-2499__SdEfuEs"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "RakuenSoftware__aimee-2570",
+      "tags": [
+        "agent只规划或澄清"
+      ],
+      "finding": "Kimi在/go找不到仓库后只请求澄清；Qwen也缺少明显实现操作但未认证最终diff。GLM/Luna测试要求的PromptAllowsWrites/DelegateMayWrite未提供，部分CMake build目录无Makefile。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/RakuenSoftware__aimee-2570__cqJ2hB2",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/RakuenSoftware__aimee-2570__EQyRyAE",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/RakuenSoftware__aimee-2570__iELTyj8",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/RakuenSoftware__aimee-2570__YNVvkAo"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "RakuenSoftware__aimee-2581",
+      "tags": [
+        "agent终止异常"
+      ],
+      "finding": "GLM到300轮；其他组undefined RouteFilterResult/RouteAgent/flag等、部分Makefile缺失。题目实现接口和构建路径均需审查，现有日志不能指定唯一原因。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {
+        "glm-5.3-siflow": "max_turns_300"
+      },
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/RakuenSoftware__aimee-2581__RhqkYUu",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/RakuenSoftware__aimee-2581__MKuvXTr",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/RakuenSoftware__aimee-2581__RWo6skS",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/RakuenSoftware__aimee-2581__zX55hCC"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "RakuenSoftware__aimee-c_1c60c9c",
+      "tags": [
+        "agent只规划或澄清"
+      ],
+      "finding": "Qwen只写plans文件并ExitPlanMode等待审批，未交付实现；其他组经济统计接口常量/类型未定义，叠加补丁异常。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/RakuenSoftware__aimee-c_1c60c9c__nQ7GzEk",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/RakuenSoftware__aimee-c_1c60c9c__rHwYToB",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/RakuenSoftware__aimee-c_1c60c9c__EicA8i2",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/RakuenSoftware__aimee-c_1c60c9c__yDSjB3E"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "RakuenSoftware__aimee-c_b59e070",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "四组Go测试中SeatRequest、roundtablecfg.Run/Store等项目符号未定义；部分补丁拒绝。实现/内部API契约不匹配，未证实环境依赖缺失。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/RakuenSoftware__aimee-c_b59e070__NiYZHDe",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/RakuenSoftware__aimee-c_b59e070__jeF9qic",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/RakuenSoftware__aimee-c_b59e070__3PzqR8U",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/RakuenSoftware__aimee-c_b59e070__pEZsd4b"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "RakuenSoftware__aimee-c_d9e4faf",
+      "tags": [
+        "agent只规划或澄清"
+      ],
+      "finding": "GLM只写计划并等待审批；四组存在CMake重新生成失败和Go接口缺失/重复测试声明。混合构建、实现及测试安装问题。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/RakuenSoftware__aimee-c_d9e4faf__pXLMYTp",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/RakuenSoftware__aimee-c_d9e4faf__NBbRTJy",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/RakuenSoftware__aimee-c_d9e4faf__9Bv2XEC",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/RakuenSoftware__aimee-c_d9e4faf__YpWA9Es"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "aldinokemal__go-whatsapp-web-multidevice-710",
+      "tags": [
+        "agent终止异常"
+      ],
+      "finding": "Qwen7200秒超时；四组测试要求的NewClientRegistry/ResolvedConfig/InitClientRegistry等项目接口缺失。未见补丁应用异常；重点是内部API契约是否充分说明，而非镜像缺包。",
+      "any_patch_flag": false,
+      "patch_flag_models": [],
+      "agent_exceptions": {
+        "qwen3.8-max-qiniu": "agent_timeout_7200s"
+      },
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/aldinokemal__go-whatsapp-web-mul__RTUPsbm",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/aldinokemal__go-whatsapp-web-mul__pcFTNmD",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/aldinokemal__go-whatsapp-web-mul__sVUQTBZ",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/aldinokemal__go-whatsapp-web-mul__prKhFFL"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "apache__devlake-8877",
+      "tags": [
+        "环境或运行器异常",
+        "agent终止异常"
+      ],
+      "finding": "四组缺E2E_DB_URL，两个E2E包被跳过；任务测试另有私有helper签名不匹配，GLM/Kimi自建测试与注入测试同名。Qwen agent曾OOM。缺数据库不能单独解释四个零分。",
+      "any_patch_flag": false,
+      "patch_flag_models": [],
+      "agent_exceptions": {
+        "qwen3.8-max-qiniu": "agent_killed_confirmed_oom_in_prior_kernel_audit"
+      },
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/apache__devlake-8877__DfQowSS",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/apache__devlake-8877__zgrfnJA",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/apache__devlake-8877__cnynRgj",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/apache__devlake-8877__8VSgX2B"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "apache__kafka-22505",
+      "tags": [
+        "直接verifier破坏证据"
+      ],
+      "finding": "test.patch包含业务源码CandidateState.java；三组Claude反向应用去掉final后直接违反sealed类型约束；Luna也有该文件补丁混合/override错误。明确verifier修改业务实现。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/apache__kafka-22505__cteAhin",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/apache__kafka-22505__75eCADA",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/apache__kafka-22505__T6yEDNx",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/apache__kafka-22505__eAY5a9B"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "apache__pinot-18208",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "Claude组先被Checkstyle拦截，Luna执行GroovyStaticAnalyzerConfigTest后5例失败；四组补丁有反向/拒绝。非明确网络/系统依赖故障。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/apache__pinot-18208__aqfUNAa",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/apache__pinot-18208__7fMaFez",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/apache__pinot-18208__rfr52JU",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/apache__pinot-18208__ssY6GVW"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "babarot__afx-69",
+      "tags": [
+        "直接verifier破坏证据"
+      ],
+      "finding": "四组verifier恢复基线测试后因重命名旧路径不存在，git apply失败却继续；测试保留旧pkg/config导入，与题目要求移到internal冲突。明确verifier setup失败。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/babarot__afx-69__9XENwmD",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/babarot__afx-69__YSifF4V",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/babarot__afx-69__dyzD3yh",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/babarot__afx-69__FLBs4xK"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "basicmachines-co__basic-memory-1102",
+      "tags": [
+        "直接verifier破坏证据"
+      ],
+      "finding": "Qwen/Kimi反向删除新测试test_accepted_note_atomicity.py；GLM/Luna缺项目内services.note_preparation模块。分开处理verifier破坏与实现布局契约。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/basicmachines-co__basic-memory-1__JFruGVr",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/basicmachines-co__basic-memory-1__Kp7oxzu",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/basicmachines-co__basic-memory-1__e8aR3rE",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/basicmachines-co__basic-memory-1__kGrs3E5"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "cmu-phil__tetrad-c_5a3d308",
+      "tags": [
+        "直接verifier破坏证据"
+      ],
+      "finding": "test.patch包含DirichletEstimator等业务源码；反向恢复getColumn等已移除API，随后cannot find symbol。明确verifier改动了提交后的业务代码。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/cmu-phil__tetrad-c_5a3d308__aymVNKh",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/cmu-phil__tetrad-c_5a3d308__hKkmYDU",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/cmu-phil__tetrad-c_5a3d308__UedRFfM",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/cmu-phil__tetrad-c_5a3d308__38Y8TiN"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "cmu-phil__tetrad-c_d0e10cd",
+      "tags": [
+        "外部依赖网络失败",
+        "agent终止异常"
+      ],
+      "finding": "GLM/Kimi/Luna Maven Central依赖下载429；另有测试/业务helper API编译错误和反向补丁；GLM到300轮。网络故障为部分模型的直接阻断，不能解释全部四组。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {
+        "glm-5.3-siflow": "max_turns_300"
+      },
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/cmu-phil__tetrad-c_d0e10cd__jLMRVgU",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/cmu-phil__tetrad-c_d0e10cd__ynHGcQy",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/cmu-phil__tetrad-c_d0e10cd__2RhfMUv",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/cmu-phil__tetrad-c_d0e10cd__v9zTE7s"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "crabtalk__crabtalk-116",
+      "tags": [
+        "agent终止异常"
+      ],
+      "finding": "三组Claude测试函数参数数量不匹配，Luna协议类型缺失；四组补丁反向/拒绝，GLM到300轮。以接口/补丁污染待核为主。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {
+        "glm-5.3-siflow": "max_turns_300"
+      },
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/crabtalk__crabtalk-116__q84SHhy",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/crabtalk__crabtalk-116__bX7a7Fc",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/crabtalk__crabtalk-116__jwPHSeH",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/crabtalk__crabtalk-116__XPPgQTZ"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "dream-num__univer-6921",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "Claude三组相同8败16过且反向补丁；Luna7败21过，无补丁异常标记。UI props/过滤排序行为不符，不能单凭同分判环境失败。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/dream-num__univer-6921__RTJbmCm",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/dream-num__univer-6921__TKd3989",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/dream-num__univer-6921__kJ4E7VK",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/dream-num__univer-6921__u2YVDcu"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "duckdb__duckdb-21978",
+      "tags": [
+        "agent终止异常"
+      ],
+      "finding": "四组补丁反向/部分拒绝，随后const写入等编译错误；GLM/Kimi/Luna另有cc1plus被杀，GLM超时。agent部分构建成功；需要分离测试回退、编译资源和代码错误。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {
+        "glm-5.3-siflow": "agent_timeout_7200s"
+      },
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/duckdb__duckdb-21978__SLcSGJc",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/duckdb__duckdb-21978__d4F85f2",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/duckdb__duckdb-21978__QhnEhid",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/duckdb__duckdb-21978__NSXUL5f"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "get-bb__bb-c_c88c518",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "四组实际执行的15至23例均通过，但两测试文件加载失败（@/components/ui等）；四组有补丁异常。项目模块/别名或测试重构契约问题，非确定第三方依赖缺失。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/get-bb__bb-c_c88c518__gSFqDE8",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/get-bb__bb-c_c88c518__iJRmzLb",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/get-bb__bb-c_c88c518__tmkQr7P",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/get-bb__bb-c_c88c518__TibbSxc"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "get-bb__bb-c_cd3c6ef",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "四组233至235例通过、13至15例失败，包含queued-thread-messages.js项目模块缺失及queue preview断言；均叠加补丁异常。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/get-bb__bb-c_cd3c6ef__NW5uPnt",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/get-bb__bb-c_cd3c6ef__czdu3Nt",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/get-bb__bb-c_cd3c6ef__obxrtod",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/get-bb__bb-c_cd3c6ef__8bzKPmk"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "github__spec-kit-2389",
+      "tags": [
+        "直接verifier破坏证据",
+        "agent终止异常"
+      ],
+      "finding": "GLM反向删除test_integration_state.py；Kimi/Luna缺项目内integration_state模块；Qwen超时且测试有symlink报错文案断言失败。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {
+        "qwen3.8-max-qiniu": "agent_timeout_7200s"
+      },
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/github__spec-kit-2389__DJWvWza",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/github__spec-kit-2389__jHXyDqM",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/github__spec-kit-2389__KEx925k",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/github__spec-kit-2389__P4d48k5"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "google-gemini__gemini-cli-21776",
+      "tags": [
+        "agent终止异常"
+      ],
+      "finding": "三组Claude agent曾OOM；verifier有反向补丁、项目keyMatchers路径缺失/重复mock声明，部分组已执行的测试全过但suite加载失败。资源异常和测试污染并存。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {
+        "qwen3.8-max-qiniu": "agent_killed_confirmed_oom_in_prior_kernel_audit",
+        "glm-5.3-siflow": "agent_killed_confirmed_oom_in_prior_kernel_audit",
+        "kimi-k3-qiniu": "agent_killed_confirmed_oom_in_prior_kernel_audit"
+      },
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/google-gemini__gemini-cli-21776__EQuxXaQ",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/google-gemini__gemini-cli-21776__WbNkFGK",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/google-gemini__gemini-cli-21776__LEmCCo5",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/google-gemini__gemini-cli-21776__tCFqE9F"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "iced-rs__iced-3278",
+      "tags": [
+        "agent终止异常"
+      ],
+      "finding": "Qwen超时；其他组有LoadFont/Action API不匹配、重复导入/声明，叠加反向/部分补丁。编译错误本身不能证明镜像缺依赖。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {
+        "qwen3.8-max-qiniu": "agent_timeout_7200s"
+      },
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/iced-rs__iced-3278__Je6Uy4H",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/iced-rs__iced-3278__emPGXrD",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/iced-rs__iced-3278__Taeujw9",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/iced-rs__iced-3278__A6hqgqa"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "jhao104__proxy_pool-c_9dc9bed",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "Qwen/Kimi是ConfigHandler.fetchers属性断言失败；GLM/Luna缺新fetcher模块。项目内部接口和模块名称不匹配，不能按pip缺包处理。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/jhao104__proxy_pool-c_9dc9bed__EWT3J27",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/jhao104__proxy_pool-c_9dc9bed__Mrxsb5p",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/jhao104__proxy_pool-c_9dc9bed__ov7NtgW",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/jhao104__proxy_pool-c_9dc9bed__DtuW9pa"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "katspaugh__wavesurfer.js-4340",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "Kimi用上游修复后，verifier反向恢复已删除旧测试；159执行例全过但6suite加载失败。其他模型另有行为断言失败；源码/测试重构契约与污染混合。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/katspaugh__wavesurfer.js-4340__qKieXfn",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/katspaugh__wavesurfer.js-4340__GnVL4DJ",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/katspaugh__wavesurfer.js-4340__T7ovUfi",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/katspaugh__wavesurfer.js-4340__Dx9NkK6"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "kubb-labs__kubb-3715",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "四组多数测试通过，resolver.baseName、generator事件与CLI断言失败；四组有补丁异常。实现/测试API匹配问题待核。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/kubb-labs__kubb-3715__MmbLrX4",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/kubb-labs__kubb-3715__HAfeRLt",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/kubb-labs__kubb-3715__P7ASwVa",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/kubb-labs__kubb-3715__zSHoStV"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "kubb-labs__kubb-3795",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "四组均缺项目内adapter-oas/emit/discriminator/propagate.ts，GLM/Kimi/Luna补丁无异常标记；需要核对实现文件布局及测试是否过窄，未见系统依赖故障。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/kubb-labs__kubb-3795__2EEFY9Q",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/kubb-labs__kubb-3795__H85fypZ",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/kubb-labs__kubb-3795__HzQshte",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/kubb-labs__kubb-3795__hW9kpjj"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "langchain-ai__openwiki-c_60f7877",
+      "tags": [
+        "直接verifier破坏证据"
+      ],
+      "finding": "Qwen verifier反向还原旧telemetry测试，期待字符串agent_error但新题面要求对象；其他组有新行为断言失败。明确至少一组测试契约被回退。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/langchain-ai__openwiki-c_60f7877__h2x9DF7",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/langchain-ai__openwiki-c_60f7877__k7gAjJZ",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/langchain-ai__openwiki-c_60f7877__DhWAQSu",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/langchain-ai__openwiki-c_60f7877__yvcd3XH"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "lerd-env__lerd-471",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "四组唯一关键断言都是horizon而非horizon:listen。四组实现resolveWorkerCommand(workerName,sitePath,...)，测试按(sitePath,workerName,...)调用；题面未明确该内部签名。属于接口契约歧义，不是缺chokidar（测试自行创建目录）。",
+      "any_patch_flag": false,
+      "patch_flag_models": [],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/lerd-env__lerd-471__n3bLohv",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/lerd-env__lerd-471__KgNgvxa",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/lerd-env__lerd-471__K5a74rZ",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/lerd-env__lerd-471__dVz6w6s"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "letta-ai__letta-code-2798",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "四组补丁反向/拒绝后测试仍导入旧extensions路径，但题目要求改mods；混合重命名后的测试/实现路径，非外部依赖未安装。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/letta-ai__letta-code-2798__QQatDeQ",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/letta-ai__letta-code-2798__2Ne7gfK",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/letta-ai__letta-code-2798__m3ZTsdV",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/letta-ai__letta-code-2798__NRGdTzR"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "letta-ai__letta-code-3687",
+      "tags": [
+        "agent只规划或澄清"
+      ],
+      "finding": "GLM只写计划等待审批；Qwen/Kimi反向补丁后旧导出缺失，Luna缺新runtime模块/导出；部分自测基线失败也能在旧commit复现。不能统一归因网络。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/letta-ai__letta-code-3687__SuFRiY3",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/letta-ai__letta-code-3687__mQEgUax",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/letta-ai__letta-code-3687__DSWEiqE",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/letta-ai__letta-code-3687__p3m34to"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "lucianodato__libspecbleach-81",
+      "tags": [
+        "agent只规划或澄清"
+      ],
+      "finding": "GLM未执行工具就请求仓库位置；Qwen/Kimi补丁反向恢复已删除Louizou测试，Luna测试源码重定义。入口行为及verifier问题混合。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/lucianodato__libspecbleach-81__Ry52R9e",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/lucianodato__libspecbleach-81__CZyxFGR",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/lucianodato__libspecbleach-81__ETf96C8",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/lucianodato__libspecbleach-81__stdVBxZ"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "lucianodato__libspecbleach-86",
+      "tags": [
+        "环境或运行器异常"
+      ],
+      "finding": "四组verifier均拒绝读取Meson build.dat（工具版本/构建缓存不兼容）；Qwen/Luna agent阶段实际Meson测试24过。明确agent与verifier构建环境状态不一致；未证明镜像出厂即坏。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/lucianodato__libspecbleach-86__mrsAaQ2",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/lucianodato__libspecbleach-86__RzKUqya",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/lucianodato__libspecbleach-86__hiFHbpg",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/lucianodato__libspecbleach-86__rX5FD2W"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "lucianodato__libspecbleach-90",
+      "tags": [
+        "环境或运行器异常"
+      ],
+      "finding": "三个Claude组在verifier遇到Meson build.dat不兼容；Qwen agent自测25过。Luna则到达编译并因参数数量等失败。不能把四组零分全归一种原因。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/lucianodato__libspecbleach-90__Mk9XCMw",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/lucianodato__libspecbleach-90__EbcNWcG",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/lucianodato__libspecbleach-90__D7Cw7EN",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/lucianodato__libspecbleach-90__rwKWxHn"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "microsoft__agent-framework-go-110",
+      "tags": [
+        "直接verifier破坏证据"
+      ],
+      "finding": "三个Claude组恢复基线测试后git apply因旧重命名源不存在而失败，残留旧agentopt导入；Luna也有otel_test.go补丁拒绝，最终agent_test.go编译报[]middleware.Middleware不能用作[]agent.Middleware。均涉及测试安装/接口混合，非第三方Go依赖缺失。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/microsoft__agent-framework-go-11__4PTUjnX",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/microsoft__agent-framework-go-11__PaEpiN5",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/microsoft__agent-framework-go-11__6ShKuVg",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/microsoft__agent-framework-go-11__yaUuLhW"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。",
+      "additional_manually_verified_patch_failure_models": [
+        "gpt-6-luna"
+      ]
+    },
+    {
+      "task": "monkeytypegame__monkeytype-8134",
+      "tags": [
+        "环境或运行器异常"
+      ],
+      "finding": "四组production构建均缺RECAPTCHA_SITE_KEY；之后还继续测试并出现旧keymap配置断言失败，四组有补丁反向/拒绝。环境缺配置属实，但不是唯一失败原因。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/monkeytypegame__monkeytype-8134__DAmKjvr",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/monkeytypegame__monkeytype-8134__rJj4r4A",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/monkeytypegame__monkeytype-8134__48wtXxE",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/monkeytypegame__monkeytype-8134__JLZazYC"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "netease-youdao__LobsterAI-1091",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "多个scheduled-task项目内模块未实现或布局不同，Kimi还有policies.get类型错误；部分suite实际执行通过。需要对照测试契约而非安装第三方依赖。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/netease-youdao__LobsterAI-1091__qgfF3Nw",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z-network-recovery/netease-youdao__LobsterAI-1091__2wii7Rk",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z-network-recovery/netease-youdao__LobsterAI-1091__BZZe4Fc",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/netease-youdao__LobsterAI-1091__svha6vo"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "netease-youdao__LobsterAI-2080",
+      "tags": [
+        "agent只规划或澄清"
+      ],
+      "finding": "GLM只写计划等待审批；Qwen实际操作少且无记录编辑，尚未认证diff；Kimi/Luna已有实现但safeUrlTransform/selectedKitContextPrompt接口不符。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/netease-youdao__LobsterAI-2080__hahhDeE",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/netease-youdao__LobsterAI-2080__ab2F7wv",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/netease-youdao__LobsterAI-2080__MRasnTF",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/netease-youdao__LobsterAI-2080__ztvoq5g"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "openmemind__memind-2",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "Qwen未见补丁异常但被Spotless格式检查拦截；GLM/Luna补丁后测试重复import；Kimi测试API缺失。格式和测试污染/实现问题，非已知网络故障。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/openmemind__memind-2__qCa6yBj",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/openmemind__memind-2__Q4guuJJ",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/openmemind__memind-2__eacQcaN",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/openmemind__memind-2__JgWjxDt"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "openmemind__memind-43",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "Qwen执行到测试报错，GLM/Kimi/Luna测试编译缺MemindServerCorsConfiguration相关符号；四组有补丁拒绝/反向。接口契约与测试污染需分离。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/openmemind__memind-43__8pgtCCx",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/openmemind__memind-43__NcY5jQa",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/openmemind__memind-43__hDmJLdP",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/openmemind__memind-43__hz9NvmT"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "openmemind__memind-c_3f347c2",
+      "tags": [
+        "实现或测试契约待区分"
+      ],
+      "finding": "Qwen/GLM测试API符号缺失，Kimi测试UnusedImports，Luna缺DefaultMemoryContext相关符号；以实现/内部API及补丁污染待核，非明确环境依赖错误。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "kimi-k3-qiniu"
+      ],
+      "agent_exceptions": {},
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/openmemind__memind-c_3f347c2__dBXBtGA",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/openmemind__memind-c_3f347c2__WkmA5rr",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/openmemind__memind-c_3f347c2__uXgw6uR",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/openmemind__memind-c_3f347c2__n7z4fZp"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    },
+    {
+      "task": "teng-lin__notebooklm-py-1557",
+      "tags": [
+        "agent终止异常"
+      ],
+      "finding": "Qwen/Kimi超时；其余测试导入MIND_MAP_LEAF_ABSENT/unwrap_artifact_rows等项目内部符号失败。需核对题面与测试耦合，不是notebooklm第三方包未安装。",
+      "any_patch_flag": true,
+      "patch_flag_models": [
+        "qwen3.8-max-qiniu",
+        "glm-5.3-siflow",
+        "gpt-6-luna"
+      ],
+      "agent_exceptions": {
+        "qwen3.8-max-qiniu": "agent_timeout_7200s",
+        "kimi-k3-qiniu": "agent_timeout_7200s"
+      },
+      "trial_dirs": {
+        "qwen3.8-max-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-qwen3.8-max-qiniu-max300-nomcp-c16-20261001T173933Z/teng-lin__notebooklm-py-1557__6wcEAHV",
+        "glm-5.3-siflow": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-glm-5.3-siflow-max300-nomcp-c16-20261001T173933Z/teng-lin__notebooklm-py-1557__U94dqR9",
+        "kimi-k3-qiniu": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-claude-code-kimi-k3-qiniu-max300-nomcp-c16-20261001T173933Z/teng-lin__notebooklm-py-1557__h6A8GvB",
+        "gpt-6-luna": "/data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/teng-lin__notebooklm-py-1557__BK6pHDu"
+      },
+      "confidence_scope": "判断针对描述中指定模型或阶段，不保证解释四个零分的全部原因。"
+    }
+  ]
+}

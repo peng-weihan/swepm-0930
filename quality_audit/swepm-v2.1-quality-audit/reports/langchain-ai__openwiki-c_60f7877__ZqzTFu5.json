@@ -1,0 +1,77 @@
+{
+  "instance_id": "langchain-ai__openwiki-c_60f7877",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.8,
+  "gold_patch_assessment": "The gold patch is very large (~4250 lines) and addresses all three stated requirements: (1) adds a new `openwiki visualize` CLI command with server, graph builder, client library, and page template; (2) refactors the telemetry error classification from flat string enums to a two-level {errorClass, errorDetail} taxonomy with owner derivation, stage tagging, and anonymity guarantees; (3) adds taxonomy.ts, with-run-telemetry.ts, and updates types.ts, senders.ts, errors.ts accordingly. It also includes unrelated changes (CHANGELOG.md, changeset deletions, pnpm-lock.yaml, wiki content updates, dependency bumps) which are typical of a squash-merge but add noise.",
+  "base_vs_gold_expectation": "The tests should fail on the unpatched base because: (1) imports from nonexistent modules (src/telemetry/taxonomy.ts, src/visualize/client-lib.ts, src/visualize/graph.ts) will cause immediate module-resolution errors; (2) new exports from errors.ts (describeErrorForTelemetry, inStage, inStageSync, tagErrorStage) don't exist in the base; (3) the classifyError return type changes from string to object, so existing test assertions are rewritten to use toEqual({errorClass:...}); (4) parseCommand(['visualize']) returns {kind:'run'} in the base (falls through to default), not {kind:'visualize'}. The gold patch should make all tests pass. This acceptance/rejection logic appears sound.",
+  "too_narrow_risks": [
+    "visualize-server.test.ts is a tautological test: it creates its own mock HTTP server instead of importing/exercising the actual src/visualize/server.ts module. It tests that a hand-written mock returns 404 and binds loopback — behaviors hardcoded in the test itself, not in the implementation. A candidate that ships a server with path traversal vulnerabilities or binding to 0.0.0.0 would still pass this test.",
+    "No test for the wiki-directory-not-found error message (the 'Wiki directory not found: <path>. Run `openwiki --init` first, or pass a path.' requirement from the issue).",
+    "No test for the server's port auto-increment behavior on conflicts.",
+    "No test for the --no-open flag actually suppressing browser open.",
+    "No test for the live-reload / file-watching behavior described in the issue.",
+    "No test for the server's fixed-route whitelist (/, /index.html, /client.js, /client-lib.js, /api/graph, /events) — only the mock's /health route is tested.",
+    "The telemetry tests are thorough for classification and taxonomy but don't test the integration with the actual run pipeline (e.g., that inStage is actually used at throw sites in the agent code)."
+  ],
+  "too_broad_risks": [
+    "The gold patch includes unrelated changes: CHANGELOG.md generation, changeset file deletions, pnpm-lock.yaml changes, wiki content updates, dependency version bumps. These are not related to the stated issue and could cause spurious failures if another solution doesn't replicate them.",
+    "The telemetry anonymity envelope test (anonymity envelope: one representative failure per reachable family) hardcodes very specific allowlists of error classes, details, and owners. An alternative valid implementation with slightly different taxonomy names would fail.",
+    "The test for PROVIDER_CONFIGS import ties the error family taxonomy to the exact set of provider config keys, coupling two independent subsystems."
+  ],
+  "implementation_coupling": [
+    "Tests import specific internal functions like deriveOwner, normalizeErrorDetail from taxonomy.ts — coupling to the exact module factoring of the gold patch. An alternative that inlines these in errors.ts or uses different function names would fail.",
+    "Tests expect exact ErrorClassification object shapes ({errorClass, errorDetail}) — an alternative returning {class, detail} or using different property names would fail, though this coupling is reasonable since the issue specifies the shape.",
+    "The visualize-command test expects parseCommand to return an exact object shape with {kind:'visualize', exitCode:0, wikiDir:'openwiki', port:4321, open:true}, coupling to the gold patch's CliCommand type extension.",
+    "The test for buildRunEvent expects specific property name mappings (error_class, error_detail, error_owner, error_stage, http_status) — reasonable but coupled to the gold patch's PostHog payload schema.",
+    "The FAILURE_FIXTURES table in the anonymity test encodes the exact set of error families and their construction paths, tightly coupling to the gold patch's error taxonomy design."
+  ],
+  "environment_risks": [
+    "The visualize-graph tests create temporary directories and symlinks in /tmp — could fail if /tmp is read-only or has restricted permissions in the Docker container.",
+    "The visualize-server test uses fetch() to make HTTP requests to localhost — requires Node.js 18+ global fetch support (available in Node 22 in this env).",
+    "The eval.sh uses 'pnpm exec vitest run' which requires pnpm and vitest to be installed and the node_modules to be intact. These appear present in the Docker image.",
+    "Tests use 'node:fs/promises' symlink creation which may behave differently on certain Docker filesystem overlays."
+  ],
+  "mismatches": [
+    "The issue mentions the server should 'watch the wiki directory and notify connected clients when markdown files change' but no test verifies this behavior.",
+    "The issue says unknown paths 'must return 404 Not found and must not be mapped to the filesystem' but the test that checks this (visualize-server.test.ts) tests a mock server, not the real implementation.",
+    "The issue specifies 'bind only to 127.0.0.1' but again only the mock server test verifies this, not the real server.",
+    "The gold patch includes a large amount of non-issue-related changes (CHANGELOG generation, changeset cleanup, wiki content updates, dependency bumps) that inflate the patch well beyond what the issue requires."
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "visualize-server.test.ts (lines 1089-1128) creates its own createServer() mock instead of importing from src/visualize/server.ts — tests its own behavior, not the implementation"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "telemetry.test.ts modifications add comprehensive classifyError tests covering all error families, provider granularity, taxonomy helpers, error origin tags, buildRunEvent diagnostics, and anonymity envelope — thorough coverage"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "visualize-graph.test.ts tests splitFrontmatter, firstHeading, and buildGraph with edge cases (symlinks, self-links, missing pages, INSTRUCTIONS.md exclusion) — good unit test coverage"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "visualize-command.test.ts tests parseCommand with defaults, positional args, --port variants, error cases — good coverage of CLI parsing"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "visualize-client-lib.test.ts tests escapeHtml, colorsForTypes, hexA, nodeRadius, matchesFilter, signature, stripFrontmatter, normalize — comprehensive utility function coverage"
+    },
+    {
+      "file": "/testbed/src/commands.ts",
+      "detail": "Base parseCommand has no 'visualize' handling — would fall through to parseRunCommand, so visualize-command tests will fail on base"
+    },
+    {
+      "file": "/testbed/src/telemetry/errors.ts",
+      "detail": "Base classifyError returns string (TelemetryErrorClass), gold patch changes to return ErrorClassification object — test assertions updated accordingly"
+    },
+    {
+      "file": "/audit_tasks/langchain-ai__openwiki-c_60f7877/solution/solve.sh",
+      "detail": "Gold patch is 4255 lines modifying 34 files including unrelated CHANGELOG, changeset, and dependency changes"
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The instance has a valid issue and a comprehensive gold patch, but test quality is mixed. The telemetry tests and visualize-graph/client-lib/command tests are thorough and well-designed. However, the visualize-server.test.ts is a tautological mock that doesn't test the actual server implementation at all — it creates its own HTTP server and asserts against that mock's hardcoded behavior. This means critical security requirements (path traversal rejection, loopback-only binding) are not actually verified against the implementation. The gold patch also includes substantial unrelated changes (CHANGELOG, changesets, dependency bumps). The tests will correctly reject the unpatched base (due to missing module imports) and accept the gold patch, but a partial implementation that skips the server or implements it insecurely could pass."
+}

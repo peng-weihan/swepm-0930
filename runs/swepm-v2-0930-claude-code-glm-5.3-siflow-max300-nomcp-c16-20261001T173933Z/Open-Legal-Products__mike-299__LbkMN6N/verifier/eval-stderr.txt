@@ -1,0 +1,51 @@
+Checking patch backend/src/__tests__/integration/chat.routes.test.ts...
+error: while searching for:
+            ]),
+        );
+        const call = vi.mocked(chatLib.buildMessages).mock.calls[0];
+        const systemPromptExtra = call[2] as string;
+        const nonce = call[5] as string;
+        expect(systemPromptExtra).toContain("WORD ADD-IN MODE");
+        expect(systemPromptExtra).toContain(
+            "<original>exact text copied from the active Word document</original>",
+        );
+        expect(systemPromptExtra).toContain(
+            `<untrusted-content nonce="${nonce}">\nGOVERNED BY DELAWARE LAW\n</untrusted-content nonce="${nonce}">`,
+        );
+        expect(
+            dbInserts.find(
+                ({ table, value }) =>
+
+error: patch failed: backend/src/__tests__/integration/chat.routes.test.ts:302
+error: backend/src/__tests__/integration/chat.routes.test.ts: patch does not apply
+Checking patch backend/src/lib/__tests__/documentContext.test.ts...
+error: while searching for:
+    parseOptionalDocumentContext,
+    generateSpotlightNonce,
+    spotlight,
+    buildWordDocumentContextPrompt,
+    buildMessages,
+} from "../chat/contextBuilders";
+
+// ---------------------------------------------------------------------------
+// parseOptionalDocumentContext — request parsing for POST /chat's
+
+error: patch failed: backend/src/lib/__tests__/documentContext.test.ts:4
+error: backend/src/lib/__tests__/documentContext.test.ts: patch does not apply
+[90mstderr[2m | src/__tests__/integration/chat.routes.test.ts[2m > [22m[2mPOST /chat — streaming endpoint[2m > [22m[2msurfaces a stream failure as an in-stream error event, not an HTTP error
+[22m[39m[chat/stream] error: {
+  name: [32m'Error'[39m,
+  message: [32m'upstream LLM failure'[39m,
+  stack: [32m'Error: upstream LLM failure\n'[39m +
+    [32m'    at /testbed/backend/src/__tests__/integration/chat.routes.test.ts:456:40\n'[39m +
+    [32m'    at file:///testbed/backend/node_modules/@vitest/runner/dist/chunk-artifact.js:302:11\n'[39m +
+    [32m'    at file:///testbed/backend/node_modules/@vitest/runner/dist/chunk-artifact.js:1903:26\n'[39m +
+    [32m'    at file:///testbed/backend/node_modules/@vitest/runner/dist/chunk-artifact.js:2326:20\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at runWithCancel (file:///testbed/backend/node_modules/@vitest/runner/dist/chunk-artifact.js:2323:10)\n'[39m +
+    [32m'    at file:///testbed/backend/node_modules/@vitest/runner/dist/chunk-artifact.js:2305:20\n'[39m +
+    [32m'    at new Promise (<anonymous>)\n'[39m +
+    [32m'    at runWithTimeout (file:///testbed/backend/node_modules/@vitest/runner/dist/chunk-artifact.js:2272:10)\n'[39m +
+    [32m'    at file:///testbed/backend/node_modules/@vitest/runner/dist/chunk-artifact.js:2955:64'[39m
+}
+

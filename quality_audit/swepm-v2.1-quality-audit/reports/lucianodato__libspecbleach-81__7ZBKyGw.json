@@ -1,0 +1,63 @@
+{
+  "instance_id": "lucianodato__libspecbleach-81",
+  "overall_quality": "good",
+  "test_scope": "too_narrow",
+  "confidence": 0.72,
+  "gold_patch_assessment": "The gold patch correctly replaces the Louizou noise estimator with two new estimators (Martin Minimum Statistics and Brandt Trimmed Mean) as described in the issue. It deletes louizou_noise_estimator.{c,h}, adds martin_noise_estimator.{c,h} and brandt_noise_estimator.{c,h}, updates the AdaptiveNoiseEstimationMethod enum from {LOUIZOU=0, SPP_MMSE=1} to {SPP_MMSE=0, BRANDT=1, MARTIN=2}, rewires the adaptive_noise_estimator dispatcher, updates the build file, and fixes public API header documentation. The patch also adds configuration constants for both new estimators. All changes are consistent with the issue description.",
+  "base_vs_gold_expectation": "The test patch references headers (brandt_noise_estimator.h, martin_noise_estimator.h) and enum values (MARTIN_METHOD) that only exist after the gold patch is applied. On the unmodified base, compilation will fail because these files and symbols don't exist. With the gold patch applied, all four tested executables (adaptive_noise_estimator_null, audio_regression, martin, brandt) should compile and pass. The verifier should correctly accept gold and reject base.",
+  "too_narrow_risks": [
+    "No integration/pipeline test for the Brandt estimator (noise_estimation_method=1) through the public API — audio_regression only tests Martin (method=2) and SPP-MMSE (method=0)",
+    "The Brandt unit test bypasses the learning/confidence period by calling set_state before run, which means the adaptive percentile selection and confidence-based estimation paths are not fully exercised",
+    "No test verifies that the old Louizou method is completely removed from all dispatch paths (though compilation failure would catch leftover references)",
+    "No test for the updated public API documentation in specbleach_denoiser.h (which still says 0=Louizou, 1=SPP-MMSE in the base and should be updated per the gold patch's changes to specbleach_2d_denoiser.h — but the gold patch does NOT update specbleach_denoiser.h's documentation comment)",
+    "No edge case tests: zero-size spectrum, very small history sizes near ESTIMATOR_MIN_HISTORY_FRAMES boundary, extreme percentile values for Brandt"
+  ],
+  "too_broad_risks": [
+    "The audio_regression test executable runs multiple sub-tests (test_basic_processing, test_silence_handling, test_processing_consistency, test_adaptive_denoising, test_noise_estimation_methods, test_2d_denoiser) — a pre-existing failure in any unrelated sub-test would cause the whole test to fail, potentially rejecting a correct solution"
+  ],
+  "implementation_coupling": [
+    "Test files directly #include implementation-level headers (brandt_noise_estimator.h, martin_noise_estimator.h) at specific relative paths — an alternative implementation using different file names or directory structure would fail compilation",
+    "Tests reference specific enum value names (MARTIN_METHOD, BRANDT_METHOD) which couples to the gold patch's naming choices, though these are part of the intended API design",
+    "The audio_regression test hardcodes noise_estimation_method=2 for Martin, coupling to the specific enum value assignment in the gold patch"
+  ],
+  "environment_risks": [
+    "Build requires meson, ninja, fftw3f, libm, and libsndfile — these must be present in the Docker image (lucianodato__libspecbleach-81)",
+    "The test patch is applied via git apply with a fallback to patch — if the base worktree has unexpected modifications, the patch could fail to apply cleanly"
+  ],
+  "mismatches": [
+    "task.toml categorizes this as 'debugging' but the issue is clearly a feature addition/refactoring (replacing one noise estimator with two new ones)",
+    "The gold patch updates the noise_estimation_method documentation in specbleach_2d_denoiser.h and spectral_denoiser.h/spectral_2d_denoiser.h but does NOT update the same documentation in specbleach_denoiser.h (the 1D public API header, which still says '0: Louizou, 1: SPP-MMSE') — this is arguably a bug in the gold patch itself"
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/lucianodato__libspecbleach-81/instruction.md",
+      "detail": "Issue describes replacing Louizou with Martin and Brandt estimators, plus adaptive percentile selection and history_size validation"
+    },
+    {
+      "file": "/audit_tasks/lucianodato__libspecbleach-81/solution/solve.sh",
+      "detail": "Gold patch deletes louizou_noise_estimator.{c,h}, adds martin and brandt estimators, updates enum to {SPP_MMSE=0, BRANDT=1, MARTIN=2}, rewires dispatcher"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch adds test_martin_noise_estimator.c and test_brandt_noise_estimator.c, modifies test_adaptive_noise_estimator_null.c (LOUIZOU_METHOD→MARTIN_METHOD), modifies test_audio_regression.c (Louizou→Martin references), updates tests/meson.build"
+    },
+    {
+      "file": "/audit_tasks/lucianodato__libspecbleach-81/tests/eval.sh",
+      "detail": "Runs 4 specific meson tests: adaptive_noise_estimator_null, audio_regression, martin, brandt"
+    },
+    {
+      "file": "/testbed/src/shared/noise_estimation/adaptive_noise_estimator.h",
+      "detail": "Base enum has LOUIZOU_METHOD=0, SPP_MMSE_METHOD=1 — test patch references MARTIN_METHOD which doesn't exist in base, ensuring compilation failure"
+    },
+    {
+      "file": "/testbed/include/specbleach_denoiser.h",
+      "detail": "1D public API header documentation (lines 89-90) still says '0: Louizou, 1: SPP-MMSE' — not updated by gold patch"
+    },
+    {
+      "file": "/audit_tasks/lucianodato__libspecbleach-81/task.toml",
+      "detail": "category = 'debugging' — mislabeled; this is a feature/refactoring task"
+    }
+  ],
+  "recommended_action": "keep",
+  "summary": "Valid instance with well-defined scope. The gold patch correctly implements the requested feature (replacing Louizou with Martin and Brandt noise estimators). Tests properly reject the base (compilation fails due to missing headers/enum values) and should accept the gold patch. Main concern is test narrowness: the Brandt estimator lacks a full-pipeline integration test, and the Brandt unit test bypasses the learning period. Tests are moderately coupled to the gold implementation's file naming and enum values, which is somewhat unavoidable for this type of feature task. The category metadata is wrong (debugging vs. feature) and the gold patch has a minor omission (specbleach_denoiser.h docs not updated). Overall quality is good enough to keep."
+}

@@ -1,0 +1,64 @@
+{
+  "instance_id": "777genius__agent-teams-ai-c_1ccc143",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.78,
+  "gold_patch_assessment": "The gold patch is large (touches 20+ files across backend services, renderer components, store slices, shared types, CSS, and a new utility file) and addresses all 9 requirements in the issue: cache key scoping, Windows path normalization, snake_case task_id support, renderer task-change helpers, scoped presence-cache keys, stale async response handling, checkTaskHasChanges improvements, PluginCatalogItem source field, and TeamMcpConfigBuilder user MCP merging. The patch is technically comprehensive and coherent.",
+  "base_vs_gold_expectation": "Tests should reject the unmodified base: (1) new test files import from src/renderer/utils/taskChangeRequest.ts which doesn't exist in base, (2) modified fixtures add required 'source' field to PluginCatalogItem which doesn't exist in base type, (3) checkTaskHasChanges and fetchTaskChanges are called with 3 args but base has 2-arg signatures. Tests should pass with gold patch applied since all dependencies are created by it.",
+  "too_narrow_risks": [
+    "Requirement 1 (cache key scoping): Only 'owner' is varied between two calls. The requirement specifies the cache must distinguish by owner, status, intervals, since, and summaryOnly, but status/intervals/since/summaryOnly are never independently varied in tests.",
+    "Requirement 5 (presence-cache keys): Only 'owner' is varied in buildTaskChangePresenceKey test. A partial implementation hashing only teamName+taskId+owner would pass.",
+    "Requirement 7 (checkTaskHasChanges): Only 3 of 6 sub-requirements tested - summaryOnly forwarding, in-flight deduplication, and TTL-based negative cache expiry have zero test coverage.",
+    "Requirement 8 (PluginCatalogItem source field): No behavioral test that PluginCatalogService actually emits source:'official'. The fixture-only changes are type-compatibility patches for existing tests, not behavioral assertions. A no-op implementation adding 'source?: string' to the type with no runtime change would pass.",
+    "Requirement 4 (deriveTaskSince): Only one timestamp source scenario tested. An implementation that only considers historyEvents and ignores workIntervals would pass the single test case.",
+    "No test for the gold patch's refactoring of fallback aggregation (extractFallbackScopedTaskChanges now collects all snippets first then aggregates, instead of aggregating per-log). This is a significant behavioral change for cross-log file merging.",
+    "No test coverage for the large amount of renderer component changes (TeamDetailView, ChangeReviewDialog, TaskDetailDialog, KanbanTaskCard, GlobalTaskDetailDialog, PluginCard, PluginDetailDialog, McpServerCard, etc.)"
+  ],
+  "too_broad_risks": [
+    "The test for TeamMcpConfigBuilder agent-teams override (line 372-381 of test patch) asserts exact command and args including process.cwd()-dependent paths, which could fail if the working directory changes or the mcp-server launch resolution logic changes for valid reasons.",
+    "The extensionsSlice.test.ts and extensionNormalizers.test.ts fixture changes run existing tests that are unrelated to the issue - they just need 'source' added to compile. These existing tests could theoretically fail for unrelated reasons."
+  ],
+  "implementation_coupling": [
+    "Cache tests rely on mock call-count assertions (findLogsForTask.toHaveBeenCalledTimes(2), getTaskChanges.toHaveBeenCalledTimes(2)) which test the caching mechanism's internal delegation pattern rather than purely observable output.",
+    "changeReviewSlice stale-response test asserts store.getState().selectedReviewFilePath === '/repo/new.ts', which is coupled to the auto-selection behavior (picking first file) of the specific gold implementation.",
+    "TeamMcpConfigBuilder override test asserts exact pnpm command and tsx args, tightly coupling to the specific launch spec resolution in the gold implementation."
+  ],
+  "environment_risks": [
+    "Tests create temp directories and files (os.tmpdir()), which should work in Docker but adds filesystem dependency.",
+    "TeamMcpConfigBuilder tests mock getHomeDir via vi.mock, which depends on the exact module path '@main/utils/pathDecoder' matching the gold patch's import. If a candidate solution uses a different import or home directory resolution, the mock won't intercept.",
+    "The test patch relies on pnpm exec vitest being available and node_modules being pre-installed."
+  ],
+  "mismatches": [
+    "The issue mentions 'the renderer change-review store should also avoid applying stale asynchronous task-change responses' which is tested. However, the issue also says 'selectedReviewFilePath, loading state, or the task-change presence cache for the current request' should not be overwritten by stale responses - the test only checks activeChangeSet.taskId and selectedReviewFilePath, not loading state or presence cache.",
+    "The gold patch includes significant CSS changes (cursor styles for resize handles) and Kanban grid layout changes (isLoaded guard, pickNewestState in BrowserGridLayoutRepository, simplified projectVisibleGridLayoutItems) that have no corresponding issue requirement and no test coverage. These appear to be bundled unrelated improvements.",
+    "The gold patch modifies PluginCard to add striped backgrounds and an 'index' prop, and restructures McpServerCard's source badge display - none of which are mentioned in the issue or tested."
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch is 680 lines, creates 3 new test files and modifies 4 existing ones. Tests cover 7 of 9 issue requirements with varying depth."
+    },
+    {
+      "file": "/audit_tasks/777genius__agent-teams-ai-c_1ccc143/solution/solve.sh",
+      "detail": "Gold patch is very large (~1200+ lines), modifying 20+ files including renderer components, store slices, services, types, CSS, and layout system files."
+    },
+    {
+      "file": "/testbed/src/shared/types/extensions/plugin.ts",
+      "detail": "Base code has no 'source' field in PluginCatalogItem. Gold adds 'source: official' as required field, test fixtures add it to compile but no behavioral assertion exists."
+    },
+    {
+      "file": "/testbed/src/renderer/utils/taskChangeRequest.ts",
+      "detail": "File does not exist in base - created by gold patch. Three tests import from it, ensuring base fails but gold passes."
+    },
+    {
+      "file": "/testbed/src/main/services/team/ChangeExtractorService.ts",
+      "detail": "Base has simple cache key 'task:teamName:taskId'. Gold changes to include all scope options. Test only varies 'owner' dimension."
+    },
+    {
+      "file": "/audit_tasks/777genius__agent-teams-ai-c_1ccc143/tests/eval.sh",
+      "detail": "Runs 7 test files via vitest. The exit code protocol (OMNIGRIL_EXIT_CODE) is standard."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The instance addresses a complex, multi-faceted issue with a large gold patch across 20+ files. While the test patch creates meaningful behavioral tests for several core requirements (Windows path normalization, snake_case task_id, MCP config merging, stale response handling, task-change helpers), coverage has significant gaps: cache key scoping is only tested for one of five distinguishing fields, the PluginCatalogItem source field has no behavioral test at all, checkTaskHasChanges has 3 of 6 sub-requirements untested, and the many renderer component changes have zero test coverage. Some tests are coupled to implementation details via mock call-count assertions. The gold patch also includes bundled unrelated changes (CSS cursors, grid layout refactoring, striped plugin cards) with no issue requirement or test coverage. Recommend revising tests to add more varied cache-key-scoping scenarios, a behavioral test for source field emission, and coverage for untested checkTaskHasChanges sub-requirements."
+}

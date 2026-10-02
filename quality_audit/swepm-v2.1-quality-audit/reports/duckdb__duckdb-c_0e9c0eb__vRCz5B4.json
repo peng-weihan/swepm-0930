@@ -1,0 +1,59 @@
+{
+  "instance_id": "duckdb__duckdb-c_0e9c0eb",
+  "overall_quality": "good",
+  "test_scope": "balanced",
+  "confidence": 0.85,
+  "gold_patch_assessment": "The gold patch correctly implements the InsertQueryNode refactoring as described in the issue. It creates a new InsertQueryNode class (QueryNode subclass with type INSERT_QUERY_NODE), makes InsertStatement a thin wrapper with just a unique_ptr<InsertQueryNode> node member, moves all INSERT-specific fields into the query node, and updates all consumers (binder, parser, transformer, appender, expression iterator, serialization, autocomplete, statement simplifier, symbols). It also adds OnConflictInfo::Equals(), Serialize/Deserialize, and ActionToString methods. The patch follows the exact same pattern as the existing DeleteStatement/DeleteQueryNode and UpdateStatement/UpdateQueryNode split.",
+  "base_vs_gold_expectation": "On the unmodified base, the test patch will apply (new test files), but the build will fail because insert_query_node.hpp does not exist and InsertStatement has no 'node' member. This means the base will be correctly rejected. With the gold patch applied, all infrastructure exists, the build succeeds, and all 13 C++ test cases should pass.",
+  "too_narrow_risks": [
+    "SQL execution tests (test/sql/insert/insert_query_node.test) are included in the test patch but never run by eval.sh — the command 'unittest [insert_query_node]' only matches Catch2 tags, and the SQL test is tagged [insert].",
+    "No serialization roundtrip test for ON CONFLICT (id) DO UPDATE SET ... (the most complex conflict form).",
+    "Expression iteration changes (parsed_expression_iterator.cpp) are not directly tested.",
+    "Statement simplification changes are not directly tested.",
+    "Appender CTE map access changes are not directly tested.",
+    "Schema-qualified table names are not tested in the C++ parser-level tests."
+  ],
+  "too_broad_risks": [],
+  "implementation_coupling": [
+    "Tests directly access stmt->node, check QueryNodeType::INSERT_QUERY_NODE, and access field names like stmt->node->table. However, these are explicitly specified in the issue requirements and follow the established pattern (DeleteStatement/DeleteQueryNode uses identical naming). This coupling is appropriate for a structural refactoring task."
+  ],
+  "environment_risks": [
+    "Building DuckDB in release mode (GEN=ninja make release) is time-intensive; the 3600s verifier timeout and 24GB memory allocation should be sufficient but are non-trivial.",
+    "The test patch modifies test/api/CMakeLists.txt to add the new test file; if the CMake context has shifted, the hunk could fail to apply."
+  ],
+  "mismatches": [
+    "The SQL test file (test/sql/insert/insert_query_node.test) is created by the test patch with group tag [insert] but eval.sh only runs tests matching the [insert_query_node] Catch2 tag, so the SQL tests are effectively dead code in the verification pipeline."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/duckdb__duckdb-c_0e9c0eb/tests/eval.sh",
+      "detail": "Line 48: runs 'build/release/test/unittest \"[insert_query_node]\"' — only C++ Catch2 tests with [insert_query_node] tag are executed"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "SQL test at test/sql/insert/insert_query_node.test has '# group: [insert]' not [insert_query_node], so it is not executed by eval.sh"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "C++ test file test/api/test_insert_query_node.cpp has 13 TEST_CASE entries all tagged [insert_query_node], covering structural checks, ToString roundtrip, Copy/Equals, serialization, and multiple INSERT variants"
+    },
+    {
+      "file": "/testbed/src/include/duckdb/parser/statement/insert_statement.hpp",
+      "detail": "Base InsertStatement has all fields directly (table, schema, columns, etc.) with no 'node' member — confirms base will fail to compile tests"
+    },
+    {
+      "file": "/testbed/src/include/duckdb/parser/query_node.hpp",
+      "detail": "Base enum QueryNodeType has no INSERT_QUERY_NODE entry — confirms base lacks required infrastructure"
+    },
+    {
+      "file": "/testbed/test/api/test_delete_query_node.cpp",
+      "detail": "Existing analogous test file for DeleteQueryNode follows identical pattern — the test structure is consistent with project conventions"
+    },
+    {
+      "file": "/audit_tasks/duckdb__duckdb-c_0e9c0eb/task.toml",
+      "detail": "base_commit 87e471304221b7e9212abddd3f2d841a80778cdd matches testbed HEAD, docker image and resource allocations are reasonable"
+    }
+  ],
+  "recommended_action": "keep",
+  "summary": "Well-constructed instance. The gold patch correctly implements the InsertQueryNode refactoring following established patterns (DeleteQueryNode/UpdateQueryNode). The 13 C++ unit tests adequately verify the core structural requirements: thin wrapper pattern, ToString roundtrip, Copy/Equals, serialization, and coverage of major INSERT variants. The base will fail at compile time (missing header/types), providing clean discrimination. The main weakness is that the SQL execution tests included in the patch are never run (tag mismatch), so binder/execution-level correctness is not directly verified. However, since this is a structural refactoring task, the parser-level C++ tests are sufficient to verify the primary requirements."
+}

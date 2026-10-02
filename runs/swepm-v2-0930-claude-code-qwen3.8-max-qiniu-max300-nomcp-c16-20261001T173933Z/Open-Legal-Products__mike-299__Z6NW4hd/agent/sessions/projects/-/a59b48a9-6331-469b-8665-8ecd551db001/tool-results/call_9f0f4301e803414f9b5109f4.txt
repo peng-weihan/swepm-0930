@@ -1,0 +1,252 @@
+testbed/backend/src/lib/__tests__/userApiKeys.test.ts:2:import { normalizeApiKeyProvider, hasEnvApiKey } from "../userApiKeys";
+testbed/backend/src/lib/__tests__/chatPrompts.test.ts:3:import { COURTLISTENER_SYSTEM_PROMPT } from "../chat/tools/courtlistenerTools";
+testbed/backend/src/lib/__tests__/chatPrompts.test.ts:47:    it("splices the CourtListener instructions between the two base sections when research is on", () => {
+testbed/backend/src/lib/__tests__/chatPrompts.test.ts:49:        expect(prompt).toContain(COURTLISTENER_SYSTEM_PROMPT);
+testbed/backend/src/lib/__tests__/chatPrompts.test.ts:57:    it("omits the CourtListener instructions entirely when research is off", () => {
+testbed/backend/src/lib/__tests__/chatPrompts.test.ts:60:        expect(prompt).not.toContain("courtlistener");
+testbed/backend/src/lib/userSettings.ts:7:    type UserApiKeys,
+testbed/backend/src/lib/userSettings.ts:9:import { getUserApiKeys as getStoredUserApiKeys } from "./userApiKeys";
+testbed/backend/src/lib/userSettings.ts:15:    api_keys: UserApiKeys;
+testbed/backend/src/lib/userSettings.ts:22:function resolveTitleModel(apiKeys: UserApiKeys): string {
+testbed/backend/src/lib/userSettings.ts:39:    const api_keys = await getStoredUserApiKeys(userId, client);
+testbed/backend/src/lib/userSettings.ts:51:export async function getUserApiKeys(
+testbed/backend/src/lib/userSettings.ts:54:): Promise<UserApiKeys> {
+testbed/backend/src/lib/userSettings.ts:56:    return getStoredUserApiKeys(userId, client);
+testbed/backend/src/lib/chat/verifyCitations.ts:151: * existence is verified upstream via CourtListener and must never be
+testbed/backend/src/lib/chat/verifyCitations.test.ts:208:  it("leaves case-law annotations untouched (no CourtListener regression)", async () => {
+testbed/backend/src/lib/chat/streaming.ts:15:  COURTLISTENER_TOOLS,
+testbed/backend/src/lib/chat/streaming.ts:17:  type CourtlistenerToolEvent,
+testbed/backend/src/lib/chat/streaming.ts:18:} from "./tools/courtlistenerTools";
+testbed/backend/src/lib/chat/streaming.ts:39:  type CourtlistenerTurnState,
+testbed/backend/src/lib/chat/streaming.ts:102:  | CourtlistenerToolEvent
+testbed/backend/src/lib/chat/streaming.ts:162:  apiKeys?: import("../llm").UserApiKeys;
+testbed/backend/src/lib/chat/streaming.ts:199:  const researchTools = includeResearchTools ? COURTLISTENER_TOOLS : [];
+testbed/backend/src/lib/chat/streaming.ts:229:  const courtlistenerTurnState: CourtlistenerTurnState = {
+testbed/backend/src/lib/chat/streaming.ts:259:        courtlistenerTurnState.casesByClusterId,
+testbed/backend/src/lib/chat/streaming.ts:410:          courtlistenerEvents,
+testbed/backend/src/lib/chat/streaming.ts:425:          courtlistenerTurnState,
+testbed/backend/src/lib/chat/streaming.ts:485:        for (const event of courtlistenerEvents) {
+testbed/backend/src/lib/chat/streaming.ts:550:        courtlistenerTurnState.casesByClusterId,
+testbed/backend/src/lib/chat/prompts.ts:1:import { COURTLISTENER_SYSTEM_PROMPT } from "./tools/courtlistenerTools";
+testbed/backend/src/lib/chat/prompts.ts:95: * CourtListener (US case-law) research instructions are spliced in; when
+testbed/backend/src/lib/chat/prompts.ts:101:    ? `${SYSTEM_PROMPT_BEFORE_RESEARCH}\n\n${COURTLISTENER_SYSTEM_PROMPT}\n${SYSTEM_PROMPT_AFTER_RESEARCH}`
+testbed/backend/src/lib/courtlistener.ts:6:const COURTLISTENER_BASE = "https://www.courtlistener.com/api/rest/v4";
+testbed/backend/src/lib/courtlistener.ts:7:const COURTLISTENER_WEB_BASE = "https://www.courtlistener.com";
+testbed/backend/src/lib/courtlistener.ts:8:const COURTLISTENER_STORAGE_BASE = "https://storage.courtlistener.com";
+testbed/backend/src/lib/courtlistener.ts:9:const COURTLISTENER_R2_OPINIONS_PREFIX = "courtlistener/opinions/by-cluster";
+testbed/backend/src/lib/courtlistener.ts:18:function courtlistenerBulkDataEnabled() {
+testbed/backend/src/lib/courtlistener.ts:19:    return process.env.COURTLISTENER_BULK_DATA_ENABLED === "true";
+testbed/backend/src/lib/courtlistener.ts:27:        "courtlistener-opinions",
+testbed/backend/src/lib/courtlistener.ts:31:        path.join(logsDir, `courtlistener-opinion-${opinionId}.json`),
+testbed/backend/src/lib/courtlistener.ts:36:function courtlistenerHeaders(apiToken?: string | null): HeadersInit {
+testbed/backend/src/lib/courtlistener.ts:38:        apiToken?.trim() || process.env.COURTLISTENER_API_TOKEN?.trim();
+testbed/backend/src/lib/courtlistener.ts:41:            "COURTLISTENER_API_TOKEN must be set to use CourtListener tools.",
+testbed/backend/src/lib/courtlistener.ts:50:function parseCourtlistenerError(status: number, detail: string): string {
+testbed/backend/src/lib/courtlistener.ts:52:    if (!trimmed) return `CourtListener error (${status})`;
+testbed/backend/src/lib/courtlistener.ts:72:            ? `CourtListener rate limit exceeded. Try again in ${wait} seconds.`
+testbed/backend/src/lib/courtlistener.ts:73:            : `CourtListener rate limit exceeded. ${message}`;
+testbed/backend/src/lib/courtlistener.ts:75:    return `CourtListener error (${status}): ${message}`;
+testbed/backend/src/lib/courtlistener.ts:78:async function courtlistenerFetch<T>(
+testbed/backend/src/lib/courtlistener.ts:85:        : `${COURTLISTENER_BASE}${pathOrUrl}`;
+testbed/backend/src/lib/courtlistener.ts:86:    devLog("[courtlistener/api] request", {
+testbed/backend/src/lib/courtlistener.ts:95:            ...courtlistenerHeaders(apiToken),
+testbed/backend/src/lib/courtlistener.ts:99:    devLog("[courtlistener/api] response", {
+testbed/backend/src/lib/courtlistener.ts:106:        throw new Error(parseCourtlistenerError(response.status, detail));
+testbed/backend/src/lib/courtlistener.ts:124:        : `${COURTLISTENER_WEB_BASE}${value}`;
+testbed/backend/src/lib/courtlistener.ts:131:    return `${COURTLISTENER_STORAGE_BASE}/${value.replace(/^\/+/, "")}`;
+testbed/backend/src/lib/courtlistener.ts:204:async function fetchCaseOpinionsFromCourtlistenerOpinionsEndpoint(args: {
+testbed/backend/src/lib/courtlistener.ts:219:        devLog("[courtlistener/opinions-endpoint] fetching page", {
+testbed/backend/src/lib/courtlistener.ts:224:        const data = await courtlistenerFetch<JsonRecord>(
+testbed/backend/src/lib/courtlistener.ts:260:            `${COURTLISTENER_WEB_BASE}/opinion/${args.clusterId}/`,
+testbed/backend/src/lib/courtlistener.ts:312:function safeCourtlistenerHref(rawHref: string | null): string | null {
+testbed/backend/src/lib/courtlistener.ts:317:    if (href.startsWith("/")) return `${COURTLISTENER_WEB_BASE}${href}`;
+testbed/backend/src/lib/courtlistener.ts:318:    if (href.startsWith(COURTLISTENER_WEB_BASE)) return href;
+testbed/backend/src/lib/courtlistener.ts:389:            const href = safeCourtlistenerHref(rawValue);
+testbed/backend/src/lib/courtlistener.ts:481:        ? `${COURTLISTENER_WEB_BASE}/opinion/${id}/${slug}/`
+testbed/backend/src/lib/courtlistener.ts:482:        : `${COURTLISTENER_WEB_BASE}/opinion/${id}/`;
+testbed/backend/src/lib/courtlistener.ts:551:function courtlistenerApiTokenAvailable(apiToken?: string | null) {
+testbed/backend/src/lib/courtlistener.ts:552:    return !!(apiToken?.trim() || process.env.COURTLISTENER_API_TOKEN?.trim());
+testbed/backend/src/lib/courtlistener.ts:564:    devLog("[courtlistener/bulk-citation-lookup] candidates", {
+testbed/backend/src/lib/courtlistener.ts:565:        enabled: courtlistenerBulkDataEnabled(),
+testbed/backend/src/lib/courtlistener.ts:580:    if (!args.db || !courtlistenerBulkDataEnabled()) return null;
+testbed/backend/src/lib/courtlistener.ts:583:        devLog("[courtlistener/bulk-citation-lookup] skipped", {
+testbed/backend/src/lib/courtlistener.ts:597:            devLog("[courtlistener/bulk-citation-lookup] skipped candidate", {
+testbed/backend/src/lib/courtlistener.ts:621:        devLog("[courtlistener/bulk-citation-lookup] citation query", {
+testbed/backend/src/lib/courtlistener.ts:628:            .from("courtlistener_citation_index")
+testbed/backend/src/lib/courtlistener.ts:634:        devLog("[courtlistener/bulk-citation-lookup] citation query result", {
+testbed/backend/src/lib/courtlistener.ts:671:        devLog("[courtlistener/bulk-citation-lookup] cluster query", {
+testbed/backend/src/lib/courtlistener.ts:676:            .from("courtlistener_opinion_cluster_index")
+testbed/backend/src/lib/courtlistener.ts:681:        devLog("[courtlistener/bulk-citation-lookup] cluster query result", {
+testbed/backend/src/lib/courtlistener.ts:751:async function fetchCourtlistenerCitationLookup(args: {
+testbed/backend/src/lib/courtlistener.ts:758:    const results = await courtlistenerFetch<unknown[]>(
+testbed/backend/src/lib/courtlistener.ts:798:async function getBulkCourtlistenerCaseOpinions(args: {
+testbed/backend/src/lib/courtlistener.ts:803:    if (!courtlistenerBulkDataEnabled()) {
+testbed/backend/src/lib/courtlistener.ts:804:        devLog("[courtlistener/r2-opinions] bulk data disabled", {
+testbed/backend/src/lib/courtlistener.ts:810:    const prefix = `${COURTLISTENER_R2_OPINIONS_PREFIX}/${args.clusterId}/`;
+testbed/backend/src/lib/courtlistener.ts:811:    devLog("[courtlistener/r2-opinions] listing", {
+testbed/backend/src/lib/courtlistener.ts:818:    devLog("[courtlistener/r2-opinions] listed", {
+testbed/backend/src/lib/courtlistener.ts:828:                devLog("[courtlistener/r2-opinions] downloading", {
+testbed/backend/src/lib/courtlistener.ts:834:                    devLog("[courtlistener/r2-opinions] download missing", {
+testbed/backend/src/lib/courtlistener.ts:844:                    devLog("[courtlistener/r2-opinions] downloaded", {
+testbed/backend/src/lib/courtlistener.ts:855:                    devLog("[courtlistener/r2-opinions] parse failed", {
+testbed/backend/src/lib/courtlistener.ts:865:    devLog("[courtlistener/r2-opinions] parsed", {
+testbed/backend/src/lib/courtlistener.ts:881:            `${COURTLISTENER_WEB_BASE}/opinion/${args.clusterId}/`,
+testbed/backend/src/lib/courtlistener.ts:885:            .from("courtlistener_opinion_cluster_index")
+testbed/backend/src/lib/courtlistener.ts:892:            devLog("[courtlistener/r2-opinions] cluster metadata query failed", {
+testbed/backend/src/lib/courtlistener.ts:898:                .from("courtlistener_citation_index")
+testbed/backend/src/lib/courtlistener.ts:911:            devLog("[courtlistener/r2-opinions] cluster metadata missing", {
+testbed/backend/src/lib/courtlistener.ts:967:export async function verifyCourtlistenerCitations(args: {
+testbed/backend/src/lib/courtlistener.ts:988:    devLog("[courtlistener/bulk-citation-lookup] result", {
+testbed/backend/src/lib/courtlistener.ts:1003:            citations.length > 0 && courtlistenerApiTokenAvailable(args.apiToken)
+testbed/backend/src/lib/courtlistener.ts:1015:        devLog("[courtlistener/bulk-citation-lookup] api fallback", {
+testbed/backend/src/lib/courtlistener.ts:1020:            const apiFallback = await fetchCourtlistenerCitationLookup({
+testbed/backend/src/lib/courtlistener.ts:1040:            devLog("[courtlistener/bulk-citation-lookup] api fallback failed", {
+testbed/backend/src/lib/courtlistener.ts:1047:    return fetchCourtlistenerCitationLookup({
+testbed/backend/src/lib/courtlistener.ts:1054:export async function searchCourtlistenerCaseLaw(args: {
+testbed/backend/src/lib/courtlistener.ts:1075:    const data = await courtlistenerFetch<JsonRecord>(
+testbed/backend/src/lib/courtlistener.ts:1113:export async function getCourtlistenerCaseOpinions(args: {
+testbed/backend/src/lib/courtlistener.ts:1125:    const bulk = await getBulkCourtlistenerCaseOpinions({
+testbed/backend/src/lib/courtlistener.ts:1132:    return fetchCaseOpinionsFromCourtlistenerOpinionsEndpoint({
+testbed/backend/src/lib/courtlistener.ts:1140:export async function getCourtlistenerCases(args: {
+testbed/backend/src/lib/courtlistener.ts:1161:                const result = await getCourtlistenerCaseOpinions({
+testbed/backend/src/lib/courtlistener.ts:1182:                            : "CourtListener case fetch failed.",
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:1:export type CourtlistenerToolEvent =
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:3:          type: "courtlistener_search_case_law";
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:9:          type: "courtlistener_get_cases";
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:23:          type: "courtlistener_find_in_case";
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:40:          type: "courtlistener_read_case";
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:48:          type: "courtlistener_verify_citations";
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:64:export const COURTLISTENER_TOOL_NAMES = {
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:65:    searchCaseLaw: "courtlistener_search_case_law",
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:66:    getCases: "courtlistener_get_cases",
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:67:    findInCase: "courtlistener_find_in_case",
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:68:    readCase: "courtlistener_read_case",
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:69:    verifyCitations: "courtlistener_verify_citations",
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:72:export const COURTLISTENER_SYSTEM_PROMPT = `US CASE LAW RESEARCH:
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:73:Use CourtListener when answering US-law questions that require case law.
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:76:1. If you have reporter citations, verify them with courtlistener_verify_citations using only clean citations: {"citations":["467 U.S. 837","323 U.S. 134"]}. Never pass case names to this tool.
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:77:2. Fetch matched clusters with courtlistener_get_cases.
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:78:3. Get cite-worthy text from the fetched cases with courtlistener_find_in_case. Use short 1-3 word searches, maximum 3 searches per assistant turn.
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:79:4. If snippets are not enough, read only the necessary opinion(s) with courtlistener_read_case. For multi-opinion cases, choose the specific opinion_id/opinionIds needed; do not read all opinions by default.
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:83:- If you mention a CourtListener case as legal support in the final answer, cite it with both: (a) the clickable markdown link returned in citationLinks, and (b) an inline [N] marker. Include the clickable case link only the first time you cite that case; later references to the same case should use the existing inline [N] marker without repeating the link unless clarity requires it.
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:90:- If any CourtListener call returns a rate-limit/throttling/429 error, stop all CourtListener calls for that turn and answer using only information already available.`;
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:92:export const COURTLISTENER_TOOLS = [
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:96:            name: COURTLISTENER_TOOL_NAMES.getCases,
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:98:                "Fetch and cache one or more CourtListener case clusters and their opinions by cluster ID. This returns metadata/counts only, not full opinion text. After this, call courtlistener_find_in_case for targeted passages or courtlistener_read_case if broader full-case context is needed.",
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:106:                            "CourtListener cluster IDs from courtlistener_verify_citations or other case metadata already present in the conversation.",
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:116:            name: COURTLISTENER_TOOL_NAMES.findInCase,
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:118:                "Search within an already-fetched CourtListener case cluster for specific keyword(s) or phrases. Returns matches with surrounding opinion context. Call courtlistener_get_cases first; this tool does not fetch cases. Use no more than 3 calls to this tool in a single assistant turn.",
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:125:                            "CourtListener cluster ID previously fetched with courtlistener_get_cases.",
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:150:            name: COURTLISTENER_TOOL_NAMES.readCase,
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:152:                "Read selected opinion text from an already-fetched CourtListener case cluster in this turn's cache. Use after courtlistener_find_in_case if snippets are insufficient. If the case has multiple opinions, pass only the opinionId/opinionIds needed. Call courtlistener_get_cases first; this tool does not fetch cases.",
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:159:                            "CourtListener cluster ID previously fetched with courtlistener_get_cases.",
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:180:            name: COURTLISTENER_TOOL_NAMES.verifyCitations,
+testbed/backend/src/lib/chat/tools/courtlistenerTools.ts:182:                "Verify legal case citations using CourtListener's citation lookup. Accepts only an array of clean reporter citations, not case names. Example: {\"citations\":[\"467 U.S. 837\",\"323 U.S. 134\"]}. This returns citation metadata and clickable case refs; call courtlistener_get_cases only for matched cases that need full opinion text.",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:2:  getCourtlistenerCases,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:3:  searchCourtlistenerCaseLaw,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:4:  verifyCourtlistenerCitations,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:5:} from "../../courtlistener";
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:7:  COURTLISTENER_TOOL_NAMES,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:9:  type CourtlistenerToolEvent,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:10:} from "./courtlistenerTools";
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:68:type CourtlistenerCaseRecord = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:78:type CourtlistenerCaseInput = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:89:export type CourtlistenerTurnState = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:90:  casesByClusterId: Map<number, CourtlistenerCaseRecord>;
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:173:function upsertCourtlistenerCases(
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:174:  state: CourtlistenerTurnState,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:175:  inputs: CourtlistenerCaseInput[],
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:176:): CourtlistenerCaseRecord[] {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:177:  const records: CourtlistenerCaseRecord[] = [];
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:200:    const record: CourtlistenerCaseRecord = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:216:  record: CourtlistenerCaseRecord,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:264:function courtlistenerCaseInputFromFetchedCase(
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:267:): CourtlistenerCaseInput {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:282:function courtlistenerOpinionCount(fetchedCase: unknown): number {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:287:function courtlistenerOpinionMetadata(raw: unknown) {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:307:function courtlistenerFetchedCaseMetadata(
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:308:  record: CourtlistenerCaseRecord,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:321:      .map(courtlistenerOpinionMetadata)
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:350:  record: CourtlistenerCaseRecord,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:374:function requestedCourtlistenerOpinionIds(args: Record<string, unknown>) {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:422:  event: Extract<CourtlistenerToolEvent, { type: "courtlistener_find_in_case" }>,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:439:      "Case has not been fetched in this turn. Call courtlistener_get_cases first.",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:455:  courtlistenerState?: CourtlistenerTurnState,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:456:  apiKeys?: import("../../llm").UserApiKeys,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:467:  courtlistenerEvents: CourtlistenerToolEvent[];
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:483:  const courtlistenerEvents: CourtlistenerToolEvent[] = [];
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:486:  const courtState: CourtlistenerTurnState =
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:487:    courtlistenerState ??
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:492:    .filter((tc) => tc.function.name === COURTLISTENER_TOOL_NAMES.findInCase)
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:510:    CourtlistenerToolEvent,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:511:    { type: "courtlistener_find_in_case" }
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:855:    } else if (tc.function.name === COURTLISTENER_TOOL_NAMES.searchCaseLaw) {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:858:        `data: ${JSON.stringify({ type: "courtlistener_search_case_law_start", query })}\n\n`,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:861:        const result = await searchCourtlistenerCaseLaw({
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:869:          apiToken: apiKeys?.courtlistener,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:883:        const event: CourtlistenerToolEvent = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:884:          type: "courtlistener_search_case_law",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:890:        courtlistenerEvents.push(event);
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:897:        const event: CourtlistenerToolEvent = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:898:          type: "courtlistener_search_case_law",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:902:            err instanceof Error ? err.message : "CourtListener search failed.",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:905:        courtlistenerEvents.push(event);
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:913:                : "CourtListener search failed.",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:917:    } else if (tc.function.name === COURTLISTENER_TOOL_NAMES.getCases) {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:934:        `data: ${JSON.stringify({ type: "courtlistener_get_cases_start", cluster_ids: clusterIds })}\n\n`,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:937:        const result = await getCourtlistenerCases({
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:940:          apiToken: apiKeys?.courtlistener,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:950:            courtlistenerCaseInputFromFetchedCase(
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:960:        const caseRecords = upsertCourtlistenerCases(
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:963:            courtlistenerCaseInputFromFetchedCase(
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:970:          (sum, fetchedCase) => sum + courtlistenerOpinionCount(fetchedCase),
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:976:            courtlistenerCaseInputFromFetchedCase(
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:983:              courtlistenerOpinionCount(fetchedCase),
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1002:        const event: CourtlistenerToolEvent = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1003:          type: "courtlistener_get_cases",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1019:        courtlistenerEvents.push(event);
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1029:              courtlistenerFetchedCaseMetadata(
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1038:              ? "Opinion text is cached server-side only. Use courtlistener_find_in_case with short 1-3 word keyword probes for relevant passages. At least one fetched case has multiple opinions; if snippets are insufficient, choose the needed opinion_id(s) from the text-free opinion metadata and call courtlistener_read_case with only those IDs. Do not read all opinions unless the question requires it."
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1039:              : "Opinion text is cached server-side only. Use courtlistener_find_in_case with short 1-3 word keyword probes for relevant passages, or courtlistener_read_case if snippets are insufficient.",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1043:        const event: CourtlistenerToolEvent = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1044:          type: "courtlistener_get_cases",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1051:              : "CourtListener case fetch failed.",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1054:        courtlistenerEvents.push(event);
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1062:                : "CourtListener case fetch failed.",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1066:    } else if (tc.function.name === COURTLISTENER_TOOL_NAMES.findInCase) {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1073:              type: "courtlistener_find_in_case_start",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1083:          `data: ${JSON.stringify({ type: "courtlistener_find_in_case_start", cluster_id: clusterId, query })}\n\n`,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1091:        const event: CourtlistenerToolEvent = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1092:          type: "courtlistener_find_in_case",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1102:          courtlistenerEvents.push(event);
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1143:      const event: CourtlistenerToolEvent = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1144:        type: "courtlistener_find_in_case",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1155:        courtlistenerEvents.push(event);
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1172:    } else if (tc.function.name === COURTLISTENER_TOOL_NAMES.readCase) {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1181:        `data: ${JSON.stringify({ type: "courtlistener_read_case_start", cluster_id: clusterId })}\n\n`,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1188:        const event: CourtlistenerToolEvent = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1189:          type: "courtlistener_read_case",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1195:        courtlistenerEvents.push(event);
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1205:      const requestedOpinionIds = requestedCourtlistenerOpinionIds(args);
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1227:            .map(courtlistenerOpinionMetadata)
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1233:            ? "Multiple opinions are available. Call courtlistener_read_case again with the opinionId or opinionIds needed."
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1236:        const event: CourtlistenerToolEvent = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1237:          type: "courtlistener_read_case",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1245:        courtlistenerEvents.push(event);
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1254:      const event: CourtlistenerToolEvent = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1255:        type: "courtlistener_read_case",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1262:      courtlistenerEvents.push(event);
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1278:    } else if (tc.function.name === COURTLISTENER_TOOL_NAMES.verifyCitations) {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1286:        `data: ${JSON.stringify({ type: "courtlistener_verify_citations_start", citation_count: citationCount })}\n\n`,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1289:        const result = (await verifyCourtlistenerCitations({
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1292:          apiToken: apiKeys?.courtlistener,
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1309:          const caseRecords = upsertCourtlistenerCases(
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1366:        const event: CourtlistenerToolEvent = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1367:          type: "courtlistener_verify_citations",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1373:        courtlistenerEvents.push(event);
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1380:        const event: CourtlistenerToolEvent = {
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1381:          type: "courtlistener_verify_citations",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1387:              : "CourtListener citation lookup failed.",
+testbed/backend/src/lib/chat/tools/toolDispatcher.ts:1390:        courtlistenerEvents.push(event);
+
+[Showing results with pagination = limit: 250]

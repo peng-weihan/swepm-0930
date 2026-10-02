@@ -1,0 +1,59 @@
+{
+  "instance_id": "netease-youdao__LobsterAI-2080",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.72,
+  "gold_patch_assessment": "The gold patch comprehensively addresses the stated issue across 28 files: it introduces a Kit capability reference model (shared/kit/constants.ts), a Kit capability resolver and reference builder (kitCapability.ts), a prompt context builder (selectedKitContextPrompt.ts), kit:// URL support in MarkdownContent.tsx, updated InstalledKit type from flat skillIds to nested skills.skillIds, turn-scoped Kit/Skill selection in CoworkPromptInput/CoworkView, metadata separation (kitIds/kitReferences/resolvedKitCapabilities vs skillIds), and Kit badge rendering in UserMessageItem. The patch also updates the design spec document with turn-scoping scenarios. This is well-aligned with the issue statement.",
+  "base_vs_gold_expectation": "Base will fail tests: (1) safeUrlTransform and isInternalHref are not exported from MarkdownContent.tsx in base, (2) selectedKitContextPrompt.ts does not exist in base, (3) kitCapability.ts does not exist in base, (4) shared/kit/constants.ts does not exist (imported by kitCapability.test.ts), (5) InstalledKit type in base has flat skillIds but tests expect nested skills.skillIds with mcpServers/connectors. Gold patch creates all missing files/exports and updates types, so tests should pass.",
+  "too_narrow_risks": [
+    "Tests only cover 3 new utility/service modules (kitCapability.ts, selectedKitContextPrompt.ts, MarkdownContent.tsx additions) out of 28 files changed in the gold patch. A candidate could implement just these 3 files plus shared/kit/constants.ts and pass all tests without wiring the capability model into the actual application flow.",
+    "Turn-scoping behavior (scenarios 6-8 in the issue: follow-up turns should not inherit previous Kit selections) is a major part of the issue but is completely untested.",
+    "No test verifies that metadata.skillIds excludes Kit-expanded skills, which is the core bug described in the issue (user sees multiple skill badges instead of Kit badge).",
+    "No test for Kit badge rendering in UserMessageItem or the separation of Kit references from skill badges in the UI.",
+    "No test for the InstalledKit record format migration (old flat skillIds to nested skills.skillIds) in the context of actual Kit installation/reading paths.",
+    "No test for re-edit restoring Kit selections from message metadata.",
+    "No test for the runtime/prompt-building integration where Kit-expanded skills enter the selected-skills routing block."
+  ],
+  "too_broad_risks": [
+    "eval.sh runs 'npm run compile:electron' as a pre-test step which compiles all of src/main and src/shared via TypeScript and runs 'electron-builder install-app-deps', potentially failing due to native module compilation or environment issues unrelated to the candidate's solution.",
+    "The pretest script 'npm rebuild better-sqlite3' runs before vitest, adding another potential environment-specific failure point."
+  ],
+  "implementation_coupling": [
+    "Tests import specific function names (buildSelectedKitContextPrompt, buildKitReferences, getInstalledKitSkillIds, resolveSelectedKitCapabilities) which are defined by the gold patch. Alternative implementations using different function names or module organization would fail.",
+    "selectedKitContextPrompt.test.ts checks specific XML tag format (<id>, <name>, <skill id=... name=... />, <mcpServer ...>, <connector ...>) which couples to the gold patch's implementation choice of XML-style prompt format.",
+    "kitCapability.test.ts imports KitReferenceKind and KitReferenceSource from shared/kit/constants which is a new file created by the gold patch. Alternative implementations that define constants differently would fail.",
+    "Tests expect specific module paths and export signatures matching the gold patch's file organization."
+  ],
+  "environment_risks": [
+    "npm run compile:electron triggers 'electron-builder install-app-deps' (precompile hook) which may require native module compilation. If the Docker image doesn't have all build tools, this could fail.",
+    "The npm test pretest hook runs 'npm rebuild better-sqlite3' which requires native compilation toolchain.",
+    "The Docker image is pre-built (key4127/refactor-dockerhub:netease-youdao__LobsterAI-2080) so these should be handled, but if the image is stale or missing dependencies, tests fail regardless of solution quality."
+  ],
+  "mismatches": [
+    "No significant mismatches found between the issue text, gold patch, and test patch. All three are aligned on the Kit capability reference model. However, the test coverage gap means the verifier only checks a small subset of the issue's requirements."
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch adds tests for only 3 modules: MarkdownContent (2 tests for kit:// URL safety), selectedKitContextPrompt (3 tests for prompt building), kitCapability (3 tests for resolver/builder). Total: 8 test cases."
+    },
+    {
+      "file": "/audit_tasks/netease-youdao__LobsterAI-2080/tests/eval.sh",
+      "detail": "eval.sh runs compile:electron then vitest on exactly 3 test files. The compile step could fail for environment reasons."
+    },
+    {
+      "file": "/audit_tasks/netease-youdao__LobsterAI-2080/solution/solve.sh",
+      "detail": "Gold patch modifies 28 files but tests only cover 3 new utility modules. The 25 untested files include critical integration points: CoworkPromptInput.tsx, CoworkView.tsx, UserMessageItem.tsx, main.ts, openclawRuntimeAdapter.ts, types/cowork.ts."
+    },
+    {
+      "file": "/testbed/src/renderer/types/kit.ts",
+      "detail": "Base InstalledKit has flat 'skillIds: string[]'. Gold patch changes to 'InstalledKit = InstalledKitRecord' with nested 'skills: InstalledKitSkills | null, mcpServers: unknown[], connectors: unknown[]'. Tests use the new format but don't verify migration of existing code paths."
+    },
+    {
+      "file": "/audit_tasks/netease-youdao__LobsterAI-2080/instruction.md",
+      "detail": "Issue specifies turn-scoping (lines 11-12), metadata separation (line 3), and Kit badge rendering (line 13) as core requirements, none of which have dedicated test coverage."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch is comprehensive and well-aligned with the issue, modifying 28 files to implement a Kit capability reference model. However, tests are significantly too narrow: only 8 test cases covering 3 new utility modules out of 28 changed files. Core behavioral requirements from the issue (turn-scoped Kit selection, metadata separation of skillIds vs kitIds, Kit badge rendering instead of skill badges, re-edit restoration) are completely untested. A candidate could pass all tests by implementing just the 3 tested files plus shared constants without wiring the capability model into the application. Tests are also implementation-coupled to specific function names, module paths, and XML prompt format. The compile:electron pre-test step adds minor environment risk. Recommended: add integration-level tests for metadata separation and turn-scoping, or at minimum test that the InstalledKit type change is reflected in existing code paths."
+}

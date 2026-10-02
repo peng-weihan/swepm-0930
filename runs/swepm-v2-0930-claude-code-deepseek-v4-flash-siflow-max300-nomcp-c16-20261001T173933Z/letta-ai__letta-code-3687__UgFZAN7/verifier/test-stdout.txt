@@ -1,0 +1,505 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch src/agent/send-message-stream-channel-envelope.test.ts...
+Checking patch src/agent/subagent-env-composition.test.ts...
+Checking patch src/channels/gateway-core.test.ts...
+Checking patch src/channels/message-channel-gateway-tool.test.ts...
+Checking patch src/channels/message-tool-schema.test.ts...
+Checking patch src/channels/plugin-registry.test.ts...
+Checking patch src/channels/registry-lifecycle.test.ts...
+Checking patch src/channels/routed-runtime-registration.test.ts...
+Checking patch src/channels/routing.test.ts...
+Checking patch src/tools/manager.test.ts...
+Checking patch src/tools/tool-execution-context.test.ts...
+Checking patch src/websocket/app-server-lifecycle.test.ts...
+Checking patch src/websocket/listener/commands/runtime-start-skill-sources.test.ts...
+Checking patch src/websocket/listener/connection-state-sync.test.ts...
+Checking patch src/websocket/listener/external-tools.test.ts...
+Checking patch src/websocket/listener/protocol-inbound.test.ts...
+Applied patch src/agent/send-message-stream-channel-envelope.test.ts cleanly.
+Applied patch src/agent/subagent-env-composition.test.ts cleanly.
+Applied patch src/channels/gateway-core.test.ts cleanly.
+Applied patch src/channels/message-channel-gateway-tool.test.ts cleanly.
+Applied patch src/channels/message-tool-schema.test.ts cleanly.
+Applied patch src/channels/plugin-registry.test.ts cleanly.
+Applied patch src/channels/registry-lifecycle.test.ts cleanly.
+Applied patch src/channels/routed-runtime-registration.test.ts cleanly.
+Applied patch src/channels/routing.test.ts cleanly.
+Applied patch src/tools/manager.test.ts cleanly.
+Applied patch src/tools/tool-execution-context.test.ts cleanly.
+Applied patch src/websocket/app-server-lifecycle.test.ts cleanly.
+Applied patch src/websocket/listener/commands/runtime-start-skill-sources.test.ts cleanly.
+Applied patch src/websocket/listener/connection-state-sync.test.ts cleanly.
+Applied patch src/websocket/listener/external-tools.test.ts cleanly.
+Applied patch src/websocket/listener/protocol-inbound.test.ts cleanly.
+bun test v1.3.0 (b0a6feca)
+
+src/tools/manager.test.ts:
+11 | 
+12 | describe("MessageChannel architecture", () => {
+13 |   test("does not register any channel delivery tool as a built-in", () => {
+14 |     const toolNames = new Set(getAllLettaToolNames());
+15 | 
+16 |     expect(toolNames.has("MessageChannel")).toBe(false);
+                                                 ^
+error: expect(received).toBe(expected)
+
+Expected: false
+Received: true
+
+      at <anonymous> (/testbed/src/tools/manager.test.ts:16:45)
+(fail) MessageChannel architecture > does not register any channel delivery tool as a built-in [2.20ms]
+(pass) MessageChannel architecture > exposes the gateway-owned MessageChannel definition [3.09ms]
+
+src/tools/tool-execution-context.test.ts:
+(pass) tool execution context snapshot > executes Read using captured context after global toolset changes [15.05ms]
+(pass) tool execution context snapshot > executes ReadFile using captured context after global toolset changes [1.39ms]
+(pass) tool execution context snapshot > rechecks mod permission overlays after tool_start arg transforms [0.96ms]
+(pass) tool execution context snapshot > applies a tool_end result override to replace the tool result [1.25ms]
+(pass) tool execution context snapshot > passes the tool result through when no tool_end override [1.17ms]
+(pass) tool execution context snapshot > reports execution-phase ask decisions as blocked approval requests [0.49ms]
+(pass) tool execution context snapshot > prepares explicit tool snapshots without reading the global registry [1.00ms]
+(pass) tool execution context snapshot > Gemini models use the default Claude-style auto toolset [2.94ms]
+(pass) tool execution context snapshot > filters model-derived client tools by request-scoped allowlist [0.52ms]
+(pass) tool execution context snapshot > empty request-scoped allowlist disables client tools [0.23ms]
+(pass) tool execution context snapshot > request-scoped allowlist accepts server-facing Agent alias [0.30ms]
+(pass) tool execution context snapshot > request-scoped allowlist filters external tools by name [0.33ms]
+(pass) tool execution context snapshot > empty request-scoped allowlist disables external tools too [0.22ms]
+(pass) tool execution context snapshot > session tool filter excludes mod tools from current snapshots [0.52ms]
+(pass) tool execution context snapshot > session tool filter excludes external tools from current snapshots [0.34ms]
+(pass) tool execution context snapshot > empty session tool filter excludes mod tools from current snapshots [0.26ms]
+504 |         },
+505 |       },
+506 |     );
+507 | 
+508 |     expect(prepared.loadedToolNames).toEqual([]);
+509 |     expect(prepared.clientTools.map((tool) => tool.name)).toEqual([
+                                                                ^
+error: expect(received).toEqual(expected)
+
+- [
+-   "MessageChannel",
+- ]
++ []
+
+- Expected  - 3
++ Received  + 1
+
+      at <anonymous> (/testbed/src/tools/tool-execution-context.test.ts:509:59)
+(fail) tool execution context snapshot > process-owned turns can use unscoped runtime tools without a connection [0.60ms]
+547 |     });
+548 | 
+549 |     expect(prepared.preparedToolContext.loadedToolNames).toEqual([]);
+550 |     expect(
+551 |       prepared.preparedToolContext.clientTools.map((tool) => tool.name),
+552 |     ).toEqual(["MessageChannel"]);
+            ^
+error: expect(received).toEqual(expected)
+
+- [
+-   "MessageChannel",
+- ]
++ []
+
+- Expected  - 3
++ Received  + 1
+
+      at <anonymous> (/testbed/src/tools/tool-execution-context.test.ts:552:7)
+(fail) tool execution context snapshot > gateway-owned MessageChannel stays available with the none toolset [1.04ms]
+(pass) tool execution context snapshot > scoped runtime external tools stay hidden unless selected [0.86ms]
+(pass) tool execution context snapshot > prepares and executes mod tools from turn snapshots [2.00ms]
+(pass) tool execution context snapshot > passes scoped invocation context to mod tool availability and execution [2.70ms]
+(pass) tool execution context snapshot > exposes agent-scoped secrets to mod tools [1.66ms]
+(pass) tool execution context snapshot > mod tool env fallback secrets are invocation-redacted [1.94ms]
+(pass) tool execution context snapshot > mod tool thrown errors are redacted after ctx.secret [1.78ms]
+(pass) tool execution context snapshot > exposes recent conversation history to mod tools [1.57ms]
+(pass) tool execution context snapshot > captures backend once for mod tool conversation handles [1.35ms]
+(pass) tool execution context snapshot > mod tools take precedence over external tools with the same name [1.25ms]
+(pass) tool execution context snapshot > aborted mod activations stop captured tool execution [1.21ms]
+(pass) tool execution context snapshot > does not register MessageChannel as a built-in tool [0.50ms]
+(pass) tool execution context snapshot > captures scoped working directories per execution context [7.01ms]
+
+src/websocket/app-server-lifecycle.test.ts:
+(pass) app-server startup lifecycle > a shared-runtime bind failure leaves the listener runtime usable [15.26ms]
+(pass) app-server startup lifecycle > a shared App Server preserves and does not own the listener runtime [1014.86ms]
+172 |       await waitForOpen(client);
+173 |       await waitFor(
+174 |         () => runtime.connections.size === 1,
+175 |         "controller connection was not attached to listener runtime",
+176 |       );
+177 |       expect(runtime.processServicesStarted).toBe(false);
+                                                   ^
+error: expect(received).toBe(expected)
+
+Expected: false
+Received: true
+
+      at <anonymous> (/testbed/src/websocket/app-server-lifecycle.test.ts:177:46)
+(fail) app-server startup lifecycle > an attached controller can leave process services to the primary listener [1007.19ms]
+(pass) app-server startup lifecycle > a bind failure preserves the active runtime and a later start succeeds [10.48ms]
+[Listen V2] Received app_server_info command (request_id=retry-ready)
+(pass) app-server startup lifecycle > a rejected runtime initializer is retried by the next connection [1009.25ms]
+(pass) app-server startup lifecycle > commands received before initialization are dropped after disconnect [71.80ms]
+
+src/channels/routing.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+1 | })
+2 | {
+    ^
+SyntaxError: Export named 'subscribeChannelRoutesChanged' not found in module '/testbed/src/channels/routing.ts'.
+      at loadAndEvaluateModule (2:1)
+-------------------------------
+
+
+src/channels/registry-lifecycle.test.ts:
+(pass) ChannelRegistry lifecycle > pause() stops delivery but keeps singleton alive [1.47ms]
+(pass) ChannelRegistry lifecycle > stopAll() destroys the singleton [0.13ms]
+(pass) ChannelRegistry lifecycle > route-derived recovery sources do not invent an originating message [0.45ms]
+153 |       outboundEnabled: true,
+154 |       createdAt: "2026-08-05T00:00:00.000Z",
+155 |     };
+156 |     addRoute("slack", route);
+157 | 
+158 |     expect(registry.resolveTurnSourcesForScope("agent-1", "conv-1")).toEqual(
+                                                                           ^
+error: expect(received).toEqual(expected)
+
+- []
++ [
++   {
++     "accountId": "acct-slack",
++     "agentId": "agent-1",
++     "channel": "slack",
++     "chatId": "C123",
++     "chatType": "channel",
++     "conversationId": "conv-1",
++     "threadId": null,
++   },
++ ]
+
+- Expected  - 1
++ Received  + 11
+
+      at <anonymous> (/testbed/src/channels/registry-lifecycle.test.ts:158:70)
+(fail) ChannelRegistry lifecycle > route-derived sources require a running adapter and outbound route [0.29ms]
+Channel "telegram" not configured. Run: letta channels configure telegram
+(pass) ChannelRegistry lifecycle > initializeChannels throws when requested channel startup fails [1.69ms]
+(pass) ChannelRegistry lifecycle > startChannelAccount rejects Signal accounts sharing one daemon [1.18ms]
+Channel "slack" has no enabled accounts in local restore scope.
+(pass) ChannelRegistry lifecycle > initializeChannels does not start accounts outside the restore scope [0.46ms]
+
+src/channels/plugin-registry.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+1 | })
+2 | {
+    ^
+SyntaxError: Export named 'clearMessageChannelDiscoveryErrors' not found in module '/testbed/src/channels/message-tool.ts'.
+      at loadAndEvaluateModule (2:1)
+-------------------------------
+
+
+src/channels/message-tool-schema.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+1 | })
+2 | {
+    ^
+SyntaxError: Export named 'clearMessageChannelDiscoveryErrors' not found in module '/testbed/src/channels/message-tool.ts'.
+      at loadAndEvaluateModule (2:1)
+-------------------------------
+
+
+src/channels/gateway-core.test.ts:
+(pass) direct started input activates sources immediately [1.44ms]
+(pass) serializes progress and terminal hooks behind asynchronous processing [1.05ms]
+(pass) queued input activates when dequeued via update_queue [0.35ms]
+(pass) source steering does not merge sources from a new turn into an active turn [0.31ms]
+(pass) terminal turn_finished with end_turn emits finished with completed outcome [0.17ms]
+(pass) terminal turn_finished with cancelled emits finished with cancelled outcome [0.13ms]
+(pass) terminal turn_finished with error emits finished with error outcome and error message [0.13ms]
+(pass) MessageChannel external tool execution routes to hooks.executeExternalTool [11.64ms]
+535 |     tool_name: "MessageChannel",
+536 |     input: { channel: "slack", action: "send", chat_id: "C123" },
+537 |   });
+538 |   await new Promise((resolve) => setTimeout(resolve, 10));
+539 | 
+540 |   expect(executedSources).toEqual([source]);
+                                ^
+error: expect(received).toEqual(expected)
+
+- [
+-   {
+-     "agentId": "agent-1",
+-     "channel": "slack",
+-     "chatId": "C123",
+-     "conversationId": "conv-1",
+-   },
+- ]
++ []
+
+- Expected  - 8
++ Received  + 1
+
+      at <anonymous> (/testbed/src/channels/gateway-core.test.ts:540:27)
+(fail) process-owned turns execute MessageChannel with the runtime's routed sources [10.79ms]
+(pass) approval response is forwarded via submitApprovalResponse [0.23ms]
+(pass) stale approval recovery does not retain an active turn [0.43ms]
+603 | 
+604 |   // The runtime start should include the external tool registration
+605 |   const startOpts = client.startedRuntimes[0];
+606 |   expect(startOpts?.agent_id).toBe("agent-1");
+607 |   expect(startOpts?.conversation_id).toBe("conv-1");
+608 |   expect(startOpts?.preserve_skill_sources).toBe(true);
+                                                  ^
+error: expect(received).toBe(expected)
+
+Expected: true
+Received: undefined
+
+      at <anonymous> (/testbed/src/channels/gateway-core.test.ts:608:45)
+(fail) runtime registration happens before input submission [0.33ms]
+626 |   const { hooks } = makeHooks({ buildExternalTool: async () => null });
+627 |   const gateway = new ChannelGateway(client, hooks);
+628 | 
+629 |   await gateway.registerRuntime(TEST_RUNTIME, []);
+630 | 
+631 |   expect(client.startedRuntimes[0]?.external_tools).toEqual([]);
+                                                          ^
+error: expect(received).toEqual(expected)
+
+- []
++ [
++   {
++     "scope_id": "channel-gateway",
++     "tools": [
++       null,
++     ],
++   },
++ ]
+
+- Expected  - 1
++ Received  + 8
+
+      at <anonymous> (/testbed/src/channels/gateway-core.test.ts:631:53)
+(fail) runtime registration removes MessageChannel when no route remains [0.26ms]
+(pass) runtime registration is skipped when signature matches [0.16ms]
+(pass) retries with the same client message ID are idempotent [0.16ms]
+(pass) runtime registration exposes and updates model status without backend access [0.19ms]
+(pass) control request with single source dispatches to onControlRequest [0.36ms]
+(pass) control request with multiple sources does not dispatch [0.17ms]
+(pass) stream delta with stop_reason triggers turn_finished [0.30ms]
+(pass) requires_approval stop reason does not finish the turn [1.78ms]
+(pass) close disposes all listeners and clears state [0.18ms]
+
+src/channels/message-channel-gateway-tool.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module './message-channel-gateway-tool' from '/testbed/src/channels/message-channel-gateway-tool.test.ts'
+-------------------------------
+
+
+src/channels/routed-runtime-registration.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module './routed-runtime-registration' from '/testbed/src/channels/routed-runtime-registration.test.ts'
+-------------------------------
+
+
+src/agent/subagent-env-composition.test.ts:
+(pass) composeSubagentChildEnv > reflection subagents disable mods in the child process only [0.18ms]
+(pass) composeSubagentChildEnv > non-reflection subagents do not disable mods by default [0.03ms]
+(pass) composeSubagentChildEnv > normal subagent records parent identity without overriding memory dir [0.03ms]
+(pass) composeSubagentChildEnv > memory subagent with parent + primaryRoot sets parent marker and dir [0.03ms]
+(pass) composeSubagentChildEnv > memory subagent with no primaryRoot keeps parent marker but clears dir [0.03ms]
+(pass) composeSubagentChildEnv > no parent ID → no parent ID marker, subagent fully self-scoped [0.03ms]
+(pass) composeSubagentChildEnv > normal subagent preserves parent's pre-existing MEMORY_DIR [0.02ms]
+(pass) composeSubagentChildEnv > memory subagent overrides parent's pre-existing MEMORY_DIR [0.02ms]
+(pass) composeSubagentChildEnv > memory subagent memoryScope overrides inherited primary root [0.04ms]
+(pass) composeSubagentChildEnv > transcriptPath is forwarded as TRANSCRIPT_PATH env var when set [0.02ms]
+(pass) composeSubagentChildEnv > TRANSCRIPT_PATH not set when transcriptPath omitted [0.01ms]
+(pass) composeSubagentChildEnv > TRANSCRIPT_PATH not set when transcriptPath is null [0.02ms]
+(pass) composeSubagentChildEnv > API key + base URL forwarded when provided [0.02ms]
+(pass) composeSubagentChildEnv > local backend mode is forwarded explicitly to child process env [0.03ms]
+(pass) composeSubagentChildEnv > missing API key + base URL preserves parent env values [0.02ms]
+(pass) composeSubagentChildEnv > LETTA_CODE_AGENT_ROLE is always 'subagent' regardless of launch profile [0.05ms]
+(pass) composeSubagentChildEnv > parent process env is inherited (HOME, PATH, etc.) [0.02ms]
+(pass) resolveSubagentInheritedPrimaryRoot > uses the local backend MemFS root for local backend parent agents [0.07ms]
+(pass) resolveSubagentInheritedPrimaryRoot > keeps the resolved remote MemFS root for API backend agents [0.02ms]
+
+src/agent/send-message-stream-channel-envelope.test.ts:
+
+# Unhandled error between tests
+-------------------------------
+error: Cannot find module '@/channels/message-channel-gateway-tool' from '/testbed/src/agent/send-message-stream-channel-envelope.test.ts'
+-------------------------------
+
+
+src/websocket/listener/external-tools.test.ts:
+147 |         "MessageChannel",
+148 |         {},
+149 |         { toolContextId: prepared.contextId, toolCallId: "call-1" },
+150 |       );
+151 | 
+152 |       expect(result.status).toBe("success");
+                                  ^
+error: expect(received).toBe(expected)
+
+Expected: "success"
+Received: "error"
+
+      at <anonymous> (/testbed/src/websocket/listener/external-tools.test.ts:152:29)
+(fail) listener runtime_start external tool bridge > process-owned turns execute unscoped runtime tools through their controller [2.09ms]
+(pass) listener runtime_start external tool bridge > registers runtime-scoped tools and executes calls over the control socket [1.36ms]
+(pass) listener runtime_start external tool bridge > keeps same tool name and scope id isolated across runtimes [0.51ms]
+(pass) listener runtime_start external tool bridge > keeps same runtime tool registrations isolated by connection [0.67ms]
+(pass) listener runtime_start external tool bridge > repeated runtime_start registration replaces tools for that runtime [0.34ms]
+(pass) listener runtime_start external tool bridge > runtime-owned external tools unregister when listener runtime stops [0.21ms]
+
+src/websocket/listener/protocol-inbound.test.ts:
+(pass) app-server protocol hard cut > rejects legacy command request_state [0.85ms]
+(pass) app-server protocol hard cut > rejects legacy command change_cwd [0.03ms]
+(pass) app-server protocol hard cut > rejects legacy command cancel_run [0.01ms]
+(pass) app-server protocol hard cut > rejects legacy command recover_pending_approvals [0.01ms]
+(pass) app-server protocol hard cut > rejects legacy command change_mode [0.01ms]
+(pass) app-server protocol hard cut > rejects legacy command message
+(pass) input protocol-inbound validators > accepts create_message with interactive tools excluded [0.10ms]
+(pass) input protocol-inbound validators > rejects non-boolean exclude_interactive_tools [0.05ms]
+(pass) update model protocol-inbound validator > accepts explicit proxy effort and provider Default [0.03ms]
+(pass) update model protocol-inbound validator > rejects unknown effort values [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > accepts runtime_start [0.15ms]
+(pass) agent/conversation management protocol-inbound validators > accepts external_tool_call_response [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > accepts create_agent [0.03ms]
+(pass) agent/conversation management protocol-inbound validators > accepts agent_list [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > accepts agent_retrieve [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > accepts agent_create
+(pass) agent/conversation management protocol-inbound validators > accepts agent_update
+(pass) agent/conversation management protocol-inbound validators > accepts agent_delete
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_list [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_retrieve
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_create
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_update [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_recompile [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_fork [0.03ms]
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_messages_list [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > accepts conversation_compact
+(pass) agent/conversation management protocol-inbound validators > rejects invalid runtime_start [0.03ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid runtime_start [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid runtime_start [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid runtime_start [0.04ms]
+295 |       conversation_id: "conv-1",
+296 |       body: [],
+297 |     },
+298 |   ])("rejects invalid $type", (message) => {
+299 |     const parsed = parseServerMessage(Buffer.from(JSON.stringify(message)));
+300 |     expect(parsed).toBeNull();
+                         ^
+error: expect(received).toBeNull()
+
+Received: {
+  type: "runtime_start",
+  request_id: "r0",
+  agent_id: "agent-1",
+  preserve_skill_sources: "yes",
+}
+
+      at <anonymous> (/testbed/src/websocket/listener/protocol-inbound.test.ts:300:20)
+(fail) agent/conversation management protocol-inbound validators > rejects invalid runtime_start [0.13ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid runtime_start [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid runtime_start [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid external_tool_call_response [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid create_agent [0.03ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid agent_list [0.03ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid agent_retrieve [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid agent_create [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid agent_update [0.06ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid agent_delete [0.04ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_list [0.05ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_retrieve [0.06ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_create [0.07ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_update [0.04ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_recompile [0.04ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_fork [0.02ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_fork [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_fork [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_fork [0.01ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_messages_list [0.04ms]
+(pass) agent/conversation management protocol-inbound validators > rejects invalid conversation_compact [0.02ms]
+(pass) discord protocol-inbound validators > valid discord account create passes [0.19ms]
+(pass) discord protocol-inbound validators > valid discord account create with agent_id passes [0.03ms]
+(pass) discord protocol-inbound validators > valid discord account create with generic config passes [0.03ms]
+(pass) discord protocol-inbound validators > defers non-string Discord allowed_channels validation to the gateway [0.02ms]
+(pass) discord protocol-inbound validators > defers Discord permission-mode validation to the gateway [0.03ms]
+(pass) discord protocol-inbound validators > defers unknown nested Discord fields to the gateway [0.01ms]
+(pass) discord protocol-inbound validators > discord account create rejects legacy top-level plugin fields [0.02ms]
+(pass) discord protocol-inbound validators > valid discord account update passes [0.02ms]
+(pass) discord protocol-inbound validators > valid discord config set passes [0.02ms]
+(pass) discord protocol-inbound validators > valid discord config set with nested generic config passes [0.02ms]
+(pass) discord protocol-inbound validators > discord channel_id is accepted by isChannelAccountCreateCommand [0.01ms]
+
+src/websocket/listener/connection-state-sync.test.ts:
+(pass) an unsubscribed app-server connection receives no existing runtime state [8.81ms]
+134 |         startCronScheduler: false,
+135 |       },
+136 |     );
+137 |     await gatewayStarting;
+138 | 
+139 |     expect(runtime.processServicesStarted).toBe(false);
+                                                 ^
+error: expect(received).toBe(expected)
+
+Expected: false
+Received: true
+
+      at <anonymous> (/testbed/src/websocket/listener/connection-state-sync.test.ts:139:44)
+(fail) keeps attached App Server connections from bypassing the startup barrier [0.71ms]
+
+src/websocket/listener/commands/runtime-start-skill-sources.test.ts:
+(pass) runtime_start skill sources > keeps an empty override across idle runtime eviction [58.01ms]
+108 |         },
+109 |         context,
+110 |       );
+111 | 
+112 |       const scoped = getOrCreateScopedRuntime(listener, agent.id, "default");
+113 |       expect(scoped.skillSources).toEqual(["global", "project"]);
+                                        ^
+error: expect(received).toEqual(expected)
+
+- [
+-   "global",
+-   "project",
+- ]
++ undefined
+
+- Expected  - 4
++ Received  + 1
+
+      at <anonymous> (/testbed/src/websocket/listener/commands/runtime-start-skill-sources.test.ts:113:35)
+(fail) runtime_start skill sources > preserves skill sources when a secondary controller updates runtime tools [57.17ms]
+(pass) runtime_start skill sources > wait_for_replay delays the response until recovery replay completes [49.06ms]
+
+18 tests failed:
+(fail) MessageChannel architecture > does not register any channel delivery tool as a built-in [2.20ms]
+(fail) tool execution context snapshot > process-owned turns can use unscoped runtime tools without a connection [0.60ms]
+(fail) tool execution context snapshot > gateway-owned MessageChannel stays available with the none toolset [1.04ms]
+(fail) app-server startup lifecycle > an attached controller can leave process services to the primary listener [1007.19ms]
+(fail) ChannelRegistry lifecycle > route-derived sources require a running adapter and outbound route [0.29ms]
+(fail) process-owned turns execute MessageChannel with the runtime's routed sources [10.79ms]
+(fail) runtime registration happens before input submission [0.33ms]
+(fail) runtime registration removes MessageChannel when no route remains [0.26ms]
+(fail) listener runtime_start external tool bridge > process-owned turns execute unscoped runtime tools through their controller [2.09ms]
+(fail) agent/conversation management protocol-inbound validators > rejects invalid runtime_start [0.13ms]
+(fail) keeps attached App Server connections from bypassing the startup barrier [0.71ms]
+(fail) runtime_start skill sources > preserves skill sources when a secondary controller updates runtime tools [57.17ms]
+
+ 146 pass
+ 18 fail
+ 6 errors
+ 323 expect() calls
+Ran 164 tests across 16 files. [4.40s]
+OMNIGRIL_EXIT_CODE=1

@@ -1,0 +1,63 @@
+{
+  "instance_id": "TheYahya__enola-50",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.75,
+  "gold_patch_assessment": "The gold patch is a comprehensive refactor that addresses all requirements in the issue: functional options API (New with WithHTTPClient, WithConcurrency, WithData), Check(ctx, username) returning a closing channel, detector registry (status_code, message, response_url), PCRE regex support via regexp2 fallback, polymorphic JSON parsing for errorMsg (string|[]string) and errorCode (int|[]int), HTTP probing with urlProbe/request_method/request_payload/headers, non-interactive plain-text output, and refactored export with error handling for unsupported formats. The patch is well-structured and covers the full scope of the issue.",
+  "base_vs_gold_expectation": "The base will fail compilation with the test patch. Tests reference types/functions that do not exist in the base: WithData, WithHTTPClient, WithConcurrency, StatusInvalid, and the New() signature changed from New(context.Context) to New(...Option). Additionally, internal/checker/ and internal/export/ packages don't exist in the base. The gold patch should pass all tests since the test code was written to match the gold implementation precisely.",
+  "too_narrow_risks": [
+    "No integration test for non-interactive CLI output (the [+]/[-] line format requirement from the issue is untested)",
+    "No test for response_url detection through the public Enola.Check API (only unit-tested at detector level)",
+    "No test that unknown errorType does not crash (issue explicitly requires this)",
+    "No test for status_code with specific errorCode values through integration path (only unit-tested in checker_test)",
+    "No test that empty regexCheck accepts any username through the full Check pipeline",
+    "Export parent directory creation requirement is untested"
+  ],
+  "too_broad_risks": [
+    "Tests span 5 separate test files across 3 packages, which constrains solutions to the gold patch's exact package structure (internal/checker/, internal/export/)"
+  ],
+  "implementation_coupling": [
+    "internal/checker/checker_test.go directly instantiates unexported types (statusCodeDetector{}, messageDetector{}, responseURLDetector{}) - any alternative implementation with different type names or package structure would fail",
+    "internal/checker/checker_test.go tests the Lookup registry function which mandates the specific registry pattern used by the gold patch",
+    "internal/export/export_test.go references CheckExportType, NewWriter, and specific ExportType constants (JSON, CSV, NotSupported) which are tied to the gold's internal export API",
+    "Test files are placed in internal/checker/ and internal/export/ directories, requiring any solution to create these exact packages",
+    "The Website struct fields (ErrorMessages []string, ErrorCodes []int) used in enola_test.go are specific to the gold's UnmarshalJSON normalization design"
+  ],
+  "environment_risks": [
+    "Gold patch adds new Go dependencies (github.com/dlclark/regexp2, golang.org/x/term) that must be downloadable or cached in the Docker image",
+    "go.mod specifies go 1.26.3 which is a very recent Go version - the Docker image must support it"
+  ],
+  "mismatches": [],
+  "evidence": [
+    {
+      "file": "tests/eval.sh",
+      "detail": "RUNNABLE_TEST_FILES lists 5 files across 3 packages: enola_test.go, internal/checker/checker_test.go, internal/export/export_test.go, regex_test.go, website_test.go"
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "checker_test.go (line 247,294,341) directly instantiates unexported types: statusCodeDetector{}, messageDetector{}, responseURLDetector{}"
+    },
+    {
+      "file": "enola.go",
+      "detail": "Base New() takes context.Context, Check() takes only username - incompatible with test expectations of New(...Option) and Check(ctx, username)"
+    },
+    {
+      "file": "error.go",
+      "detail": "Base uses string constants for errors; gold changes to errors.New() sentinel errors; tests use errors.Is(err, ErrSiteNotFound)"
+    },
+    {
+      "file": "data.json",
+      "detail": "Real data contains polymorphic errorMsg (117 strings, 10 arrays), errorCode (6 ints, 0 arrays), 27 response_url sites, 95 regexCheck patterns - validating the need for the gold patch features"
+    },
+    {
+      "file": "instruction.md",
+      "detail": "Issue explicitly requires unknown detection types should not crash, but no test covers this scenario"
+    },
+    {
+      "file": "instruction.md",
+      "detail": "Issue requires non-interactive stdout output with [+] and [-] format lines, but no test verifies this"
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch comprehensively addresses a large multi-faceted issue covering API redesign, detection strategies, PCRE regex, JSON parsing, export, and CLI output. Tests provide good functional coverage of core library behaviors and pass/fail correctly against gold/base. However, tests are significantly coupled to the gold's internal architecture: checker_test.go and export_test.go reference unexported types and mandate the exact package structure (internal/checker/, internal/export/), which would reject reasonable alternative implementations that organize code differently. Several explicit issue requirements (non-interactive output format, unknown errorType graceful handling, export directory creation) lack test coverage. Recommend decoupling internal tests by testing through the public API or at minimum using exported interfaces, and adding coverage for untested issue requirements."
+}

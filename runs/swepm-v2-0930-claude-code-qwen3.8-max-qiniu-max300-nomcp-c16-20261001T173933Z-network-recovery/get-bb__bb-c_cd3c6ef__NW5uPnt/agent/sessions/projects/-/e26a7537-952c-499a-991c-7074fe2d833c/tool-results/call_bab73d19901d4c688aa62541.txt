@@ -1,0 +1,252 @@
+apps/app/src/lib/api.ts:39:  SendDraftRequest,
+apps/app/src/lib/api.ts:40:  SendDraftResponse,
+apps/app/src/lib/api.ts:52:  ThreadDraftListResponse,
+apps/app/src/lib/api.ts:783:export async function createThreadDraft(
+apps/app/src/lib/api.ts:785:  req: CreateDraftRequest,
+apps/app/src/lib/api.ts:788:    apiClient.threads[":id"].drafts.$post({ param: { id }, json: req }),
+apps/app/src/lib/api.ts:800:export async function listThreadDrafts(
+apps/app/src/lib/api.ts:802:): Promise<ThreadDraftListResponse> {
+apps/app/src/lib/api.ts:803:  return request<ThreadDraftListResponse>(
+apps/app/src/lib/api.ts:804:    apiClient.threads[":id"].drafts.$get({ param: { id } }),
+apps/app/src/lib/api.ts:820:export async function sendThreadDraft(
+apps/app/src/lib/api.ts:823:  req: SendDraftRequest,
+apps/app/src/lib/api.ts:824:): Promise<SendDraftResponse> {
+apps/app/src/lib/api.ts:825:  return request<SendDraftResponse>(
+apps/app/src/lib/api.ts:826:    apiClient.threads[":id"].drafts[":draftId"].send.$post({
+apps/app/src/lib/api.ts:827:      param: { id, draftId: queuedMessageId },
+apps/app/src/lib/api.ts:833:export async function deleteThreadDraft(
+apps/app/src/lib/api.ts:838:    apiClient.threads[":id"].drafts[":draftId"].$delete({
+apps/app/src/lib/api.ts:839:      param: { id, draftId: queuedMessageId },
+apps/app/src/lib/prompt-draft.ts:8:export type PromptDraftAttachment = UploadedPromptAttachment;
+apps/app/src/lib/prompt-draft.ts:10:export interface PromptDraftState {
+apps/app/src/lib/prompt-draft.ts:12:  attachments: PromptDraftAttachment[];
+apps/app/src/lib/prompt-draft.ts:15:const promptDraftStorageSchema = z.object({
+apps/app/src/lib/prompt-draft.ts:28:export function emptyPromptDraftState(): PromptDraftState {
+apps/app/src/lib/prompt-draft.ts:35:export function isPromptDraftEmpty(draft: PromptDraftState): boolean {
+apps/app/src/lib/prompt-draft.ts:36:  return draft.text.length === 0 && draft.attachments.length === 0;
+apps/app/src/lib/prompt-draft.ts:39:export function parsePromptDraftStorage(
+apps/app/src/lib/prompt-draft.ts:41:): PromptDraftState {
+apps/app/src/lib/prompt-draft.ts:42:  if (!rawValue) return emptyPromptDraftState();
+apps/app/src/lib/prompt-draft.ts:46:    const result = promptDraftStorageSchema.safeParse(parsed);
+apps/app/src/lib/prompt-draft.ts:47:    return result.success ? result.data : emptyPromptDraftState();
+apps/app/src/lib/prompt-draft.ts:49:    return emptyPromptDraftState();
+apps/app/src/lib/prompt-draft.ts:53:export function serializePromptDraftStorage(
+apps/app/src/lib/prompt-draft.ts:54:  draft: PromptDraftState,
+apps/app/src/lib/prompt-draft.ts:56:  const text = draft.text;
+apps/app/src/lib/prompt-draft.ts:57:  const attachments = draft.attachments;
+apps/app/src/lib/prompt-draft.ts:58:  if (isPromptDraftEmpty(draft)) {
+apps/app/src/lib/prompt-draft.ts:67:export function arePromptDraftStatesEqual(
+apps/app/src/lib/prompt-draft.ts:68:  left: PromptDraftState,
+apps/app/src/lib/prompt-draft.ts:69:  right: PromptDraftState,
+apps/app/src/lib/prompt-draft.ts:72:    serializePromptDraftStorage(left) === serializePromptDraftStorage(right)
+apps/app/src/lib/prompt-draft.ts:87:export function promptDraftToInput(draft: PromptDraftState): PromptInput[] {
+apps/app/src/lib/prompt-draft.ts:89:  const text = draft.text.trim();
+apps/app/src/lib/prompt-draft.ts:94:  for (const attachment of draft.attachments) {
+apps/app/src/lib/prompt-draft.ts:115:export function promptInputToDraft(
+apps/app/src/lib/prompt-draft.ts:117:): PromptDraftState {
+apps/app/src/lib/prompt-draft.ts:119:  const attachments: PromptDraftState["attachments"] = [];
+apps/app/src/lib/prompt-history.ts:7:  arePromptDraftStatesEqual,
+apps/app/src/lib/prompt-history.ts:8:  isPromptDraftEmpty,
+apps/app/src/lib/prompt-history.ts:9:  promptInputToDraft,
+apps/app/src/lib/prompt-history.ts:10:  type PromptDraftState,
+apps/app/src/lib/prompt-history.ts:11:} from "./prompt-draft";
+apps/app/src/lib/prompt-history.ts:13:export function promptHistoryEntriesToDrafts(
+apps/app/src/lib/prompt-history.ts:15:): PromptDraftState[] {
+apps/app/src/lib/prompt-history.ts:16:  const drafts: PromptDraftState[] = [];
+apps/app/src/lib/prompt-history.ts:19:    const draft = promptInputToDraft(entry.input);
+apps/app/src/lib/prompt-history.ts:20:    if (isPromptDraftEmpty(draft)) {
+apps/app/src/lib/prompt-history.ts:24:    const previousDraft = drafts[drafts.length - 1];
+apps/app/src/lib/prompt-history.ts:25:    if (previousDraft && arePromptDraftStatesEqual(previousDraft, draft)) {
+apps/app/src/lib/prompt-history.ts:29:    drafts.push(draft);
+apps/app/src/lib/prompt-history.ts:32:  return drafts;
+apps/app/src/lib/prompt-draft.test.ts:3:  emptyPromptDraftState,
+apps/app/src/lib/prompt-draft.test.ts:4:  isPromptDraftEmpty,
+apps/app/src/lib/prompt-draft.test.ts:5:  parsePromptDraftStorage,
+apps/app/src/lib/prompt-draft.test.ts:6:  promptDraftToInput,
+apps/app/src/lib/prompt-draft.test.ts:7:  promptInputToDraft,
+apps/app/src/lib/prompt-draft.test.ts:8:  serializePromptDraftStorage,
+apps/app/src/lib/prompt-draft.test.ts:9:} from "./prompt-draft";
+apps/app/src/lib/prompt-draft.test.ts:11:describe("prompt draft helpers", () => {
+apps/app/src/lib/prompt-draft.test.ts:12:  it("drops invalid legacy raw text drafts", () => {
+apps/app/src/lib/prompt-draft.test.ts:13:    const parsed = parsePromptDraftStorage("Investigate flaky login redirect");
+apps/app/src/lib/prompt-draft.test.ts:20:  it("parses structured drafts with attachments", () => {
+apps/app/src/lib/prompt-draft.test.ts:21:    const parsed = parsePromptDraftStorage(
+apps/app/src/lib/prompt-draft.test.ts:50:  it("serializes empty drafts as null storage", () => {
+apps/app/src/lib/prompt-draft.test.ts:51:    expect(serializePromptDraftStorage(emptyPromptDraftState())).toBeNull();
+apps/app/src/lib/prompt-draft.test.ts:54:  it("detects whether a draft has any submittable state", () => {
+apps/app/src/lib/prompt-draft.test.ts:55:    expect(isPromptDraftEmpty(emptyPromptDraftState())).toBe(true);
+apps/app/src/lib/prompt-draft.test.ts:57:      isPromptDraftEmpty({
+apps/app/src/lib/prompt-draft.test.ts:72:  it("maps draft text and attachments to prompt input list", () => {
+apps/app/src/lib/prompt-draft.test.ts:73:    const input = promptDraftToInput({
+apps/app/src/lib/prompt-draft.test.ts:106:  it("maps prompt input back to an editable draft", () => {
+apps/app/src/lib/prompt-draft.test.ts:107:    const draft = promptInputToDraft([
+apps/app/src/lib/prompt-draft.test.ts:120:    expect(draft).toEqual({
+apps/app/src/views/ProjectMainView.tsx:18:import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+apps/app/src/views/ProjectMainView.tsx:22:import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
+apps/app/src/views/ProjectMainView.tsx:24:import { promptDraftToInput } from "@/lib/prompt-draft";
+apps/app/src/views/ProjectMainView.tsx:44:  const promptDraft = usePromptDraftStorage({ projectId, threadId: null });
+apps/app/src/views/ProjectMainView.tsx:49:  const prompt = promptDraft.text;
+apps/app/src/views/ProjectMainView.tsx:52:      promptDraftToInput({
+apps/app/src/views/ProjectMainView.tsx:53:        text: promptDraft.text,
+apps/app/src/views/ProjectMainView.tsx:54:        attachments: promptDraft.attachments,
+apps/app/src/views/ProjectMainView.tsx:56:    [promptDraft.attachments, promptDraft.text],
+apps/app/src/views/ProjectMainView.tsx:63:  const promptHistoryDrafts = useMemo(
+apps/app/src/views/ProjectMainView.tsx:64:    () => promptHistoryEntriesToDrafts(projectPromptHistory),
+apps/app/src/views/ProjectMainView.tsx:231:          promptDraft.addAttachment(uploaded);
+apps/app/src/views/ProjectMainView.tsx:243:    [projectId, promptDraft, uploadPromptAttachment],
+apps/app/src/views/ProjectMainView.tsx:257:    const submittedDraft = {
+apps/app/src/views/ProjectMainView.tsx:258:      text: promptDraft.text,
+apps/app/src/views/ProjectMainView.tsx:259:      attachments: promptDraft.attachments,
+apps/app/src/views/ProjectMainView.tsx:261:    const submittedInput = promptDraftToInput(submittedDraft);
+apps/app/src/views/ProjectMainView.tsx:285:      promptDraft.clearIfCurrentMatches(submittedDraft);
+apps/app/src/views/ProjectMainView.tsx:317:          onChange={promptDraft.setText}
+apps/app/src/views/ProjectMainView.tsx:323:            currentDraft: {
+apps/app/src/views/ProjectMainView.tsx:324:              text: promptDraft.text,
+apps/app/src/views/ProjectMainView.tsx:325:              attachments: promptDraft.attachments,
+apps/app/src/views/ProjectMainView.tsx:327:            entries: promptHistoryDrafts,
+apps/app/src/views/ProjectMainView.tsx:328:            onSelectEntry: promptDraft.setDraft,
+apps/app/src/views/ProjectMainView.tsx:338:            items: promptDraft.attachments,
+apps/app/src/views/ProjectMainView.tsx:341:            onRemove: promptDraft.removeAttachment,
+apps/app/src/views/thread-detail/threadQueuedMessages.test.ts:5:  queuedInputToDraft,
+apps/app/src/views/thread-detail/threadQueuedMessages.test.ts:46:    expect(queuedInputToDraft(input).attachments[0]?.name).toBe("Attachment");
+apps/app/src/views/thread-detail/threadQueuedMessages.test.ts:49:  it("restores editable drafts from queued messages", () => {
+apps/app/src/views/thread-detail/threadQueuedMessages.test.ts:50:    const draft = queuedInputToDraft([
+apps/app/src/views/thread-detail/threadQueuedMessages.test.ts:58:    expect(draft).toEqual({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:29:import { usePromptDraftStorage } from "@/hooks/usePromptDraftStorage";
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:34:  useCreateThreadDraft,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:35:  useDeleteThreadDraft,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:36:  useSendThreadDraft,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:42:  useThreadDrafts,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:46:import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:47:import { promptDraftToInput } from "@/lib/prompt-draft";
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:53:import { queuedInputToDraft } from "./threadQueuedMessages";
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:136:function shouldQueueFollowUpDraft(
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:175:  const { data: queuedMessages = [] } = useThreadDrafts(thread.id, {
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:188:  const createDraft = useCreateThreadDraft();
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:189:  const sendDraft = useSendThreadDraft();
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:190:  const deleteDraft = useDeleteThreadDraft();
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:193:  const promptDraft = usePromptDraftStorage({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:209:  const promptHistoryDrafts = useMemo(
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:210:    () => promptHistoryEntriesToDrafts(promptHistoryEntries),
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:256:    createDraft.isPending ||
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:257:    sendDraft.isPending ||
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:258:    deleteDraft.isPending ||
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:263:    createDraft.isPending ||
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:289:  const currentPromptDraft = useMemo(
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:291:      text: promptDraft.text,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:292:      attachments: promptDraft.attachments,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:294:    [promptDraft.attachments, promptDraft.text],
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:296:  const currentPromptDraftInput = useMemo(
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:297:    () => promptDraftToInput(currentPromptDraft),
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:298:    [currentPromptDraft],
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:300:  const hasPromptDraftInput = currentPromptDraftInput.length > 0;
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:306:    (queuedMessages.length > 0 || hasPromptDraftInput);
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:360:          promptDraft.addAttachment(uploaded);
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:369:    [projectId, promptDraft, uploadPromptAttachment],
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:373:    const submittedDraft = currentPromptDraft;
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:374:    const submittedInput = currentPromptDraftInput;
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:379:    promptDraft.clearIfCurrentMatches(submittedDraft);
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:382:    const isQueuingDraft = shouldQueueFollowUpDraft(runtimeDisplayStatus);
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:384:      if (isQueuingDraft) {
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:385:        await createDraft.mutateAsync({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:404:      promptDraft.restoreIfEmpty(submittedDraft);
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:408:          fallbackMessage: isQueuingDraft
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:416:    createDraft,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:417:    currentPromptDraft,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:418:    currentPromptDraftInput,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:419:    promptDraft,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:435:    const submittedDraft = currentPromptDraft;
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:436:    const submittedInput = currentPromptDraftInput;
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:443:      promptDraft.clearIfCurrentMatches(submittedDraft);
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:449:        await sendDraft.mutateAsync({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:461:      promptDraft.restoreIfEmpty(submittedDraft);
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:473:    currentPromptDraft,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:474:    currentPromptDraftInput,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:475:    promptDraft,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:477:    sendDraft,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:492:      void sendDraft
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:515:    [queuedMessages, sendDraft, thread.id],
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:528:      void deleteDraft
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:534:          const restoredDraft = queuedInputToDraft(queuedMessage.content);
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:535:          promptDraft.setDraft(restoredDraft);
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:552:    [deleteDraft, promptDraft, queuedMessages, thread.id],
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:558:      void deleteDraft
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:577:    [deleteDraft, thread.id],
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:599:        items: promptDraft.attachments,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:604:        onRemove: promptDraft.removeAttachment,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:657:          currentDraft: {
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:658:            text: promptDraft.text,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:659:            attachments: promptDraft.attachments,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:661:          entries: promptHistoryDrafts,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:662:          onSelectEntry: promptDraft.setDraft,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:666:        message: promptDraft.text,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx:667:        onChangeMessage: promptDraft.setText,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:16:import type { PromptDraftState } from "@/lib/prompt-draft";
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:20:interface PromptDraftStorageMock extends PromptDraftState {
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:28:  setDraft: ReturnType<typeof vi.fn>;
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:37:  createDraftMutateAsync: ReturnType<typeof vi.fn>;
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:38:  deleteDraftMutateAsync: ReturnType<typeof vi.fn>;
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:39:  promptDraft: PromptDraftStorageMock;
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:41:  sendDraftMutateAsync: ReturnType<typeof vi.fn>;
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:60:    createDraftMutateAsync: vi.fn(),
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:61:    deleteDraftMutateAsync: vi.fn(),
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:62:    promptDraft: createPromptDraftStorageMock({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:67:    sendDraftMutateAsync: vi.fn(),
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:73:function createPromptDraftStorageMock(
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:74:  draft: PromptDraftState,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:75:): PromptDraftStorageMock {
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:77:    ...draft,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:82:    getCurrent: vi.fn(() => draft),
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:86:    setDraft: vi.fn(),
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:89:    storageKey: "prompt-draft-key",
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:90:    value: draft.text,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:140:vi.mock("@/hooks/usePromptDraftStorage", () => ({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:141:  usePromptDraftStorage: () => mocks.promptDraft,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:198:  useCreateThreadDraft: () => ({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:200:    mutateAsync: mocks.createDraftMutateAsync,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:202:  useDeleteThreadDraft: () => ({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:204:    mutateAsync: mocks.deleteDraftMutateAsync,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:206:  useSendThreadDraft: () => ({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:208:    mutateAsync: mocks.sendDraftMutateAsync,
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:227:  useThreadDrafts: () => ({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:305:  mocks.createDraftMutateAsync.mockReset();
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:306:  mocks.deleteDraftMutateAsync.mockReset();
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:307:  mocks.sendDraftMutateAsync.mockReset();
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:310:  mocks.sendDraftMutateAsync.mockResolvedValue({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:318:  mocks.promptDraft = createPromptDraftStorageMock({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:330:  it("sends the current draft as a steer with Cmd+Enter", async () => {
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:334:    mocks.promptDraft = createPromptDraftStorageMock({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:356:    expect(mocks.createDraftMutateAsync).not.toHaveBeenCalled();
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:357:    expect(mocks.sendDraftMutateAsync).not.toHaveBeenCalled();
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:384:      expect(mocks.sendDraftMutateAsync).toHaveBeenCalledTimes(2);
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:386:    expect(mocks.sendDraftMutateAsync).toHaveBeenNthCalledWith(1, {
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:391:    expect(mocks.sendDraftMutateAsync).toHaveBeenNthCalledWith(2, {
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:399:  it("sends queued messages before the current draft, all as steers", async () => {
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:409:    mocks.promptDraft = createPromptDraftStorageMock({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:426:    expect(mocks.sendDraftMutateAsync).toHaveBeenCalledWith({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:436:    expect(mocks.createDraftMutateAsync).not.toHaveBeenCalled();
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:437:    expect(mocks.promptDraft.clearIfCurrentMatches).toHaveBeenCalledWith({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:453:    mocks.promptDraft = createPromptDraftStorageMock({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:488:    expect(mocks.createDraftMutateAsync).not.toHaveBeenCalled();
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:489:    expect(mocks.sendDraftMutateAsync).not.toHaveBeenCalled();
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:490:    expect(mocks.promptDraft.clearIfCurrentMatches).toHaveBeenCalledWith({
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:505:    mocks.sendDraftMutateAsync.mockReturnValue(new Promise(() => {}));
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:516:      expect(mocks.sendDraftMutateAsync).toHaveBeenCalledTimes(1);
+apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx:524:    expect(mocks.sendDraftMutateAsync).toHaveBeenCalledTimes(1);
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:27:  arePromptDraftStatesEqual,
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:28:  isPromptDraftEmpty,
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:29:  type PromptDraftAttachment,
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:30:  type PromptDraftState,
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:31:} from "@/lib/prompt-draft";
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:76:  items?: PromptDraftAttachment[];
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:92:  currentDraft: PromptDraftState;
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:93:  entries: readonly PromptDraftState[];
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:94:  onSelectEntry: (draft: PromptDraftState) => void;
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:250:  const [temporaryHistoryDraft, setTemporaryHistoryDraft] =
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:251:    useState<PromptDraftState | null>(null);
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:252:  const [recalledHistoryDraft, setRecalledHistoryDraft] =
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:253:    useState<PromptDraftState | null>(null);
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:307:    setTemporaryHistoryDraft(null);
+apps/app/src/components/promptbox/PromptBoxInternal.tsx:308:    setRecalledHistoryDraft(null);
+
+[Showing results with pagination = limit: 250, offset: 200]

@@ -1,0 +1,226 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch server-go/cmd/aimee-module/main_test.go...
+error: while searching for:
+		{"memory", 7, []uint32{5889, 5890, 5891, 5892, 5893}},
+		{"learning", 8, []uint32{6145}},
+		{"routing", 9, []uint32{6401}},
+		{"delegates", 10, []uint32{6657, 6658, 6659, 6660, 6661, 6662, 6663}},
+		{"tools", 11, []uint32{6913}},
+		{"workspace", 12, []uint32{7169, 7170, 7171}},
+		{"git", 13, []uint32{7425, 7426, 7427, 7430}},
+
+error: patch failed: server-go/cmd/aimee-module/main_test.go:15
+error: server-go/cmd/aimee-module/main_test.go: patch does not apply
+Checking patch server-go/modules/delegates/economics_stage_test.go...
+Checking patch server-go/modules/delegates/economics_test.go...
+error: server-go/modules/delegates/economics_test.go: already exists in working directory
+Checking patch src/tests/test_coord_jobs.c...
+error: while searching for:
+
+/* --- Test: DB-backed coordinated job economics report --- */
+
+static void test_delegate_economics_report_from_coord_job(void)
+{
+   sqlite3 *db = setup();
+
+   int plan_id = create_test_plan(db);
+
+error: patch failed: src/tests/test_coord_jobs.c:582
+error: src/tests/test_coord_jobs.c: patch does not apply
+Checking patch src/tests/test_delegate_economics.c...
+error: while searching for:
+      cfg->agent_count = idx + 1;
+}
+
+static void fill_task(db1_coord_task_t *task, const char *status, const char *claimed_by,
+                      const char *files, const char *result)
+{
+   memset(task, 0, sizeof(*task));
+   snprintf(task->status, sizeof(task->status), "%s", status);
+   snprintf(task->claimed_by, sizeof(task->claimed_by), "%s", claimed_by ? claimed_by : "");
+   snprintf(task->files, sizeof(task->files), "%s", files ? files : "[]");
+   snprintf(task->result, sizeof(task->result), "%s", result ? result : "");
+}
+
+static void handoff(char *buf, size_t len, const char *file, const char *tests, const char *actions)
+{
+   snprintf(buf, len,
+            "{"
+            "\"schema_version\":\"delegate_result_v1\","
+            "\"status\":\"done\","
+            "\"changed_files\":[\"%s\"],"
+            "\"tests\":%s,"
+            "\"supervisor_actions\":%s,"
+            "\"summary\":\"done\""
+            "}",
+            file, tests, actions);
+}
+
+static void test_tier_distribution_and_handoff_counts(void)
+{
+   agent_config_t cfg = {0};
+   add_agent(&cfg, 0, "free-a", 0);
+   add_agent(&cfg, 1, "cheap-b", 1);
+   add_agent(&cfg, 2, "expensive-c", 3);
+
+   char h1[512];
+   char h2[512];
+   handoff(h1, sizeof(h1), "src/free.c", "[{\"name\":\"unit-free\",\"status\":\"passed\"}]", "[]");
+   handoff(h2, sizeof(h2), "src/cheap.c", "[{\"name\":\"unit-cheap\",\"status\":\"passed\"}]",
+           "[\"choose public name\"]");
+
+   db1_coord_task_t tasks[4];
+   fill_task(&tasks[0], "done", "free-a", "[\"src/free.c\"]", h1);
+   fill_task(&tasks[1], "done", "cheap-b", "[\"src/cheap.c\"]", h2);
+   fill_task(&tasks[2], "failed", "expensive-c", "[\"src/fail.c\"]", "compile failed");
+   fill_task(&tasks[3], "done", "missing-agent", "[\"src/bad.c\"]", "not json");
+
+   delegate_economics_report_t report;
+   delegate_economics_build_report(NULL, tasks, 4, &cfg, &report);
+
+   assert(report.delegate_count == 4);
+   assert(report.tier_counts[0] == 1);
+   assert(report.tier_counts[1] == 1);
+   assert(report.tier_counts[3] == 1);
+   assert(report.unknown_tier_count == 1);
+   assert(report.handoff_count == 3);
+   assert(report.valid_handoffs == 2);
+   assert(report.invalid_handoffs == 1);
+   assert(report.focused_tests_run_by_delegates == 2);
+   assert(report.delegates_with_focused_tests == 2);
+   assert(report.supervisor_actions_required == 2);
+   assert(report.manual_integration_events == 3);
+   printf("  PASS: test_tier_distribution_and_handoff_counts\n");
+}
+
+static void test_tier0_heavy_verdict_recommends_broader_delegation(void)
+{
+   agent_config_t cfg = {0};
+   add_agent(&cfg, 0, "free-a", 0);
+   add_agent(&cfg, 1, "free-b", 0);
+   add_agent(&cfg, 2, "cheap-c", 1);
+
+   char h1[512];
+   char h2[512];
+   char h3[512];
+   handoff(h1, sizeof(h1), "src/a.c", "[{\"name\":\"unit-a\",\"status\":\"passed\"}]", "[]");
+   handoff(h2, sizeof(h2), "src/b.c", "[{\"name\":\"unit-b\",\"status\":\"passed\"}]", "[]");
+   handoff(h3, sizeof(h3), "src/c.c", "[{\"name\":\"unit-c\",\"status\":\"passed\"}]", "[]");
+
+   db1_coord_task_t tasks[3];
+   fill_task(&tasks[0], "done", "free-a", "[\"src/a.c\"]", h1);
+   fill_task(&tasks[1], "done", "free-b", "[\"src/b.c\"]", h2);
+   fill_task(&tasks[2], "done", "cheap-c", "[\"src/c.c\"]", h3);
+
+   delegate_economics_report_t report;
+   delegate_economics_build_report(NULL, tasks, 3, &cfg, &report);
+
+   assert(delegate_economics_is_tier0_heavy(&report));
+   assert(strcmp(report.verdict, "likely_net_win") == 0);
+   assert(strstr(report.recommendation, "broader delegation") != NULL);
+   printf("  PASS: test_tier0_heavy_verdict_recommends_broader_delegation\n");
+}
+
+static void test_mixed_and_expensive_only_verdicts(void)
+{
+   agent_config_t mixed = {0};
+   add_agent(&mixed, 0, "free-a", 0);
+   add_agent(&mixed, 1, "expensive-a", 3);
+   add_agent(&mixed, 2, "expensive-b", 3);
+
+   char h1[512];
+   char h2[512];
+   char h3[512];
+   handoff(h1, sizeof(h1), "src/a.c", "[{\"name\":\"unit-a\",\"status\":\"passed\"}]", "[]");
+   handoff(h2, sizeof(h2), "src/b.c", "[{\"name\":\"unit-b\",\"status\":\"pa
+error: patch failed: src/tests/test_delegate_economics.c:16
+error: src/tests/test_delegate_economics.c: patch does not apply
+Checking patch tests/baselines/refactor/index.json...
+error: while searching for:
+        },
+        {
+          "path": "src/modules/delegates/include/aimee/delegates/delegate_economics.h",
+          "sha256": "cbddf27189812b2adcfdc97199f0d6ca13c64529cd139cb192469449714b02ac"
+        },
+        {
+          "path": "src/modules/delegates/include/aimee/delegates/delegate_ephemeral_ws.h",
+
+error: patch failed: tests/baselines/refactor/index.json:1419
+error: tests/baselines/refactor/index.json: patch does not apply
+patching file server-go/cmd/aimee-module/main_test.go
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file server-go/modules/delegates/economics_stage_test.go
+The next patch would create the file server-go/modules/delegates/economics_test.go,
+which already exists!  Assuming -R.
+patching file server-go/modules/delegates/economics_test.go
+Hunk #1 FAILED at 1.
+Not deleting file server-go/modules/delegates/economics_test.go as content differs from patch
+1 out of 1 hunk FAILED -- saving rejects to file server-go/modules/delegates/economics_test.go.rej
+patching file src/tests/test_coord_jobs.c
+Hunk #1 succeeded at 590 with fuzz 3 (offset 8 lines).
+Hunk #2 FAILED at 609.
+Hunk #3 succeeded at 666 (offset -66 lines).
+1 out of 3 hunks FAILED -- saving rejects to file src/tests/test_coord_jobs.c.rej
+patching file src/tests/test_delegate_economics.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+Hunk #1 succeeded at 23 (offset 7 lines).
+Hunk #2 succeeded at 240 with fuzz 3 (offset -46 lines).
+patching file tests/baselines/refactor/index.json
+Hunk #1 FAILED at 1419.
+Hunk #2 FAILED at 1463.
+Hunk #3 FAILED at 1616.
+3 out of 3 hunks FAILED -- saving rejects to file tests/baselines/refactor/index.json.rej
+-- The C compiler identification is GNU 12.2.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Found Python3: /testbed/.venv/bin/python3 (found version "3.11.2") found components: Interpreter 
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE  
+-- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.20")  
+-- Found SQLite3: /usr/include (found version "3.40.1") 
+-- Checking for module 'libpq'
+--   Found libpq, version 15.19
+-- Looking for security/pam_appl.h
+-- Looking for security/pam_appl.h - found
+-- Looking for pam_start in pam
+-- Looking for pam_start in pam - found
+-- Found PkgConfig: /usr/bin/pkg-config (found version "1.8.1") 
+-- Checking for module 'libsecret-1'
+--   Found libsecret-1, version 0.20.5
+-- Configuring done
+CMake Error at CMakeLists.txt:1277 (add_library):
+  Cannot find source file:
+
+    _learn.c
+
+  Tried extensions .c .C .c++ .cc .cpp .cxx .cu .mpp .m .M .mm .ixx .cppm .h
+  .hh .h++ .hm .hpp .hxx .in .txx .f .F .for .f77 .f90 .f95 .f03 .hip .ispc
+
+
+CMake Error at CMakeLists.txt:1277 (add_library):
+  No SOURCES given to target: aimee-data
+
+
+CMake Generate step failed.  Build files cannot be regenerated correctly.
+gmake: Makefile: No such file or directory
+gmake: *** No rule to make target 'Makefile'.  Stop.
+# github.com/JBailes/aimee/server-go/modules/delegates [github.com/JBailes/aimee/server-go/modules/delegates.test]
+modules/delegates/economics_stage_test.go:10:60: undefined: AgentTier
+modules/delegates/economics_stage_test.go:11:26: undefined: economicsReqHeaderLen
+modules/delegates/economics_stage_test.go:43:12: undefined: doneHandoff
+modules/delegates/economics_stage_test.go:46:14: undefined: AgentTier
+modules/delegates/economics_stage_test.go:60:41: undefined: economicsVerdictLen
+modules/delegates/economics_stage_test.go:63:36: undefined: economicsVerdictLen
+modules/delegates/economics_stage_test.go:72:9: undefined: economicsReqHeaderLen
+modules/delegates/economics_stage_test.go:104:39: undefined: economicsVerdictLen
+FAIL	github.com/JBailes/aimee/server-go/modules/delegates [build failed]
+--- FAIL: TestModuleRegistryMatchesProcessContracts (0.00s)
+    main_test.go:37: delegates config = bus.ModuleProcessConfig{SocketPath:"", ModuleName:"delegates", PrincipalClass:0x1, PrincipalRef:0xa, Stages:[]bus.ModuleStage{bus.ModuleStage{EventKind:0x1a01, StageID:0x1}, bus.ModuleStage{EventKind:0x1a02, StageID:0x2}, bus.ModuleStage{EventKind:0x1a03, StageID:0x3}, bus.ModuleStage{EventKind:0x1a04, StageID:0x4}, bus.ModuleStage{EventKind:0x1a05, StageID:0x5}, bus.ModuleStage{EventKind:0x1a06, StageID:0x6}, bus.ModuleStage{EventKind:0x1a07, StageID:0x7}, bus.ModuleStage{EventKind:0x1a08, StageID:0x8}}, Handler:(bus.ModuleHandler)(0x59d160)}, ok=true
+FAIL
+FAIL	github.com/JBailes/aimee/server-go/cmd/aimee-module	0.003s
+FAIL
+OMNIGRIL_EXIT_CODE=1

@@ -1,0 +1,68 @@
+{
+  "instance_id": "kubb-labs__kubb-3795",
+  "overall_quality": "invalid",
+  "test_scope": "both",
+  "confidence": 0.92,
+  "gold_patch_assessment": "The gold patch is a massive architectural refactoring (25 files, ~4000 lines) that restructures the internal parsing pipeline into three phases (load/model/emit), collapses six $ref resolvers into one Refs service, and moves files into new subdirectories (emit/, model/, load/). It also fixes a real bug: $ref requestBody description/required being silently dropped when a global contentType option is set. The refactoring is far beyond what the stated issue requires — a targeted fix to the requestBody $ref resolution path would suffice.",
+  "base_vs_gold_expectation": "The base code WILL fail when the test patch is applied, but NOT because the bug isn't fixed — it fails because the test patch renames test files to new directories (emit/discriminator/, load/, model/) and updates imports to point to modules that only exist in the gold patch's restructured layout (e.g., ./emit/createNode.ts, ./load/normalize.ts, ./model/components.ts, createRefs from ./refs.ts). The tests would fail at import resolution before reaching any assertion. The gold patch + test patch should pass since the new module paths exist. So the verifier correctly distinguishes base from gold, but for the wrong reason — it tests file layout, not bug-fix behavior.",
+  "too_narrow_risks": [
+    "Only 4 out of ~130+ test changes actually test the core bug described in the issue ($ref path-item resolution and requestBody $ref with contentType). The vast majority of changes are mechanical import-path updates.",
+    "The 4 regression tests at the end of parser.test.ts are good but could miss edge cases like nested $ref chains or circular $ref path items.",
+    "No test verifies that the parsed OpenAPI document is NOT mutated in place, which is a key requirement stated in the issue."
+  ],
+  "too_broad_risks": [
+    "The test patch renames 3 test files and creates 4 new test files covering modules that only exist in the gold patch's specific refactoring (emit/createNode, emit/discriminator/preserve, emit/schemaShape, model/server). These test new internal modules rather than the observable bug-fix behavior.",
+    "Running the entire packages/adapter-oas/src test suite means any unrelated test regression (e.g., from moved imports) would fail the verifier, even if the actual bug was correctly fixed.",
+    "The test patch removes an expectTypeOf assertion from buildSchemaNode tests (which validated TypeScript type inference) — this tests a different concern than the stated issue."
+  ],
+  "implementation_coupling": [
+    "Tests import createRefs from ./refs.ts — this function only exists in the gold patch. Any alternative fix that doesn't introduce this exact API would fail.",
+    "Tests import from ./emit/createNode.ts, ./emit/schemaShape.ts, ./emit/discriminator/preserve.ts, ./load/normalize.ts, ./model/components.ts, ./model/server.ts — these paths only exist in the gold patch's directory restructuring.",
+    "OasParserContext is expected to have a refs field (used in ~50 ctx = { document, refs: createRefs(...) } assignments), which is a gold-patch-specific API change.",
+    "getSchemas() signature changed to accept a third refs argument — tests call getSchemas(document, {}, createRefs(document)).",
+    "getOperations() signature changed to accept a second refs argument — tests call getOperations(document, refs).",
+    "Test files are renamed to match the gold patch's directory structure (discriminator.test.ts → emit/discriminator/propagate.test.ts, factory.test.ts → load/normalize.test.ts, resolvers.test.ts → model/components.test.ts)."
+  ],
+  "environment_risks": [
+    "The eval.sh uses 'pnpm test -- --coverage --reporter=verbose packages/adapter-oas/src' which requires vitest and pnpm to be pre-installed in the Docker image.",
+    "The test patch uses git apply with fallback to patch — rename operations may behave differently between the two, and the emit/discriminator/ directory tree must be created for the renames to succeed.",
+    "No explicit build step before tests — if the TypeScript source needs compilation before vitest can run, tests may fail independently of correctness."
+  ],
+  "mismatches": [
+    "The issue describes a bug fix (requestBody $ref resolution with contentType), but the gold patch implements a full architectural refactoring (3-phase pipeline, Refs service, file restructuring). The scope of the gold patch far exceeds the stated issue.",
+    "The test patch is tightly coupled to the gold patch's internal restructuring rather than testing the observable behavior described in the issue. An alternative solution that fixes the bug without restructuring the entire module layout would fail all tests.",
+    "The issue says 'Generated AST output for existing schemas and operations should remain unchanged except for the request body metadata bug', yet the tests do not verify AST output stability — they verify internal API shapes."
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 1670-1801: Only 4 tests at the end of parser.test.ts directly test the stated bug ($ref path-item params, summary/description fallback, requestBody $ref resolution, requestBody $ref with contentType option)."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 1-45: New file emit/createNode.test.ts imports from ./createNode.ts which only exists in the gold patch."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 699-702: Renamed resolvers.test.ts → model/components.test.ts imports from ../refs.ts (createRefs) and ./components.ts — neither export exists in base code."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 1022-1033: parser.test.ts imports updated from ./factory.ts to ./load/normalize.ts and from ./resolvers.ts to ./model/components.ts — paths that don't exist in base."
+    },
+    {
+      "file": "/testbed/packages/adapter-oas/src/refs.ts",
+      "detail": "Base code exports resolveRef and dereferenceWithRef but NOT createRefs, which is required by every renamed/updated test."
+    },
+    {
+      "file": "/audit_tasks/kubb-labs__kubb-3795/solution/solve.sh",
+      "detail": "Gold patch modifies 25 files, creates new directories (emit/, model/, load/), and is ~4000 lines — far exceeding a targeted bug fix."
+    },
+    {
+      "file": "/audit_tasks/kubb-labs__kubb-3795/tests/eval.sh",
+      "detail": "Line 48: Test command 'pnpm test -- --coverage --reporter=verbose packages/adapter-oas/src' runs ALL tests in the package, not just the bug-fix tests."
+    }
+  ],
+  "recommended_action": "revise_instance",
+  "summary": "This instance is invalid because the test patch is extremely coupled to the gold patch's specific architectural refactoring (file renames, new directory layout, new API signatures) rather than testing the observable behavior described in the issue. The gold patch refactors 25 files into a new 3-phase architecture when the issue only requires fixing $ref requestBody resolution. The test patch renames test files to match the gold's new directory structure and updates ~50+ import/API call sites to use gold-specific APIs (createRefs, new module paths, changed function signatures). Any alternative solution that fixes the actual bug without performing the identical refactoring would fail at import resolution before reaching a single assertion. Only 4 of the ~130+ test changes actually validate the stated bug. The instance should be revised to decouple tests from the gold implementation — either by scoping the gold patch to a minimal bug fix, or by writing tests that check observable behavior (operation parameters, requestBody metadata) without depending on internal module layout."
+}

@@ -1,0 +1,51 @@
+SPECBUILD_RESOLVED_PYTHON=/opt/venv/bin/python
+============================= test session starts ==============================
+platform linux -- Python 3.11.16, pytest-9.1.1, pluggy-1.6.0 -- /opt/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /testbed
+configfile: pyproject.toml
+plugins: cov-7.1.0, anyio-4.14.2
+collecting ... collected 69 items
+
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_basic_ip_port PASSED [  1%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_multiple_proxies PASSED [  2%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_ip_port_with_spaces PASSED [  4%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_ip_port_in_html_text PASSED [  5%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_empty_text PASSED [  7%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_no_proxies PASSED [  8%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_ip_with_colon_port PASSED [ 10%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_port_range PASSED [ 11%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_dict_with_proxy_key PASSED [ 13%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_dict_with_addr_key PASSED [ 14%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_dict_with_ip_port_keys PASSED [ 15%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_dict_with_host_port_keys PASSED [ 17%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_dict_with_server_port_keys PASSED [ 18%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_list_of_dicts PASSED [ 20%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_nested_dict PASSED [ 21%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_string_value PASSED [ 23%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_empty_dict PASSED [ 24%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_empty_list PASSED [ 26%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_basic_table PASSED [ 27%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_multiple_rows PASSED [ 28%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_none_tree PASSED [ 30%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_empty_table PASSED [ 31%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_header_row_skipped PASSED [ 33%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_row_with_too_few_cells PASSED [ 34%]
+tests/unit/test_base_fetcher.py::TestYieldUniqueProxies::test_unique_proxies PASSED [ 36%]
+tests/unit/test_base_fetcher.py::TestYieldUniqueProxies::test_duplicates_removed PASSED [ 37%]
+tests/unit/test_base_fetcher.py::TestYieldUniqueProxies::test_empty_list PASSED [ 39%]
+tests/unit/test_base_fetcher.py::TestYieldUniqueProxies::test_preserves_order PASSED [ 40%]
+tests/unit/test_base_fetcher.py::TestYieldUniqueProxies::test_is_generator FAILED [ 42%]
+
+=================================== FAILURES ===================================
+___________________ TestYieldUniqueProxies.test_is_generator ___________________
+tests/unit/test_base_fetcher.py:189: in test_is_generator
+    assert isinstance(gen, types.GeneratorType)
+E   AssertionError: assert False
+E    +  where False = isinstance([], <class 'generator'>)
+E    +    where <class 'generator'> = <module 'types' from '/usr/local/lib/python3.11/types.py'>.GeneratorType
+=========================== short test summary info ============================
+FAILED tests/unit/test_base_fetcher.py::TestYieldUniqueProxies::test_is_generator
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+========================= 1 failed, 28 passed in 0.16s =========================
+OMNIGRIL_EXIT_CODE=1

@@ -1,0 +1,204 @@
+Checking patch tests/api/v2/test_accepted_note_atomicity.py...
+error: tests/api/v2/test_accepted_note_atomicity.py: already exists in working directory
+Checking patch tests/cli/test_command_utils.py...
+error: while searching for:
+"""Tests for CLI command utilities."""
+
+import basic_memory.cloud.note_content_materialization as note_content_materialization
+import basic_memory.db as db
+import basic_memory.index.local_schedulers as local_schedulers
+from basic_memory.cli.commands.command_utils import run_with_cleanup
+
+error: patch failed: tests/cli/test_command_utils.py:1
+error: tests/cli/test_command_utils.py: patch does not apply
+Checking patch tests/cloud/test_cloud_services.py...
+error: while searching for:
+from basic_memory.schemas.request import EditEntityRequest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+import basic_memory.cloud.note_content_reads as note_content_reads
+import basic_memory.cloud.note_content_writes as note_content_writes
+from basic_memory.cloud.directory_deletes import (
+    DirectoryDeleteService,
+    DirectoryDeleteServiceError,
+)
+from basic_memory.cloud.note_content_reads import NoteContentQueryService
+from basic_memory.cloud.note_content_writes import (
+    NoteContentMutationActorContext,
+    NoteContentMutationService,
+    NoteContentMutationServiceError,
+
+error: patch failed: tests/cloud/test_cloud_services.py:36
+error: tests/cloud/test_cloud_services.py: patch does not apply
+Checking patch tests/cloud/test_note_content_materialization.py...
+error: while searching for:
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+import basic_memory.cloud.note_content_materialization as note_content_materialization
+from basic_memory.cloud.note_content_materialization import (
+    InlineNoteFileDeleteEnqueuer,
+    LocalNoteContentMaterializationProvider,
+    LocalNoteContentStorage,
+
+error: patch failed: tests/cloud/test_note_content_materialization.py:11
+error: tests/cloud/test_note_content_materialization.py: patch does not apply
+Checking patch tests/cloud/test_note_content_read_service.py...
+error: while searching for:
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+import basic_memory.cloud.note_content_reads as note_content_reads
+from basic_memory.cloud.note_content_reads import NoteContentQueryService
+from basic_memory.runtime.note_content import (
+    NOTE_CONTENT_EXTERNAL_CHANGE_SYNC_ERROR,
+    runtime_note_content_payload_as_dict,
+
+error: patch failed: tests/cloud/test_note_content_read_service.py:9
+error: tests/cloud/test_note_content_read_service.py: patch does not apply
+Checking patch tests/cloud/test_project_deletes.py...
+error: while searching for:
+
+import pytest
+import pytest_asyncio
+from basic_memory.cloud.project_deletes import (
+    ProjectDeleteAcceptanceError,
+    ProjectDeleteAcceptanceRequest,
+    ProjectDeleteAcceptanceService,
+
+error: patch failed: tests/cloud/test_project_deletes.py:4
+error: tests/cloud/test_project_deletes.py: patch does not apply
+Checking patch tests/indexing/test_accepted_note_mutation_runner.py...
+error: while searching for:
+from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
+from uuid import UUID
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+error: patch failed: tests/indexing/test_accepted_note_mutation_runner.py:8
+error: tests/indexing/test_accepted_note_mutation_runner.py: patch does not apply
+Checking patch tests/indexing/test_accepted_note_write_runner.py...
+error: while searching for:
+    create_accepted_pending_entity,
+    delete_accepted_note,
+    delete_accepted_note_entity,
+    persist_accepted_note_write,
+    prepare_accepted_note_create,
+    prepare_accepted_note_edit,
+    prepare_accepted_note_move,
+    prepare_accepted_note_replace,
+    refresh_accepted_note_search_index,
+    replace_accepted_note_graph,
+    delete_accepted_note_search_index,
+)
+from basic_memory.models import Entity, NoteContent
+from basic_memory.repository import (
+    AcceptedNoteContentWrite,
+    AcceptedObservationWrite,
+    AcceptedRelationWrite,
+)
+from basic_memory.repository.entity_repository import AcceptedPendingEntityWrite
+from basic_memory.schemas.base import Entity as EntitySchema
+
+
+_PREPARED_CREATED_AT = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
+_PREPARED_UPDATED_AT = datetime(2024, 1, 16, 11, 45, tzinfo=UTC)
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedFields:
+    title: str
+    note_type: str
+    entity_metadata: dict[str, object] | None
+    content_type: str
+    permalink: str | None
+    file_path: str
+    created_at: datetime = _PREPARED_CREATED_AT
+    updated_at: datetime = _PREPARED_UPDATED_AT
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedWrite:
+    markdown_content: str
+    search_content: str
+    entity_fields: _PreparedFields
+    observations: Sequence[AcceptedObservationWrite] = ()
+    relations: Sequence[AcceptedRelationWrite] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class _PreparedMove:
+    file_path: Path
+    markdown_content: str
+    search_content: str
+    permalink: str | None
+
+
+class _FlushSession:
+    def __init__(self) -> None:
+        self.flush_count = 0
+
+error: patch failed: tests/indexing/test_accepted_note_write_runner.py:23
+error: tests/indexing/test_accepted_note_write_runner.py: patch does not apply
+Checking patch tests/indexing/test_project_index_maintenance.py...
+error: while searching for:
+from typing import cast
+
+import basic_memory.indexing.project_index_maintenance as project_index_maintenance_module
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+
+error: patch failed: tests/indexing/test_project_index_maintenance.py:7
+error: tests/indexing/test_project_index_maintenance.py: patch does not apply
+Checking patch tests/mcp/test_server_lifespan_branches.py...
+error: while searching for:
+
+import pytest
+
+import basic_memory.cloud.note_content_materialization as note_content_materialization
+import basic_memory.mcp.server as server_module
+from basic_memory import db
+from basic_memory.mcp.server import lifespan, mcp
+
+error: patch failed: tests/mcp/test_server_lifespan_branches.py:2
+error: tests/mcp/test_server_lifespan_branches.py: patch does not apply
+Checking patch tests/test_architecture_boundaries.py...
+error: tests/test_architecture_boundaries.py: already exists in working directory
+Downloading cpython-3.14.7-linux-x86_64-gnu (download) (34.3MiB)
+ Downloaded cpython-3.14.7-linux-x86_64-gnu (download)
+Using CPython 3.14.7
+Removed virtual environment at: .venv
+Creating virtual environment at: .venv
+   Building basic-memory @ file:///testbed
+Downloading asyncpg (3.3MiB)
+Downloading pydantic-core (2.0MiB)
+Downloading pillow (6.6MiB)
+Downloading libcst (2.2MiB)
+Downloading aiohttp (1.7MiB)
+Downloading tiktoken (1.1MiB)
+Downloading uvloop (4.1MiB)
+Downloading onnxruntime (17.8MiB)
+Downloading numpy (15.9MiB)
+Downloading sqlalchemy (3.1MiB)
+Downloading gevent (2.0MiB)
+ Downloaded aiohttp
+ Downloaded tiktoken
+ Downloaded pydantic-core
+ Downloaded gevent
+ Downloaded libcst
+ Downloaded sqlalchemy
+ Downloaded asyncpg
+ Downloaded uvloop
+ Downloaded pillow
+ Downloaded numpy
+      Built basic-memory @ file:///testbed
+ Downloaded onnxruntime
+Installed 187 packages in 5.27s
+2026-10-01 19:25:56.631 | DEBUG    | basic_memory.api.template_loader:__init__:235 - Initialized template loader with directory: /testbed/src/basic_memory/templates
+ERROR: file or directory not found: tests/api/v2/test_accepted_note_atomicity.py
+

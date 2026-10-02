@@ -1,0 +1,7591 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/.github/config/extensions/sqlite_scanner.cmake b/.github/config/extensions/sqlite_scanner.cmake
+--- a/.github/config/extensions/sqlite_scanner.cmake
++++ b/.github/config/extensions/sqlite_scanner.cmake
+@@ -6,7 +6,7 @@ else ()
+ endif()
+ 
+ duckdb_extension_load(sqlite_scanner
+-        ${STATIC_LINK_SQLITE} LOAD_TESTS
++        ${STATIC_LINK_SQLITE} LOAD_TESTS APPLY_PATCHES
+         GIT_URL https://github.com/duckdb/duckdb-sqlite
+         GIT_TAG 73254c99b1873a083bbae0640a3d8a7fef431761
+         )
+diff --git a/.github/patches/extensions/avro/fix.patch b/.github/patches/extensions/avro/fix.patch
+--- a/.github/patches/extensions/avro/fix.patch
++++ b/.github/patches/extensions/avro/fix.patch
+@@ -1,5 +1,5 @@
+ diff --git a/src/avro_reader.cpp b/src/avro_reader.cpp
+-index 5317c43..cbe887b 100644
++index 5317c43..4a21b5b 100644
+ --- a/src/avro_reader.cpp
+ +++ b/src/avro_reader.cpp
+ @@ -1,6 +1,11 @@
+@@ -15,6 +15,15 @@ index 5317c43..cbe887b 100644
+  #include "duckdb/common/file_system.hpp"
+  #include "duckdb/common/multi_file/multi_file_data.hpp"
+  
++@@ -71,7 +76,7 @@ static AvroType TransformSchema(avro_schema_t &avro_schema, unordered_set<string
++ 	case AVRO_ENUM: {
++ 		auto size = avro_schema_enum_number_of_symbols(avro_schema);
++ 		Vector levels(LogicalType::VARCHAR, size);
++-		auto levels_data = FlatVector::GetData<string_t>(levels);
+++		auto levels_data = FlatVector::GetDataMutable<string_t>(levels);
++ 		for (idx_t enum_idx = 0; enum_idx < static_cast<idx_t>(size); enum_idx++) {
++ 			levels_data[enum_idx] = StringVector::AddString(levels, avro_schema_enum_get(avro_schema, enum_idx));
++ 		}
+ @@ -119,18 +124,15 @@ static AvroType TransformSchema(avro_schema_t &avro_schema, unordered_set<string
+  }
+  
+@@ -42,6 +51,68 @@ index 5317c43..cbe887b 100644
+  
+  	if (avro_reader_reader(avro_reader, &reader)) {
+  		throw InvalidInputException(avro_strerror());
++@@ -171,29 +173,29 @@ static void TransformValue(avro_value *avro_val, const AvroType &avro_type, Vect
++ 		if (avro_value_get_boolean(avro_val, &bool_val)) {
++ 			throw InvalidInputException(avro_strerror());
++ 		}
++-		FlatVector::GetData<uint8_t>(target)[out_idx] = bool_val != 0;
+++		FlatVector::GetDataMutable<uint8_t>(target)[out_idx] = bool_val != 0;
++ 		break;
++ 	}
++ 	case LogicalTypeId::INTEGER: {
++-		if (avro_value_get_int(avro_val, &FlatVector::GetData<int32_t>(target)[out_idx])) {
+++		if (avro_value_get_int(avro_val, &FlatVector::GetDataMutable<int32_t>(target)[out_idx])) {
++ 			throw InvalidInputException(avro_strerror());
++ 		}
++ 		break;
++ 	}
++ 	case LogicalTypeId::BIGINT: {
++-		if (avro_value_get_long(avro_val, &FlatVector::GetData<int64_t>(target)[out_idx])) {
+++		if (avro_value_get_long(avro_val, &FlatVector::GetDataMutable<int64_t>(target)[out_idx])) {
++ 			throw InvalidInputException(avro_strerror());
++ 		}
++ 		break;
++ 	}
++ 	case LogicalTypeId::FLOAT: {
++-		if (avro_value_get_float(avro_val, &FlatVector::GetData<float>(target)[out_idx])) {
+++		if (avro_value_get_float(avro_val, &FlatVector::GetDataMutable<float>(target)[out_idx])) {
++ 			throw InvalidInputException(avro_strerror());
++ 		}
++ 		break;
++ 	}
++ 	case LogicalTypeId::DOUBLE: {
++-		if (avro_value_get_double(avro_val, &FlatVector::GetData<double>(target)[out_idx])) {
+++		if (avro_value_get_double(avro_val, &FlatVector::GetDataMutable<double>(target)[out_idx])) {
++ 			throw InvalidInputException(avro_strerror());
++ 		}
++ 		break;
++@@ -206,7 +208,7 @@ static void TransformValue(avro_value *avro_val, const AvroType &avro_type, Vect
++ 			if (avro_value_get_fixed(avro_val, &fixed_data, &fixed_size)) {
++ 				throw InvalidInputException(avro_strerror());
++ 			}
++-			FlatVector::GetData<string_t>(target)[out_idx] =
+++			FlatVector::GetDataMutable<string_t>(target)[out_idx] =
++ 			    StringVector::AddStringOrBlob(target, const_char_ptr_cast(fixed_data), fixed_size);
++ 			break;
++ 		}
++@@ -215,7 +217,7 @@ static void TransformValue(avro_value *avro_val, const AvroType &avro_type, Vect
++ 			if (avro_value_grab_bytes(avro_val, &blob_buf)) {
++ 				throw InvalidInputException(avro_strerror());
++ 			}
++-			FlatVector::GetData<string_t>(target)[out_idx] =
+++			FlatVector::GetDataMutable<string_t>(target)[out_idx] =
++ 			    StringVector::AddStringOrBlob(target, const_char_ptr_cast(blob_buf.buf), blob_buf.size);
++ 			blob_buf.free(&blob_buf);
++ 			break;
++@@ -235,7 +237,7 @@ static void TransformValue(avro_value *avro_val, const AvroType &avro_type, Vect
++ 		if (Utf8Proc::Analyze(const_char_ptr_cast(str_buf.buf), str_buf.size - 1) == UnicodeType::INVALID) {
++ 			throw InvalidInputException("Avro file contains invalid unicode string");
++ 		}
++-		FlatVector::GetData<string_t>(target)[out_idx] =
+++		FlatVector::GetDataMutable<string_t>(target)[out_idx] =
++ 		    StringVector::AddString(target, const_char_ptr_cast(str_buf.buf), str_buf.size - 1);
++ 		str_buf.free(&str_buf);
++ 		break;
+ @@ -254,7 +256,7 @@ static void TransformValue(avro_value *avro_val, const AvroType &avro_type, Vect
+  				throw InvalidInputException(avro_strerror());
+  			}
+@@ -51,7 +122,14 @@ index 5317c43..cbe887b 100644
+  		}
+  		break;
+  	}
+-@@ -284,7 +286,7 @@ static void TransformValue(avro_value *avro_val, const AvroType &avro_type, Vect
++@@ -278,13 +280,13 @@ static void TransformValue(avro_value *avro_val, const AvroType &avro_type, Vect
++ 		if (target.GetType().id() == LogicalTypeId::UNION) {
++ 			auto duckdb_child_index = avro_type.union_child_map.at(discriminant).GetIndex();
++ 			auto &tags = UnionVector::GetTags(target);
++-			FlatVector::GetData<union_tag_t>(tags)[out_idx] = duckdb_child_index;
+++			FlatVector::GetDataMutable<union_tag_t>(tags)[out_idx] = duckdb_child_index;
++ 			auto &union_vector = UnionVector::GetMember(target, duckdb_child_index);
++ 
+  			// orrrrrrrrrrrrr
+  			for (idx_t child_idx = 1; child_idx < StructVector::GetEntries(target).size(); child_idx++) {
+  				if (child_idx != duckdb_child_index + 1) { // duckdb child index is bigger because of the tag
+@@ -60,6 +138,41 @@ index 5317c43..cbe887b 100644
+  				}
+  			}
+  
++@@ -308,13 +310,13 @@ static void TransformValue(avro_value *avro_val, const AvroType &avro_type, Vect
++ 
++ 		switch (enum_type) {
++ 		case PhysicalType::UINT8:
++-			FlatVector::GetData<uint8_t>(target)[out_idx] = enum_val;
+++			FlatVector::GetDataMutable<uint8_t>(target)[out_idx] = enum_val;
++ 			break;
++ 		case PhysicalType::UINT16:
++-			FlatVector::GetData<uint16_t>(target)[out_idx] = enum_val;
+++			FlatVector::GetDataMutable<uint16_t>(target)[out_idx] = enum_val;
++ 			break;
++ 		case PhysicalType::UINT32:
++-			FlatVector::GetData<uint32_t>(target)[out_idx] = enum_val;
+++			FlatVector::GetDataMutable<uint32_t>(target)[out_idx] = enum_val;
++ 			break;
++ 		default:
++ 			throw InternalException("Unsupported Enum Internal Type");
++@@ -351,7 +353,7 @@ static void TransformValue(avro_value *avro_val, const AvroType &avro_type, Vect
++ 			(void)key_type;
++ 			auto &value_type = avro_type.children[1].second;
++ 			D_ASSERT(key_vector.GetType().id() == LogicalTypeId::VARCHAR);
++-			auto string_ptr = FlatVector::GetData<string_t>(key_vector);
+++			auto string_ptr = FlatVector::GetDataMutable<string_t>(key_vector);
++ 			for (idx_t entry_idx = 0; entry_idx < list_len; entry_idx++) {
++ 				avro_value child_value;
++ 				const char *map_key;
++@@ -363,7 +365,7 @@ static void TransformValue(avro_value *avro_val, const AvroType &avro_type, Vect
++ 				TransformValue(&child_value, value_type, value_vector, child_offset + entry_idx);
++ 			}
++ 		}
++-		auto list_vector_data = ListVector::GetData(target);
+++		auto list_vector_data = FlatVector::GetDataMutable<list_entry_t>(target);
++ 		list_vector_data[out_idx].length = list_len;
++ 		list_vector_data[out_idx].offset = child_offset;
++ 		ListVector::SetListSize(target, child_offset + list_len);
+ @@ -391,7 +393,7 @@ void AvroReader::Read(DataChunk &output) {
+  				continue; // to be filled in later
+  			}
+diff --git a/.github/patches/extensions/ducklake/fix.patch b/.github/patches/extensions/ducklake/fix.patch
+--- a/.github/patches/extensions/ducklake/fix.patch
++++ b/.github/patches/extensions/ducklake/fix.patch
+@@ -1205,6 +1205,32 @@ index 851c128d..4040a5c2 100644
+  	auto catalog_type = entry->type;
+  	table_entry_map.insert(make_pair(id, reference<CatalogEntry>(*entry)));
+  	schema.AddEntry(catalog_type, std::move(entry));
++diff --git a/src/storage/ducklake_delete.cpp b/src/storage/ducklake_delete.cpp
++index 4a154ae9..c65f13b2 100644
++--- a/src/storage/ducklake_delete.cpp
+++++ b/src/storage/ducklake_delete.cpp
++@@ -92,10 +92,10 @@ static DuckLakeDeleteFile WriteDeleteFileInternal(ClientContext &context, InputT
++ 
++ 	optional_idx begin_snapshot;
++ 	idx_t row_count = 0;
++-	auto pos_data = FlatVector::GetData<int64_t>(write_chunk.data[1]);
+++	auto pos_data = FlatVector::GetDataMutable<int64_t>(write_chunk.data[1]);
++ 	int64_t *snapshot_data = nullptr;
++ 	if (with_snapshots) {
++-		snapshot_data = FlatVector::GetData<int64_t>(write_chunk.data[2]);
+++		snapshot_data = FlatVector::GetDataMutable<int64_t>(write_chunk.data[2]);
++ 	}
++ 
++ 	for (auto &entry : input.positions) {
++@@ -220,7 +220,7 @@ public:
++ 		}
++ 		ColumnDataAppendState append_state;
++ 		deleted_row_collection->InitializeAppend(append_state);
++-		auto data = FlatVector::GetData<uint64_t>(file_row_id_chunk.data[0]);
+++		auto data = FlatVector::GetDataMutable<uint64_t>(file_row_id_chunk.data[0]);
++ 		idx_t chunk_size = 0;
++ 		for (idx_t r = 0; r < local_entry.size(); ++r) {
++ 			data[chunk_size++] = local_entry[r];
+ diff --git a/src/storage/ducklake_delete_filter.cpp b/src/storage/ducklake_delete_filter.cpp
+ index 35b0518f..770ac8da 100644
+ --- a/src/storage/ducklake_delete_filter.cpp
+@@ -1239,9 +1265,26 @@ index 4fd2ecfb..d88cec05 100644
+  			}
+  			break;
+ diff --git a/src/storage/ducklake_inlined_data_reader.cpp b/src/storage/ducklake_inlined_data_reader.cpp
+-index 405a5acf..f45dfc18 100644
++index 405a5acf..98d0d503 100644
+ --- a/src/storage/ducklake_inlined_data_reader.cpp
+ +++ b/src/storage/ducklake_inlined_data_reader.cpp
++@@ -226,14 +226,14 @@ AsyncResult DuckLakeInlinedDataReader::Scan(ClientContext &context, GlobalTableF
++ 			case InlinedVirtualColumn::COLUMN_ROW_ID: {
++ 				// Generate ordinal data for row IDs
++ 				Vector ordinal_vector(LogicalType::BIGINT);
++-				auto ordinal_data = FlatVector::GetData<int64_t>(ordinal_vector);
+++				auto ordinal_data = FlatVector::GetDataMutable<int64_t>(ordinal_vector);
++ 				for (idx_t r = 0; r < scan_chunk.size(); r++) {
++ 					ordinal_data[r] = NumericCast<int64_t>(file_row_number + r);
++ 				}
++ 				if (TryEvaluateExpression(context, c, ordinal_vector, LogicalType::BIGINT, chunk.data[c])) {
++ 					continue;
++ 				}
++-				auto row_id_data = FlatVector::GetData<int64_t>(chunk.data[c]);
+++				auto row_id_data = FlatVector::GetDataMutable<int64_t>(chunk.data[c]);
++ 				for (idx_t r = 0; r < scan_chunk.size(); r++) {
++ 					row_id_data[r] = NumericCast<int64_t>(file_row_number + r);
++ 				}
+ @@ -258,17 +258,17 @@ AsyncResult DuckLakeInlinedDataReader::Scan(ClientContext &context, GlobalTableF
+  			approved_tuple_count = deletion_filter->Filter(file_row_number, approved_tuple_count, sel);
+  		}
+@@ -1664,7 +1707,7 @@ index e3ddf53b..96e99928 100644
+  		const auto &column_type = read_info.column_types[column_index.index];
+  
+ diff --git a/src/storage/ducklake_multi_file_reader.cpp b/src/storage/ducklake_multi_file_reader.cpp
+-index 2d6317f9..c55547a3 100644
++index 2d6317f9..a32fe7f3 100644
+ --- a/src/storage/ducklake_multi_file_reader.cpp
+ +++ b/src/storage/ducklake_multi_file_reader.cpp
+ @@ -28,6 +28,7 @@
+@@ -1693,6 +1736,15 @@ index 2d6317f9..c55547a3 100644
+  
+  		// Add _ducklake_internal_snapshot_id <= snapshot_filter_max
+  		if (file_entry.snapshot_filter_max.IsValid()) {
++@@ -602,7 +603,7 @@ void DuckLakeMultiFileReader::GatherDeletionScanSnapshots(BaseFileReader &reader
++ 
++ 	idx_t count = chunk.size();
++ 	snapshot_vector.Flatten(count);
++-	auto snapshot_data = FlatVector::GetData<int64_t>(snapshot_vector);
+++	auto snapshot_data = FlatVector::GetDataMutable<int64_t>(snapshot_vector);
++ 
++ 	UnifiedVectorFormat row_id_data;
++ 	rowid_vector.ToUnifiedFormat(count, row_id_data);
+ diff --git a/src/storage/ducklake_schema_entry.cpp b/src/storage/ducklake_schema_entry.cpp
+ index 020cc3be..7a7c0517 100644
+ --- a/src/storage/ducklake_schema_entry.cpp
+diff --git a/.github/patches/extensions/excel/fix.patch b/.github/patches/extensions/excel/fix.patch
+--- a/.github/patches/extensions/excel/fix.patch
++++ b/.github/patches/extensions/excel/fix.patch
+@@ -1,3 +1,16 @@
++diff --git a/src/excel/include/xlsx/parsers/worksheet_parser.hpp b/src/excel/include/xlsx/parsers/worksheet_parser.hpp
++index 0b13361..eb631d2 100644
++--- a/src/excel/include/xlsx/parsers/worksheet_parser.hpp
+++++ b/src/excel/include/xlsx/parsers/worksheet_parser.hpp
++@@ -509,7 +509,7 @@ inline void SheetParser::OnCell(const XLSXCellPos &pos, XLSXCellType type, vecto
++ 	auto &vec = chunk.data[pos.col - range.beg.col];
++ 
++ 	// Push the cell data to our chunk
++-	const auto ptr = FlatVector::GetData<string_t>(vec);
+++	auto ptr = FlatVector::GetDataMutable<string_t>(vec);
++ 
++ 	if (type == XLSXCellType::SHARED_STRING) {
++ 		// Push a null to the buffer so that the string is null-terminated
+ diff --git a/src/excel/xlsx/copy_xlsx.cpp b/src/excel/xlsx/copy_xlsx.cpp
+ index 63b052c..de7bccf 100644
+ --- a/src/excel/xlsx/copy_xlsx.cpp
+diff --git a/.github/patches/extensions/iceberg/fix.patch b/.github/patches/extensions/iceberg/fix.patch
+--- a/.github/patches/extensions/iceberg/fix.patch
++++ b/.github/patches/extensions/iceberg/fix.patch
+@@ -1,9 +1,3 @@
+-commit d1416293580a95b6027defb682f1b29265f8d954
+-Author: dentiny <dentinyhao@gmail.com>
+-Date:   Wed Mar 25 11:56:19 2026 +0000
+-
+-    Sync DuckDB core
+-
+ diff --git a/src/deletes/deletion_vector.cpp b/src/deletes/deletion_vector.cpp
+ index 4248c353..d3e19c4f 100644
+ --- a/src/deletes/deletion_vector.cpp
+@@ -54,8 +48,21 @@ index 4248c353..d3e19c4f 100644
+  }
+  
+  idx_t IcebergDeletionVector::Filter(row_t start_row_index, idx_t count, SelectionVector &result_sel) {
++diff --git a/src/deletes/positional_delete.cpp b/src/deletes/positional_delete.cpp
++index 089c8c80..14d6d7f9 100644
++--- a/src/deletes/positional_delete.cpp
+++++ b/src/deletes/positional_delete.cpp
++@@ -35,7 +35,7 @@ void IcebergMultiFileList::ScanPositionalDeleteFile(const IcebergManifestEntry &
++ 	if (count == 0) {
++ 		return;
++ 	}
++-	reference<string_t> current_file_path = names[0];
+++	reference<const string_t> current_file_path = names[0];
++ 	auto initial_key = current_file_path.get().GetString();
++ 	auto deletes = TryGetOrCreate(positional_delete_data, entry, initial_key);
++ 
+ diff --git a/src/iceberg_functions/iceberg_avro_multi_file_reader.cpp b/src/iceberg_functions/iceberg_avro_multi_file_reader.cpp
+-index 52f39468..4912c730 100644
++index 52f39468..e56f558b 100644
+ --- a/src/iceberg_functions/iceberg_avro_multi_file_reader.cpp
+ +++ b/src/iceberg_functions/iceberg_avro_multi_file_reader.cpp
+ @@ -1,3 +1,5 @@
+@@ -64,7 +71,18 @@ index 52f39468..4912c730 100644
+  #include "iceberg_avro_multi_file_reader.hpp"
+  #include "iceberg_avro_multi_file_list.hpp"
+  #include "duckdb/common/exception.hpp"
+-@@ -474,10 +476,10 @@ void IcebergAvroMultiFileReader::FinalizeChunk(ClientContext &context, const Mul
++@@ -445,8 +447,8 @@ void IcebergAvroMultiFileReader::FinalizeChunk(ClientContext &context, const Mul
++ 	auto &sequence_number_column = output_chunk.data[2];
++ 	sequence_number_column.Flatten(count);
++ 	auto &sequence_number_validity = FlatVector::Validity(sequence_number_column);
++-	auto sequence_number_data = FlatVector::GetData<int64_t>(sequence_number_column);
++-	auto status_column_data = FlatVector::GetData<int32_t>(status_column);
+++	auto sequence_number_data = FlatVector::GetDataMutable<int64_t>(sequence_number_column);
+++	auto status_column_data = FlatVector::GetDataMutable<int32_t>(status_column);
++ 	for (idx_t i = 0; i < count; i++) {
++ 		if (sequence_number_validity.RowIsValid(i)) {
++ 			//! Sequence number is explicitly set
++@@ -474,15 +476,15 @@ void IcebergAvroMultiFileReader::FinalizeChunk(ClientContext &context, const Mul
+  	auto &data_file_column = output_chunk.data[4];
+  	auto &data_struct_children = StructVector::GetEntries(data_file_column);
+  
+@@ -77,6 +95,57 @@ index 52f39468..4912c730 100644
+  	record_count_column.Flatten(count);
+  
+  	auto &first_row_id_validity = FlatVector::Validity(first_row_id_column);
++-	auto first_row_id_data = FlatVector::GetData<int64_t>(first_row_id_column);
++-	auto record_count_data = FlatVector::GetData<int64_t>(record_count_column);
+++	auto first_row_id_data = FlatVector::GetDataMutable<int64_t>(first_row_id_column);
+++	auto record_count_data = FlatVector::GetDataMutable<int64_t>(record_count_column);
++ 	for (idx_t i = 0; i < count; i++) {
++ 		if (first_row_id_validity.RowIsValid(i)) {
++ 			//! First row id is explicitly set
++diff --git a/src/iceberg_functions/iceberg_column_stats.cpp b/src/iceberg_functions/iceberg_column_stats.cpp
++index 859c13ba..52af5ed1 100644
++--- a/src/iceberg_functions/iceberg_column_stats.cpp
+++++ b/src/iceberg_functions/iceberg_column_stats.cpp
++@@ -152,7 +152,7 @@ static unique_ptr<FunctionData> IcebergColumnStatsBind(ClientContext &context, T
++ }
++ 
++ static void AddString(Vector &vec, idx_t index, string_t &&str) {
++-	FlatVector::GetData<string_t>(vec)[index] = StringVector::AddString(vec, std::move(str));
+++	FlatVector::GetDataMutable<string_t>(vec)[index] = StringVector::AddString(vec, std::move(str));
++ }
++ 
++ static void IcebergColumnStatsFunction(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
++diff --git a/src/iceberg_functions/iceberg_metadata.cpp b/src/iceberg_functions/iceberg_metadata.cpp
++index 45130ea6..cf5f19cd 100644
++--- a/src/iceberg_functions/iceberg_metadata.cpp
+++++ b/src/iceberg_functions/iceberg_metadata.cpp
++@@ -121,7 +121,7 @@ static unique_ptr<FunctionData> IcebergMetaDataBind(ClientContext &context, Tabl
++ }
++ 
++ static void AddString(Vector &vec, idx_t index, string_t &&str) {
++-	FlatVector::GetData<string_t>(vec)[index] = StringVector::AddString(vec, std::move(str));
+++	FlatVector::GetDataMutable<string_t>(vec)[index] = StringVector::AddString(vec, std::move(str));
++ }
++ 
++ static void IcebergMetaDataFunction(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
++@@ -150,7 +150,7 @@ static void IcebergMetaDataFunction(ClientContext &context, TableFunctionInput &
++ 			//! manifest_path
++ 			AddString(output.data[0], out, string_t(manifest.manifest_path));
++ 			//! manifest_sequence_number
++-			FlatVector::GetData<int64_t>(output.data[1])[out] = manifest.sequence_number;
+++			FlatVector::GetDataMutable<int64_t>(output.data[1])[out] = manifest.sequence_number;
++ 			//! manifest_content
++ 			AddString(output.data[2], out, string_t(IcebergManifestFile::ContentTypeToString(manifest.content)));
++ 
++@@ -163,7 +163,7 @@ static void IcebergMetaDataFunction(ClientContext &context, TableFunctionInput &
++ 			//! file_format
++ 			AddString(output.data[6], out, string_t(data_file.file_format));
++ 			//! record_count
++-			FlatVector::GetData<int64_t>(output.data[7])[out] = data_file.record_count;
+++			FlatVector::GetDataMutable<int64_t>(output.data[7])[out] = data_file.record_count;
++ 			out++;
++ 		}
++ 		global_state.current_manifest_entry_idx = 0;
+ diff --git a/src/iceberg_functions/iceberg_multi_file_list.cpp b/src/iceberg_functions/iceberg_multi_file_list.cpp
+ index e0b57e41..de141b97 100644
+ --- a/src/iceberg_functions/iceberg_multi_file_list.cpp
+@@ -258,6 +327,97 @@ index cda34b67..6693bcab 100644
+  		}
+  	}
+  
++diff --git a/src/iceberg_functions/iceberg_partition_stats.cpp b/src/iceberg_functions/iceberg_partition_stats.cpp
++index 28d45144..701eedcc 100644
++--- a/src/iceberg_functions/iceberg_partition_stats.cpp
+++++ b/src/iceberg_functions/iceberg_partition_stats.cpp
++@@ -153,7 +153,7 @@ static unique_ptr<FunctionData> IcebergPartitionStatsBind(ClientContext &context
++ }
++ 
++ static void AddString(Vector &vec, idx_t index, string_t &&str) {
++-	FlatVector::GetData<string_t>(vec)[index] = StringVector::AddString(vec, std::move(str));
+++	FlatVector::GetDataMutable<string_t>(vec)[index] = StringVector::AddString(vec, std::move(str));
++ }
++ 
++ static void IcebergPartitionStatsFunction(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
++@@ -198,11 +198,11 @@ static void IcebergPartitionStatsFunction(ClientContext &context, TableFunctionI
++ 			//! manifest_path
++ 			AddString(output.data[col++], out, string_t(manifest.manifest_path));
++ 			//! added_snapshot_id
++-			FlatVector::GetData<int64_t>(output.data[col++])[out] = manifest.added_snapshot_id;
+++			FlatVector::GetDataMutable<int64_t>(output.data[col++])[out] = manifest.added_snapshot_id;
++ 			//! partition_spec_id
++-			FlatVector::GetData<int32_t>(output.data[col++])[out] = manifest.partition_spec_id;
+++			FlatVector::GetDataMutable<int32_t>(output.data[col++])[out] = manifest.partition_spec_id;
++ 			//! partition_field_id
++-			FlatVector::GetData<uint64_t>(output.data[col++])[out] = field.partition_field_id;
+++			FlatVector::GetDataMutable<uint64_t>(output.data[col++])[out] = field.partition_field_id;
++ 			//! partition_field_name
++ 			AddString(output.data[col++], out, string_t(field.name));
++ 			//! partition_source_columns
++@@ -221,9 +221,9 @@ static void IcebergPartitionStatsFunction(ClientContext &context, TableFunctionI
++ 			AddString(output.data[col++], out, string_t(stats.upper_bound.ToString()));
++ 
++ 			//! contains_null
++-			FlatVector::GetData<bool>(output.data[col++])[out] = field_summary.contains_null;
+++			FlatVector::GetDataMutable<bool>(output.data[col++])[out] = field_summary.contains_null;
++ 			//! contains_nan
++-			FlatVector::GetData<bool>(output.data[col++])[out] = field_summary.contains_nan;
+++			FlatVector::GetDataMutable<bool>(output.data[col++])[out] = field_summary.contains_nan;
++ 
++ 			out++;
++ 		}
++diff --git a/src/iceberg_functions/iceberg_snapshots.cpp b/src/iceberg_functions/iceberg_snapshots.cpp
++index eb5cad0f..2cdffef1 100644
++--- a/src/iceberg_functions/iceberg_snapshots.cpp
+++++ b/src/iceberg_functions/iceberg_snapshots.cpp
++@@ -89,11 +89,11 @@ static void IcebergSnapshotsFunction(ClientContext &context, TableFunctionInput
++ 		}
++ 
++ 		auto &snapshot = it->second;
++-		FlatVector::GetData<uint64_t>(output.data[0])[i] = snapshot.sequence_number;
++-		FlatVector::GetData<uint64_t>(output.data[1])[i] = snapshot.snapshot_id;
++-		FlatVector::GetData<timestamp_t>(output.data[2])[i] = snapshot.timestamp_ms;
+++		FlatVector::GetDataMutable<uint64_t>(output.data[0])[i] = snapshot.sequence_number;
+++		FlatVector::GetDataMutable<uint64_t>(output.data[1])[i] = snapshot.snapshot_id;
+++		FlatVector::GetDataMutable<timestamp_t>(output.data[2])[i] = snapshot.timestamp_ms;
++ 		string_t manifest_string_t = StringVector::AddString(output.data[3], string_t(snapshot.manifest_list));
++-		FlatVector::GetData<string_t>(output.data[3])[i] = manifest_string_t;
+++		FlatVector::GetDataMutable<string_t>(output.data[3])[i] = manifest_string_t;
++ 		i++;
++ 	}
++ 	output.SetCardinality(i);
++diff --git a/src/iceberg_functions/iceberg_table_properties_functions.cpp b/src/iceberg_functions/iceberg_table_properties_functions.cpp
++index cc523d6c..0161f7fa 100644
++--- a/src/iceberg_functions/iceberg_table_properties_functions.cpp
+++++ b/src/iceberg_functions/iceberg_table_properties_functions.cpp
++@@ -142,7 +142,7 @@ static unique_ptr<FunctionData> GetIcebergTablePropertiesBind(ClientContext &con
++ }
++ 
++ static void AddString(Vector &vec, idx_t index, string_t &&str) {
++-	FlatVector::GetData<string_t>(vec)[index] = StringVector::AddString(vec, std::move(str));
+++	FlatVector::GetDataMutable<string_t>(vec)[index] = StringVector::AddString(vec, std::move(str));
++ }
++ 
++ static void SetIcebergTablePropertiesFunction(ClientContext &context, TableFunctionInput &data, DataChunk &output) {
++@@ -173,7 +173,7 @@ static void SetIcebergTablePropertiesFunction(ClientContext &context, TableFunct
++ 	transaction_data->TableSetProperties(bind_data.properties);
++ 	global_state.properties_set = true;
++ 	// set success output, failure happens during transaction commit.
++-	FlatVector::GetData<int64_t>(output.data[0])[0] = bind_data.properties.size();
+++	FlatVector::GetDataMutable<int64_t>(output.data[0])[0] = bind_data.properties.size();
++ 	output.SetCardinality(1);
++ }
++ 
++@@ -205,7 +205,7 @@ static void RemoveIcebergTablePropertiesFunction(ClientContext &context, TableFu
++ 	transaction_data->TableRemoveProperties(bind_data.remove_properties);
++ 	global_state.properties_removed = true;
++ 	// set success output, failure happens during transaction commit.
++-	FlatVector::GetData<int64_t>(output.data[0])[0] = bind_data.properties.size();
+++	FlatVector::GetDataMutable<int64_t>(output.data[0])[0] = bind_data.properties.size();
++ 	output.SetCardinality(1);
++ }
++ 
+ diff --git a/src/iceberg_manifest.cpp b/src/iceberg_manifest.cpp
+ index 194dce6d..ad793d8f 100644
+ --- a/src/iceberg_manifest.cpp
+@@ -349,7 +509,7 @@ index b4bb905b..335f7c6b 100644
+  	mutable mutex entry_lock;
+  	mutable vector<IcebergManifestEntry> manifest_entries;
+ diff --git a/src/manifest_list_reader.cpp b/src/manifest_list_reader.cpp
+-index fb237399..b756ac18 100644
++index fb237399..53e9743d 100644
+ --- a/src/manifest_list_reader.cpp
+ +++ b/src/manifest_list_reader.cpp
+ @@ -1,3 +1,6 @@
+@@ -374,8 +534,23 @@ index fb237399..b756ac18 100644
+  
+  	optional_ptr<Vector> first_row_id;
+  	if (iceberg_version >= 3) {
++@@ -75,10 +78,10 @@ idx_t ManifestListReader::ReadChunk(idx_t offset, idx_t count, vector<IcebergMan
++ 	auto manifest_path_data = FlatVector::GetData<string_t>(manifest_path);
++ 	auto manifest_length_data = FlatVector::GetData<int64_t>(manifest_length);
++ 	auto partition_spec_id_data = FlatVector::GetData<int32_t>(partition_spec_id);
++-	int32_t *content_data = nullptr;
++-	int64_t *sequence_number_data = nullptr;
++-	int64_t *min_sequence_number_data = nullptr;
++-	int64_t *first_row_id_data = nullptr;
+++	const int32_t *content_data = nullptr;
+++	const int64_t *sequence_number_data = nullptr;
+++	const int64_t *min_sequence_number_data = nullptr;
+++	const int64_t *first_row_id_data = nullptr;
++ 	if (iceberg_version >= 2) {
++ 		content_data = FlatVector::GetData<int32_t>(*content);
++ 		sequence_number_data = FlatVector::GetData<int64_t>(*sequence_number);
+ diff --git a/src/manifest_reader.cpp b/src/manifest_reader.cpp
+-index 020f0050..a85207dd 100644
++index 020f0050..b14000ca 100644
+ --- a/src/manifest_reader.cpp
+ +++ b/src/manifest_reader.cpp
+ @@ -1,3 +1,6 @@
+@@ -462,6 +637,17 @@ index 020f0050..a85207dd 100644
+  	}
+  
+  	auto status_data = FlatVector::GetData<int32_t>(status);
++@@ -175,8 +178,8 @@ idx_t ManifestReader::ReadChunk(idx_t offset, idx_t count, vector<IcebergManifes
++ 	auto &sort_order_id_validity = FlatVector::Validity(sort_order_id);
++ 	auto sort_order_id_data = FlatVector::GetData<int32_t>(sort_order_id);
++ 
++-	int32_t *content_data = nullptr;
++-	int64_t *first_row_id_data = nullptr;
+++	const int32_t *content_data = nullptr;
+++	const int64_t *first_row_id_data = nullptr;
++ 	optional_ptr<ValidityMask> first_row_id_validity;
++ 	if (iceberg_version >= 2) {
++ 		content_data = FlatVector::GetData<int32_t>(*content);
+ @@ -197,7 +200,7 @@ idx_t ManifestReader::ReadChunk(idx_t offset, idx_t count, vector<IcebergManifes
+  		D_ASSERT(partition_children.size() == scan_info.partition_field_id_to_type.size());
+  		idx_t child_index = 0;
+@@ -513,6 +699,19 @@ index 88f05f25..235e8809 100644
+  
+  using namespace duckdb_yyjson;
+  namespace duckdb {
++diff --git a/src/storage/iceberg_delete.cpp b/src/storage/iceberg_delete.cpp
++index 338f6ec3..e2f31f7c 100644
++--- a/src/storage/iceberg_delete.cpp
+++++ b/src/storage/iceberg_delete.cpp
++@@ -187,7 +187,7 @@ void IcebergDelete::WritePositionalDeleteFile(ClientContext &context, IcebergDel
++ 	write_chunk.data[0].Reference(filename_val);
++ 
++ 	idx_t row_count = 0;
++-	auto row_data = FlatVector::GetData<int64_t>(write_chunk.data[1]);
+++	auto row_data = FlatVector::GetDataMutable<int64_t>(write_chunk.data[1]);
++ 	for (auto &row_idx : sorted_deletes) {
++ 		row_data[row_count++] = NumericCast<int64_t>(row_idx);
++ 		if (row_count >= STANDARD_VECTOR_SIZE) {
+ diff --git a/src/storage/iceberg_insert.cpp b/src/storage/iceberg_insert.cpp
+ index 5fc79bbf..469de632 100644
+ --- a/src/storage/iceberg_insert.cpp
+diff --git a/.github/patches/extensions/inet/fix.patch b/.github/patches/extensions/inet/fix.patch
+--- a/.github/patches/extensions/inet/fix.patch
++++ b/.github/patches/extensions/inet/fix.patch
+@@ -1,5 +1,5 @@
+ diff --git a/src/inet_functions.cpp b/src/inet_functions.cpp
+-index afa7446..2f0234a 100644
++index afa7446..f0466e1 100644
+ --- a/src/inet_functions.cpp
+ +++ b/src/inet_functions.cpp
+ @@ -49,9 +49,9 @@ bool INetFunctions::CastVarcharToINET(Vector &source, Vector &result,
+@@ -9,9 +9,9 @@ index afa7446..2f0234a 100644
+ -  auto ip_type = FlatVector::GetData<uint8_t>(*entries[0]);
+ -  auto address_data = FlatVector::GetData<hugeint_t>(*entries[1]);
+ -  auto mask_data = FlatVector::GetData<uint16_t>(*entries[2]);
+-+  auto ip_type = FlatVector::GetData<uint8_t>(entries[0]);
+-+  auto address_data = FlatVector::GetData<hugeint_t>(entries[1]);
+-+  auto mask_data = FlatVector::GetData<uint16_t>(entries[2]);
+++  auto ip_type = FlatVector::GetDataMutable<uint8_t>(entries[0]);
+++  auto address_data = FlatVector::GetDataMutable<hugeint_t>(entries[1]);
+++  auto mask_data = FlatVector::GetDataMutable<uint16_t>(entries[2]);
+  
+    auto input = UnifiedVectorFormat::GetData<string_t>(vdata);
+    bool success = true;
+diff --git a/.github/patches/extensions/mysql_scanner/fix.patch b/.github/patches/extensions/mysql_scanner/fix.patch
+--- a/.github/patches/extensions/mysql_scanner/fix.patch
++++ b/.github/patches/extensions/mysql_scanner/fix.patch
+@@ -34,6 +34,117 @@ index 70ab546..9f1d512 100644
+  		auto new_filter = TransformFilter(column_name, filter);
+  		if (new_filter.empty()) {
+  			continue;
++diff --git a/src/mysql_result.cpp b/src/mysql_result.cpp
++index 712be35..f9292df 100644
++--- a/src/mysql_result.cpp
+++++ b/src/mysql_result.cpp
++@@ -185,7 +185,7 @@ string MySQLResult::GetString(idx_t col) {
++ 	MySQLField &f = fields[col];
++ 	if (f.duckdb_type.id() == LogicalTypeId::VARCHAR || f.duckdb_type.id() == LogicalTypeId::BLOB) {
++ 		Vector &vec = data_chunk.data[col];
++-		string_t *data = FlatVector::GetData<string_t>(vec);
+++		string_t *data = FlatVector::GetDataMutable<string_t>(vec);
++ 		string_t &st = data[row_idx];
++ 		return string(st.GetData(), st.GetSize());
++ 	}
++@@ -198,10 +198,10 @@ int32_t MySQLResult::GetInt32(idx_t col) {
++ 	MySQLField &f = fields[col];
++ 	Vector &vec = data_chunk.data[col];
++ 	if (f.duckdb_type.id() == LogicalTypeId::INTEGER) {
++-		int32_t *data = FlatVector::GetData<int32_t>(vec);
+++		int32_t *data = FlatVector::GetDataMutable<int32_t>(vec);
++ 		return data[row_idx];
++ 	} else if (f.duckdb_type.id() == LogicalTypeId::UINTEGER) {
++-		uint32_t *data = FlatVector::GetData<uint32_t>(vec);
+++		uint32_t *data = FlatVector::GetDataMutable<uint32_t>(vec);
++ 		return static_cast<int32_t>(data[row_idx]);
++ 	}
++ 	throw InternalException("Get called for an Int32 type, actual type: \"%s\", column: %zu, MySQL query \"%s\"\n",
++@@ -213,17 +213,17 @@ int64_t MySQLResult::GetInt64(idx_t col) {
++ 	MySQLField &f = fields[col];
++ 	Vector &vec = data_chunk.data[col];
++ 	if (f.duckdb_type.id() == LogicalTypeId::BIGINT) {
++-		int64_t *data = FlatVector::GetData<int64_t>(vec);
+++		int64_t *data = FlatVector::GetDataMutable<int64_t>(vec);
++ 		return data[row_idx];
++ 	} else if (f.duckdb_type.id() == LogicalTypeId::UBIGINT) {
++-		uint64_t *data = FlatVector::GetData<uint64_t>(vec);
+++		uint64_t *data = FlatVector::GetDataMutable<uint64_t>(vec);
++ 		return static_cast<int64_t>(data[row_idx]);
++ 	} else if (f.duckdb_type.id() == LogicalTypeId::DOUBLE) {
++ 		if (vec.GetType().id() == LogicalTypeId::DOUBLE) {
++-			double *data = FlatVector::GetData<double>(vec);
+++			double *data = FlatVector::GetDataMutable<double>(vec);
++ 			return static_cast<uint64_t>(data[row_idx]);
++ 		} else if (vec.GetType().id() == LogicalTypeId::VARCHAR) {
++-			string_t *data = FlatVector::GetData<string_t>(vec);
+++			string_t *data = FlatVector::GetDataMutable<string_t>(vec);
++ 			string_t st = data[row_idx];
++ 			return atoll(st.GetData());
++ 		}
++@@ -281,7 +281,7 @@ static void WriteTimeAsString(MySQLField &f, Vector &vec, idx_t row) {
++ 	}
++ 	string str = head + tail;
++ 	string_t st(str.c_str(), str.length());
++-	auto data = FlatVector::GetData<string_t>(vec);
+++	auto data = FlatVector::GetDataMutable<string_t>(vec);
++ 	data[row] = StringVector::AddStringOrBlob(vec, std::move(st));
++ }
++ 
++@@ -291,7 +291,7 @@ static void WriteString(MySQLField &f, Vector &vec, idx_t row) {
++ 		return;
++ 	}
++ 
++-	auto data = FlatVector::GetData<string_t>(vec);
+++	auto data = FlatVector::GetDataMutable<string_t>(vec);
++ 
++ 	if (f.varlen_buffer.size() > 0) {
++ 		string_t st(f.varlen_buffer.data(), f.varlen_buffer.size());
++@@ -306,7 +306,7 @@ static void WriteString(MySQLField &f, Vector &vec, idx_t row) {
++ 
++ static void WriteBool(MySQLField &f, Vector &vec, idx_t row) {
++ 	D_ASSERT(f.bind_buffer.size() >= sizeof(int8_t));
++-	auto data = FlatVector::GetData<bool>(vec);
+++	auto data = FlatVector::GetDataMutable<bool>(vec);
++ 	if (f.mysql_type == MYSQL_TYPE_TINY) {
++ 		int8_t val = *reinterpret_cast<int8_t *>(f.bind_buffer.data());
++ 		data[row] = val != 0;
++@@ -339,7 +339,7 @@ template <typename NUM_TYPE>
++ static void WriteNumber(MySQLField &f, Vector &vec, idx_t row) {
++ 	D_ASSERT(f.bind_buffer.size() >= sizeof(NUM_TYPE));
++ 	NUM_TYPE num = *reinterpret_cast<NUM_TYPE *>(f.bind_buffer.data());
++-	auto data = FlatVector::GetData<NUM_TYPE>(vec);
+++	auto data = FlatVector::GetDataMutable<NUM_TYPE>(vec);
++ 	data[row] = num;
++ }
++ 
++@@ -364,7 +364,7 @@ static void WriteDateTime(MySQLTypeConfig &type_config, MySQLField &f, Vector &v
++ 	switch (vec.GetType().id()) {
++ 	case LogicalTypeId::DATE: {
++ 		date_t val = Date::FromDate(mt->year, mt->month, mt->day);
++-		date_t *data = FlatVector::GetData<date_t>(vec);
+++		date_t *data = FlatVector::GetDataMutable<date_t>(vec);
++ 		data[row] = val;
++ 		break;
++ 	}
++@@ -374,7 +374,7 @@ static void WriteDateTime(MySQLTypeConfig &type_config, MySQLField &f, Vector &v
++ 			throw BinderException("time field value out of range, hour value: " + std::to_string(mt->hour));
++ 		}
++ 		dtime_t val = Time::FromTime(mt->hour, mt->minute, mt->second, mt->second_part);
++-		dtime_t *data = FlatVector::GetData<dtime_t>(vec);
+++		dtime_t *data = FlatVector::GetDataMutable<dtime_t>(vec);
++ 		data[row] = val;
++ 		break;
++ 	}
++@@ -382,7 +382,7 @@ static void WriteDateTime(MySQLTypeConfig &type_config, MySQLField &f, Vector &v
++ 		date_t dt = Date::FromDate(mt->year, mt->month, mt->day);
++ 		dtime_t tm = Time::FromTime(mt->hour, mt->minute, mt->second, mt->second_part);
++ 		timestamp_t val = Timestamp::FromDatetime(dt, tm);
++-		timestamp_t *data = FlatVector::GetData<timestamp_t>(vec);
+++		timestamp_t *data = FlatVector::GetDataMutable<timestamp_t>(vec);
++ 		data[row] = val;
++ 		break;
++ 	}
+ diff --git a/src/storage/mysql_execute_query.cpp b/src/storage/mysql_execute_query.cpp
+ index b66df5d..73699f6 100644
+ --- a/src/storage/mysql_execute_query.cpp
+@@ -60,3 +171,25 @@ index b66df5d..73699f6 100644
+  			auto filter_str = filter_expr->ToString();
+  			if (result.empty()) {
+  				result = std::move(filter_str);
++diff --git a/src/storage/mysql_insert.cpp b/src/storage/mysql_insert.cpp
++index e75e147..d3db3d2 100644
++--- a/src/storage/mysql_insert.cpp
+++++ b/src/storage/mysql_insert.cpp
++@@ -122,7 +122,7 @@ unique_ptr<GlobalSinkState> MySQLInsert::GetGlobalSinkState(ClientContext &conte
++ static void MySQLCastBlob(const Vector &input, Vector &result, idx_t count) {
++ 	static constexpr const char *HEX_TABLE = "0123456789ABCDEF";
++ 	auto input_data = FlatVector::GetData<string_t>(input);
++-	auto result_data = FlatVector::GetData<string_t>(result);
+++	auto result_data = FlatVector::GetDataMutable<string_t>(result);
++ 	for (idx_t r = 0; r < count; r++) {
++ 		if (FlatVector::IsNull(input, r)) {
++ 			FlatVector::SetNull(result, r, true);
++@@ -212,7 +212,7 @@ SinkResultType MySQLInsert::Sink(ExecutionContext &context, DataChunk &chunk, Op
++ 			if (FlatVector::IsNull(gstate.varchar_chunk.data[c], r)) {
++ 				gstate.insert_values += "NULL";
++ 			} else {
++-				auto data = FlatVector::GetData<string_t>(gstate.varchar_chunk.data[c]);
+++				auto data = FlatVector::GetDataMutable<string_t>(gstate.varchar_chunk.data[c]);
++ 				if (add_quotes[c]) {
++ 					gstate.insert_values += MySQLUtils::WriteLiteral(data[r].GetString());
++ 				} else {
+diff --git a/.github/patches/extensions/postgres_scanner/fix.patch b/.github/patches/extensions/postgres_scanner/fix.patch
+--- a/.github/patches/extensions/postgres_scanner/fix.patch
++++ b/.github/patches/extensions/postgres_scanner/fix.patch
+@@ -38,39 +38,217 @@ index d3dc0b6..471bc4c 100644
+  #include "duckdb/planner/filter/constant_filter.hpp"
+  
+ diff --git a/src/postgres_binary_reader.cpp b/src/postgres_binary_reader.cpp
+-index c7fd72e..339300b 100644
++index c7fd72e..4f26b2a 100644
+ --- a/src/postgres_binary_reader.cpp
+ +++ b/src/postgres_binary_reader.cpp
+ @@ -1,3 +1,7 @@
+ +#include "duckdb/common/vector/list_vector.hpp"
+ +#include "duckdb/common/vector/map_vector.hpp"
+-+#include "duckdb/common/vector/struct_vector.hpp"
+ +#include "duckdb/common/vector/string_vector.hpp"
+++#include "duckdb/common/vector/struct_vector.hpp"
+  #include "postgres_binary_reader.hpp"
+  #include "postgres_scanner.hpp"
+  
+-@@ -280,7 +284,8 @@ void PostgresBinaryReader::ReadValue(const LogicalType &type, const PostgresType
++@@ -167,13 +171,13 @@ void PostgresBinaryReader::ReadGeometry(const LogicalType &type, const PostgresT
++ 	default:
++ 		throw InternalException("Unsupported type for ReadGeometry");
++ 	}
++-	auto list_entries = FlatVector::GetData<list_entry_t>(out_vec);
+++	auto list_entries = FlatVector::GetDataMutable<list_entry_t>(out_vec);
++ 	auto child_offset = ListVector::GetListSize(out_vec);
++ 	ListVector::Reserve(out_vec, child_offset + element_count);
++ 	list_entries[output_offset].offset = child_offset;
++ 	list_entries[output_offset].length = element_count;
++ 	auto &child_vector = ListVector::GetEntry(out_vec);
++-	auto child_data = FlatVector::GetData<double>(child_vector);
+++	auto child_data = FlatVector::GetDataMutable<double>(child_vector);
++ 	for (idx_t i = 0; i < element_count; i++) {
++ 		child_data[child_offset + i] = ReadDouble();
++ 	}
++@@ -183,7 +187,7 @@ void PostgresBinaryReader::ReadGeometry(const LogicalType &type, const PostgresT
++ void PostgresBinaryReader::ReadArray(const LogicalType &type, const PostgresType &postgres_type, Vector &out_vec,
++                                      idx_t output_offset, uint32_t current_count, uint32_t dimensions[],
++                                      uint32_t ndim) {
++-	auto list_entries = FlatVector::GetData<list_entry_t>(out_vec);
+++	auto list_entries = FlatVector::GetDataMutable<list_entry_t>(out_vec);
++ 	auto child_offset = ListVector::GetListSize(out_vec);
++ 	auto child_dimension = dimensions[0];
++ 	auto child_count = current_count * child_dimension;
++@@ -221,39 +225,39 @@ void PostgresBinaryReader::ReadValue(const LogicalType &type, const PostgresType
++ 	switch (type.id()) {
++ 	case LogicalTypeId::SMALLINT:
++ 		D_ASSERT(value_len == sizeof(int16_t));
++-		FlatVector::GetData<int16_t>(out_vec)[output_offset] = ReadInteger<int16_t>();
+++		FlatVector::GetDataMutable<int16_t>(out_vec)[output_offset] = ReadInteger<int16_t>();
++ 		break;
++ 	case LogicalTypeId::INTEGER:
++ 		D_ASSERT(value_len == sizeof(int32_t));
++-		FlatVector::GetData<int32_t>(out_vec)[output_offset] = ReadInteger<int32_t>();
+++		FlatVector::GetDataMutable<int32_t>(out_vec)[output_offset] = ReadInteger<int32_t>();
++ 		break;
++ 	case LogicalTypeId::UINTEGER:
++ 		D_ASSERT(value_len == sizeof(uint32_t));
++-		FlatVector::GetData<uint32_t>(out_vec)[output_offset] = ReadInteger<uint32_t>();
+++		FlatVector::GetDataMutable<uint32_t>(out_vec)[output_offset] = ReadInteger<uint32_t>();
++ 		break;
++ 	case LogicalTypeId::BIGINT:
++ 		if (postgres_type.info == PostgresTypeAnnotation::CTID) {
++ 			D_ASSERT(value_len == 6);
++ 			int64_t page_index = ReadInteger<int32_t>();
++ 			int64_t row_in_page = ReadInteger<int16_t>();
++-			FlatVector::GetData<int64_t>(out_vec)[output_offset] = (page_index << 16LL) + row_in_page;
+++			FlatVector::GetDataMutable<int64_t>(out_vec)[output_offset] = (page_index << 16LL) + row_in_page;
++ 			return;
++ 		}
++ 		D_ASSERT(value_len == sizeof(int64_t));
++-		FlatVector::GetData<int64_t>(out_vec)[output_offset] = ReadInteger<int64_t>();
+++		FlatVector::GetDataMutable<int64_t>(out_vec)[output_offset] = ReadInteger<int64_t>();
++ 		break;
++ 	case LogicalTypeId::FLOAT:
++ 		D_ASSERT(value_len == sizeof(float));
++-		FlatVector::GetData<float>(out_vec)[output_offset] = ReadFloat();
+++		FlatVector::GetDataMutable<float>(out_vec)[output_offset] = ReadFloat();
++ 		break;
++ 	case LogicalTypeId::DOUBLE: {
++ 		// this was an unbounded decimal, read params from value and cast to double
++ 		if (postgres_type.info == PostgresTypeAnnotation::NUMERIC_AS_DOUBLE) {
++-			FlatVector::GetData<double>(out_vec)[output_offset] = ReadDecimal<double, DecimalConversionDouble>();
+++			FlatVector::GetDataMutable<double>(out_vec)[output_offset] = ReadDecimal<double, DecimalConversionDouble>();
++ 			break;
++ 		}
++ 		D_ASSERT(value_len == sizeof(double));
++-		FlatVector::GetData<double>(out_vec)[output_offset] = ReadDouble();
+++		FlatVector::GetDataMutable<double>(out_vec)[output_offset] = ReadDouble();
++ 		break;
++ 	}
++ 
++@@ -273,22 +277,22 @@ void PostgresBinaryReader::ReadValue(const LogicalType &type, const PostgresType
++ 				value_len--;
++ 			}
++ 		}
++-		FlatVector::GetData<string_t>(out_vec)[output_offset] = StringVector::AddStringOrBlob(out_vec, str, value_len);
+++		FlatVector::GetDataMutable<string_t>(out_vec)[output_offset] = StringVector::AddStringOrBlob(out_vec, str, value_len);
++ 		break;
++ 	}
++ 	case LogicalTypeId::GEOMETRY: {
+  		const auto str = ReadString(value_len);
+  
+  		string_t res_val;
+ -		if (!Geometry::FromBinary(string_t(str, value_len), res_val, out_vec, true)) {
+-+		auto &heap = StringVector::GetStringHeap(out_vec);
+-+		if (!Geometry::FromBinary(string_t(str, value_len), res_val, heap, true)) {
+++		if (!Geometry::FromBinary(string_t(str, value_len), res_val, StringVector::GetStringHeap(out_vec), true)) {
+  			throw InvalidInputException("Failed to parse Postgres geometry data");
+  		}
+- 		FlatVector::GetData<string_t>(out_vec)[output_offset] = res_val;
+-@@ -427,8 +432,8 @@ void PostgresBinaryReader::ReadValue(const LogicalType &type, const PostgresType
++-		FlatVector::GetData<string_t>(out_vec)[output_offset] = res_val;
+++		FlatVector::GetDataMutable<string_t>(out_vec)[output_offset] = res_val;
++ 		break;
++ 	}
++ 	case LogicalTypeId::BOOLEAN:
++ 		D_ASSERT(value_len == sizeof(bool));
++-		FlatVector::GetData<bool>(out_vec)[output_offset] = ReadBoolean();
+++		FlatVector::GetDataMutable<bool>(out_vec)[output_offset] = ReadBoolean();
++ 		break;
++ 	case LogicalTypeId::DECIMAL: {
++ 		if (value_len < sizeof(uint16_t) * 4) {
++@@ -296,16 +300,16 @@ void PostgresBinaryReader::ReadValue(const LogicalType &type, const PostgresType
++ 		}
++ 		switch (type.InternalType()) {
++ 		case PhysicalType::INT16:
++-			FlatVector::GetData<int16_t>(out_vec)[output_offset] = ReadDecimal<int16_t>();
+++			FlatVector::GetDataMutable<int16_t>(out_vec)[output_offset] = ReadDecimal<int16_t>();
++ 			break;
++ 		case PhysicalType::INT32:
++-			FlatVector::GetData<int32_t>(out_vec)[output_offset] = ReadDecimal<int32_t>();
+++			FlatVector::GetDataMutable<int32_t>(out_vec)[output_offset] = ReadDecimal<int32_t>();
++ 			break;
++ 		case PhysicalType::INT64:
++-			FlatVector::GetData<int64_t>(out_vec)[output_offset] = ReadDecimal<int64_t>();
+++			FlatVector::GetDataMutable<int64_t>(out_vec)[output_offset] = ReadDecimal<int64_t>();
++ 			break;
++ 		case PhysicalType::INT128:
++-			FlatVector::GetData<hugeint_t>(out_vec)[output_offset] = ReadDecimal<hugeint_t, DecimalConversionHugeint>();
+++			FlatVector::GetDataMutable<hugeint_t>(out_vec)[output_offset] = ReadDecimal<hugeint_t, DecimalConversionHugeint>();
++ 			break;
++ 		default:
++ 			throw InvalidInputException("Unsupported decimal storage type");
++@@ -315,24 +319,24 @@ void PostgresBinaryReader::ReadValue(const LogicalType &type, const PostgresType
++ 
++ 	case LogicalTypeId::DATE: {
++ 		D_ASSERT(value_len == sizeof(int32_t));
++-		auto out_ptr = FlatVector::GetData<date_t>(out_vec);
+++		auto out_ptr = FlatVector::GetDataMutable<date_t>(out_vec);
++ 		out_ptr[output_offset] = ReadDate();
++ 		break;
++ 	}
++ 	case LogicalTypeId::TIME: {
++ 		D_ASSERT(value_len == sizeof(int64_t));
++-		FlatVector::GetData<dtime_t>(out_vec)[output_offset] = ReadTime();
+++		FlatVector::GetDataMutable<dtime_t>(out_vec)[output_offset] = ReadTime();
++ 		break;
++ 	}
++ 	case LogicalTypeId::TIME_TZ: {
++ 		D_ASSERT(value_len == sizeof(int64_t) + sizeof(int32_t));
++-		FlatVector::GetData<dtime_tz_t>(out_vec)[output_offset] = ReadTimeTZ();
+++		FlatVector::GetDataMutable<dtime_tz_t>(out_vec)[output_offset] = ReadTimeTZ();
++ 		break;
++ 	}
++ 	case LogicalTypeId::TIMESTAMP_TZ:
++ 	case LogicalTypeId::TIMESTAMP: {
++ 		D_ASSERT(value_len == sizeof(int64_t));
++-		FlatVector::GetData<timestamp_t>(out_vec)[output_offset] = ReadTimestamp();
+++		FlatVector::GetDataMutable<timestamp_t>(out_vec)[output_offset] = ReadTimestamp();
++ 		break;
++ 	}
++ 	case LogicalTypeId::ENUM: {
++@@ -343,14 +347,14 @@ void PostgresBinaryReader::ReadValue(const LogicalType &type, const PostgresType
++ 		}
++ 		switch (type.InternalType()) {
++ 		case PhysicalType::UINT8:
++-			FlatVector::GetData<uint8_t>(out_vec)[output_offset] = (uint8_t)offset;
+++			FlatVector::GetDataMutable<uint8_t>(out_vec)[output_offset] = (uint8_t)offset;
++ 			break;
++ 		case PhysicalType::UINT16:
++-			FlatVector::GetData<uint16_t>(out_vec)[output_offset] = (uint16_t)offset;
+++			FlatVector::GetDataMutable<uint16_t>(out_vec)[output_offset] = (uint16_t)offset;
++ 			break;
++ 
++ 		case PhysicalType::UINT32:
++-			FlatVector::GetData<uint32_t>(out_vec)[output_offset] = (uint32_t)offset;
+++			FlatVector::GetDataMutable<uint32_t>(out_vec)[output_offset] = (uint32_t)offset;
++ 			break;
++ 
++ 		default:
++@@ -361,16 +365,16 @@ void PostgresBinaryReader::ReadValue(const LogicalType &type, const PostgresType
++ 		break;
++ 	}
++ 	case LogicalTypeId::INTERVAL: {
++-		FlatVector::GetData<interval_t>(out_vec)[output_offset] = ReadInterval();
+++		FlatVector::GetDataMutable<interval_t>(out_vec)[output_offset] = ReadInterval();
++ 		break;
++ 	}
++ 	case LogicalTypeId::UUID: {
++ 		D_ASSERT(value_len == 2 * sizeof(int64_t));
++-		FlatVector::GetData<hugeint_t>(out_vec)[output_offset] = ReadUUID();
+++		FlatVector::GetDataMutable<hugeint_t>(out_vec)[output_offset] = ReadUUID();
++ 		break;
++ 	}
++ 	case LogicalTypeId::LIST: {
++-		auto &list_entry = FlatVector::GetData<list_entry_t>(out_vec)[output_offset];
+++		auto &list_entry = FlatVector::GetDataMutable<list_entry_t>(out_vec)[output_offset];
++ 		auto child_offset = ListVector::GetListSize(out_vec);
++ 
++ 		if (value_len < 1) {
++@@ -427,8 +431,8 @@ void PostgresBinaryReader::ReadValue(const LogicalType &type, const PostgresType
+  		auto &child_entries = StructVector::GetEntries(out_vec);
+  		if (postgres_type.info == PostgresTypeAnnotation::GEOM_POINT) {
+  			D_ASSERT(value_len == sizeof(double) * 2);
+ -			FlatVector::GetData<double>(*child_entries[0])[output_offset] = ReadDouble();
+ -			FlatVector::GetData<double>(*child_entries[1])[output_offset] = ReadDouble();
+-+			FlatVector::GetData<double>(child_entries[0])[output_offset] = ReadDouble();
+-+			FlatVector::GetData<double>(child_entries[1])[output_offset] = ReadDouble();
+++			FlatVector::GetDataMutable<double>(child_entries[0])[output_offset] = ReadDouble();
+++			FlatVector::GetDataMutable<double>(child_entries[1])[output_offset] = ReadDouble();
+  			break;
+  		}
+  		auto entry_count = ReadInteger<uint32_t>();
+-@@ -437,7 +442,7 @@ void PostgresBinaryReader::ReadValue(const LogicalType &type, const PostgresType
++@@ -437,7 +441,7 @@ void PostgresBinaryReader::ReadValue(const LogicalType &type, const PostgresType
+  			                        entry_count);
+  		}
+  		for (idx_t c = 0; c < entry_count; c++) {
+@@ -80,7 +258,7 @@ index c7fd72e..339300b 100644
+  			ReadValue(child.GetType(), postgres_type.children[c], child, output_offset);
+  		}
+ diff --git a/src/postgres_copy_to.cpp b/src/postgres_copy_to.cpp
+-index 72580a3..2b2c910 100644
++index 72580a3..4857a8e 100644
+ --- a/src/postgres_copy_to.cpp
+ +++ b/src/postgres_copy_to.cpp
+ @@ -1,3 +1,6 @@
+@@ -90,7 +268,20 @@ index 72580a3..2b2c910 100644
+  #include "postgres_connection.hpp"
+  #include "postgres_binary_writer.hpp"
+  #include "postgres_text_writer.hpp"
+-@@ -214,7 +217,7 @@ void CastStructToPostgres(ClientContext &context, Vector &input, Vector &varchar
++@@ -176,9 +179,9 @@ void CastListToPostgresArray(ClientContext &context, Vector &input, Vector &varc
++ 	CastToPostgresVarchar(context, child_data, child_varchar, child_count);
++ 
++ 	// construct the list entries
++-	auto child_entries = FlatVector::GetData<string_t>(child_varchar);
++-	auto list_entries = FlatVector::GetData<list_entry_t>(input);
++-	auto result_entries = FlatVector::GetData<string_t>(varchar_vector);
+++	auto child_entries = FlatVector::GetDataMutable<string_t>(child_varchar);
+++	auto list_entries = FlatVector::GetDataMutable<list_entry_t>(input);
+++	auto result_entries = FlatVector::GetDataMutable<string_t>(varchar_vector);
++ 	for (idx_t r = 0; r < size; r++) {
++ 		if (FlatVector::IsNull(input, r)) {
++ 			FlatVector::SetNull(varchar_vector, r, true);
++@@ -214,12 +217,12 @@ void CastStructToPostgres(ClientContext &context, Vector &input, Vector &varchar
+  	vector<Vector> child_varchar_vectors;
+  	for (idx_t c = 0; c < child_vectors.size(); c++) {
+  		Vector child_varchar(LogicalType::VARCHAR, size);
+@@ -99,6 +290,32 @@ index 72580a3..2b2c910 100644
+  		child_varchar_vectors.push_back(std::move(child_varchar));
+  	}
+  
++ 	// construct the struct entries
++-	auto result_entries = FlatVector::GetData<string_t>(varchar_vector);
+++	auto result_entries = FlatVector::GetDataMutable<string_t>(varchar_vector);
++ 	for (idx_t r = 0; r < size; r++) {
++ 		if (FlatVector::IsNull(input, r)) {
++ 			FlatVector::SetNull(varchar_vector, r, true);
++@@ -234,7 +237,7 @@ void CastStructToPostgres(ClientContext &context, Vector &input, Vector &varchar
++ 			if (FlatVector::IsNull(child_varchar_vectors[c], r)) {
++ 				result += ""; // Struct literals encode null by omitting the value
++ 			} else {
++-				auto child = FlatVector::GetData<string_t>(child_varchar_vectors[c])[r];
+++				auto child = FlatVector::GetDataMutable<string_t>(child_varchar_vectors[c])[r];
++ 				QuoteAndEscapeIfNeeded(child.GetString(), result, child.GetSize());
++ 			}
++ 		}
++@@ -244,8 +247,8 @@ void CastStructToPostgres(ClientContext &context, Vector &input, Vector &varchar
++ }
++ 
++ void CastBlobToPostgres(ClientContext &context, Vector &input, Vector &result, idx_t size) {
++-	auto input_data = FlatVector::GetData<string_t>(input);
++-	auto result_data = FlatVector::GetData<string_t>(result);
+++	auto input_data = FlatVector::GetDataMutable<string_t>(input);
+++	auto result_data = FlatVector::GetDataMutable<string_t>(result);
++ 	for (idx_t r = 0; r < size; r++) {
++ 		if (FlatVector::IsNull(input, r)) {
++ 			FlatVector::SetNull(result, r, true);
+ diff --git a/src/postgres_filter_pushdown.cpp b/src/postgres_filter_pushdown.cpp
+ index c2f981a..cabe77f 100644
+ --- a/src/postgres_filter_pushdown.cpp
+@@ -129,17 +346,44 @@ index c2f981a..cabe77f 100644
+  
+  		if (filter_text.empty()) {
+ diff --git a/src/postgres_text_reader.cpp b/src/postgres_text_reader.cpp
+-index 9a1bbed..f6a19a6 100644
++index 9a1bbed..cd2e5e9 100644
+ --- a/src/postgres_text_reader.cpp
+ +++ b/src/postgres_text_reader.cpp
+ @@ -1,3 +1,7 @@
+ +#include "duckdb/common/vector/list_vector.hpp"
+ +#include "duckdb/common/vector/map_vector.hpp"
+-+#include "duckdb/common/vector/struct_vector.hpp"
+ +#include "duckdb/common/vector/string_vector.hpp"
+++#include "duckdb/common/vector/struct_vector.hpp"
+  #include "postgres_text_reader.hpp"
+  #include "postgres_scanner.hpp"
+  #include "duckdb/common/types/blob.hpp"
++@@ -33,7 +37,7 @@ struct PostgresListParser {
++ 		if (!quoted && str == "NULL") {
++ 			FlatVector::SetNull(vector, size, true);
++ 		} else {
++-			FlatVector::GetData<string_t>(vector)[size] = StringVector::AddStringOrBlob(vector, str);
+++			FlatVector::GetDataMutable<string_t>(vector)[size] = StringVector::AddStringOrBlob(vector, str);
++ 		}
++ 		size++;
++ 		quoted = false;
++@@ -70,7 +74,7 @@ struct PostgresStructParser {
++ 		if (!quoted && str == "NULL") {
++ 			FlatVector::SetNull(col, row_offset, true);
++ 		} else {
++-			FlatVector::GetData<string_t>(col)[row_offset] = StringVector::AddStringOrBlob(col, str);
+++			FlatVector::GetDataMutable<string_t>(col)[row_offset] = StringVector::AddStringOrBlob(col, str);
++ 		}
++ 		column_offset++;
++ 	}
++@@ -203,7 +207,7 @@ void PostgresTextReader::ConvertList(Vector &source, Vector &target, const Postg
++ 	source.ToUnifiedFormat(count, vdata);
++ 
++ 	auto strings = UnifiedVectorFormat::GetData<string_t>(vdata);
++-	auto list_data = FlatVector::GetData<list_entry_t>(target);
+++	auto list_data = FlatVector::GetDataMutable<list_entry_t>(target);
++ 
++ 	PostgresListParser list_parser;
++ 	for (idx_t i = 0; i < count; i++) {
+ @@ -245,7 +249,7 @@ void PostgresTextReader::ConvertStruct(Vector &source, Vector &target, const Pos
+  		ParsePostgresStruct(struct_parser, strings[i]);
+  	}
+@@ -149,16 +393,64 @@ index 9a1bbed..f6a19a6 100644
+  		              c >= postgres_type.children.size() ? PostgresType() : postgres_type.children[c], count);
+  	}
+  }
+-@@ -343,7 +347,8 @@ static void ConvertGeometry(Vector &source, Vector &target, idx_t count) {
++@@ -255,7 +259,7 @@ void PostgresTextReader::ConvertCTID(Vector &source, Vector &target, idx_t count
++ 	UnifiedVectorFormat vdata;
++ 	source.ToUnifiedFormat(count, vdata);
++ 	auto strings = UnifiedVectorFormat::GetData<string_t>(vdata);
++-	auto result = FlatVector::GetData<int64_t>(target);
+++	auto result = FlatVector::GetDataMutable<int64_t>(target);
++ 
++ 	for (idx_t i = 0; i < count; i++) {
++ 		if (!vdata.validity.RowIsValid(i)) {
++@@ -276,7 +280,7 @@ void PostgresTextReader::ConvertBlob(Vector &source, Vector &target, idx_t count
++ 	UnifiedVectorFormat vdata;
++ 	source.ToUnifiedFormat(count, vdata);
++ 	auto strings = UnifiedVectorFormat::GetData<string_t>(vdata);
++-	auto result = FlatVector::GetData<string_t>(target);
+++	auto result = FlatVector::GetDataMutable<string_t>(target);
++ 
++ 	for (idx_t i = 0; i < count; i++) {
++ 		if (!vdata.validity.RowIsValid(i)) {
++@@ -309,7 +313,7 @@ static void ConvertGeometry(Vector &source, Vector &target, idx_t count) {
++ 	UnifiedVectorFormat vdata;
++ 	source.ToUnifiedFormat(count, vdata);
++ 	const auto strings = UnifiedVectorFormat::GetData<string_t>(vdata);
++-	const auto result = FlatVector::GetData<string_t>(target);
+++	const auto result = FlatVector::GetDataMutable<string_t>(target);
++ 
++ 	string result_blob;
++ 
++@@ -343,7 +347,7 @@ static void ConvertGeometry(Vector &source, Vector &target, idx_t count) {
+  		}
+  
+  		// Finally convert from WKB (which will handle big-endian format too)
+ -		if (!Geometry::FromBinary(result_blob, result[out_idx], target, true)) {
+-+		auto &heap = StringVector::GetStringHeap(target);
+-+		if (!Geometry::FromBinary(result_blob, result[out_idx], heap, true)) {
+++		if (!Geometry::FromBinary(result_blob, result[out_idx], StringVector::GetStringHeap(target), true)) {
+  			throw InvalidInputException("Failed to parse geometry from WKB - invalid format");
+  		}
+  	}
++@@ -397,7 +401,7 @@ PostgresReadResult PostgresTextReader::Read(DataChunk &output) {
++ 				FlatVector::SetNull(out_vec, output_offset, true);
++ 				continue;
++ 			}
++-			auto col_data = FlatVector::GetData<string_t>(out_vec);
+++			auto col_data = FlatVector::GetDataMutable<string_t>(out_vec);
++ 			col_data[output_offset] =
++ 			    StringVector::AddStringOrBlob(out_vec, result->GetStringRef(row_offset, output_idx));
++ 		}
++diff --git a/src/storage/postgres_delete.cpp b/src/storage/postgres_delete.cpp
++index b50fbc1..ecc6322 100644
++--- a/src/storage/postgres_delete.cpp
+++++ b/src/storage/postgres_delete.cpp
++@@ -61,7 +61,7 @@ SinkResultType PostgresDelete::Sink(ExecutionContext &context, DataChunk &chunk,
++ 
++ 	chunk.Flatten();
++ 	auto &row_identifiers = chunk.data[row_id_index];
++-	auto row_data = FlatVector::GetData<row_t>(row_identifiers);
+++	auto row_data = FlatVector::GetDataMutable<row_t>(row_identifiers);
++ 	for (idx_t i = 0; i < chunk.size(); i++) {
++ 		if (!gstate.ctid_list.empty()) {
++ 			gstate.ctid_list += ",";
+ diff --git a/src/storage/postgres_merge_into.cpp b/src/storage/postgres_merge_into.cpp
+ index 03188d6..7bcab80 100644
+ --- a/src/storage/postgres_merge_into.cpp
+@@ -181,3 +473,18 @@ index 03188d6..7bcab80 100644
+  		insert_op.bound_constraints = std::move(bound_constraints);
+  		for (auto &def : op.bound_defaults) {
+  			insert_op.bound_defaults.push_back(def->Copy());
++diff --git a/src/storage/postgres_update.cpp b/src/storage/postgres_update.cpp
++index af167ef..b990f67 100644
++--- a/src/storage/postgres_update.cpp
+++++ b/src/storage/postgres_update.cpp
++@@ -124,8 +124,8 @@ SinkResultType PostgresUpdate::Sink(ExecutionContext &context, DataChunk &chunk,
++ 	// convert our row ids back into ctids
++ 	auto &row_identifiers = chunk.data[chunk.ColumnCount() - 1];
++ 	auto &ctid_vector = gstate.insert_chunk.data[gstate.insert_chunk.ColumnCount() - 1];
++-	auto row_data = FlatVector::GetData<row_t>(row_identifiers);
++-	auto varchar_data = FlatVector::GetData<string_t>(ctid_vector);
+++	auto row_data = FlatVector::GetDataMutable<row_t>(row_identifiers);
+++	auto varchar_data = FlatVector::GetDataMutable<string_t>(ctid_vector);
++ 
++ 	for (idx_t r = 0; r < chunk.size(); r++) {
++ 		// extract the ctid from the row id
+diff --git a/.github/patches/extensions/spatial/fix.patch b/.github/patches/extensions/spatial/fix.patch
+--- a/.github/patches/extensions/spatial/fix.patch
++++ b/.github/patches/extensions/spatial/fix.patch
+@@ -1,5 +1,5 @@
+ diff --git a/src/spatial/index/rtree/rtree_index.cpp b/src/spatial/index/rtree/rtree_index.cpp
+-index 239d546..c16df2d 100644
++index 239d546..9de9355 100644
+ --- a/src/spatial/index/rtree/rtree_index.cpp
+ +++ b/src/spatial/index/rtree/rtree_index.cpp
+ @@ -1,3 +1,5 @@
+@@ -8,7 +8,16 @@ index 239d546..c16df2d 100644
+  #include "spatial/index/rtree/rtree_index.hpp"
+  
+  #include "duckdb/catalog/catalog_entry/scalar_function_catalog_entry.hpp"
+-@@ -167,11 +169,11 @@ static void ConvertToEntries(Vector &box_vec, Vector &rowid_vec, idx_t count, CA
++@@ -134,7 +136,7 @@ unique_ptr<IndexScanState> RTreeIndex::InitializeScan(const RTreeBounds &query)
++ 
++ idx_t RTreeIndex::Scan(IndexScanState &state, Vector &result) const {
++ 	auto &sstate = state.Cast<RTreeIndexScanState>();
++-	const auto row_ids = FlatVector::GetData<row_t>(result);
+++	const auto row_ids = FlatVector::GetDataMutable<row_t>(result);
++ 
++ 	idx_t output_idx = 0;
++ 	sstate.scanner.Scan(*tree, [&](const RTreeEntry &entry, const idx_t &) {
++@@ -167,13 +169,13 @@ static void ConvertToEntries(Vector &box_vec, Vector &rowid_vec, idx_t count, CA
+  	const auto &box_validity = FlatVector::Validity(box_vec);
+  	const auto &row_validity = FlatVector::Validity(rowid_vec);
+  
+@@ -18,13 +27,16 @@ index 239d546..c16df2d 100644
+ -	const auto box_xmax_data = FlatVector::GetData<float>(*box_entries[2]);
+ -	const auto box_ymax_data = FlatVector::GetData<float>(*box_entries[3]);
+ +	auto &box_entries = StructVector::GetEntries(box_vec);
+-+	const auto box_xmin_data = FlatVector::GetData<float>(box_entries[0]);
+-+	const auto box_ymin_data = FlatVector::GetData<float>(box_entries[1]);
+-+	const auto box_xmax_data = FlatVector::GetData<float>(box_entries[2]);
+-+	const auto box_ymax_data = FlatVector::GetData<float>(box_entries[3]);
+++	const auto box_xmin_data = FlatVector::GetDataMutable<float>(box_entries[0]);
+++	const auto box_ymin_data = FlatVector::GetDataMutable<float>(box_entries[1]);
+++	const auto box_xmax_data = FlatVector::GetDataMutable<float>(box_entries[2]);
+++	const auto box_ymax_data = FlatVector::GetDataMutable<float>(box_entries[3]);
+  
+- 	const auto row_data = FlatVector::GetData<row_t>(rowid_vec);
++-	const auto row_data = FlatVector::GetData<row_t>(rowid_vec);
+++	const auto row_data = FlatVector::GetDataMutable<row_t>(rowid_vec);
+  
++ 	for (idx_t i = 0; i < count; i++) {
++ 		if (!box_validity.RowIsValid(i) || !row_validity.RowIsValid(i)) {
+ diff --git a/src/spatial/index/rtree/rtree_index_create_logical.cpp b/src/spatial/index/rtree/rtree_index_create_logical.cpp
+ index 263d413..63d35f1 100644
+ --- a/src/spatial/index/rtree/rtree_index_create_logical.cpp
+@@ -39,7 +51,7 @@ index 263d413..63d35f1 100644
+  	// Visit the operator's expressions
+  	LogicalOperatorVisitor::EnumerateExpressions(*this,
+ diff --git a/src/spatial/index/rtree/rtree_index_create_physical.cpp b/src/spatial/index/rtree/rtree_index_create_physical.cpp
+-index bc4134a..b4d5601 100644
++index bc4134a..c8f22cc 100644
+ --- a/src/spatial/index/rtree/rtree_index_create_physical.cpp
+ +++ b/src/spatial/index/rtree/rtree_index_create_physical.cpp
+ @@ -1,3 +1,5 @@
+@@ -53,16 +65,17 @@ index bc4134a..b4d5601 100644
+  	chunk.Flatten();
+  
+ -	const auto &bbox_vecs = StructVector::GetEntries(chunk.data[0]);
+-+	auto &bbox_vecs = StructVector::GetEntries(chunk.data[0]);
+- 	const auto &rowid_data = FlatVector::GetData<row_t>(chunk.data[1]);
++-	const auto &rowid_data = FlatVector::GetData<row_t>(chunk.data[1]);
+ -	const auto min_x_data = FlatVector::GetData<float>(*bbox_vecs[0]);
+ -	const auto min_y_data = FlatVector::GetData<float>(*bbox_vecs[1]);
+ -	const auto max_x_data = FlatVector::GetData<float>(*bbox_vecs[2]);
+ -	const auto max_y_data = FlatVector::GetData<float>(*bbox_vecs[3]);
+-+	const auto min_x_data = FlatVector::GetData<float>(bbox_vecs[0]);
+-+	const auto min_y_data = FlatVector::GetData<float>(bbox_vecs[1]);
+-+	const auto max_x_data = FlatVector::GetData<float>(bbox_vecs[2]);
+-+	const auto max_y_data = FlatVector::GetData<float>(bbox_vecs[3]);
+++	auto &bbox_vecs = StructVector::GetEntries(chunk.data[0]);
+++	const auto &rowid_data = FlatVector::GetDataMutable<row_t>(chunk.data[1]);
+++	const auto min_x_data = FlatVector::GetDataMutable<float>(bbox_vecs[0]);
+++	const auto min_y_data = FlatVector::GetDataMutable<float>(bbox_vecs[1]);
+++	const auto max_x_data = FlatVector::GetDataMutable<float>(bbox_vecs[2]);
+++	const auto max_y_data = FlatVector::GetDataMutable<float>(bbox_vecs[3]);
+  
+  	// Vectorized conversion from columnar to row-wise
+  	RTreeEntry entries[STANDARD_VECTOR_SIZE];
+@@ -191,7 +204,7 @@ index 520d2b1..d27c65f 100644
+  		new_filter->children.push_back(std::move(get_ptr));
+  		new_filter->ResolveOperatorTypes();
+ diff --git a/src/spatial/index/rtree/rtree_index_pragmas.cpp b/src/spatial/index/rtree/rtree_index_pragmas.cpp
+-index a0e5397..69a1578 100644
++index a0e5397..7300678 100644
+ --- a/src/spatial/index/rtree/rtree_index_pragmas.cpp
+ +++ b/src/spatial/index/rtree/rtree_index_pragmas.cpp
+ @@ -1,3 +1,5 @@
+@@ -200,25 +213,29 @@ index a0e5397..69a1578 100644
+  #include "spatial/spatial_types.hpp"
+  #include "spatial/index/rtree/rtree_index.hpp"
+  #include "spatial/index/rtree/rtree_module.hpp"
+-@@ -203,11 +205,11 @@ static void RTreeIndexDumpExecute(ClientContext &context, TableFunctionInput &da
++@@ -202,13 +204,13 @@ static void RTreeIndexDumpExecute(ClientContext &context, TableFunctionInput &da
++ 
+  	idx_t output_idx = 0;
+  
+- 	const auto level_data = FlatVector::GetData<int32_t>(output.data[0]);
++-	const auto level_data = FlatVector::GetData<int32_t>(output.data[0]);
+ -	const auto &bounds_vectors = StructVector::GetEntries(output.data[1]);
+ -	const auto xmin_data = FlatVector::GetData<float>(*bounds_vectors[0]);
+ -	const auto ymin_data = FlatVector::GetData<float>(*bounds_vectors[1]);
+ -	const auto xmax_data = FlatVector::GetData<float>(*bounds_vectors[2]);
+ -	const auto ymax_data = FlatVector::GetData<float>(*bounds_vectors[3]);
++-	const auto rowid_data = FlatVector::GetData<row_t>(output.data[2]);
+++	const auto level_data = FlatVector::GetDataMutable<int32_t>(output.data[0]);
+ +	auto &bounds_vectors = StructVector::GetEntries(output.data[1]);
+-+	const auto xmin_data = FlatVector::GetData<float>(bounds_vectors[0]);
+-+	const auto ymin_data = FlatVector::GetData<float>(bounds_vectors[1]);
+-+	const auto xmax_data = FlatVector::GetData<float>(bounds_vectors[2]);
+-+	const auto ymax_data = FlatVector::GetData<float>(bounds_vectors[3]);
+- 	const auto rowid_data = FlatVector::GetData<row_t>(output.data[2]);
+++	const auto xmin_data = FlatVector::GetDataMutable<float>(bounds_vectors[0]);
+++	const auto ymin_data = FlatVector::GetDataMutable<float>(bounds_vectors[1]);
+++	const auto xmax_data = FlatVector::GetDataMutable<float>(bounds_vectors[2]);
+++	const auto ymax_data = FlatVector::GetDataMutable<float>(bounds_vectors[3]);
+++	const auto rowid_data = FlatVector::GetDataMutable<row_t>(output.data[2]);
+  
+  	const auto &tree = *state.index.tree;
++ 
+ diff --git a/src/spatial/modules/geos/geos_module.cpp b/src/spatial/modules/geos/geos_module.cpp
+-index d111f0b..fd5e3bb 100644
++index d111f0b..4b0a544 100644
+ --- a/src/spatial/modules/geos/geos_module.cpp
+ +++ b/src/spatial/modules/geos/geos_module.cpp
+ @@ -8,6 +8,7 @@
+@@ -246,6 +263,15 @@ index d111f0b..fd5e3bb 100644
+  
+  		const auto geom_data = UnifiedVectorFormat::GetData<string_t>(geom_format);
+  		const auto minx_data = UnifiedVectorFormat::GetData<double>(minx_format);
++@@ -316,7 +317,7 @@ struct ST_AsMVTGeom {
++ 		const auto maxx_data = UnifiedVectorFormat::GetData<double>(maxx_format);
++ 		const auto maxy_data = UnifiedVectorFormat::GetData<double>(maxy_format);
++ 
++-		const auto res_data = FlatVector::GetData<string_t>(result);
+++		const auto res_data = FlatVector::GetDataMutable<string_t>(result);
++ 
++ 		for (idx_t out_idx = 0; out_idx < args.size(); out_idx++) {
++ 			const auto geom_idx = geom_format.sel->get_index(out_idx);
+ @@ -1653,8 +1654,8 @@ struct ST_MaximumInscribedCircle {
+  		auto &lstate = LocalState::ResetAndGet(state);
+  
+@@ -268,7 +294,21 @@ index d111f0b..fd5e3bb 100644
+  
+  		using STRING_TYPE = PrimitiveType<string_t>;
+  		using DOUBLE_TYPE = PrimitiveType<double>;
+-@@ -2610,7 +2611,7 @@ struct ST_Union_Agg {
++@@ -2581,7 +2582,7 @@ struct ST_Union_Agg {
++ 		state_vec.ToUnifiedFormat(count, state_format);
++ 
++ 		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
++-		const auto combined_ptr = FlatVector::GetData<State *>(combined);
+++		const auto combined_ptr = FlatVector::GetDataMutable<State *>(combined);
++ 
++ 		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
++ 			const auto state_idx = state_format.sel->get_index(raw_idx);
++@@ -2606,11 +2607,11 @@ struct ST_Union_Agg {
++ 		state_vec.ToUnifiedFormat(count, state_format);
++ 
++ 		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
++-		const auto combined_ptr = FlatVector::GetData<State *>(combined);
+++		const auto combined_ptr = FlatVector::GetDataMutable<State *>(combined);
+  
+  		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
+  			const auto state_idx = state_format.sel->get_index(raw_idx);
+@@ -277,7 +317,30 @@ index d111f0b..fd5e3bb 100644
+  
+  			// We can't steal the list, we need to clone and append all elements
+  			auto &combined_state = *combined_ptr[raw_idx];
+-@@ -2788,7 +2789,7 @@ struct GEOSCoverageAggFunction {
++@@ -2646,7 +2647,7 @@ struct ST_Union_Agg {
++ 				const auto result_union = GEOSUnaryUnion_r(state.context, collection);
++ 
++ 				// Serialize the result
++-				const auto result_ptr = FlatVector::GetData<string_t>(result);
+++				const auto result_ptr = FlatVector::GetDataMutable<string_t>(result);
++ 				result_ptr[out_idx] = Serialize(state.context, result, result_union);
++ 
++ 				// Destroy the unioned geometry
++@@ -2752,7 +2753,7 @@ struct GEOSCoverageAggFunction {
++ 		state_vec.ToUnifiedFormat(count, state_format);
++ 
++ 		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
++-		const auto combined_ptr = FlatVector::GetData<State *>(combined);
+++		const auto combined_ptr = FlatVector::GetDataMutable<State *>(combined);
++ 
++ 		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
++ 			const auto state_idx = state_format.sel->get_index(raw_idx);
++@@ -2784,11 +2785,11 @@ struct GEOSCoverageAggFunction {
++ 		state_vec.ToUnifiedFormat(count, state_format);
++ 
++ 		const auto state_ptr = UnifiedVectorFormat::GetData<State *>(state_format);
++-		const auto combined_ptr = FlatVector::GetData<State *>(combined);
+++		const auto combined_ptr = FlatVector::GetDataMutable<State *>(combined);
+  
+  		for (idx_t raw_idx = 0; raw_idx < count; raw_idx++) {
+  			const auto state_idx = state_format.sel->get_index(raw_idx);
+@@ -286,8 +349,35 @@ index d111f0b..fd5e3bb 100644
+  
+  			// We can't steal the list, we need to clone and append all elements
+  			auto &combined_state = *combined_ptr[raw_idx];
++@@ -2942,7 +2943,7 @@ struct ST_CoverageSimplify_Agg : GEOSCoverageAggFunction {
++ 		    GEOSCoverageSimplifyVW_r(state.context, collection, state.tolerance, !state.simplify_boundary);
++ 
++ 		// Serialize the result
++-		const auto result_ptr = FlatVector::GetData<string_t>(result);
+++		const auto result_ptr = FlatVector::GetDataMutable<string_t>(result);
++ 		result_ptr[out_idx] = Serialize(state.context, result, simplified);
++ 		GEOSGeom_destroy_r(state.context, simplified);
++ 	}
++@@ -3016,7 +3017,7 @@ struct ST_CoverageUnion_Agg : GEOSCoverageAggFunction {
++ 		const auto coverage = GEOSCoverageUnion_r(state.context, collection);
++ 
++ 		// Serialize the result
++-		const auto result_ptr = FlatVector::GetData<string_t>(result);
+++		const auto result_ptr = FlatVector::GetDataMutable<string_t>(result);
++ 		result_ptr[out_idx] = Serialize(state.context, result, coverage);
++ 		GEOSGeom_destroy_r(state.context, coverage);
++ 	}
++@@ -3107,7 +3108,7 @@ struct ST_CoverageInvalidEdges_Agg : GEOSCoverageAggFunction {
++ 			return;
++ 		}
++ 		// Serialize the result
++-		const auto result_ptr = FlatVector::GetData<string_t>(result);
+++		const auto result_ptr = FlatVector::GetDataMutable<string_t>(result);
++ 		result_ptr[out_idx] = Serialize(state.context, result, edges);
++ 		GEOSGeom_destroy_r(state.context, edges);
++ 	}
+ diff --git a/src/spatial/modules/main/spatial_functions_cast.cpp b/src/spatial/modules/main/spatial_functions_cast.cpp
+-index 72722cc..c64825a 100644
++index 72722cc..8796650 100644
+ --- a/src/spatial/modules/main/spatial_functions_cast.cpp
+ +++ b/src/spatial/modules/main/spatial_functions_cast.cpp
+ @@ -245,15 +245,15 @@ struct PointCasts {
+@@ -320,9 +410,9 @@ index 72722cc..c64825a 100644
+ -		const auto x_data = FlatVector::GetData<double>(*coord_vec_children[0]);
+ -		const auto y_data = FlatVector::GetData<double>(*coord_vec_children[1]);
+ -		const auto z_data = HAS_Z ? FlatVector::GetData<double>(*coord_vec_children[2]) : nullptr;
+-+		const auto x_data = FlatVector::GetData<double>(coord_vec_children[0]);
+-+		const auto y_data = FlatVector::GetData<double>(coord_vec_children[1]);
+-+		const auto z_data = HAS_Z ? FlatVector::GetData<double>(coord_vec_children[2]) : nullptr;
+++		auto x_data = FlatVector::GetData<double>(coord_vec_children[0]);
+++		auto y_data = FlatVector::GetData<double>(coord_vec_children[1]);
+++		auto z_data = HAS_Z ? FlatVector::GetData<double>(coord_vec_children[2]) : nullptr;
+  
+  		const auto coord_size = HAS_Z ? 3 : 2;
+  
+@@ -332,12 +422,12 @@ index 72722cc..c64825a 100644
+  
+ -			const auto x_data = FlatVector::GetData<double>(*coord_vec_children[0]);
+ -			const auto y_data = FlatVector::GetData<double>(*coord_vec_children[1]);
+-+			const auto x_data = FlatVector::GetData<double>(coord_vec_children[0]);
+-+			const auto y_data = FlatVector::GetData<double>(coord_vec_children[1]);
+++			auto x_data = FlatVector::GetDataMutable<double>(coord_vec_children[0]);
+++			auto y_data = FlatVector::GetDataMutable<double>(coord_vec_children[1]);
+  
+  			if (HAS_Z) {
+ -				const auto z_data = FlatVector::GetData<double>(*coord_vec_children[2]);
+-+				const auto z_data = FlatVector::GetData<double>(coord_vec_children[2]);
+++				auto z_data = FlatVector::GetDataMutable<double>(coord_vec_children[2]);
+  				for (idx_t i = 0; i < line_size; i++) {
+  					const auto vertex = line.get_vertex_xyzm(i);
+  					x_data[entry.offset + i] = vertex.x;
+@@ -347,8 +437,8 @@ index 72722cc..c64825a 100644
+  		auto &coord_src_children = StructVector::GetEntries(coord_src);
+ -		const auto x_src = FlatVector::GetData<double>(*coord_src_children[0]);
+ -		const auto y_src = FlatVector::GetData<double>(*coord_src_children[1]);
+-+		const auto x_src = FlatVector::GetData<double>(coord_src_children[0]);
+-+		const auto y_src = FlatVector::GetData<double>(coord_src_children[1]);
+++		auto x_src = FlatVector::GetDataMutable<double>(coord_src_children[0]);
+++		auto y_src = FlatVector::GetDataMutable<double>(coord_src_children[1]);
+  
+  		idx_t total_coords = 0;
+  
+@@ -358,8 +448,8 @@ index 72722cc..c64825a 100644
+  
+ -			const auto x_dst = FlatVector::GetData<double>(*coord_dst_children[0]);
+ -			const auto y_dst = FlatVector::GetData<double>(*coord_dst_children[1]);
+-+			const auto x_dst = FlatVector::GetData<double>(coord_dst_children[0]);
+-+			const auto y_dst = FlatVector::GetData<double>(coord_dst_children[1]);
+++			auto x_dst = FlatVector::GetDataMutable<double>(coord_dst_children[0]);
+++			auto y_dst = FlatVector::GetDataMutable<double>(coord_dst_children[1]);
+  
+  			for (idx_t i = 0; i < line.length; i++) {
+  				x_dst[entry.offset + i] = x_src[line.offset + i];
+@@ -372,9 +462,9 @@ index 72722cc..c64825a 100644
+ -		const auto y_data = FlatVector::GetData<double>(*coord_vec_children[1]);
+ -		const auto z_data = HAS_Z ? FlatVector::GetData<double>(*coord_vec_children[2]) : nullptr;
+ +		auto &coord_vec_children = StructVector::GetEntries(coord_vec);
+-+		const auto x_data = FlatVector::GetData<double>(coord_vec_children[0]);
+-+		const auto y_data = FlatVector::GetData<double>(coord_vec_children[1]);
+-+		const auto z_data = HAS_Z ? FlatVector::GetData<double>(coord_vec_children[2]) : nullptr;
+++		auto x_data = FlatVector::GetData<double>(coord_vec_children[0]);
+++		auto y_data = FlatVector::GetData<double>(coord_vec_children[1]);
+++		auto z_data = HAS_Z ? FlatVector::GetData<double>(coord_vec_children[2]) : nullptr;
+  
+  		const auto coord_size = HAS_Z ? 3 : 2;
+  
+@@ -384,14 +474,14 @@ index 72722cc..c64825a 100644
+  					auto &coord_vec_children = StructVector::GetEntries(coord_vec);
+ -					const auto x_data = FlatVector::GetData<double>(*coord_vec_children[0]);
+ -					const auto y_data = FlatVector::GetData<double>(*coord_vec_children[1]);
+-+					const auto x_data = FlatVector::GetData<double>(coord_vec_children[0]);
+-+					const auto y_data = FlatVector::GetData<double>(coord_vec_children[1]);
+++					auto x_data = FlatVector::GetDataMutable<double>(coord_vec_children[0]);
+++					auto y_data = FlatVector::GetDataMutable<double>(coord_vec_children[1]);
+  
+  					ring_entries[total_rings + ring_idx] = ring_entry;
+  
+  					if (HAS_Z) {
+ -						const auto z_data = FlatVector::GetData<double>(*coord_vec_children[2]);
+-+						const auto z_data = FlatVector::GetData<double>(coord_vec_children[2]);
+++						auto z_data = FlatVector::GetDataMutable<double>(coord_vec_children[2]);
+  						for (idx_t j = 0; j < ring_size; j++) {
+  							const auto vertext = head->get_vertex_xyzm(j);
+  							x_data[ring_entry.offset + j] = vertext.x;
+@@ -403,8 +493,8 @@ index 72722cc..c64825a 100644
+ -		const auto x_src = FlatVector::GetData<double>(*coord_src_children[0]);
+ -		const auto y_src = FlatVector::GetData<double>(*coord_src_children[1]);
+ +		auto &coord_src_children = StructVector::GetEntries(coord_src);
+-+		const auto x_src = FlatVector::GetData<double>(coord_src_children[0]);
+-+		const auto y_src = FlatVector::GetData<double>(coord_src_children[1]);
+++		auto x_src = FlatVector::GetData<double>(coord_src_children[0]);
+++		auto y_src = FlatVector::GetData<double>(coord_src_children[1]);
+  
+  		idx_t total_rings = 0;
+  		idx_t total_coords = 0;
+@@ -414,8 +504,8 @@ index 72722cc..c64825a 100644
+  				auto &coord_dst_children = StructVector::GetEntries(coord_dst);
+ -				const auto x_dst = FlatVector::GetData<double>(*coord_dst_children[0]);
+ -				const auto y_dst = FlatVector::GetData<double>(*coord_dst_children[1]);
+-+				const auto x_dst = FlatVector::GetData<double>(coord_dst_children[0]);
+-+				const auto y_dst = FlatVector::GetData<double>(coord_dst_children[1]);
+++				auto x_dst = FlatVector::GetDataMutable<double>(coord_dst_children[0]);
+++				auto y_dst = FlatVector::GetDataMutable<double>(coord_dst_children[1]);
+  
+  				ring_entries_dst[total_rings + i] = ring_entry_dst;
+  
+@@ -425,8 +515,8 @@ index 72722cc..c64825a 100644
+  	auto &children = StructVector::GetEntries(inner);
+ -	auto x_data = FlatVector::GetData<double>(*children[0]);
+ -	auto y_data = FlatVector::GetData<double>(*children[1]);
+-+	auto x_data = FlatVector::GetData<double>(children[0]);
+-+	auto y_data = FlatVector::GetData<double>(children[1]);
+++	auto x_data = FlatVector::GetDataMutable<double>(children[0]);
+++	auto y_data = FlatVector::GetDataMutable<double>(children[1]);
+  
+  	UnaryExecutor::Execute<list_entry_t, string_t>(source, result, count, [&](list_entry_t &line) {
+  		auto offset = line.offset;
+@@ -437,9 +527,9 @@ index 72722cc..c64825a 100644
+ -	auto x_data = FlatVector::GetData<double>(*children[0]);
+ -	auto y_data = FlatVector::GetData<double>(*children[1]);
+ -	auto z_data = FlatVector::GetData<double>(*children[2]);
+-+	auto x_data = FlatVector::GetData<double>(children[0]);
+-+	auto y_data = FlatVector::GetData<double>(children[1]);
+-+	auto z_data = FlatVector::GetData<double>(children[2]);
+++	auto x_data = FlatVector::GetDataMutable<double>(children[0]);
+++	auto y_data = FlatVector::GetDataMutable<double>(children[1]);
+++	auto z_data = FlatVector::GetDataMutable<double>(children[2]);
+  
+  	UnaryExecutor::Execute<list_entry_t, string_t>(source, result, count, [&](list_entry_t &line) {
+  		auto offset = line.offset;
+@@ -449,8 +539,8 @@ index 72722cc..c64825a 100644
+  	auto &point_children = StructVector::GetEntries(point_vector);
+ -	auto x_data = FlatVector::GetData<double>(*point_children[0]);
+ -	auto y_data = FlatVector::GetData<double>(*point_children[1]);
+-+	auto x_data = FlatVector::GetData<double>(point_children[0]);
+-+	auto y_data = FlatVector::GetData<double>(point_children[1]);
+++	auto x_data = FlatVector::GetDataMutable<double>(point_children[0]);
+++	auto y_data = FlatVector::GetDataMutable<double>(point_children[1]);
+  
+  	UnaryExecutor::Execute<list_entry_t, string_t>(poly_vector, result, count, [&](list_entry_t polygon_entry) {
+  		auto offset = polygon_entry.offset;
+@@ -461,24 +551,33 @@ index 72722cc..c64825a 100644
+ -	auto x_data = FlatVector::GetData<double>(*point_children[0]);
+ -	auto y_data = FlatVector::GetData<double>(*point_children[1]);
+ -	auto z_data = FlatVector::GetData<double>(*point_children[2]);
+-+	auto x_data = FlatVector::GetData<double>(point_children[0]);
+-+	auto y_data = FlatVector::GetData<double>(point_children[1]);
+-+	auto z_data = FlatVector::GetData<double>(point_children[2]);
+++	auto x_data = FlatVector::GetDataMutable<double>(point_children[0]);
+++	auto y_data = FlatVector::GetDataMutable<double>(point_children[1]);
+++	auto z_data = FlatVector::GetDataMutable<double>(point_children[2]);
+  
+  	UnaryExecutor::Execute<list_entry_t, string_t>(poly_vector, result, count, [&](list_entry_t polygon_entry) {
+  		auto offset = polygon_entry.offset;
+ diff --git a/src/spatial/modules/main/spatial_functions_scalar.cpp b/src/spatial/modules/main/spatial_functions_scalar.cpp
+-index 31cd743..c98b7f7 100644
++index 31cd743..5310f80 100644
+ --- a/src/spatial/modules/main/spatial_functions_scalar.cpp
+ +++ b/src/spatial/modules/main/spatial_functions_scalar.cpp
++@@ -179,7 +179,7 @@ struct ST_Affine {
++ 			sgl::ops::affine_transform(alloc, geom, matrix);
++ 
++ 			// Serialize the result
++-			FlatVector::GetData<string_t>(result)[out_idx] = lstate.Serialize(result, geom);
+++			FlatVector::GetDataMutable<string_t>(result)[out_idx] = lstate.Serialize(result, geom);
++ 		}
++ 
++ 		if (row_count == 1) {
+ @@ -442,8 +442,8 @@ struct ST_Area {
+  		auto ring_entries = ListVector::GetData(ring_vec);
+  		auto &coord_vec = ListVector::GetEntry(ring_vec);
+  		auto &coord_vec_children = StructVector::GetEntries(coord_vec);
+ -		auto x_data = FlatVector::GetData<double>(*coord_vec_children[0]);
+ -		auto y_data = FlatVector::GetData<double>(*coord_vec_children[1]);
+-+		auto x_data = FlatVector::GetData<double>(coord_vec_children[0]);
+-+		auto y_data = FlatVector::GetData<double>(coord_vec_children[1]);
+++		auto x_data = FlatVector::GetDataMutable<double>(coord_vec_children[0]);
+++		auto y_data = FlatVector::GetDataMutable<double>(coord_vec_children[1]);
+  
+  		UnaryExecutor::Execute<list_entry_t, double>(input, result, count, [&](list_entry_t polygon) {
+  			auto polygon_offset = polygon.offset;
+@@ -506,14 +605,14 @@ index 31cd743..c98b7f7 100644
+  		auto &line_vertex_vec_children = StructVector::GetEntries(line_vertex_vec);
+ -		auto line_x_data = FlatVector::GetData<double>(*line_vertex_vec_children[0]);
+ -		auto line_y_vec = FlatVector::GetData<double>(*line_vertex_vec_children[1]);
+-+		auto line_x_data = FlatVector::GetData<double>(line_vertex_vec_children[0]);
+-+		auto line_y_vec = FlatVector::GetData<double>(line_vertex_vec_children[1]);
+++		auto line_x_data = FlatVector::GetDataMutable<double>(line_vertex_vec_children[0]);
+++		auto line_y_vec = FlatVector::GetDataMutable<double>(line_vertex_vec_children[1]);
+  
+  		auto &point_vertex_children = StructVector::GetEntries(result);
+ -		auto point_x_data = FlatVector::GetData<double>(*point_vertex_children[0]);
+ -		auto point_y_data = FlatVector::GetData<double>(*point_vertex_children[1]);
+-+		auto point_x_data = FlatVector::GetData<double>(point_vertex_children[0]);
+-+		auto point_y_data = FlatVector::GetData<double>(point_vertex_children[1]);
+++		auto point_x_data = FlatVector::GetDataMutable<double>(point_vertex_children[0]);
+++		auto point_y_data = FlatVector::GetDataMutable<double>(point_vertex_children[1]);
+  		for (idx_t out_row_idx = 0; out_row_idx < count; out_row_idx++) {
+  
+  			auto in_row_idx = format.sel->get_index(out_row_idx);
+@@ -532,14 +631,14 @@ index 31cd743..c98b7f7 100644
+  		auto &vertex_vec_children = StructVector::GetEntries(vertex_vec);
+ -		auto x_data = FlatVector::GetData<double>(*vertex_vec_children[0]);
+ -		auto y_data = FlatVector::GetData<double>(*vertex_vec_children[1]);
+-+		auto x_data = FlatVector::GetData<double>(vertex_vec_children[0]);
+-+		auto y_data = FlatVector::GetData<double>(vertex_vec_children[1]);
+++		auto x_data = FlatVector::GetDataMutable<double>(vertex_vec_children[0]);
+++		auto y_data = FlatVector::GetDataMutable<double>(vertex_vec_children[1]);
+  
+  		auto &centroid_children = StructVector::GetEntries(result);
+ -		auto centroid_x_data = FlatVector::GetData<double>(*centroid_children[0]);
+ -		auto centroid_y_data = FlatVector::GetData<double>(*centroid_children[1]);
+-+		auto centroid_x_data = FlatVector::GetData<double>(centroid_children[0]);
+-+		auto centroid_y_data = FlatVector::GetData<double>(centroid_children[1]);
+++		auto centroid_x_data = FlatVector::GetDataMutable<double>(centroid_children[0]);
+++		auto centroid_y_data = FlatVector::GetDataMutable<double>(centroid_children[1]);
+  
+  		for (idx_t in_row_idx = 0; in_row_idx < count; in_row_idx++) {
+  			if (format.validity.RowIsValid(in_row_idx)) {
+@@ -557,16 +656,16 @@ index 31cd743..c98b7f7 100644
+ -		auto miny_data = FlatVector::GetData<T>(*box_children[1]);
+ -		auto maxx_data = FlatVector::GetData<T>(*box_children[2]);
+ -		auto maxy_data = FlatVector::GetData<T>(*box_children[3]);
+-+		auto minx_data = FlatVector::GetData<T>(box_children[0]);
+-+		auto miny_data = FlatVector::GetData<T>(box_children[1]);
+-+		auto maxx_data = FlatVector::GetData<T>(box_children[2]);
+-+		auto maxy_data = FlatVector::GetData<T>(box_children[3]);
+++		auto minx_data = FlatVector::GetDataMutable<T>(box_children[0]);
+++		auto miny_data = FlatVector::GetDataMutable<T>(box_children[1]);
+++		auto maxx_data = FlatVector::GetDataMutable<T>(box_children[2]);
+++		auto maxy_data = FlatVector::GetDataMutable<T>(box_children[3]);
+  
+  		auto &centroid_children = StructVector::GetEntries(result);
+ -		auto centroid_x_data = FlatVector::GetData<double>(*centroid_children[0]);
+ -		auto centroid_y_data = FlatVector::GetData<double>(*centroid_children[1]);
+-+		auto centroid_x_data = FlatVector::GetData<double>(centroid_children[0]);
+-+		auto centroid_y_data = FlatVector::GetData<double>(centroid_children[1]);
+++		auto centroid_x_data = FlatVector::GetDataMutable<double>(centroid_children[0]);
+++		auto centroid_y_data = FlatVector::GetDataMutable<double>(centroid_children[1]);
+  
+  		for (idx_t out_row_idx = 0; out_row_idx < count; out_row_idx++) {
+  			auto in_row_idx = format.sel->get_index(out_row_idx);
+@@ -576,80 +675,95 @@ index 31cd743..c98b7f7 100644
+  		auto &p_children = StructVector::GetEntries(in_point);
+ -		auto p_x_data = FlatVector::GetData<double>(*p_children[0]);
+ -		auto p_y_data = FlatVector::GetData<double>(*p_children[1]);
+-+		auto p_x_data = FlatVector::GetData<double>(p_children[0]);
+-+		auto p_y_data = FlatVector::GetData<double>(p_children[1]);
+++		auto p_x_data = FlatVector::GetDataMutable<double>(p_children[0]);
+++		auto p_y_data = FlatVector::GetDataMutable<double>(p_children[1]);
+  
+  		// Setup polygon vectors
+  		auto polygon_entries = ListVector::GetData(in_polygon);
+-@@ -2021,8 +2021,8 @@ struct ST_Contains {
++@@ -2021,10 +2021,10 @@ struct ST_Contains {
+  		auto ring_entries = ListVector::GetData(ring_vec);
+  		auto &coord_vec = ListVector::GetEntry(ring_vec);
+  		auto &coord_children = StructVector::GetEntries(coord_vec);
+ -		auto x_data = FlatVector::GetData<double>(*coord_children[0]);
+ -		auto y_data = FlatVector::GetData<double>(*coord_children[1]);
+-+		auto x_data = FlatVector::GetData<double>(coord_children[0]);
+-+		auto y_data = FlatVector::GetData<double>(coord_children[1]);
+++		auto x_data = FlatVector::GetDataMutable<double>(coord_children[0]);
+++		auto y_data = FlatVector::GetDataMutable<double>(coord_children[1]);
+  
+- 		auto result_data = FlatVector::GetData<bool>(result);
++-		auto result_data = FlatVector::GetData<bool>(result);
+++		auto result_data = FlatVector::GetDataMutable<bool>(result);
+  		for (idx_t polygon_idx = 0; polygon_idx < count; polygon_idx++) {
+-@@ -2274,10 +2274,10 @@ struct ST_Azimuth {
++ 			auto polygon = polygon_entries[polygon_idx];
++ 			auto polygon_offset = polygon.offset;
++@@ -2274,14 +2274,14 @@ struct ST_Azimuth {
+  		auto &left_entries = StructVector::GetEntries(left);
+  		auto &right_entries = StructVector::GetEntries(right);
+  
+ -		auto left_x = FlatVector::GetData<double>(*left_entries[0]);
+ -		auto left_y = FlatVector::GetData<double>(*left_entries[1]);
+ -		auto right_x = FlatVector::GetData<double>(*right_entries[0]);
+ -		auto right_y = FlatVector::GetData<double>(*right_entries[1]);
+-+		auto left_x = FlatVector::GetData<double>(left_entries[0]);
+-+		auto left_y = FlatVector::GetData<double>(left_entries[1]);
+-+		auto right_x = FlatVector::GetData<double>(right_entries[0]);
+-+		auto right_y = FlatVector::GetData<double>(right_entries[1]);
+++		auto left_x = FlatVector::GetDataMutable<double>(left_entries[0]);
+++		auto left_y = FlatVector::GetDataMutable<double>(left_entries[1]);
+++		auto right_x = FlatVector::GetDataMutable<double>(right_entries[0]);
+++		auto right_y = FlatVector::GetDataMutable<double>(right_entries[1]);
+  
+  		auto &result_mask = FlatVector::Validity(result);
+  
+-@@ -2408,10 +2408,10 @@ struct ST_Distance {
++-		auto out_data = FlatVector::GetData<double>(result);
+++		auto out_data = FlatVector::GetDataMutable<double>(result);
++ 		for (idx_t i = 0; i < count; i++) {
++ 			// If the points are the same, return NULL
++ 			if (left_x[i] == right_x[i] && left_y[i] == right_y[i]) {
++@@ -2408,12 +2408,12 @@ struct ST_Distance {
+  		auto &left_entries = StructVector::GetEntries(left);
+  		auto &right_entries = StructVector::GetEntries(right);
+  
+ -		auto left_x = FlatVector::GetData<double>(*left_entries[0]);
+ -		auto left_y = FlatVector::GetData<double>(*left_entries[1]);
+ -		auto right_x = FlatVector::GetData<double>(*right_entries[0]);
+ -		auto right_y = FlatVector::GetData<double>(*right_entries[1]);
+-+		auto left_x = FlatVector::GetData<double>(left_entries[0]);
+-+		auto left_y = FlatVector::GetData<double>(left_entries[1]);
+-+		auto right_x = FlatVector::GetData<double>(right_entries[0]);
+-+		auto right_y = FlatVector::GetData<double>(right_entries[1]);
+++		auto left_x = FlatVector::GetDataMutable<double>(left_entries[0]);
+++		auto left_y = FlatVector::GetDataMutable<double>(left_entries[1]);
+++		auto right_x = FlatVector::GetDataMutable<double>(right_entries[0]);
+++		auto right_y = FlatVector::GetDataMutable<double>(right_entries[1]);
+  
+- 		auto out_data = FlatVector::GetData<double>(result);
++-		auto out_data = FlatVector::GetData<double>(result);
+++		auto out_data = FlatVector::GetDataMutable<double>(result);
+  		for (idx_t i = 0; i < count; i++) {
++ 			out_data[i] = std::sqrt(std::pow(left_x[i] - right_x[i], 2) + std::pow(left_y[i] - right_y[i], 2));
++ 		}
+ @@ -2433,8 +2433,8 @@ struct ST_Distance {
+  		auto &p_children = StructVector::GetEntries(in_point);
+  		auto &p_x = p_children[0];
+  		auto &p_y = p_children[1];
+ -		auto p_x_data = FlatVector::GetData<double>(*p_x);
+ -		auto p_y_data = FlatVector::GetData<double>(*p_y);
+-+		auto p_x_data = FlatVector::GetData<double>(p_x);
+-+		auto p_y_data = FlatVector::GetData<double>(p_y);
+++		auto p_x_data = FlatVector::GetDataMutable<double>(p_x);
+++		auto p_y_data = FlatVector::GetDataMutable<double>(p_y);
+  
+  		// Set up the line vectors
+  		in_line.Flatten(count);
+-@@ -2443,8 +2443,8 @@ struct ST_Distance {
++@@ -2443,11 +2443,11 @@ struct ST_Distance {
+  		auto &children = StructVector::GetEntries(inner);
+  		auto &x = children[0];
+  		auto &y = children[1];
+ -		auto x_data = FlatVector::GetData<double>(*x);
+ -		auto y_data = FlatVector::GetData<double>(*y);
+-+		auto x_data = FlatVector::GetData<double>(x);
+-+		auto y_data = FlatVector::GetData<double>(y);
+++		auto x_data = FlatVector::GetDataMutable<double>(x);
+++		auto y_data = FlatVector::GetDataMutable<double>(y);
+  		auto lines = ListVector::GetData(in_line);
+  
+- 		auto result_data = FlatVector::GetData<double>(result);
++-		auto result_data = FlatVector::GetData<double>(result);
+++		auto result_data = FlatVector::GetDataMutable<double>(result);
++ 		for (idx_t i = 0; i < count; i++) {
++ 			auto offset = lines[i].offset;
++ 			auto length = lines[i].length;
+ @@ -2904,11 +2904,11 @@ struct ST_Dump {
+  			auto &result_path_vec = result_list_children[1];
+  
+  			// The child geometries must share the same properties as the parent geometry
+ -			auto geom_data = FlatVector::GetData<string_t>(*result_geom_vec);
+-+			auto geom_data = FlatVector::GetData<string_t>(result_geom_vec);
+++			auto geom_data = FlatVector::GetDataMutable<string_t>(result_geom_vec);
+  			for (idx_t i = 0; i < geom_length; i++) {
+  				// Write the geometry
+  				auto item_blob = std::get<0>(items[i]);
+@@ -658,7 +772,7 @@ index 31cd743..c98b7f7 100644
+  
+  				// Now write the paths
+  				auto &path = std::get<1>(items[i]);
+-@@ -2917,15 +2917,15 @@ struct ST_Dump {
++@@ -2917,16 +2917,16 @@ struct ST_Dump {
+  
+  				total_path_count += path_length;
+  
+@@ -674,10 +788,12 @@ index 31cd743..c98b7f7 100644
+  				path_entries[geom_offset + i].length = path_length;
+  
+ -				auto &path_data_vec = ListVector::GetEntry(*result_path_vec);
++-				auto path_data = FlatVector::GetData<int32_t>(path_data_vec);
+ +				auto &path_data_vec = ListVector::GetEntry(result_path_vec);
+- 				auto path_data = FlatVector::GetData<int32_t>(path_data_vec);
+++				auto path_data = FlatVector::GetDataMutable<int32_t>(path_data_vec);
+  
+  				for (idx_t j = 0; j < path_length; j++) {
++ 					path_data[path_offset + j] = path[j];
+ @@ -3079,11 +3079,11 @@ struct ST_Extent {
+  	static void Execute(DataChunk &args, ExpressionState &state, Vector &result) {
+  		auto &lstate = LocalState::ResetAndGet(state);
+@@ -688,10 +804,10 @@ index 31cd743..c98b7f7 100644
+ -		const auto max_x_data = FlatVector::GetData<double>(*bbox_vec[2]);
+ -		const auto max_y_data = FlatVector::GetData<double>(*bbox_vec[3]);
+ +		auto &bbox_vec = StructVector::GetEntries(result);
+-+		const auto min_x_data = FlatVector::GetData<double>(bbox_vec[0]);
+-+		const auto min_y_data = FlatVector::GetData<double>(bbox_vec[1]);
+-+		const auto max_x_data = FlatVector::GetData<double>(bbox_vec[2]);
+-+		const auto max_y_data = FlatVector::GetData<double>(bbox_vec[3]);
+++		const auto min_x_data = FlatVector::GetDataMutable<double>(bbox_vec[0]);
+++		const auto min_y_data = FlatVector::GetDataMutable<double>(bbox_vec[1]);
+++		const auto max_x_data = FlatVector::GetDataMutable<double>(bbox_vec[2]);
+++		const auto max_y_data = FlatVector::GetDataMutable<double>(bbox_vec[3]);
+  
+  		UnifiedVectorFormat input_vdata;
+  		args.data[0].ToUnifiedFormat(args.size(), input_vdata);
+@@ -705,14 +821,22 @@ index 31cd743..c98b7f7 100644
+ -		const auto max_x_data = FlatVector::GetData<float>(*struct_vec[2]);
+ -		const auto max_y_data = FlatVector::GetData<float>(*struct_vec[3]);
+ +		auto &struct_vec = StructVector::GetEntries(result);
+-+		const auto min_x_data = FlatVector::GetData<float>(struct_vec[0]);
+-+		const auto min_y_data = FlatVector::GetData<float>(struct_vec[1]);
+-+		const auto max_x_data = FlatVector::GetData<float>(struct_vec[2]);
+-+		const auto max_y_data = FlatVector::GetData<float>(struct_vec[3]);
+++		const auto min_x_data = FlatVector::GetDataMutable<float>(struct_vec[0]);
+++		const auto min_y_data = FlatVector::GetDataMutable<float>(struct_vec[1]);
+++		const auto max_x_data = FlatVector::GetDataMutable<float>(struct_vec[2]);
+++		const auto max_y_data = FlatVector::GetDataMutable<float>(struct_vec[3]);
+  
+  		UnifiedVectorFormat input_vdata;
+  		input.ToUnifiedFormat(count, input_vdata);
+-@@ -3258,12 +3258,12 @@ struct Op_IntersectApprox {
++@@ -3251,19 +3251,19 @@ struct Op_IntersectApprox {
++         auto &box = args.data[0];
++         auto &geom = args.data[1];
++ 
++-        auto result_data = FlatVector::GetData<bool>(result);
+++        auto result_data = FlatVector::GetDataMutable<bool>(result);
++ 
++         // Convert box to unified format
++         UnifiedVectorFormat box_vdata;
+          box.ToUnifiedFormat(count, box_vdata);
+  
+          // Get the struct entries and convert them to unified format
+@@ -736,8 +860,8 @@ index 31cd743..c98b7f7 100644
+  		auto &vertex_vec_children = StructVector::GetEntries(vertex_vec);
+ -		auto poly_x_data = FlatVector::GetData<double>(*vertex_vec_children[0]);
+ -		auto poly_y_data = FlatVector::GetData<double>(*vertex_vec_children[1]);
+-+		auto poly_x_data = FlatVector::GetData<double>(vertex_vec_children[0]);
+-+		auto poly_y_data = FlatVector::GetData<double>(vertex_vec_children[1]);
+++		auto poly_x_data = FlatVector::GetDataMutable<double>(vertex_vec_children[0]);
+++		auto poly_y_data = FlatVector::GetDataMutable<double>(vertex_vec_children[1]);
+  
+  		auto count = args.size();
+  		UnifiedVectorFormat poly_format;
+@@ -747,8 +871,8 @@ index 31cd743..c98b7f7 100644
+  		auto &line_coord_vec = StructVector::GetEntries(ListVector::GetEntry(line_vec));
+ -		auto line_data_x = FlatVector::GetData<double>(*line_coord_vec[0]);
+ -		auto line_data_y = FlatVector::GetData<double>(*line_coord_vec[1]);
+-+		auto line_data_x = FlatVector::GetData<double>(line_coord_vec[0]);
+-+		auto line_data_y = FlatVector::GetData<double>(line_coord_vec[1]);
+++		auto line_data_x = FlatVector::GetDataMutable<double>(line_coord_vec[0]);
+++		auto line_data_y = FlatVector::GetDataMutable<double>(line_coord_vec[1]);
+  
+  		// Now we can fill the result vector
+  		idx_t line_data_offset = 0;
+@@ -766,14 +890,14 @@ index 31cd743..c98b7f7 100644
+  		auto &coords_in = StructVector::GetEntries(input);
+ -		auto x_data_in = FlatVector::GetData<double>(*coords_in[0]);
+ -		auto y_data_in = FlatVector::GetData<double>(*coords_in[1]);
+-+		auto x_data_in = FlatVector::GetData<double>(coords_in[0]);
+-+		auto y_data_in = FlatVector::GetData<double>(coords_in[1]);
+++		auto x_data_in = FlatVector::GetDataMutable<double>(coords_in[0]);
+++		auto y_data_in = FlatVector::GetDataMutable<double>(coords_in[1]);
+  
+  		auto &coords_out = StructVector::GetEntries(result);
+ -		auto x_data_out = FlatVector::GetData<double>(*coords_out[0]);
+ -		auto y_data_out = FlatVector::GetData<double>(*coords_out[1]);
+-+		auto x_data_out = FlatVector::GetData<double>(coords_out[0]);
+-+		auto y_data_out = FlatVector::GetData<double>(coords_out[1]);
+++		auto x_data_out = FlatVector::GetDataMutable<double>(coords_out[0]);
+++		auto y_data_out = FlatVector::GetDataMutable<double>(coords_out[1]);
+  
+  		memcpy(x_data_out, y_data_in, count * sizeof(double));
+  		memcpy(y_data_out, x_data_in, count * sizeof(double));
+@@ -793,8 +917,8 @@ index 31cd743..c98b7f7 100644
+  		auto &coords_in = StructVector::GetEntries(coord_vec_in);
+ -		auto x_data_in = FlatVector::GetData<double>(*coords_in[0]);
+ -		auto y_data_in = FlatVector::GetData<double>(*coords_in[1]);
+-+		auto x_data_in = FlatVector::GetData<double>(coords_in[0]);
+-+		auto y_data_in = FlatVector::GetData<double>(coords_in[1]);
+++		auto x_data_in = FlatVector::GetDataMutable<double>(coords_in[0]);
+++		auto y_data_in = FlatVector::GetDataMutable<double>(coords_in[1]);
+  
+  		auto coord_count = ListVector::GetListSize(input);
+  		ListVector::Reserve(result, coord_count);
+@@ -807,8 +931,8 @@ index 31cd743..c98b7f7 100644
+  		auto &coords_out = StructVector::GetEntries(coord_vec_out);
+ -		auto x_data_out = FlatVector::GetData<double>(*coords_out[0]);
+ -		auto y_data_out = FlatVector::GetData<double>(*coords_out[1]);
+-+		auto x_data_out = FlatVector::GetData<double>(coords_out[0]);
+-+		auto y_data_out = FlatVector::GetData<double>(coords_out[1]);
+++		auto x_data_out = FlatVector::GetDataMutable<double>(coords_out[0]);
+++		auto y_data_out = FlatVector::GetDataMutable<double>(coords_out[1]);
+  
+  		memcpy(x_data_out, y_data_in, coord_count * sizeof(double));
+  		memcpy(y_data_out, x_data_in, coord_count * sizeof(double));
+@@ -832,8 +956,8 @@ index 31cd743..c98b7f7 100644
+  		auto &coords_in = StructVector::GetEntries(coord_vec_in);
+ -		auto x_data_in = FlatVector::GetData<double>(*coords_in[0]);
+ -		auto y_data_in = FlatVector::GetData<double>(*coords_in[1]);
+-+		auto x_data_in = FlatVector::GetData<double>(coords_in[0]);
+-+		auto y_data_in = FlatVector::GetData<double>(coords_in[1]);
+++		auto x_data_in = FlatVector::GetDataMutable<double>(coords_in[0]);
+++		auto y_data_in = FlatVector::GetDataMutable<double>(coords_in[1]);
+  
+  		auto coord_count = ListVector::GetListSize(ring_vec_in);
+  
+@@ -853,8 +977,8 @@ index 31cd743..c98b7f7 100644
+  		auto &coords_out = StructVector::GetEntries(coord_vec_out);
+ -		auto x_data_out = FlatVector::GetData<double>(*coords_out[0]);
+ -		auto y_data_out = FlatVector::GetData<double>(*coords_out[1]);
+-+		auto x_data_out = FlatVector::GetData<double>(coords_out[0]);
+-+		auto y_data_out = FlatVector::GetData<double>(coords_out[1]);
+++		auto x_data_out = FlatVector::GetDataMutable<double>(coords_out[0]);
+++		auto y_data_out = FlatVector::GetDataMutable<double>(coords_out[1]);
+  
+  		memcpy(x_data_out, y_data_in, coord_count * sizeof(double));
+  		memcpy(y_data_out, x_data_in, coord_count * sizeof(double));
+@@ -874,20 +998,20 @@ index 31cd743..c98b7f7 100644
+ -		auto min_y_in = FlatVector::GetData<double>(*children_in[1]);
+ -		auto max_x_in = FlatVector::GetData<double>(*children_in[2]);
+ -		auto max_y_in = FlatVector::GetData<double>(*children_in[3]);
+-+		auto min_x_in = FlatVector::GetData<double>(children_in[0]);
+-+		auto min_y_in = FlatVector::GetData<double>(children_in[1]);
+-+		auto max_x_in = FlatVector::GetData<double>(children_in[2]);
+-+		auto max_y_in = FlatVector::GetData<double>(children_in[3]);
+++		auto min_x_in = FlatVector::GetDataMutable<double>(children_in[0]);
+++		auto min_y_in = FlatVector::GetDataMutable<double>(children_in[1]);
+++		auto max_x_in = FlatVector::GetDataMutable<double>(children_in[2]);
+++		auto max_y_in = FlatVector::GetDataMutable<double>(children_in[3]);
+  
+  		auto &children_out = StructVector::GetEntries(result);
+ -		auto min_x_out = FlatVector::GetData<double>(*children_out[0]);
+ -		auto min_y_out = FlatVector::GetData<double>(*children_out[1]);
+ -		auto max_x_out = FlatVector::GetData<double>(*children_out[2]);
+ -		auto max_y_out = FlatVector::GetData<double>(*children_out[3]);
+-+		auto min_x_out = FlatVector::GetData<double>(children_out[0]);
+-+		auto min_y_out = FlatVector::GetData<double>(children_out[1]);
+-+		auto max_x_out = FlatVector::GetData<double>(children_out[2]);
+-+		auto max_y_out = FlatVector::GetData<double>(children_out[3]);
+++		auto min_x_out = FlatVector::GetDataMutable<double>(children_out[0]);
+++		auto min_y_out = FlatVector::GetDataMutable<double>(children_out[1]);
+++		auto max_x_out = FlatVector::GetDataMutable<double>(children_out[2]);
+++		auto max_y_out = FlatVector::GetDataMutable<double>(children_out[3]);
+  
+  		memcpy(min_x_out, min_y_in, count * sizeof(double));
+  		memcpy(min_y_out, min_x_in, count * sizeof(double));
+@@ -900,60 +1024,104 @@ index 31cd743..c98b7f7 100644
+  		auto count = args.size();
+  
+  		UnaryExecutor::Execute<string_t, string_t>(input, result, count, [&](const string_t &blob) {
+-@@ -4752,9 +4752,9 @@ struct ST_GeomFromWKB {
++@@ -4752,16 +4752,16 @@ struct ST_GeomFromWKB {
+  
+  		input.Flatten(count);
+  
+ -		const auto &point_children = StructVector::GetEntries(result);
+ -		const auto x_data = FlatVector::GetData<double>(*point_children[0]);
+ -		const auto y_data = FlatVector::GetData<double>(*point_children[1]);
+ +		auto &point_children = StructVector::GetEntries(result);
+-+		const auto x_data = FlatVector::GetData<double>(point_children[0]);
+-+		const auto y_data = FlatVector::GetData<double>(point_children[1]);
+++		const auto x_data = FlatVector::GetDataMutable<double>(point_children[0]);
+++		const auto y_data = FlatVector::GetDataMutable<double>(point_children[1]);
+  
+  		sgl::wkb_reader reader(alloc);
+  		reader.set_allow_mixed_zm(true);
++ 		reader.set_nan_as_empty(true);
++ 
++ 		for (idx_t i = 0; i < count; i++) {
++-			const auto &wkb = FlatVector::GetData<string_t>(input)[i];
+++			const auto &wkb = FlatVector::GetDataMutable<string_t>(input)[i];
++ 
++ 			const auto wkb_ptr = wkb.GetDataUnsafe();
++ 			const auto wkb_len = wkb.GetSize();
++@@ -4801,7 +4801,7 @@ struct ST_GeomFromWKB {
++ 
++ 		auto &inner = ListVector::GetEntry(result);
++ 		const auto lines = ListVector::GetData(result);
++-		const auto wkb_data = FlatVector::GetData<string_t>(wkb_blobs);
+++		const auto wkb_data = FlatVector::GetDataMutable<string_t>(wkb_blobs);
++ 
++ 		idx_t total_size = 0;
++ 
+ @@ -4836,8 +4836,8 @@ struct ST_GeomFromWKB {
+  			auto &children = StructVector::GetEntries(inner);
+  			auto &x_child = children[0];
+  			auto &y_child = children[1];
+ -			auto x_data = FlatVector::GetData<double>(*x_child);
+ -			auto y_data = FlatVector::GetData<double>(*y_child);
+-+			auto x_data = FlatVector::GetData<double>(x_child);
+-+			auto y_data = FlatVector::GetData<double>(y_child);
+++			auto x_data = FlatVector::GetDataMutable<double>(x_child);
+++			auto y_data = FlatVector::GetDataMutable<double>(y_child);
+  
+  			for (idx_t j = 0; j < line_size; j++) {
+  				const auto vertex = geom.get_vertex_xy(j);
++@@ -4868,7 +4868,7 @@ struct ST_GeomFromWKB {
++ 		// Set up input data
++ 		auto &wkb_blobs = args.data[0];
++ 		wkb_blobs.Flatten(count);
++-		auto wkb_data = FlatVector::GetData<string_t>(wkb_blobs);
+++		auto wkb_data = FlatVector::GetDataMutable<string_t>(wkb_blobs);
++ 
++ 		// Set up output data
++ 		auto &ring_vec = ListVector::GetEntry(result);
+ @@ -4920,8 +4920,8 @@ struct ST_GeomFromWKB {
+  					auto &children = StructVector::GetEntries(inner);
+  					auto &x_child = children[0];
+  					auto &y_child = children[1];
+ -					auto x_data = FlatVector::GetData<double>(*x_child);
+ -					auto y_data = FlatVector::GetData<double>(*y_child);
+-+					auto x_data = FlatVector::GetData<double>(x_child);
+-+					auto y_data = FlatVector::GetData<double>(y_child);
+++					auto x_data = FlatVector::GetDataMutable<double>(x_child);
+++					auto y_data = FlatVector::GetDataMutable<double>(y_child);
+  
+  					for (idx_t k = 0; k < point_count; k++) {
+  						const auto vertex = ring->get_vertex_xy(k);
++@@ -5587,7 +5587,7 @@ struct ST_LocateBetween {
++ 		const auto upper_data = UnifiedVectorFormat::GetData<double>(upper_format);
++ 		const auto offset_data = UnifiedVectorFormat::GetData<double>(offset_format);
++ 
++-		const auto result_data = FlatVector::GetData<string_t>(result);
+++		const auto result_data = FlatVector::GetDataMutable<string_t>(result);
++ 
++ 		for (idx_t out_idx = 0; out_idx < row_count; out_idx++) {
++ 			const auto geom_idx = geom_format.sel->get_index(out_idx);
+ @@ -6198,8 +6198,8 @@ struct ST_InteriorRingN {
+  		auto ring_entries = ListVector::GetData(ring_vec);
+  		auto &vertex_vec = ListVector::GetEntry(ring_vec);
+  		auto &vertex_vec_children = StructVector::GetEntries(vertex_vec);
+ -		auto poly_x_data = FlatVector::GetData<double>(*vertex_vec_children[0]);
+ -		auto poly_y_data = FlatVector::GetData<double>(*vertex_vec_children[1]);
+-+		auto poly_x_data = FlatVector::GetData<double>(vertex_vec_children[0]);
+-+		auto poly_y_data = FlatVector::GetData<double>(vertex_vec_children[1]);
+++		auto poly_x_data = FlatVector::GetDataMutable<double>(vertex_vec_children[0]);
+++		auto poly_y_data = FlatVector::GetDataMutable<double>(vertex_vec_children[1]);
+  
+  		auto count = args.size();
+  		UnifiedVectorFormat poly_format;
++@@ -6211,7 +6211,7 @@ struct ST_InteriorRingN {
++ 		// To inspect n per-row, extract unified format for n (it might be constant)
++ 		UnifiedVectorFormat n_format;
++ 		n_vec.ToUnifiedFormat(count, n_format);
++-		auto n_data = FlatVector::GetData<int64_t>(n_vec);
+++		auto n_data = FlatVector::GetDataMutable<int64_t>(n_vec);
++ 
++ 		for (idx_t i = 0; i < count; i++) {
++ 			auto row_idx = poly_format.sel->get_index(i);
+ @@ -6255,8 +6255,8 @@ struct ST_InteriorRingN {
+  
+  		auto line_entries = ListVector::GetData(line_vec);
+  		auto &line_coord_vec = StructVector::GetEntries(ListVector::GetEntry(line_vec));
+ -		auto line_data_x = FlatVector::GetData<double>(*line_coord_vec[0]);
+ -		auto line_data_y = FlatVector::GetData<double>(*line_coord_vec[1]);
+-+		auto line_data_x = FlatVector::GetData<double>(line_coord_vec[0]);
+-+		auto line_data_y = FlatVector::GetData<double>(line_coord_vec[1]);
+++		auto line_data_x = FlatVector::GetDataMutable<double>(line_coord_vec[0]);
+++		auto line_data_y = FlatVector::GetDataMutable<double>(line_coord_vec[1]);
+  
+  		// Fill results
+  		idx_t line_data_offset = 0;
+@@ -963,8 +1131,8 @@ index 31cd743..c98b7f7 100644
+  		auto &coord_vec_children = StructVector::GetEntries(coord_vec);
+ -		auto x_data = FlatVector::GetData<double>(*coord_vec_children[0]);
+ -		auto y_data = FlatVector::GetData<double>(*coord_vec_children[1]);
+-+		auto x_data = FlatVector::GetData<double>(coord_vec_children[0]);
+-+		auto y_data = FlatVector::GetData<double>(coord_vec_children[1]);
+++		auto x_data = FlatVector::GetDataMutable<double>(coord_vec_children[0]);
+++		auto y_data = FlatVector::GetDataMutable<double>(coord_vec_children[1]);
+  
+  		UnaryExecutor::Execute<list_entry_t, double>(line_vec, result, count, [&](const list_entry_t &line) {
+  			auto offset = line.offset;
+@@ -978,10 +1146,10 @@ index 31cd743..c98b7f7 100644
+ -		const auto max_x_data = FlatVector::GetData<double>(*bbox_vec[2]);
+ -		const auto max_y_data = FlatVector::GetData<double>(*bbox_vec[3]);
+ +		auto &bbox_vec = StructVector::GetEntries(result);
+-+		const auto min_x_data = FlatVector::GetData<double>(bbox_vec[0]);
+-+		const auto min_y_data = FlatVector::GetData<double>(bbox_vec[1]);
+-+		const auto max_x_data = FlatVector::GetData<double>(bbox_vec[2]);
+-+		const auto max_y_data = FlatVector::GetData<double>(bbox_vec[3]);
+++		const auto min_x_data = FlatVector::GetDataMutable<double>(bbox_vec[0]);
+++		const auto min_y_data = FlatVector::GetDataMutable<double>(bbox_vec[1]);
+++		const auto max_x_data = FlatVector::GetDataMutable<double>(bbox_vec[2]);
+++		const auto max_y_data = FlatVector::GetDataMutable<double>(bbox_vec[3]);
+  
+  		UnifiedVectorFormat input_vdata1;
+  		UnifiedVectorFormat input_vdata2;
+@@ -1000,8 +1168,8 @@ index 31cd743..c98b7f7 100644
+  		auto &coord_vec_children = StructVector::GetEntries(coord_vec);
+ -		auto x_data = FlatVector::GetData<double>(*coord_vec_children[0]);
+ -		auto y_data = FlatVector::GetData<double>(*coord_vec_children[1]);
+-+		auto x_data = FlatVector::GetData<double>(coord_vec_children[0]);
+-+		auto y_data = FlatVector::GetData<double>(coord_vec_children[1]);
+++		auto x_data = FlatVector::GetDataMutable<double>(coord_vec_children[0]);
+++		auto y_data = FlatVector::GetDataMutable<double>(coord_vec_children[1]);
+  
+  		UnaryExecutor::Execute<list_entry_t, double>(input, result, count, [&](list_entry_t polygon) {
+  			auto polygon_offset = polygon.offset;
+@@ -1055,22 +1223,25 @@ index 31cd743..c98b7f7 100644
+  		auto count = args.size();
+  		UnifiedVectorFormat geom_format;
+  		geom_vec.ToUnifiedFormat(count, geom_format);
+-@@ -8138,12 +8138,12 @@ struct ST_PointN {
++@@ -8138,14 +8138,14 @@ struct ST_PointN {
+  		auto line_vertex_entries = ListVector::GetData(geom_vec);
+  		auto &line_vertex_vec = ListVector::GetEntry(geom_vec);
+  		auto &line_vertex_vec_children = StructVector::GetEntries(line_vertex_vec);
+ -		auto line_x_data = FlatVector::GetData<double>(*line_vertex_vec_children[0]);
+ -		auto line_y_data = FlatVector::GetData<double>(*line_vertex_vec_children[1]);
+-+		auto line_x_data = FlatVector::GetData<double>(line_vertex_vec_children[0]);
+-+		auto line_y_data = FlatVector::GetData<double>(line_vertex_vec_children[1]);
+++		auto line_x_data = FlatVector::GetDataMutable<double>(line_vertex_vec_children[0]);
+++		auto line_y_data = FlatVector::GetDataMutable<double>(line_vertex_vec_children[1]);
+  
+  		auto &point_vertex_children = StructVector::GetEntries(result);
+ -		auto point_x_data = FlatVector::GetData<double>(*point_vertex_children[0]);
+ -		auto point_y_data = FlatVector::GetData<double>(*point_vertex_children[1]);
+-+		auto point_x_data = FlatVector::GetData<double>(point_vertex_children[0]);
+-+		auto point_y_data = FlatVector::GetData<double>(point_vertex_children[1]);
+++		auto point_x_data = FlatVector::GetDataMutable<double>(point_vertex_children[0]);
+++		auto point_y_data = FlatVector::GetDataMutable<double>(point_vertex_children[1]);
+  
+- 		auto index_data = FlatVector::GetData<int32_t>(index_vec);
++-		auto index_data = FlatVector::GetData<int32_t>(index_vec);
+++		auto index_data = FlatVector::GetDataMutable<int32_t>(index_vec);
++ 
++ 		for (idx_t out_row_idx = 0; out_row_idx < count; out_row_idx++) {
+  
+ @@ -8429,15 +8429,15 @@ struct ST_RemoveRepeatedPoints {
+  	// LINESTRING_2D
+@@ -1086,8 +1257,8 @@ index 31cd743..c98b7f7 100644
+  		auto &in_line_vertex_vec = StructVector::GetEntries(ListVector::GetEntry(input));
+ -		auto in_x_data = FlatVector::GetData<double>(*in_line_vertex_vec[0]);
+ -		auto in_y_data = FlatVector::GetData<double>(*in_line_vertex_vec[1]);
+-+		auto in_x_data = FlatVector::GetData<double>(in_line_vertex_vec[0]);
+-+		auto in_y_data = FlatVector::GetData<double>(in_line_vertex_vec[1]);
+++		auto in_x_data = FlatVector::GetDataMutable<double>(in_line_vertex_vec[0]);
+++		auto in_y_data = FlatVector::GetDataMutable<double>(in_line_vertex_vec[1]);
+  
+  		auto out_line_entries = ListVector::GetData(result);
+  		auto &out_line_vertex_vec = StructVector::GetEntries(ListVector::GetEntry(result));
+@@ -1097,8 +1268,8 @@ index 31cd743..c98b7f7 100644
+  				ListVector::Reserve(result, out_offset + in_length);
+ -				auto out_x_data = FlatVector::GetData<double>(*out_line_vertex_vec[0]);
+ -				auto out_y_data = FlatVector::GetData<double>(*out_line_vertex_vec[1]);
+-+				auto out_x_data = FlatVector::GetData<double>(out_line_vertex_vec[0]);
+-+				auto out_y_data = FlatVector::GetData<double>(out_line_vertex_vec[1]);
+++				auto out_x_data = FlatVector::GetDataMutable<double>(out_line_vertex_vec[0]);
+++				auto out_y_data = FlatVector::GetDataMutable<double>(out_line_vertex_vec[1]);
+  
+  				// If the line has less than 3 points, we can't remove any points
+  				// so we just copy the line
+@@ -1108,8 +1279,8 @@ index 31cd743..c98b7f7 100644
+  				ListVector::Reserve(result, out_offset + 2);
+ -				auto out_x_data = FlatVector::GetData<double>(*out_line_vertex_vec[0]);
+ -				auto out_y_data = FlatVector::GetData<double>(*out_line_vertex_vec[1]);
+-+				auto out_x_data = FlatVector::GetData<double>(out_line_vertex_vec[0]);
+-+				auto out_y_data = FlatVector::GetData<double>(out_line_vertex_vec[1]);
+++				auto out_x_data = FlatVector::GetDataMutable<double>(out_line_vertex_vec[0]);
+++				auto out_y_data = FlatVector::GetDataMutable<double>(out_line_vertex_vec[1]);
+  				out_x_data[out_offset] = in_x_data[in_offset];
+  				out_y_data[out_offset] = in_y_data[in_offset];
+  				out_x_data[out_offset + 1] = in_x_data[in_offset + in_length - 1];
+@@ -1119,8 +1290,8 @@ index 31cd743..c98b7f7 100644
+  			ListVector::Reserve(result, out_offset + points_to_keep);
+ -			auto out_x_data = FlatVector::GetData<double>(*out_line_vertex_vec[0]);
+ -			auto out_y_data = FlatVector::GetData<double>(*out_line_vertex_vec[1]);
+-+			auto out_x_data = FlatVector::GetData<double>(out_line_vertex_vec[0]);
+-+			auto out_y_data = FlatVector::GetData<double>(out_line_vertex_vec[1]);
+++			auto out_x_data = FlatVector::GetDataMutable<double>(out_line_vertex_vec[0]);
+++			auto out_y_data = FlatVector::GetDataMutable<double>(out_line_vertex_vec[1]);
+  
+  			// Copy the first point
+  			out_x_data[out_offset] = in_x_data[in_offset];
+@@ -1141,8 +1312,8 @@ index 31cd743..c98b7f7 100644
+  		auto &in_line_vertex_vec = StructVector::GetEntries(ListVector::GetEntry(input));
+ -		auto in_x_data = FlatVector::GetData<double>(*in_line_vertex_vec[0]);
+ -		auto in_y_data = FlatVector::GetData<double>(*in_line_vertex_vec[1]);
+-+		auto in_x_data = FlatVector::GetData<double>(in_line_vertex_vec[0]);
+-+		auto in_y_data = FlatVector::GetData<double>(in_line_vertex_vec[1]);
+++		auto in_x_data = FlatVector::GetDataMutable<double>(in_line_vertex_vec[0]);
+++		auto in_y_data = FlatVector::GetDataMutable<double>(in_line_vertex_vec[1]);
+  
+  		auto out_line_entries = ListVector::GetData(result);
+  		auto &out_line_vertex_vec = StructVector::GetEntries(ListVector::GetEntry(result));
+@@ -1152,8 +1323,8 @@ index 31cd743..c98b7f7 100644
+  				ListVector::Reserve(result, out_offset + in_length);
+ -				auto out_x_data = FlatVector::GetData<double>(*out_line_vertex_vec[0]);
+ -				auto out_y_data = FlatVector::GetData<double>(*out_line_vertex_vec[1]);
+-+				auto out_x_data = FlatVector::GetData<double>(out_line_vertex_vec[0]);
+-+				auto out_y_data = FlatVector::GetData<double>(out_line_vertex_vec[1]);
+++				auto out_x_data = FlatVector::GetDataMutable<double>(out_line_vertex_vec[0]);
+++				auto out_y_data = FlatVector::GetDataMutable<double>(out_line_vertex_vec[1]);
+  
+  				// If the line has less than 3 points, we can't remove any points
+  				// so we just copy the line
+@@ -1163,8 +1334,8 @@ index 31cd743..c98b7f7 100644
+  				ListVector::Reserve(result, out_offset + 2);
+ -				auto out_x_data = FlatVector::GetData<double>(*out_line_vertex_vec[0]);
+ -				auto out_y_data = FlatVector::GetData<double>(*out_line_vertex_vec[1]);
+-+				auto out_x_data = FlatVector::GetData<double>(out_line_vertex_vec[0]);
+-+				auto out_y_data = FlatVector::GetData<double>(out_line_vertex_vec[1]);
+++				auto out_x_data = FlatVector::GetDataMutable<double>(out_line_vertex_vec[0]);
+++				auto out_y_data = FlatVector::GetDataMutable<double>(out_line_vertex_vec[1]);
+  				out_x_data[out_offset] = in_x_data[in_offset];
+  				out_y_data[out_offset] = in_y_data[in_offset];
+  				out_x_data[out_offset + 1] = in_x_data[in_offset + in_length - 1];
+@@ -1174,8 +1345,8 @@ index 31cd743..c98b7f7 100644
+  			ListVector::Reserve(result, out_offset + points_to_keep);
+ -			auto out_x_data = FlatVector::GetData<double>(*out_line_vertex_vec[0]);
+ -			auto out_y_data = FlatVector::GetData<double>(*out_line_vertex_vec[1]);
+-+			auto out_x_data = FlatVector::GetData<double>(out_line_vertex_vec[0]);
+-+			auto out_y_data = FlatVector::GetData<double>(out_line_vertex_vec[1]);
+++			auto out_x_data = FlatVector::GetDataMutable<double>(out_line_vertex_vec[0]);
+++			auto out_y_data = FlatVector::GetDataMutable<double>(out_line_vertex_vec[1]);
+  
+  			// Copy the first point
+  			out_x_data[out_offset] = in_x_data[in_offset];
+@@ -1194,14 +1365,14 @@ index 31cd743..c98b7f7 100644
+  		auto &line_vertex_vec_children = StructVector::GetEntries(line_vertex_vec);
+ -		auto line_x_data = FlatVector::GetData<double>(*line_vertex_vec_children[0]);
+ -		auto line_y_data = FlatVector::GetData<double>(*line_vertex_vec_children[1]);
+-+		auto line_x_data = FlatVector::GetData<double>(line_vertex_vec_children[0]);
+-+		auto line_y_data = FlatVector::GetData<double>(line_vertex_vec_children[1]);
+++		auto line_x_data = FlatVector::GetDataMutable<double>(line_vertex_vec_children[0]);
+++		auto line_y_data = FlatVector::GetDataMutable<double>(line_vertex_vec_children[1]);
+  
+  		auto &point_vertex_children = StructVector::GetEntries(result);
+ -		auto point_x_data = FlatVector::GetData<double>(*point_vertex_children[0]);
+ -		auto point_y_data = FlatVector::GetData<double>(*point_vertex_children[1]);
+-+		auto point_x_data = FlatVector::GetData<double>(point_vertex_children[0]);
+-+		auto point_y_data = FlatVector::GetData<double>(point_vertex_children[1]);
+++		auto point_x_data = FlatVector::GetDataMutable<double>(point_vertex_children[0]);
+++		auto point_y_data = FlatVector::GetDataMutable<double>(point_vertex_children[1]);
+  
+  		for (idx_t out_row_idx = 0; out_row_idx < count; out_row_idx++) {
+  			auto in_row_idx = geom_format.sel->get_index(out_row_idx);
+@@ -1220,14 +1391,14 @@ index 31cd743..c98b7f7 100644
+  		auto &line_vertex_vec_children = StructVector::GetEntries(line_vertex_vec);
+ -		auto line_x_data = FlatVector::GetData<double>(*line_vertex_vec_children[0]);
+ -		auto line_y_data = FlatVector::GetData<double>(*line_vertex_vec_children[1]);
+-+		auto line_x_data = FlatVector::GetData<double>(line_vertex_vec_children[0]);
+-+		auto line_y_data = FlatVector::GetData<double>(line_vertex_vec_children[1]);
+++		auto line_x_data = FlatVector::GetDataMutable<double>(line_vertex_vec_children[0]);
+++		auto line_y_data = FlatVector::GetDataMutable<double>(line_vertex_vec_children[1]);
+  
+  		auto &point_vertex_children = StructVector::GetEntries(result);
+ -		auto point_x_data = FlatVector::GetData<double>(*point_vertex_children[0]);
+ -		auto point_y_data = FlatVector::GetData<double>(*point_vertex_children[1]);
+-+		auto point_x_data = FlatVector::GetData<double>(point_vertex_children[0]);
+-+		auto point_y_data = FlatVector::GetData<double>(point_vertex_children[1]);
+++		auto point_x_data = FlatVector::GetDataMutable<double>(point_vertex_children[0]);
+++		auto point_y_data = FlatVector::GetDataMutable<double>(point_vertex_children[1]);
+  
+  		for (idx_t out_row_idx = 0; out_row_idx < count; out_row_idx++) {
+  			auto in_row_idx = geom_format.sel->get_index(out_row_idx);
+@@ -1258,7 +1429,7 @@ index 31cd743..c98b7f7 100644
+  
+  		const auto axis = OP::ORDINATE == VertexOrdinate::X ? 0 : 1;
+ -		auto ordinate_data = FlatVector::GetData<double>(*line_coords_vec[axis]);
+-+		auto ordinate_data = FlatVector::GetData<double>(line_coords_vec[axis]);
+++		auto ordinate_data = FlatVector::GetDataMutable<double>(line_coords_vec[axis]);
+  
+  		UnaryExecutor::ExecuteWithNulls<list_entry_t, double>(
+  		    line_vec, result, args.size(), [&](const list_entry_t &line, ValidityMask &mask, idx_t idx) {
+@@ -1276,7 +1447,7 @@ index 31cd743..c98b7f7 100644
+  		auto &vertex_vec_children = StructVector::GetEntries(vertex_vec);
+  		const auto axis = OP::ORDINATE == VertexOrdinate::X ? 0 : 1;
+ -		auto ordinate_data = FlatVector::GetData<double>(*vertex_vec_children[axis]);
+-+		auto ordinate_data = FlatVector::GetData<double>(vertex_vec_children[axis]);
+++		auto ordinate_data = FlatVector::GetDataMutable<double>(vertex_vec_children[axis]);
+  
+  		UnaryExecutor::ExecuteWithNulls<list_entry_t, double>(
+  		    input, result, count, [&](const list_entry_t &polygon, ValidityMask &mask, idx_t idx) {
+@@ -1302,7 +1473,7 @@ index 31cd743..c98b7f7 100644
+  			break;
+  		default:
+ diff --git a/src/spatial/modules/main/spatial_functions_table.cpp b/src/spatial/modules/main/spatial_functions_table.cpp
+-index 8dd850a..08af76b 100644
++index 8dd850a..7b5b442 100644
+ --- a/src/spatial/modules/main/spatial_functions_table.cpp
+ +++ b/src/spatial/modules/main/spatial_functions_table.cpp
+ @@ -1,7 +1,10 @@
+@@ -1324,13 +1495,13 @@ index 8dd850a..08af76b 100644
+ -		const auto &x_data = FlatVector::GetData<double>(*point_vec[0]);
+ -		const auto &y_data = FlatVector::GetData<double>(*point_vec[1]);
+ +		auto &point_vec = StructVector::GetEntries(output.data[0]);
+-+		const auto &x_data = FlatVector::GetData<double>(point_vec[0]);
+-+		const auto &y_data = FlatVector::GetData<double>(point_vec[1]);
+++		const auto &x_data = FlatVector::GetDataMutable<double>(point_vec[0]);
+++		const auto &y_data = FlatVector::GetDataMutable<double>(point_vec[1]);
+  
+  		const auto chunk_size = MinValue<idx_t>(STANDARD_VECTOR_SIZE, bind_data.count - state.current_idx);
+  		for (idx_t i = 0; i < chunk_size; i++) {
+ diff --git a/src/spatial/modules/mvt/mvt_module.cpp b/src/spatial/modules/mvt/mvt_module.cpp
+-index 6039454..a8e8744 100644
++index 6039454..c0bd1ec 100644
+ --- a/src/spatial/modules/mvt/mvt_module.cpp
+ +++ b/src/spatial/modules/mvt/mvt_module.cpp
+ @@ -4,6 +4,7 @@
+@@ -1370,8 +1541,26 @@ index 6039454..a8e8744 100644
+  			}
+  		}
+  
++@@ -1153,7 +1154,7 @@ struct ST_AsMVT {
++ 		source_vec.ToUnifiedFormat(count, source_format);
++ 
++ 		const auto source_ptr = UnifiedVectorFormat::GetData<State *>(source_format);
++-		const auto target_ptr = FlatVector::GetData<State *>(target_vec);
+++		const auto target_ptr = FlatVector::GetDataMutable<State *>(target_vec);
++ 
++ 		for (idx_t row_idx = 0; row_idx < count; row_idx++) {
++ 			auto &source = *source_ptr[source_format.sel->get_index(row_idx)];
++@@ -1192,7 +1193,7 @@ struct ST_AsMVT {
++ 			state.layer.Finalize(bdata.extent, bdata.tag_names, bdata.layer_name, buffer, tag_dict);
++ 
++ 			// Now we have the layer buffer, we can write it to the result vector
++-			const auto result_data = FlatVector::GetData<string_t>(result);
+++			const auto result_data = FlatVector::GetDataMutable<string_t>(result);
++ 			result_data[out_idx] = StringVector::AddStringOrBlob(result, buffer.data(), buffer.size());
++ 		}
++ 	}
+ diff --git a/src/spatial/modules/osm/osm_module.cpp b/src/spatial/modules/osm/osm_module.cpp
+-index 26e4bc3..bc8bb83 100644
++index 26e4bc3..06916d3 100644
+ --- a/src/spatial/modules/osm/osm_module.cpp
+ +++ b/src/spatial/modules/osm/osm_module.cpp
+ @@ -1,3 +1,5 @@
+@@ -1380,8 +1569,172 @@ index 26e4bc3..bc8bb83 100644
+  #include "spatial/modules/osm/osm_module.hpp"
+  
+  #include "duckdb/function/replacement_scan.hpp"
++@@ -42,7 +44,7 @@ unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &in
++ 	// Create an enum type for all osm kinds
++ 	vector<string_t> enum_values = {"node", "way", "relation", "changeset"};
++ 	auto varchar_vector = Vector(LogicalType::VARCHAR, enum_values.size());
++-	auto varchar_data = FlatVector::GetData<string_t>(varchar_vector);
+++	auto varchar_data = FlatVector::GetDataMutable<string_t>(varchar_vector);
++ 	for (idx_t i = 0; i < enum_values.size(); i++) {
++ 		auto str = enum_values[i];
++ 		varchar_data[i] = str.IsInlined() ? str : StringVector::AddString(varchar_vector, str);
++@@ -73,7 +75,7 @@ unique_ptr<FunctionData> Bind(ClientContext &context, TableFunctionBindInput &in
++ 	// Create an enum type for the member kind
++ 	vector<string_t> member_enum_values = {"node", "way", "relation"};
++ 	auto member_varchar_vector = Vector(LogicalType::VARCHAR, member_enum_values.size());
++-	auto member_varchar_data = FlatVector::GetData<string_t>(member_varchar_vector);
+++	auto member_varchar_data = FlatVector::GetDataMutable<string_t>(member_varchar_vector);
++ 	for (idx_t i = 0; i < member_enum_values.size(); i++) {
++ 		auto str = member_enum_values[i];
++ 		member_varchar_data[i] = str.IsInlined() ? str : StringVector::AddString(member_varchar_vector, str);
++@@ -392,8 +394,8 @@ struct LocalState final : LocalTableFunctionState {
++ 			switch (node.tag()) {
++ 			case 1: { // ID
++ 				auto id = node.get_int64();
++-				FlatVector::GetData<uint8_t>(output.data[0])[index] = 0;
++-				FlatVector::GetData<int64_t>(output.data[1])[index] = id;
+++				FlatVector::GetDataMutable<uint8_t>(output.data[0])[index] = 0;
+++				FlatVector::GetDataMutable<int64_t>(output.data[1])[index] = id;
++ 			} break;
++ 			case 2: { // Tag Keys
++ 				key_iter = node.get_packed_uint32();
++@@ -403,11 +405,11 @@ struct LocalState final : LocalTableFunctionState {
++ 			} break;
++ 			case 8: { // Lat
++ 				auto lat = node.get_sint64();
++-				FlatVector::GetData<double>(output.data[4])[index] = 0.000000001 * (lat_offset + (granularity * lat));
+++				FlatVector::GetDataMutable<double>(output.data[4])[index] = 0.000000001 * (lat_offset + (granularity * lat));
++ 			} break;
++ 			case 9: { // Lon
++ 				auto lon = node.get_sint64();
++-				FlatVector::GetData<double>(output.data[5])[index] = 0.000000001 * (lon_offset + (granularity * lon));
+++				FlatVector::GetDataMutable<double>(output.data[5])[index] = 0.000000001 * (lon_offset + (granularity * lon));
++ 			} break;
++ 			default:
++ 				node.skip();
++@@ -431,9 +433,9 @@ struct LocalState final : LocalTableFunctionState {
++ 			auto keys = key_iter.begin();
++ 			auto vals = val_iter.begin();
++ 			for (idx_t i = tag_entry.offset; i < tag_entry.offset + tag_count; i++) {
++-				FlatVector::GetData<string_t>(key_vector)[i] =
+++				FlatVector::GetDataMutable<string_t>(key_vector)[i] =
++ 				    StringVector::AddString(key_vector, string_table[*keys++]);
++-				FlatVector::GetData<string_t>(value_vector)[i] =
+++				FlatVector::GetDataMutable<string_t>(value_vector)[i] =
++ 				    StringVector::AddString(value_vector, string_table[*vals++]);
++ 			}
++ 		} else {
++@@ -514,8 +516,8 @@ struct LocalState final : LocalTableFunctionState {
++ 			switch (way.tag()) {
++ 			case 1: { // ID
++ 				auto id = way.get_int64();
++-				FlatVector::GetData<uint8_t>(output.data[0])[index] = 1;
++-				FlatVector::GetData<int64_t>(output.data[1])[index] = id;
+++				FlatVector::GetDataMutable<uint8_t>(output.data[0])[index] = 1;
+++				FlatVector::GetDataMutable<int64_t>(output.data[1])[index] = id;
++ 				FlatVector::SetNull(output.data[4], index, true);
++ 				FlatVector::SetNull(output.data[5], index, true);
++ 				FlatVector::SetNull(output.data[6], index, true);
++@@ -550,9 +552,9 @@ struct LocalState final : LocalTableFunctionState {
++ 			auto keys = key_iter.begin();
++ 			auto vals = val_iter.begin();
++ 			for (idx_t i = tag_entry.offset; i < tag_entry.offset + tag_count; i++) {
++-				FlatVector::GetData<string_t>(key_vector)[i] =
+++				FlatVector::GetDataMutable<string_t>(key_vector)[i] =
++ 				    StringVector::AddString(key_vector, string_table[*keys++]);
++-				FlatVector::GetData<string_t>(value_vector)[i] =
+++				FlatVector::GetDataMutable<string_t>(value_vector)[i] =
++ 				    StringVector::AddString(value_vector, string_table[*vals++]);
++ 			}
++ 		} else {
++@@ -569,7 +571,7 @@ struct LocalState final : LocalTableFunctionState {
++ 			ref_entry.offset = total_refs;
++ 			ref_entry.length = ref_count;
++ 
++-			auto ref_data = FlatVector::GetData<int64_t>(ref_vector);
+++			auto ref_data = FlatVector::GetDataMutable<int64_t>(ref_vector);
++ 
++ 			int64_t last_ref = 0;
++ 			for (auto ref : ref_iter) {
++@@ -596,8 +598,8 @@ struct LocalState final : LocalTableFunctionState {
++ 			switch (relation.tag()) {
++ 			case 1: { // ID
++ 				auto id = relation.get_int64();
++-				FlatVector::GetData<uint8_t>(output.data[0])[index] = 2;
++-				FlatVector::GetData<int64_t>(output.data[1])[index] = id;
+++				FlatVector::GetDataMutable<uint8_t>(output.data[0])[index] = 2;
+++				FlatVector::GetDataMutable<int64_t>(output.data[1])[index] = id;
++ 				FlatVector::SetNull(output.data[4], index, true);
++ 				FlatVector::SetNull(output.data[5], index, true);
++ 			} break;
++@@ -639,9 +641,9 @@ struct LocalState final : LocalTableFunctionState {
++ 			auto keys = key_iter.begin();
++ 			auto vals = val_iter.begin();
++ 			for (idx_t i = tag_entry.offset; i < tag_entry.offset + tag_count; i++) {
++-				FlatVector::GetData<string_t>(key_vector)[i] =
+++				FlatVector::GetDataMutable<string_t>(key_vector)[i] =
++ 				    StringVector::AddString(key_vector, string_table[*keys++]);
++-				FlatVector::GetData<string_t>(value_vector)[i] =
+++				FlatVector::GetDataMutable<string_t>(value_vector)[i] =
++ 				    StringVector::AddString(value_vector, string_table[*vals++]);
++ 			}
++ 		} else {
++@@ -666,7 +668,7 @@ struct LocalState final : LocalTableFunctionState {
++ 				if (role_str.empty()) {
++ 					FlatVector::SetNull(role_vector, i, true);
++ 				} else {
++-					FlatVector::GetData<string_t>(role_vector)[i] = StringVector::AddString(role_vector, role_str);
+++					FlatVector::GetDataMutable<string_t>(role_vector)[i] = StringVector::AddString(role_vector, role_str);
++ 				}
++ 			}
++ 		} else {
++@@ -685,7 +687,7 @@ struct LocalState final : LocalTableFunctionState {
++ 			ref_entry.offset = total_refs;
++ 			ref_entry.length = ref_count;
++ 
++-			auto ref_data = FlatVector::GetData<int64_t>(ref_vector);
+++			auto ref_data = FlatVector::GetDataMutable<int64_t>(ref_vector);
++ 
++ 			int64_t last_ref = 0;
++ 			for (auto ref : ref_iter) {
++@@ -708,7 +710,7 @@ struct LocalState final : LocalTableFunctionState {
++ 			type_entry.offset = total_types;
++ 			type_entry.length = type_count;
++ 
++-			auto type_data = FlatVector::GetData<uint8_t>(type_vector);
+++			auto type_data = FlatVector::GetDataMutable<uint8_t>(type_vector);
++ 			for (auto type : type_iter) {
++ 				type_data[total_types++] = (uint8_t)type;
++ 			}
++@@ -725,10 +727,10 @@ struct LocalState final : LocalTableFunctionState {
++ 		auto nodes_to_write = capacity - index;
++ 		auto nodes_to_read = std::min(nodes_to_write, dense_node_ids.size() - dense_node_index);
++ 
++-		auto kind_data = FlatVector::GetData<uint8_t>(output.data[0]);
++-		auto id_data = FlatVector::GetData<int64_t>(output.data[1]);
++-		auto lat_data = FlatVector::GetData<double>(output.data[4]);
++-		auto lon_data = FlatVector::GetData<double>(output.data[5]);
+++		auto kind_data = FlatVector::GetDataMutable<uint8_t>(output.data[0]);
+++		auto id_data = FlatVector::GetDataMutable<int64_t>(output.data[1]);
+++		auto lat_data = FlatVector::GetDataMutable<double>(output.data[4]);
+++		auto lon_data = FlatVector::GetDataMutable<double>(output.data[5]);
++ 
++ 		for (idx_t i = 0; i < nodes_to_read; i++) {
++ 			auto id = dense_node_ids[dense_node_index];
++@@ -764,9 +766,9 @@ struct LocalState final : LocalTableFunctionState {
++ 						auto key_id = dense_node_tags[t];
++ 						auto val_id = dense_node_tags[t + 1];
++ 
++-						FlatVector::GetData<string_t>(key_vector)[r] =
+++						FlatVector::GetDataMutable<string_t>(key_vector)[r] =
++ 						    StringVector::AddString(key_vector, string_table[key_id]);
++-						FlatVector::GetData<string_t>(value_vector)[r] =
+++						FlatVector::GetDataMutable<string_t>(value_vector)[r] =
++ 						    StringVector::AddString(value_vector, string_table[val_id]);
++ 
++ 						t += 2;
+ diff --git a/src/spatial/modules/proj/proj_module.cpp b/src/spatial/modules/proj/proj_module.cpp
+-index 206624e..64b165b 100644
++index 206624e..d11d09e 100644
+ --- a/src/spatial/modules/proj/proj_module.cpp
+ +++ b/src/spatial/modules/proj/proj_module.cpp
+ @@ -813,8 +813,8 @@ struct ST_Area_Spheroid {
+@@ -1390,8 +1743,8 @@ index 206624e..64b165b 100644
+  		auto &coord_vec_children = StructVector::GetEntries(coord_vec);
+ -		auto x_data = FlatVector::GetData<double>(*coord_vec_children[0]);
+ -		auto y_data = FlatVector::GetData<double>(*coord_vec_children[1]);
+-+		auto x_data = FlatVector::GetData<double>(coord_vec_children[0]);
+-+		auto y_data = FlatVector::GetData<double>(coord_vec_children[1]);
+++		auto x_data = FlatVector::GetDataMutable<double>(coord_vec_children[0]);
+++		auto y_data = FlatVector::GetDataMutable<double>(coord_vec_children[1]);
+  
+  		if (bdata.always_xy) {
+  			std::swap(x_data, y_data);
+@@ -1401,8 +1754,8 @@ index 206624e..64b165b 100644
+  		auto &coord_vec_children = StructVector::GetEntries(coord_vec);
+ -		auto x_data = FlatVector::GetData<double>(*coord_vec_children[0]);
+ -		auto y_data = FlatVector::GetData<double>(*coord_vec_children[1]);
+-+		auto x_data = FlatVector::GetData<double>(coord_vec_children[0]);
+-+		auto y_data = FlatVector::GetData<double>(coord_vec_children[1]);
+++		auto x_data = FlatVector::GetDataMutable<double>(coord_vec_children[0]);
+++		auto y_data = FlatVector::GetDataMutable<double>(coord_vec_children[1]);
+  
+  		if (bdata.always_xy) {
+  			std::swap(x_data, y_data);
+@@ -1412,13 +1765,13 @@ index 206624e..64b165b 100644
+  		auto &coord_vec_children = StructVector::GetEntries(coord_vec);
+ -		auto x_data = FlatVector::GetData<double>(*coord_vec_children[0]);
+ -		auto y_data = FlatVector::GetData<double>(*coord_vec_children[1]);
+-+		auto x_data = FlatVector::GetData<double>(coord_vec_children[0]);
+-+		auto y_data = FlatVector::GetData<double>(coord_vec_children[1]);
+++		auto x_data = FlatVector::GetDataMutable<double>(coord_vec_children[0]);
+++		auto y_data = FlatVector::GetDataMutable<double>(coord_vec_children[1]);
+  
+  		if (bdata.always_xy) {
+  			std::swap(x_data, y_data);
+ diff --git a/src/spatial/modules/shapefile/shapefile_module.cpp b/src/spatial/modules/shapefile/shapefile_module.cpp
+-index 57b34d0..1e975af 100644
++index 57b34d0..ecf3163 100644
+ --- a/src/spatial/modules/shapefile/shapefile_module.cpp
+ +++ b/src/spatial/modules/shapefile/shapefile_module.cpp
+ @@ -1,3 +1,5 @@
+@@ -1427,23 +1780,68 @@ index 57b34d0..1e975af 100644
+  #include "spatial/modules/shapefile/shapefile_module.hpp"
+  #include "spatial/geometry/geometry_serialization.hpp"
+  #include "spatial/geometry/sgl.hpp"
+-@@ -1005,11 +1007,11 @@ struct Shapefile_Meta {
+- 		auto shape_type_data = FlatVector::GetData<uint8_t>(shape_type_vector);
++@@ -651,7 +653,7 @@ struct ST_ReadSHP {
++ 			blob.Finalize();
++ 
++ 			// Set the blob in the result vector
++-			FlatVector::GetData<string_t>(result)[result_idx] = blob;
+++			FlatVector::GetDataMutable<string_t>(result)[result_idx] = blob;
++ 		}
++ 	}
++ 
++@@ -743,7 +745,7 @@ struct ST_ReadSHP {
++ 			if (DBFIsAttributeNULL(dbf_handle, record_idx, field_idx)) {
++ 				FlatVector::SetNull(result, row_idx, true);
++ 			} else {
++-				FlatVector::GetData<typename OP::TYPE>(result)[row_idx] =
+++				FlatVector::GetDataMutable<typename OP::TYPE>(result)[row_idx] =
++ 				    OP::Convert(result, dbf_handle, record_idx, field_idx);
++ 			}
++ 			record_idx++;
++@@ -773,7 +775,7 @@ struct ST_ReadSHP {
++ 					throw InvalidInputException("Could not decode VARCHAR field as valid UTF-8, try passing "
++ 					                            "encoding='blob' to skip decoding of string attributes");
++ 				}
++-				FlatVector::GetData<string_t>(result)[row_idx] = result_str;
+++				FlatVector::GetDataMutable<string_t>(result)[row_idx] = result_str;
++ 			}
++ 			record_idx++;
++ 		}
++@@ -958,7 +960,7 @@ struct Shapefile_Meta {
++ 
++ 		auto shape_type_count = sizeof(shape_type_map) / sizeof(ShapeTypeEntry);
++ 		auto varchar_vector = Vector(LogicalType::VARCHAR, shape_type_count);
++-		auto varchar_data = FlatVector::GetData<string_t>(varchar_vector);
+++		auto varchar_data = FlatVector::GetDataMutable<string_t>(varchar_vector);
++ 		for (idx_t i = 0; i < shape_type_count; i++) {
++ 			auto str = string_t(shape_type_map[i].shp_name);
++ 			varchar_data[i] = str.IsInlined() ? str : StringVector::AddString(varchar_vector, str);
++@@ -1000,17 +1002,17 @@ struct Shapefile_Meta {
++ 		auto &fs = FileSystem::GetFileSystem(context);
++ 
++ 		auto &file_name_vector = output.data[0];
++-		auto file_name_data = FlatVector::GetData<string_t>(file_name_vector);
+++		auto file_name_data = FlatVector::GetDataMutable<string_t>(file_name_vector);
++ 		auto &shape_type_vector = output.data[1];
++-		auto shape_type_data = FlatVector::GetData<uint8_t>(shape_type_vector);
+++		auto shape_type_data = FlatVector::GetDataMutable<uint8_t>(shape_type_vector);
+  		auto &bounds_vector = output.data[2];
+  		auto &bounds_vector_children = StructVector::GetEntries(bounds_vector);
+ -		auto minx_data = FlatVector::GetData<double>(*bounds_vector_children[0]);
+ -		auto miny_data = FlatVector::GetData<double>(*bounds_vector_children[1]);
+ -		auto maxx_data = FlatVector::GetData<double>(*bounds_vector_children[2]);
+ -		auto maxy_data = FlatVector::GetData<double>(*bounds_vector_children[3]);
+ -		auto record_count_vector = output.data[3];
+-+		auto minx_data = FlatVector::GetData<double>(bounds_vector_children[0]);
+-+		auto miny_data = FlatVector::GetData<double>(bounds_vector_children[1]);
+-+		auto maxx_data = FlatVector::GetData<double>(bounds_vector_children[2]);
+-+		auto maxy_data = FlatVector::GetData<double>(bounds_vector_children[3]);
++-		auto record_count_data = FlatVector::GetData<int32_t>(record_count_vector);
+++		auto minx_data = FlatVector::GetDataMutable<double>(bounds_vector_children[0]);
+++		auto miny_data = FlatVector::GetDataMutable<double>(bounds_vector_children[1]);
+++		auto maxx_data = FlatVector::GetDataMutable<double>(bounds_vector_children[2]);
+++		auto maxy_data = FlatVector::GetDataMutable<double>(bounds_vector_children[3]);
+ +		auto &record_count_vector = output.data[3];
+- 		auto record_count_data = FlatVector::GetData<int32_t>(record_count_vector);
+++		auto record_count_data = FlatVector::GetDataMutable<int32_t>(record_count_vector);
+  
+  		auto output_count = MinValue<idx_t>(STANDARD_VECTOR_SIZE, bind_data.files.size() - state.current_file_idx);
++ 
+ diff --git a/src/spatial/operators/spatial_join_logical.cpp b/src/spatial/operators/spatial_join_logical.cpp
+ index 0e5c07c..48596c5 100644
+ --- a/src/spatial/operators/spatial_join_logical.cpp
+@@ -1562,7 +1960,7 @@ index 725512d..b0b219c 100644
+  	spatial_join->has_estimated_cardinality = any_join.has_estimated_cardinality;
+  	spatial_join->estimated_cardinality = any_join.estimated_cardinality;
+ diff --git a/src/spatial/operators/spatial_join_physical.cpp b/src/spatial/operators/spatial_join_physical.cpp
+-index 5738f83..8dcb622 100644
++index 5738f83..e601047 100644
+ --- a/src/spatial/operators/spatial_join_physical.cpp
+ +++ b/src/spatial/operators/spatial_join_physical.cpp
+ @@ -1,3 +1,5 @@
+@@ -1571,6 +1969,15 @@ index 5738f83..8dcb622 100644
+  #include "spatial/operators/spatial_join_physical.hpp"
+  #include "spatial/operators/spatial_join_logical.hpp"
+  #include "spatial/geometry/sgl.hpp"
++@@ -303,7 +305,7 @@ public:
++ 		}
++ 
++ 		idx_t count = 0;
++-		const auto ptr = FlatVector::GetData<data_ptr_t>(state.matches);
+++		const auto ptr = FlatVector::GetDataMutable<data_ptr_t>(state.matches);
++ 		Lookup(state, [&](const data_ptr_t &row) {
++ 			ptr[count++] = row;
++ 			return count == STANDARD_VECTOR_SIZE;
+ @@ -426,14 +428,7 @@ PhysicalSpatialJoin::PhysicalSpatialJoin(PhysicalPlan &physical_plan, LogicalOpe
+  
+  	// Probe-side
+@@ -1613,10 +2020,10 @@ index 5738f83..8dcb622 100644
+ -		const auto xmax_data = FlatVector::GetData<float>(*entries[2]);
+ -		const auto ymax_data = FlatVector::GetData<float>(*entries[3]);
+ +		auto &entries = StructVector::GetEntries(bbox_chunk.data[0]);
+-+		const auto xmin_data = FlatVector::GetData<float>(entries[0]);
+-+		const auto ymin_data = FlatVector::GetData<float>(entries[1]);
+-+		const auto xmax_data = FlatVector::GetData<float>(entries[2]);
+-+		const auto ymax_data = FlatVector::GetData<float>(entries[3]);
+++		const auto xmin_data = FlatVector::GetDataMutable<float>(entries[0]);
+++		const auto ymin_data = FlatVector::GetDataMutable<float>(entries[1]);
+++		const auto xmax_data = FlatVector::GetDataMutable<float>(entries[2]);
+++		const auto ymax_data = FlatVector::GetDataMutable<float>(entries[3]);
+  
+  		// Push the bounding boxes into the R-Tree
+  		auto &validity = FlatVector::Validity(bbox_chunk.data[0]);
+@@ -1637,6 +2044,24 @@ index 5738f83..8dcb622 100644
+  
+  			// Reference the columns that we actually care about
+  			lstate.probe_side_row_chunk.ReferenceColumns(input, probe_side_output_columns);
++@@ -1053,7 +1041,7 @@ OperatorResultType PhysicalSpatialJoin::ExecuteInternal(ExecutionContext &contex
++ 
++ 			// Also collect the build side row pointers (if we have a match column)
++ 			if (IsRightOuterJoin(join_type)) {
++-				const auto ptrs = FlatVector::GetData<data_ptr_t>(row_pointers);
+++				const auto ptrs = FlatVector::GetDataMutable<data_ptr_t>(row_pointers);
++ 				for (idx_t i = 0; i < scan_count; i++) {
++ 					lstate.build_side_pointers[output_index + i] = ptrs[i];
++ 				}
++@@ -1262,7 +1250,7 @@ SourceResultType PhysicalSpatialJoin::GetDataInternal(ExecutionContext &context,
++ 		return SourceResultType::FINISHED;
++ 	}
++ 
++-	const auto matches = FlatVector::GetData<bool>(lstate.scan_chunk.data.back());
+++	const auto matches = FlatVector::GetDataMutable<bool>(lstate.scan_chunk.data.back());
++ 
++ 	idx_t result_count = 0;
++ 	for (idx_t i = 0; i < lstate.scan_chunk.size(); i++) {
+ diff --git a/src/spatial/spatial_settings.cpp b/src/spatial/spatial_settings.cpp
+ index dd2659d..656da67 100644
+ --- a/src/spatial/spatial_settings.cpp
+@@ -1649,6 +2074,19 @@ index dd2659d..656da67 100644
+  
+  namespace duckdb {
+  
++diff --git a/src/spatial/spatial_types.cpp b/src/spatial/spatial_types.cpp
++index 0435a6e..1c0cf53 100644
++--- a/src/spatial/spatial_types.cpp
+++++ b/src/spatial/spatial_types.cpp
++@@ -75,7 +75,7 @@ LogicalType GeoTypes::POLYGON_3D() {
++ 
++ LogicalType GeoTypes::CreateEnumType(const string &name, const vector<string> &members) {
++ 	auto varchar_vector = Vector(LogicalType::VARCHAR, members.size());
++-	auto varchar_data = FlatVector::GetData<string_t>(varchar_vector);
+++	auto varchar_data = FlatVector::GetDataMutable<string_t>(varchar_vector);
++ 	for (idx_t i = 0; i < members.size(); i++) {
++ 		auto str = string_t(members[i]);
++ 		varchar_data[i] = str.IsInlined() ? str : StringVector::AddString(varchar_vector, str);
+ diff --git a/src/spatial/util/function_builder.cpp b/src/spatial/util/function_builder.cpp
+ index 5bd4f95..d4c6e43 100644
+ --- a/src/spatial/util/function_builder.cpp
+diff --git a/.github/patches/extensions/sqlite_scanner/fix.patch b/.github/patches/extensions/sqlite_scanner/fix.patch
+new file mode 100644
+--- /dev/null
++++ b/.github/patches/extensions/sqlite_scanner/fix.patch
+@@ -0,0 +1,62 @@
++diff --git a/src/sqlite_scanner.cpp b/src/sqlite_scanner.cpp
++index 91b7180..a002078 100644
++--- a/src/sqlite_scanner.cpp
+++++ b/src/sqlite_scanner.cpp
++@@ -279,26 +279,26 @@ static void SqliteScan(ClientContext &context, TableFunctionInput &data, DataChu
++ 				switch (out_vec.GetType().id()) {
++ 				case LogicalTypeId::BIGINT:
++ 					stmt.CheckTypeMatches(bind_data, val, sqlite_column_type, SQLITE_INTEGER, col_idx);
++-					FlatVector::GetData<int64_t>(out_vec)[out_idx] = sqlite3_value_int64(val);
+++					FlatVector::GetDataMutable<int64_t>(out_vec)[out_idx] = sqlite3_value_int64(val);
++ 					break;
++ 				case LogicalTypeId::DOUBLE:
++ 					stmt.CheckTypeIsFloatOrInteger(val, sqlite_column_type, col_idx);
++-					FlatVector::GetData<double>(out_vec)[out_idx] = sqlite3_value_double(val);
+++					FlatVector::GetDataMutable<double>(out_vec)[out_idx] = sqlite3_value_double(val);
++ 					break;
++ 				case LogicalTypeId::VARCHAR:
++ 					stmt.CheckTypeMatches(bind_data, val, sqlite_column_type, SQLITE_TEXT, col_idx);
++-					FlatVector::GetData<string_t>(out_vec)[out_idx] = StringVector::AddString(
+++					FlatVector::GetDataMutable<string_t>(out_vec)[out_idx] = StringVector::AddString(
++ 					    out_vec, (const char *)sqlite3_value_text(val), sqlite3_value_bytes(val));
++ 					break;
++ 				case LogicalTypeId::DATE:
++ 					if (sqlite_column_type == SQLITE_INTEGER) {
++ 						// unix timestamp
++-						FlatVector::GetData<date_t>(out_vec)[out_idx] =
+++						FlatVector::GetDataMutable<date_t>(out_vec)[out_idx] =
++ 						    Timestamp::GetDate(ConvertTimestampInteger(val));
++ 					} else if (sqlite_column_type == SQLITE_FLOAT) {
++-						FlatVector::GetData<date_t>(out_vec)[out_idx] = Timestamp::GetDate(ConvertTimestampFloat(val));
+++						FlatVector::GetDataMutable<date_t>(out_vec)[out_idx] = Timestamp::GetDate(ConvertTimestampFloat(val));
++ 					} else if (sqlite_column_type == SQLITE_TEXT) {
++-						FlatVector::GetData<date_t>(out_vec)[out_idx] =
+++						FlatVector::GetDataMutable<date_t>(out_vec)[out_idx] =
++ 						    Date::FromCString((const char *)sqlite3_value_text(val), sqlite3_value_bytes(val));
++ 					} else {
++ 						throw NotImplementedException("Unimplemented SQLite type for column of type DATE\n* SET "
++@@ -317,12 +317,12 @@ static void SqliteScan(ClientContext &context, TableFunctionInput &data, DataChu
++ 					// timestamps
++ 					if (sqlite_column_type == SQLITE_INTEGER) {
++ 						// unix timestamp
++-						FlatVector::GetData<timestamp_t>(out_vec)[out_idx] = ConvertTimestampInteger(val);
+++						FlatVector::GetDataMutable<timestamp_t>(out_vec)[out_idx] = ConvertTimestampInteger(val);
++ 					} else if (sqlite_column_type == SQLITE_FLOAT) {
++-						FlatVector::GetData<timestamp_t>(out_vec)[out_idx] = ConvertTimestampFloat(val);
+++						FlatVector::GetDataMutable<timestamp_t>(out_vec)[out_idx] = ConvertTimestampFloat(val);
++ 					} else if (sqlite_column_type == SQLITE_TEXT) {
++ 						// ISO-8601
++-						FlatVector::GetData<timestamp_t>(out_vec)[out_idx] =
+++						FlatVector::GetDataMutable<timestamp_t>(out_vec)[out_idx] =
++ 						    Timestamp::FromCString((const char *)sqlite3_value_text(val), sqlite3_value_bytes(val));
++ 					} else {
++ 						throw NotImplementedException("Unimplemented SQLite type for column of type TIMESTAMP\n* SET "
++@@ -331,7 +331,7 @@ static void SqliteScan(ClientContext &context, TableFunctionInput &data, DataChu
++ 					}
++ 					break;
++ 				case LogicalTypeId::BLOB:
++-					FlatVector::GetData<string_t>(out_vec)[out_idx] = StringVector::AddStringOrBlob(
+++					FlatVector::GetDataMutable<string_t>(out_vec)[out_idx] = StringVector::AddStringOrBlob(
++ 					    out_vec, (const char *)sqlite3_value_blob(val), sqlite3_value_bytes(val));
++ 					break;
++ 				default:
+diff --git a/.github/patches/extensions/vss/fix.patch b/.github/patches/extensions/vss/fix.patch
+--- a/.github/patches/extensions/vss/fix.patch
++++ b/.github/patches/extensions/vss/fix.patch
+@@ -1,12 +1,21 @@
+ diff --git a/src/hnsw/hnsw_index.cpp b/src/hnsw/hnsw_index.cpp
+-index 1af2a74..abe9e04 100644
++index 1af2a74..3e095b2 100644
+ --- a/src/hnsw/hnsw_index.cpp
+ +++ b/src/hnsw/hnsw_index.cpp
+ @@ -1,3 +1,4 @@
+ +#include "duckdb/common/vector/array_vector.hpp"
+  #include "hnsw/hnsw_index.hpp"
+  
+  #include "duckdb/common/allocator.hpp"
++@@ -344,7 +345,7 @@ idx_t HNSWIndex::Scan(IndexScanState &state, Vector &result, idx_t result_offset
++ 	auto &scan_state = state.Cast<HNSWIndexScanState>();
++ 
++ 	idx_t count = 0;
++-	auto row_ids = FlatVector::GetData<row_t>(result) + result_offset;
+++	auto row_ids = FlatVector::GetDataMutable<row_t>(result) + result_offset;
++ 
++ 	// Push the row ids into the result vector, up to STANDARD_VECTOR_SIZE or the
++ 	// end of the result set
+ @@ -613,7 +614,7 @@ void HNSWIndex::VerifyAllocations(IndexLock &state) {
+  //------------------------------------------------------------------------------
+  // Can rewrite index expression?
+@@ -47,7 +56,7 @@ index 488bde7..ef33ebe 100644
+  
+  #include "duckdb/catalog/catalog_entry/duck_index_entry.hpp"
+ diff --git a/src/hnsw/hnsw_optimize_join.cpp b/src/hnsw/hnsw_optimize_join.cpp
+-index 783db2a..9a2e945 100644
++index 783db2a..9fabcae 100644
+ --- a/src/hnsw/hnsw_optimize_join.cpp
+ +++ b/src/hnsw/hnsw_optimize_join.cpp
+ @@ -1,3 +1,4 @@
+@@ -73,6 +82,19 @@ index 783db2a..9a2e945 100644
+  
+  	idx_t outer_vector_column;
+  	idx_t inner_vector_column;
++@@ -123,10 +126,10 @@ OperatorResultType PhysicalHNSWIndexJoin::Execute(ExecutionContext &context, Dat
++ 	auto &rhs_vector_vector = input.data[outer_vector_column];
++ 	auto &rhs_vector_child = ArrayVector::GetEntry(rhs_vector_vector);
++ 	const auto rhs_vector_size = ArrayType::GetSize(rhs_vector_vector.GetType());
++-	const auto rhs_vector_ptr = FlatVector::GetData<float>(rhs_vector_child);
+++	const auto rhs_vector_ptr = FlatVector::GetDataMutable<float>(rhs_vector_child);
++ 
++ 	// We mimic the window row_number() operator here and output the row number in each batch, basically.
++-	const auto row_number_vector = FlatVector::GetData<int64_t>(chunk.data[MATCH_COLUMN_OFFSET]);
+++	const auto row_number_vector = FlatVector::GetDataMutable<int64_t>(chunk.data[MATCH_COLUMN_OFFSET]);
++ 
++ 	hnsw_index.ResetMultiScan(*state.index_state);
++ 
+ @@ -183,7 +186,7 @@ InsertionOrderPreservingMap<string> PhysicalHNSWIndexJoin::ParamsToString() cons
+  
+  class LogicalHNSWIndexJoin final : public LogicalExtensionOperator {
+diff --git a/extension/core_functions/aggregate/holistic/approx_top_k.cpp b/extension/core_functions/aggregate/holistic/approx_top_k.cpp
+--- a/extension/core_functions/aggregate/holistic/approx_top_k.cpp
++++ b/extension/core_functions/aggregate/holistic/approx_top_k.cpp
+@@ -358,7 +358,7 @@ void ApproxTopKFinalize(Vector &state_vector, AggregateInputData &, Vector &resu
+ 	}
+ 	// reserve space in the list vector
+ 	ListVector::Reserve(result, old_len + new_entries);
+-	auto list_entries = FlatVector::GetData<list_entry_t>(result);
++	auto list_entries = FlatVector::GetDataMutable<list_entry_t>(result);
+ 	auto &child_data = ListVector::GetEntry(result);
+ 
+ 	idx_t current_offset = old_len;
+diff --git a/extension/core_functions/aggregate/holistic/approximate_quantile.cpp b/extension/core_functions/aggregate/holistic/approximate_quantile.cpp
+--- a/extension/core_functions/aggregate/holistic/approximate_quantile.cpp
++++ b/extension/core_functions/aggregate/holistic/approximate_quantile.cpp
+@@ -309,7 +309,7 @@ struct ApproxQuantileListOperation : public ApproxQuantileOperation {
+ 		auto &result = ListVector::GetEntry(finalize_data.result);
+ 		auto ridx = ListVector::GetListSize(finalize_data.result);
+ 		ListVector::Reserve(finalize_data.result, ridx + bind_data.quantiles.size());
+-		auto rdata = FlatVector::GetData<CHILD_TYPE>(result);
++		auto rdata = FlatVector::GetDataMutable<CHILD_TYPE>(result);
+ 
+ 		D_ASSERT(state.h);
+ 		state.h->compress();
+diff --git a/extension/core_functions/aggregate/holistic/mad.cpp b/extension/core_functions/aggregate/holistic/mad.cpp
+--- a/extension/core_functions/aggregate/holistic/mad.cpp
++++ b/extension/core_functions/aggregate/holistic/mad.cpp
+@@ -199,7 +199,7 @@ struct MedianAbsoluteDeviationOperation : QuantileOperation {
+ 		auto &data = state.GetOrCreateWindowCursor(partition);
+ 		const auto &fmask = partition.filter_mask;
+ 
+-		auto rdata = FlatVector::GetData<RESULT_TYPE>(result);
++		auto rdata = FlatVector::GetDataMutable<RESULT_TYPE>(result);
+ 
+ 		QuantileIncluded<INPUT_TYPE> included(fmask, data);
+ 		const auto n = FrameSize(included, frames);
+diff --git a/extension/core_functions/aggregate/holistic/mode.cpp b/extension/core_functions/aggregate/holistic/mode.cpp
+--- a/extension/core_functions/aggregate/holistic/mode.cpp
++++ b/extension/core_functions/aggregate/holistic/mode.cpp
+@@ -372,7 +372,7 @@ struct ModeFunction : TypedModeFunction<TYPE_OP> {
+ 		state.InitializePage(partition);
+ 		const auto &fmask = partition.filter_mask;
+ 
+-		auto rdata = FlatVector::GetData<RESULT_TYPE>(result);
++		auto rdata = FlatVector::GetDataMutable<RESULT_TYPE>(result);
+ 		auto &rmask = FlatVector::Validity(result);
+ 		auto &prevs = state.prevs;
+ 		if (prevs.empty()) {
+diff --git a/extension/core_functions/aggregate/holistic/quantile.cpp b/extension/core_functions/aggregate/holistic/quantile.cpp
+--- a/extension/core_functions/aggregate/holistic/quantile.cpp
++++ b/extension/core_functions/aggregate/holistic/quantile.cpp
+@@ -186,7 +186,7 @@ struct QuantileScalarOperation : public QuantileOperation {
+ 		D_ASSERT(aggr_input_data.bind_data);
+ 		auto &bind_data = aggr_input_data.bind_data->Cast<QuantileBindData>();
+ 
+-		auto rdata = FlatVector::GetData<RESULT_TYPE>(result);
++		auto rdata = FlatVector::GetDataMutable<RESULT_TYPE>(result);
+ 		auto &rmask = FlatVector::Validity(result);
+ 
+ 		if (!n) {
+@@ -253,7 +253,7 @@ struct QuantileListOperation : QuantileOperation {
+ 		auto &result = ListVector::GetEntry(finalize_data.result);
+ 		auto ridx = ListVector::GetListSize(finalize_data.result);
+ 		ListVector::Reserve(finalize_data.result, ridx + bind_data.quantiles.size());
+-		auto rdata = FlatVector::GetData<CHILD_TYPE>(result);
++		auto rdata = FlatVector::GetDataMutable<CHILD_TYPE>(result);
+ 
+ 		auto v_t = state.v.data();
+ 		D_ASSERT(v_t);
+diff --git a/extension/core_functions/aggregate/holistic/reservoir_quantile.cpp b/extension/core_functions/aggregate/holistic/reservoir_quantile.cpp
+--- a/extension/core_functions/aggregate/holistic/reservoir_quantile.cpp
++++ b/extension/core_functions/aggregate/holistic/reservoir_quantile.cpp
+@@ -226,7 +226,7 @@ struct ReservoirQuantileListOperation : public ReservoirQuantileOperation {
+ 		auto &result = ListVector::GetEntry(finalize_data.result);
+ 		auto ridx = ListVector::GetListSize(finalize_data.result);
+ 		ListVector::Reserve(finalize_data.result, ridx + bind_data.quantiles.size());
+-		auto rdata = FlatVector::GetData<CHILD_TYPE>(result);
++		auto rdata = FlatVector::GetDataMutable<CHILD_TYPE>(result);
+ 
+ 		auto v_t = state.v;
+ 		D_ASSERT(v_t);
+diff --git a/extension/core_functions/aggregate/nested/binned_histogram.cpp b/extension/core_functions/aggregate/nested/binned_histogram.cpp
+--- a/extension/core_functions/aggregate/nested/binned_histogram.cpp
++++ b/extension/core_functions/aggregate/nested/binned_histogram.cpp
+@@ -291,8 +291,8 @@ void HistogramBinFinalizeFunction(Vector &state_vector, AggregateInputData &, Ve
+ 	ListVector::Reserve(result, old_len + new_entries);
+ 	auto &keys = MapVector::GetKeys(result);
+ 	auto &values = MapVector::GetValues(result);
+-	auto list_entries = FlatVector::GetData<list_entry_t>(result);
+-	auto count_entries = FlatVector::GetData<uint64_t>(values);
++	auto list_entries = FlatVector::GetDataMutable<list_entry_t>(result);
++	auto count_entries = FlatVector::GetDataMutable<uint64_t>(values);
+ 
+ 	idx_t current_offset = old_len;
+ 	for (idx_t i = 0; i < count; i++) {
+diff --git a/extension/core_functions/aggregate/nested/histogram.cpp b/extension/core_functions/aggregate/nested/histogram.cpp
+--- a/extension/core_functions/aggregate/nested/histogram.cpp
++++ b/extension/core_functions/aggregate/nested/histogram.cpp
+@@ -109,8 +109,8 @@ void HistogramFinalizeFunction(Vector &state_vector, AggregateInputData &, Vecto
+ 	ListVector::Reserve(result, old_len + new_entries);
+ 	auto &keys = MapVector::GetKeys(result);
+ 	auto &values = MapVector::GetValues(result);
+-	auto list_entries = FlatVector::GetData<list_entry_t>(result);
+-	auto count_entries = FlatVector::GetData<uint64_t>(values);
++	auto list_entries = FlatVector::GetDataMutable<list_entry_t>(result);
++	auto count_entries = FlatVector::GetDataMutable<uint64_t>(values);
+ 
+ 	idx_t current_offset = old_len;
+ 	for (idx_t i = 0; i < count; i++) {
+diff --git a/extension/core_functions/aggregate/nested/list.cpp b/extension/core_functions/aggregate/nested/list.cpp
+--- a/extension/core_functions/aggregate/nested/list.cpp
++++ b/extension/core_functions/aggregate/nested/list.cpp
+@@ -68,7 +68,7 @@ void ListAbsorbFunction(Vector &states_vector, Vector &combined, AggregateInputD
+ 	D_ASSERT(aggr_input_data.combine_type == AggregateCombineType::ALLOW_DESTRUCTIVE);
+ 
+ 	auto states = states_vector.Values<ListAggState *>(count);
+-	auto combined_ptr = FlatVector::GetData<ListAggState *>(combined);
++	auto combined_ptr = FlatVector::GetDataMutable<ListAggState *>(combined);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		auto &state = *states[i].value;
+ 		if (state.linked_list.total_capacity == 0) {
+@@ -144,7 +144,7 @@ void ListCombineFunction(Vector &states_vector, Vector &combined, AggregateInput
+ 	}
+ 
+ 	auto states = states_vector.Values<ListAggState *>(count);
+-	auto combined_ptr = FlatVector::GetData<ListAggState *>(combined);
++	auto combined_ptr = FlatVector::GetDataMutable<ListAggState *>(combined);
+ 
+ 	auto &list_bind_data = aggr_input_data.bind_data->Cast<ListBindData>();
+ 	auto result_type = ListType::GetChildType(list_bind_data.stype);
+diff --git a/extension/core_functions/include/core_functions/aggregate/histogram_helpers.hpp b/extension/core_functions/include/core_functions/aggregate/histogram_helpers.hpp
+--- a/extension/core_functions/include/core_functions/aggregate/histogram_helpers.hpp
++++ b/extension/core_functions/include/core_functions/aggregate/histogram_helpers.hpp
+@@ -16,7 +16,7 @@ namespace duckdb {
+ struct HistogramFunctor {
+ 	template <class T>
+ 	static void HistogramFinalize(T value, Vector &result, idx_t offset) {
+-		FlatVector::GetData<T>(result)[offset] = value;
++		FlatVector::GetDataMutable<T>(result)[offset] = value;
+ 	}
+ 
+ 	static bool CreateExtraState(idx_t count) {
+@@ -63,7 +63,7 @@ struct HistogramStringFunctorBase {
+ struct HistogramStringFunctor : HistogramStringFunctorBase {
+ 	template <class T>
+ 	static void HistogramFinalize(T value, Vector &result, idx_t offset) {
+-		FlatVector::GetData<string_t>(result)[offset] = StringVector::AddStringOrBlob(result, value);
++		FlatVector::GetDataMutable<string_t>(result)[offset] = StringVector::AddStringOrBlob(result, value);
+ 	}
+ 
+ 	static bool CreateExtraState(idx_t count) {
+diff --git a/extension/core_functions/include/core_functions/aggregate/quantile_sort_tree.hpp b/extension/core_functions/include/core_functions/aggregate/quantile_sort_tree.hpp
+--- a/extension/core_functions/include/core_functions/aggregate/quantile_sort_tree.hpp
++++ b/extension/core_functions/include/core_functions/aggregate/quantile_sort_tree.hpp
+@@ -386,15 +386,15 @@ struct QuantileSortTree {
+ 		index_tree->Build();
+ 
+ 		// Result is a constant LIST<CHILD_TYPE> with a fixed length
+-		auto ldata = FlatVector::GetData<list_entry_t>(list);
++		auto ldata = FlatVector::GetDataMutable<list_entry_t>(list);
+ 		auto &lentry = ldata[lidx];
+ 		lentry.offset = ListVector::GetListSize(list);
+ 		lentry.length = bind_data.quantiles.size();
+ 
+ 		ListVector::Reserve(list, lentry.offset + lentry.length);
+ 		ListVector::SetListSize(list, lentry.offset + lentry.length);
+ 		auto &result = ListVector::GetEntry(list);
+-		auto rdata = FlatVector::GetData<CHILD_TYPE>(result);
++		auto rdata = FlatVector::GetDataMutable<CHILD_TYPE>(result);
+ 
+ 		using ID = QuantileIndirect<INPUT_TYPE>;
+ 		ID indirect(data);
+diff --git a/extension/core_functions/include/core_functions/aggregate/quantile_state.hpp b/extension/core_functions/include/core_functions/aggregate/quantile_state.hpp
+--- a/extension/core_functions/include/core_functions/aggregate/quantile_state.hpp
++++ b/extension/core_functions/include/core_functions/aggregate/quantile_state.hpp
+@@ -225,15 +225,15 @@ struct WindowQuantileState {
+ 	                const QuantileBindData &bind_data) const {
+ 		D_ASSERT(n > 0);
+ 		// Result is a constant LIST<CHILD_TYPE> with a fixed length
+-		auto ldata = FlatVector::GetData<list_entry_t>(list);
++		auto ldata = FlatVector::GetDataMutable<list_entry_t>(list);
+ 		auto &lentry = ldata[lidx];
+ 		lentry.offset = ListVector::GetListSize(list);
+ 		lentry.length = bind_data.quantiles.size();
+ 
+ 		ListVector::Reserve(list, lentry.offset + lentry.length);
+ 		ListVector::SetListSize(list, lentry.offset + lentry.length);
+ 		auto &result = ListVector::GetEntry(list);
+-		auto rdata = FlatVector::GetData<CHILD_TYPE>(result);
++		auto rdata = FlatVector::GetDataMutable<CHILD_TYPE>(result);
+ 
+ 		for (const auto &q : bind_data.order) {
+ 			const auto &quantile = bind_data.quantiles[q];
+diff --git a/extension/core_functions/lambda_functions.cpp b/extension/core_functions/lambda_functions.cpp
+--- a/extension/core_functions/lambda_functions.cpp
++++ b/extension/core_functions/lambda_functions.cpp
+@@ -269,7 +269,7 @@ static void ExecuteLambda(DataChunk &args, ExpressionState &state, Vector &resul
+ 		return;
+ 	}
+ 
+-	auto result_entries = FlatVector::GetData<list_entry_t>(result);
++	auto result_entries = FlatVector::GetDataMutable<list_entry_t>(result);
+ 	auto mutable_column_infos = LambdaFunctions::GetMutableColumnInfo(info.column_infos);
+ 
+ 	// special-handling for the child_vector
+diff --git a/extension/core_functions/scalar/array/array_functions.cpp b/extension/core_functions/scalar/array/array_functions.cpp
+--- a/extension/core_functions/scalar/array/array_functions.cpp
++++ b/extension/core_functions/scalar/array/array_functions.cpp
+@@ -103,7 +103,7 @@ static void ArrayFixedCombine(DataChunk &args, ExpressionState &state, Vector &r
+ 
+ 	auto lhs_data = FlatVector::GetData<TYPE>(lhs_child);
+ 	auto rhs_data = FlatVector::GetData<TYPE>(rhs_child);
+-	auto res_data = FlatVector::GetData<TYPE>(res_child);
++	auto res_data = FlatVector::GetDataMutable<TYPE>(res_child);
+ 
+ 	for (idx_t i = 0; i < count; i++) {
+ 		const auto lhs_idx = lhs_format.sel->get_index(i);
+@@ -164,7 +164,7 @@ static void ArrayGenericFold(DataChunk &args, ExpressionState &state, Vector &re
+ 
+ 	auto lhs_data = FlatVector::GetData<TYPE>(lhs_child);
+ 	auto rhs_data = FlatVector::GetData<TYPE>(rhs_child);
+-	auto res_data = FlatVector::GetData<TYPE>(result);
++	auto res_data = FlatVector::GetDataMutable<TYPE>(result);
+ 
+ 	const auto array_size = ArrayType::GetSize(args.data[0].GetType());
+ 	D_ASSERT(array_size == ArrayType::GetSize(args.data[1].GetType()));
+diff --git a/extension/core_functions/scalar/date/date_part.cpp b/extension/core_functions/scalar/date/date_part.cpp
+--- a/extension/core_functions/scalar/date/date_part.cpp
++++ b/extension/core_functions/scalar/date/date_part.cpp
+@@ -2064,10 +2064,10 @@ struct StructDatePart {
+ 				if (owners[part_index] == col) {
+ 					if (IsBigintDatepart(info.part_codes[col])) {
+ 						bigint_values[part_index - size_t(DatePartSpecifier::BEGIN_BIGINT)] =
+-						    FlatVector::GetData<int64_t>(child_entry);
++						    FlatVector::GetDataMutable<int64_t>(child_entry);
+ 					} else {
+ 						double_values[part_index - size_t(DatePartSpecifier::BEGIN_DOUBLE)] =
+-						    FlatVector::GetData<double>(child_entry);
++						    FlatVector::GetDataMutable<double>(child_entry);
+ 					}
+ 				}
+ 			}
+diff --git a/extension/core_functions/scalar/generic/least.cpp b/extension/core_functions/scalar/generic/least.cpp
+--- a/extension/core_functions/scalar/generic/least.cpp
++++ b/extension/core_functions/scalar/generic/least.cpp
+@@ -130,7 +130,7 @@ void LeastGreatestFunction(DataChunk &args, ExpressionState &state, Vector &resu
+ 		}
+ 	}
+ 
+-	auto result_data = FlatVector::GetData<T>(result_vector);
++	auto result_data = FlatVector::GetDataMutable<T>(result_vector);
+ 	bool result_has_value[STANDARD_VECTOR_SIZE] {false};
+ 	// perform the operation column-by-column
+ 	for (idx_t col_idx = 0; col_idx < input.ColumnCount(); col_idx++) {
+diff --git a/extension/core_functions/scalar/list/flatten.cpp b/extension/core_functions/scalar/list/flatten.cpp
+--- a/extension/core_functions/scalar/list/flatten.cpp
++++ b/extension/core_functions/scalar/list/flatten.cpp
+@@ -10,7 +10,7 @@ namespace duckdb {
+ namespace {
+ 
+ void ListFlattenFunction(DataChunk &args, ExpressionState &, Vector &result) {
+-	const auto flat_list_data = FlatVector::GetData<list_entry_t>(result);
++	auto flat_list_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 	auto &flat_list_mask = FlatVector::Validity(result);
+ 
+ 	UnifiedVectorFormat outer_format;
+diff --git a/extension/core_functions/scalar/list/list_aggregates.cpp b/extension/core_functions/scalar/list/list_aggregates.cpp
+--- a/extension/core_functions/scalar/list/list_aggregates.cpp
++++ b/extension/core_functions/scalar/list/list_aggregates.cpp
+@@ -108,14 +108,14 @@ struct StateVector {
+ struct FinalizeValueFunctor {
+ 	template <class T>
+ 	static void HistogramFinalize(T value, Vector &result, idx_t offset) {
+-		FlatVector::GetData<T>(result)[offset] = value;
++		FlatVector::GetDataMutable<T>(result)[offset] = value;
+ 	}
+ };
+ 
+ struct FinalizeStringValueFunctor {
+ 	template <class T>
+ 	static void HistogramFinalize(T value, Vector &result, idx_t offset) {
+-		FlatVector::GetData<string_t>(result)[offset] = StringVector::AddStringOrBlob(result, value);
++		FlatVector::GetDataMutable<string_t>(result)[offset] = StringVector::AddStringOrBlob(result, value);
+ 	}
+ };
+ 
+@@ -153,7 +153,7 @@ struct DistinctFunctor {
+ 		// reserve space in the list vector
+ 		ListVector::Reserve(result, old_len + new_entries);
+ 		auto &child_elements = ListVector::GetEntry(result);
+-		auto list_entries = FlatVector::GetData<list_entry_t>(result);
++		auto list_entries = FlatVector::GetDataMutable<list_entry_t>(result);
+ 
+ 		idx_t current_offset = old_len;
+ 		for (idx_t i = 0; i < count; i++) {
+@@ -240,11 +240,11 @@ void ListAggregatesFunction(DataChunk &args, ExpressionState &state, Vector &res
+ 
+ 	// state vector for initialize and finalize
+ 	StateVector state_vector(count, info.aggr_expr->Copy());
+-	auto states = FlatVector::GetData<data_ptr_t>(state_vector.state_vector);
++	auto states = FlatVector::GetDataMutable<data_ptr_t>(state_vector.state_vector);
+ 
+ 	// state vector of STANDARD_VECTOR_SIZE holds the pointers to the states
+ 	Vector state_vector_update = Vector(LogicalType::POINTER);
+-	auto states_update = FlatVector::GetData<data_ptr_t>(state_vector_update);
++	auto states_update = FlatVector::GetDataMutable<data_ptr_t>(state_vector_update);
+ 
+ 	// selection vector pointing to the data
+ 	SelectionVector sel_vector(STANDARD_VECTOR_SIZE);
+diff --git a/extension/core_functions/scalar/list/list_sort.cpp b/extension/core_functions/scalar/list/list_sort.cpp
+--- a/extension/core_functions/scalar/list/list_sort.cpp
++++ b/extension/core_functions/scalar/list/list_sort.cpp
+@@ -129,13 +129,13 @@ static void ListSortFunction(DataChunk &args, ExpressionState &state, Vector &re
+ 	// the element corresponds to the list's index, e.g. for [1, 2, 4], [5, 4]
+ 	// lists_indices contains [0, 0, 0, 1, 1]
+ 	Vector lists_indices(LogicalType::USMALLINT);
+-	auto lists_indices_data = FlatVector::GetData<uint16_t>(lists_indices);
++	auto lists_indices_data = FlatVector::GetDataMutable<uint16_t>(lists_indices);
+ 
+ 	// create the payload_vector, this is just a vector containing incrementing integers
+ 	// this will later be used as the 'new' selection vector of the child_vector, after
+ 	// rearranging the payload according to the sorting order
+ 	Vector payload_vector(LogicalType::UINTEGER);
+-	auto payload_vector_data = FlatVector::GetData<uint32_t>(payload_vector);
++	auto payload_vector_data = FlatVector::GetDataMutable<uint32_t>(payload_vector);
+ 
+ 	// selection vector pointing to the data of the child vector,
+ 	// used for slicing the child_vector correctly
+@@ -186,7 +186,7 @@ static void ListSortFunction(DataChunk &args, ExpressionState &state, Vector &re
+ 	if (info.is_grade_up) {
+ 		ListVector::Reserve(result, lists_size);
+ 		ListVector::SetListSize(result, lists_size);
+-		auto result_data = ListVector::GetData(result);
++		auto result_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 		for (idx_t i = 0; i < count; i++) {
+ 			result_data[i] = list_entries.GetValueUnsafe(i);
+ 		}
+@@ -232,7 +232,7 @@ static void ListSortFunction(DataChunk &args, ExpressionState &state, Vector &re
+ 		D_ASSERT(sel_sorted_idx == incr_payload_count);
+ 		if (info.is_grade_up) {
+ 			auto &result_entry = ListVector::GetEntry(result);
+-			auto result_data = ListVector::GetData(result);
++			auto result_data = FlatVector::GetData<list_entry_t>(result);
+ 			for (idx_t i = 0; i < count; i++) {
+ 				if (!result_validity.RowIsValid(i)) {
+ 					continue;
+diff --git a/extension/core_functions/scalar/list/range.cpp b/extension/core_functions/scalar/list/range.cpp
+--- a/extension/core_functions/scalar/list/range.cpp
++++ b/extension/core_functions/scalar/list/range.cpp
+@@ -205,7 +205,7 @@ void ListRangeFunction(DataChunk &args, ExpressionState &state, Vector &result)
+ 			break;
+ 		}
+ 	}
+-	auto list_data = FlatVector::GetData<list_entry_t>(result);
++	auto list_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 	auto &result_validity = FlatVector::Validity(result);
+ 	uint64_t total_size = 0;
+ 	for (idx_t i = 0; i < args_size; i++) {
+@@ -222,7 +222,7 @@ void ListRangeFunction(DataChunk &args, ExpressionState &state, Vector &result)
+ 
+ 	// now construct the child vector of the list
+ 	ListVector::Reserve(result, total_size);
+-	auto range_data = FlatVector::GetData<typename OP::TYPE>(ListVector::GetEntry(result));
++	auto range_data = FlatVector::GetDataMutable<typename OP::TYPE>(ListVector::GetEntry(result));
+ 	idx_t total_idx = 0;
+ 	for (idx_t i = 0; i < args_size; i++) {
+ 		typename OP::TYPE start_value = info.StartListValue(i);
+diff --git a/extension/core_functions/scalar/map/map.cpp b/extension/core_functions/scalar/map/map.cpp
+--- a/extension/core_functions/scalar/map/map.cpp
++++ b/extension/core_functions/scalar/map/map.cpp
+@@ -16,7 +16,7 @@ static void MapFunctionEmptyInput(Vector &result, const idx_t row_count) {
+ 	result.SetVectorType(VectorType::CONSTANT_VECTOR);
+ 	ListVector::SetListSize(result, 0);
+ 
+-	auto result_data = ListVector::GetData(result);
++	auto result_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 	result_data[0] = list_entry_t();
+ 	result.Verify(row_count);
+ }
+@@ -83,7 +83,7 @@ static void MapFunction(DataChunk &args, ExpressionState &, Vector &result) {
+ 	values_child_vector.ToUnifiedFormat(ListVector::GetListSize(values), values_child_data);
+ 
+ 	// a LIST vector, where each row contains a MAP (LIST of STRUCTs)
+-	auto result_entries = FlatVector::GetData<list_entry_t>(result);
++	auto result_entries = FlatVector::GetDataMutable<list_entry_t>(result);
+ 
+ 	auto &result_validity = FlatVector::Validity(result);
+ 
+diff --git a/extension/core_functions/scalar/map/map_extract.cpp b/extension/core_functions/scalar/map/map_extract.cpp
+--- a/extension/core_functions/scalar/map/map_extract.cpp
++++ b/extension/core_functions/scalar/map/map_extract.cpp
+@@ -77,8 +77,8 @@ static void MapExtractListFunc(DataChunk &args, ExpressionState &state, Vector &
+ 	map_vec.ToUnifiedFormat(count, lst_format);
+ 
+ 	const auto pos_data = UnifiedVectorFormat::GetData<int32_t>(pos_format);
+-	const auto inc_list_data = ListVector::GetData(map_vec);
+-	const auto out_list_data = ListVector::GetData(result);
++	const auto inc_list_data = FlatVector::GetData<list_entry_t>(map_vec);
++	auto out_list_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 
+ 	idx_t offset = 0;
+ 	for (idx_t row_idx = 0; row_idx < count; row_idx++) {
+diff --git a/extension/core_functions/scalar/map/map_keys_values.cpp b/extension/core_functions/scalar/map/map_keys_values.cpp
+--- a/extension/core_functions/scalar/map/map_keys_values.cpp
++++ b/extension/core_functions/scalar/map/map_keys_values.cpp
+@@ -27,7 +27,7 @@ static void MapKeyValueFunction(DataChunk &args, ExpressionState &state, Vector
+ 	auto &entries = ListVector::GetEntry(result);
+ 	entries.Reference(child);
+ 
+-	FlatVector::SetData(result, FlatVector::GetData(map));
++	FlatVector::SetData(result, FlatVector::GetDataMutable(map));
+ 	FlatVector::SetValidity(result, FlatVector::Validity(map));
+ 	auto list_size = ListVector::GetListSize(map);
+ 	ListVector::SetListSize(result, list_size);
+diff --git a/extension/core_functions/scalar/string/parse_path.cpp b/extension/core_functions/scalar/string/parse_path.cpp
+--- a/extension/core_functions/scalar/string/parse_path.cpp
++++ b/extension/core_functions/scalar/string/parse_path.cpp
+@@ -42,7 +42,7 @@ struct SplitInput {
+ 			ListVector::SetListSize(result_list, offset + list_idx);
+ 			ListVector::Reserve(result_list, ListVector::GetListCapacity(result_list) * 2);
+ 		}
+-		FlatVector::GetData<string_t>(result_child)[list_entry] =
++		FlatVector::GetDataMutable<string_t>(result_child)[list_entry] =
+ 		    StringVector::AddString(result_child, split_data, split_size);
+ 	}
+ };
+@@ -269,7 +269,7 @@ static void ParsePathFunction(DataChunk &args, ExpressionState &state, Vector &r
+ 	ListVector::SetListSize(result, 0);
+ 
+ 	// set up the list entries
+-	auto list_data = FlatVector::GetData<list_entry_t>(result);
++	auto list_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 	auto &child_entry = ListVector::GetEntry(result);
+ 	auto &result_mask = FlatVector::Validity(result);
+ 	idx_t total_splits = 0;
+diff --git a/extension/core_functions/scalar/struct/struct_keys.cpp b/extension/core_functions/scalar/struct/struct_keys.cpp
+--- a/extension/core_functions/scalar/struct/struct_keys.cpp
++++ b/extension/core_functions/scalar/struct/struct_keys.cpp
+@@ -23,7 +23,7 @@ struct StructKeysBindData : public FunctionData {
+ 		}
+ 		ListVector::SetListSize(keys_vector, count);
+ 
+-		auto list_entries = FlatVector::GetData<list_entry_t>(keys_vector);
++		auto list_entries = FlatVector::GetDataMutable<list_entry_t>(keys_vector);
+ 		list_entries[0] = {0, count};
+ 
+ 		auto &validity = FlatVector::Validity(keys_vector);
+diff --git a/extension/icu/icu-list-range.cpp b/extension/icu/icu-list-range.cpp
+--- a/extension/icu/icu-list-range.cpp
++++ b/extension/icu/icu-list-range.cpp
+@@ -144,7 +144,7 @@ struct ICUListRange : public ICUDateFunc {
+ 				break;
+ 			}
+ 		}
+-		auto list_data = FlatVector::GetData<list_entry_t>(result);
++		auto list_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 		auto &result_validity = FlatVector::Validity(result);
+ 		int64_t total_size = 0;
+ 		for (idx_t i = 0; i < args_size; i++) {
+@@ -161,7 +161,7 @@ struct ICUListRange : public ICUDateFunc {
+ 
+ 		// now construct the child vector of the list
+ 		ListVector::Reserve(result, total_size);
+-		auto range_data = FlatVector::GetData<timestamp_t>(ListVector::GetEntry(result));
++		auto range_data = FlatVector::GetDataMutable<timestamp_t>(ListVector::GetEntry(result));
+ 		idx_t total_idx = 0;
+ 		for (idx_t i = 0; i < args_size; i++) {
+ 			timestamp_t start_value = info.StartListValue(i);
+diff --git a/extension/icu/icu-table-range.cpp b/extension/icu/icu-table-range.cpp
+--- a/extension/icu/icu-table-range.cpp
++++ b/extension/icu/icu-table-range.cpp
+@@ -207,7 +207,7 @@ struct ICUTableRange {
+ 				return OperatorResultType::HAVE_MORE_OUTPUT;
+ 			}
+ 			idx_t size = 0;
+-			auto data = FlatVector::GetData<timestamp_t>(output.data[0]);
++			auto data = FlatVector::GetDataMutable<timestamp_t>(output.data[0]);
+ 			while (true) {
+ 				if (state.Finished(state.current_state)) {
+ 					break;
+diff --git a/extension/json/include/json_executors.hpp b/extension/json/include/json_executors.hpp
+--- a/extension/json/include/json_executors.hpp
++++ b/extension/json/include/json_executors.hpp
+@@ -77,7 +77,7 @@ struct JSONExecutors {
+ 					}
+ 
+ 					auto &child_entry = ListVector::GetEntry(result);
+-					auto child_vals = FlatVector::GetData<T>(child_entry);
++					auto child_vals = FlatVector::GetDataMutable<T>(child_entry);
+ 					auto &child_validity = FlatVector::Validity(child_entry);
+ 					for (idx_t i = 0; i < vals.size(); i++) {
+ 						auto &val = vals[i];
+@@ -134,11 +134,11 @@ struct JSONExecutors {
+ 		auto inputs = UnifiedVectorFormat::GetData<string_t>(input_data);
+ 
+ 		ListVector::Reserve(result, list_size);
+-		auto list_entries = FlatVector::GetData<list_entry_t>(result);
++		auto list_entries = FlatVector::GetDataMutable<list_entry_t>(result);
+ 		auto &list_validity = FlatVector::Validity(result);
+ 
+ 		auto &child = ListVector::GetEntry(result);
+-		auto child_data = FlatVector::GetData<T>(child);
++		auto child_data = FlatVector::GetDataMutable<T>(child);
+ 		auto &child_validity = FlatVector::Validity(child);
+ 
+ 		idx_t offset = 0;
+diff --git a/extension/json/json_functions.cpp b/extension/json/json_functions.cpp
+--- a/extension/json/json_functions.cpp
++++ b/extension/json/json_functions.cpp
+@@ -359,7 +359,7 @@ static bool CastVarcharToJSONList(Vector &source, Vector &result, idx_t count, C
+ 		    }
+ 
+ 		    // Populate list
+-		    const auto result_jsons = FlatVector::GetData<string_t>(ListVector::GetEntry(result));
++		    const auto result_jsons = FlatVector::GetDataMutable<string_t>(ListVector::GetEntry(result));
+ 		    size_t arr_idx, max;
+ 		    yyjson_val *val;
+ 		    yyjson_arr_foreach(doc->root, arr_idx, max, val) {
+diff --git a/extension/json/json_functions/json_create.cpp b/extension/json/json_functions/json_create.cpp
+--- a/extension/json/json_functions/json_create.cpp
++++ b/extension/json/json_functions/json_create.cpp
+@@ -650,7 +650,7 @@ static void ObjectFunction(DataChunk &args, ExpressionState &state, Vector &resu
+ 		CreateKeyValuePairs(info.const_struct_names, doc, objs, vals, key_v, value_v, count);
+ 	}
+ 	// Write JSON values to string
+-	auto objects = FlatVector::GetData<string_t>(result);
++	auto objects = FlatVector::GetDataMutable<string_t>(result);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		objects[i] = JSONCommon::WriteVal<yyjson_mut_val>(objs[i], alc);
+ 	}
+@@ -680,7 +680,7 @@ static void ArrayFunction(DataChunk &args, ExpressionState &state, Vector &resul
+ 		}
+ 	}
+ 	// Write JSON arrays to string
+-	auto objects = FlatVector::GetData<string_t>(result);
++	auto objects = FlatVector::GetDataMutable<string_t>(result);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		objects[i] = JSONCommon::WriteVal<yyjson_mut_val>(arrs[i], alc);
+ 	}
+@@ -695,7 +695,7 @@ static void ToJSONFunctionInternal(const StructNames &names, Vector &input, cons
+ 	CreateValues(names, doc, vals, input, count);
+ 
+ 	// Write JSON values to string
+-	auto objects = FlatVector::GetData<string_t>(result);
++	auto objects = FlatVector::GetDataMutable<string_t>(result);
+ 	auto &result_validity = FlatVector::Validity(result);
+ 	UnifiedVectorFormat input_data;
+ 	input.ToUnifiedFormat(count, input_data);
+diff --git a/extension/json/json_functions/json_keys.cpp b/extension/json/json_functions/json_keys.cpp
+--- a/extension/json/json_functions/json_keys.cpp
++++ b/extension/json/json_functions/json_keys.cpp
+@@ -13,7 +13,7 @@ static inline list_entry_t GetJSONKeys(yyjson_val *val, yyjson_alc *, Vector &re
+ 	}
+ 
+ 	// Write the strings to the child vector
+-	auto keys = FlatVector::GetData<string_t>(ListVector::GetEntry(result));
++	auto keys = FlatVector::GetDataMutable<string_t>(ListVector::GetEntry(result));
+ 	size_t idx, max;
+ 	yyjson_val *key, *child_val;
+ 	yyjson_obj_foreach(val, idx, max, key, child_val) {
+diff --git a/extension/json/json_functions/json_merge_patch_diff.cpp b/extension/json/json_functions/json_merge_patch_diff.cpp
+--- a/extension/json/json_functions/json_merge_patch_diff.cpp
++++ b/extension/json/json_functions/json_merge_patch_diff.cpp
+@@ -79,34 +79,28 @@ static void MergePatchDiffFunction(DataChunk &args, ExpressionState &state, Vect
+ 	auto old_inputs = UnifiedVectorFormat::GetData<string_t>(old_data);
+ 	auto new_inputs = UnifiedVectorFormat::GetData<string_t>(new_data);
+ 
+-	auto result_data = FlatVector::GetData<string_t>(result);
+-	auto &result_validity = FlatVector::Validity(result);
++	auto result_data = FlatVector::Writer<string_t>(result);
+ 
+ 	for (idx_t i = 0; i < count; i++) {
+ 		auto old_idx = old_data.sel->get_index(i);
+ 		auto new_idx = new_data.sel->get_index(i);
+ 
+ 		if (!new_data.validity.RowIsValid(new_idx)) {
+-			result_validity.SetInvalid(i);
++			result_data.SetInvalid(i);
+ 			continue;
+ 		}
+ 
+ 		auto new_doc = JSONCommon::ReadDocument(new_inputs[new_idx], JSONCommon::READ_FLAG, alc);
+ 
+ 		if (!old_data.validity.RowIsValid(old_idx)) {
+-			result_data[i] = JSONCommon::WriteVal<yyjson_val>(new_doc->root, alc);
++			result_data[i].AssignWithoutCopying(JSONCommon::WriteVal<yyjson_val>(new_doc->root, alc));
+ 			continue;
+ 		}
+ 
+ 		auto old_doc = JSONCommon::ReadDocument(old_inputs[old_idx], JSONCommon::READ_FLAG, alc);
+ 		auto diff = MergePatchDiff(doc, old_doc->root, new_doc->root);
+-		result_data[i] = JSONCommon::WriteVal<yyjson_mut_val>(diff, alc);
++		result_data[i].AssignWithoutCopying(JSONCommon::WriteVal<yyjson_mut_val>(diff, alc));
+ 	}
+-
+-	if (args.AllConstant()) {
+-		result.SetVectorType(VectorType::CONSTANT_VECTOR);
+-	}
+-
+ 	JSONAllocator::AddBuffer(result, alc);
+ }
+ 
+diff --git a/extension/json/json_functions/json_table_in_out.cpp b/extension/json/json_functions/json_table_in_out.cpp
+--- a/extension/json/json_functions/json_table_in_out.cpp
++++ b/extension/json/json_functions/json_table_in_out.cpp
+@@ -155,7 +155,7 @@ template <class T>
+ struct JSONTableInOutResultVector {
+ 	explicit JSONTableInOutResultVector(DataChunk &output, const optional_idx &output_column_index)
+ 	    : enabled(output_column_index.IsValid()), vector(output.data[enabled ? output_column_index.GetIndex() : 0]),
+-	      data(enabled ? FlatVector::GetData<T>(vector) : nullptr), validity(FlatVector::Validity(vector)) {
++	      data(enabled ? FlatVector::GetDataMutable<T>(vector) : nullptr), validity(FlatVector::Validity(vector)) {
+ 	}
+ 	const bool enabled;
+ 	Vector &vector;
+@@ -351,7 +351,7 @@ static OperatorResultType JSONTableInOutFunction(ExecutionContext &, TableFuncti
+ 	if (gstate.root_column_index.IsValid()) {
+ 		auto &root_vector = output.data[gstate.root_column_index.GetIndex()];
+ 		root_vector.SetVectorType(VectorType::CONSTANT_VECTOR);
+-		FlatVector::GetData<string_t>(root_vector)[0] = string_t(lstate.path.c_str(), lstate.len);
++		FlatVector::GetDataMutable<string_t>(root_vector)[0] = string_t(lstate.path.c_str(), lstate.len);
+ 	}
+ 	if (gstate.empty_column_idex.IsValid()) {
+ 		auto &empty_vector = output.data[gstate.empty_column_idex.GetIndex()];
+diff --git a/extension/json/json_functions/json_transform.cpp b/extension/json/json_functions/json_transform.cpp
+--- a/extension/json/json_functions/json_transform.cpp
++++ b/extension/json/json_functions/json_transform.cpp
+@@ -208,7 +208,7 @@ static inline bool GetValueString(yyjson_val *val, yyjson_alc *alc, string_t &re
+ 
+ template <class T>
+ static bool TransformNumerical(yyjson_val *vals[], Vector &result, const idx_t count, JSONTransformOptions &options) {
+-	auto data = FlatVector::GetData<T>(result);
++	auto data = FlatVector::GetDataMutable<T>(result);
+ 	auto &validity = FlatVector::Validity(result);
+ 
+ 	bool success = true;
+@@ -230,7 +230,7 @@ static bool TransformNumerical(yyjson_val *vals[], Vector &result, const idx_t c
+ template <class T>
+ static bool TransformDecimal(yyjson_val *vals[], Vector &result, const idx_t count, uint8_t width, uint8_t scale,
+                              JSONTransformOptions &options) {
+-	auto data = FlatVector::GetData<T>(result);
++	auto data = FlatVector::GetDataMutable<T>(result);
+ 	auto &validity = FlatVector::Validity(result);
+ 
+ 	bool success = true;
+@@ -254,7 +254,7 @@ bool JSONTransform::GetStringVector(yyjson_val *vals[], const idx_t count, const
+ 	if (count > STANDARD_VECTOR_SIZE) {
+ 		string_vector.Initialize(false, count);
+ 	}
+-	auto data = FlatVector::GetData<string_t>(string_vector);
++	auto data = FlatVector::GetDataMutable<string_t>(string_vector);
+ 	auto &validity = FlatVector::Validity(string_vector);
+ 	validity.SetAllValid(count);
+ 
+@@ -306,7 +306,7 @@ static bool TransformStringWithFormat(Vector &string_vector, const StrpTimeForma
+ 	const auto source_strings = FlatVector::GetData<string_t>(string_vector);
+ 	const auto &source_validity = FlatVector::Validity(string_vector);
+ 
+-	auto target_vals = FlatVector::GetData<T>(result);
++	auto target_vals = FlatVector::GetDataMutable<T>(result);
+ 	auto &target_validity = FlatVector::Validity(result);
+ 
+ 	bool success = true;
+@@ -353,7 +353,7 @@ static bool TransformFromStringWithFormat(yyjson_val *vals[], Vector &result, co
+ }
+ 
+ static bool TransformToString(yyjson_val *vals[], yyjson_alc *alc, Vector &result, const idx_t count) {
+-	auto data = FlatVector::GetData<string_t>(result);
++	auto data = FlatVector::GetDataMutable<string_t>(result);
+ 	auto &validity = FlatVector::Validity(result);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		const auto &val = vals[i];
+@@ -534,7 +534,7 @@ static bool TransformArrayToList(yyjson_val *arrays[], yyjson_alc *alc, Vector &
+ 	bool success = true;
+ 
+ 	// Initialize list vector
+-	auto list_entries = FlatVector::GetData<list_entry_t>(result);
++	auto list_entries = FlatVector::GetDataMutable<list_entry_t>(result);
+ 	auto &list_validity = FlatVector::Validity(result);
+ 	idx_t offset = 0;
+ 	for (idx_t i = 0; i < count; i++) {
+@@ -711,7 +711,7 @@ static bool TransformObjectToMap(yyjson_val *objects[], yyjson_alc *alc, Vector
+ 	ListVector::Reserve(result, list_size);
+ 	ListVector::SetListSize(result, list_size);
+ 
+-	auto list_entries = FlatVector::GetData<list_entry_t>(result);
++	auto list_entries = FlatVector::GetDataMutable<list_entry_t>(result);
+ 	auto &list_validity = FlatVector::Validity(result);
+ 
+ 	auto keys = JSONCommon::AllocateArray<yyjson_val *>(alc, list_size);
+@@ -772,7 +772,7 @@ static bool TransformObjectToMap(yyjson_val *objects[], yyjson_alc *alc, Vector
+ }
+ 
+ static bool TransformToJSON(yyjson_val *vals[], yyjson_alc *alc, Vector &result, const idx_t count) {
+-	auto data = FlatVector::GetData<string_t>(result);
++	auto data = FlatVector::GetDataMutable<string_t>(result);
+ 	auto &validity = FlatVector::Validity(result);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		const auto &val = vals[i];
+diff --git a/extension/json/json_multi_file_info.cpp b/extension/json/json_multi_file_info.cpp
+--- a/extension/json/json_multi_file_info.cpp
++++ b/extension/json/json_multi_file_info.cpp
+@@ -517,7 +517,7 @@ void ReadJSONObjectsFunction(ClientContext &context, JSONReader &json_reader, JS
+ 
+ 	if (!gstate.names.empty()) {
+ 		// Create the strings without copying them
+-		auto strings = FlatVector::GetData<string_t>(output.data[0]);
++		auto strings = FlatVector::GetDataMutable<string_t>(output.data[0]);
+ 		auto &validity = FlatVector::Validity(output.data[0]);
+ 		for (idx_t i = 0; i < count; i++) {
+ 			if (objects[i]) {
+diff --git a/extension/parquet/include/column_reader.hpp b/extension/parquet/include/column_reader.hpp
+--- a/extension/parquet/include/column_reader.hpp
++++ b/extension/parquet/include/column_reader.hpp
+@@ -214,7 +214,7 @@ class ColumnReader {
+ 	template <class VALUE_TYPE, class CONVERSION, bool HAS_DEFINES, bool CHECKED>
+ 	void PlainTemplatedInternal(ByteBuffer &plain_data, const uint8_t *__restrict defines, const uint64_t num_values,
+ 	                            const idx_t result_offset, Vector &result) {
+-		const auto result_ptr = FlatVector::GetData<VALUE_TYPE>(result);
++		auto result_ptr = FlatVector::GetDataMutable<VALUE_TYPE>(result);
+ 		if (!HAS_DEFINES && !CHECKED && CONVERSION::PlainConstantSize() == sizeof(VALUE_TYPE)) {
+ 			// we can memcpy
+ 			idx_t copy_count = num_values * CONVERSION::PlainConstantSize();
+@@ -255,7 +255,7 @@ class ColumnReader {
+ 	void PlainSelectTemplatedInternal(ByteBuffer &plain_data, const uint8_t *__restrict defines,
+ 	                                  const uint64_t num_values, Vector &result, const SelectionVector &sel,
+ 	                                  idx_t approved_tuple_count) {
+-		const auto result_ptr = FlatVector::GetData<VALUE_TYPE>(result);
++		auto result_ptr = FlatVector::GetDataMutable<VALUE_TYPE>(result);
+ 		auto &result_mask = FlatVector::Validity(result);
+ 		idx_t current_entry = 0;
+ 		for (idx_t i = 0; i < approved_tuple_count; i++) {
+diff --git a/extension/parquet/parquet_metadata.cpp b/extension/parquet/parquet_metadata.cpp
+--- a/extension/parquet/parquet_metadata.cpp
++++ b/extension/parquet/parquet_metadata.cpp
+@@ -872,7 +872,7 @@ class FullMetadataProcessor : public ParquetMetadataFileProcessor {
+ void FullMetadataProcessor::PopulateMetadata(ParquetMetadataFileProcessor &processor, Vector &output, idx_t output_idx,
+                                              ParquetReader &reader) {
+ 	auto count = processor.TotalRowCount(reader);
+-	auto *result_data = FlatVector::GetData<list_entry_t>(output);
++	auto *result_data = FlatVector::GetDataMutable<list_entry_t>(output);
+ 	auto &result_struct = ListVector::GetEntry(output);
+ 	auto &result_struct_entries = StructVector::GetEntries(result_struct);
+ 
+diff --git a/extension/parquet/reader/list_column_reader.cpp b/extension/parquet/reader/list_column_reader.cpp
+--- a/extension/parquet/reader/list_column_reader.cpp
++++ b/extension/parquet/reader/list_column_reader.cpp
+@@ -19,7 +19,7 @@ struct TemplatedListReader {
+ 	static DATA Initialize(optional_ptr<Vector> result_out) {
+ 		D_ASSERT(ListVector::GetListSize(*result_out) == 0);
+ 
+-		auto result_ptr = FlatVector::GetData<list_entry_t>(*result_out);
++		auto result_ptr = FlatVector::GetDataMutable<list_entry_t>(*result_out);
+ 		auto &result_mask = FlatVector::Validity(*result_out);
+ 		return ListReaderData(result_ptr, result_mask);
+ 	}
+diff --git a/extension/parquet/reader/row_number_column_reader.cpp b/extension/parquet/reader/row_number_column_reader.cpp
+--- a/extension/parquet/reader/row_number_column_reader.cpp
++++ b/extension/parquet/reader/row_number_column_reader.cpp
+@@ -36,7 +36,7 @@ void RowNumberColumnReader::Filter(uint64_t num_values, data_ptr_t define_out, d
+ }
+ 
+ idx_t RowNumberColumnReader::Read(uint64_t num_values, data_ptr_t define_out, data_ptr_t repeat_out, Vector &result) {
+-	auto data_ptr = FlatVector::GetData<int64_t>(result);
++	auto data_ptr = FlatVector::GetDataMutable<int64_t>(result);
+ 	for (idx_t i = 0; i < num_values; i++) {
+ 		data_ptr[i] = UnsafeNumericCast<int64_t>(row_group_offset++);
+ 	}
+diff --git a/extension/parquet/writer/decimal_column_writer.cpp b/extension/parquet/writer/decimal_column_writer.cpp
+--- a/extension/parquet/writer/decimal_column_writer.cpp
++++ b/extension/parquet/writer/decimal_column_writer.cpp
+@@ -43,7 +43,7 @@ class FixedDecimalStatistics : public ColumnWriterStatistics {
+ 		return min <= max;
+ 	}
+ 
+-	void Update(hugeint_t &val) {
++	void Update(const hugeint_t &val) {
+ 		if (LessThan::Operation(val, min)) {
+ 			min = val;
+ 		}
+diff --git a/extension/parquet/writer/variant/convert_variant.cpp b/extension/parquet/writer/variant/convert_variant.cpp
+--- a/extension/parquet/writer/variant/convert_variant.cpp
++++ b/extension/parquet/writer/variant/convert_variant.cpp
+@@ -48,7 +48,7 @@ static uint8_t EncodeMetadataHeader(idx_t byte_length) {
+ static void CreateMetadata(UnifiedVariantVectorData &variant, Vector &metadata, idx_t count) {
+ 	//! NOTE: the parquet variant is limited to a max dictionary size of NumericLimits<uint32_t>::Maximum()
+ 	//! Whereas we can have NumericLimits<uint32_t>::Maximum() *per* string in DuckDB
+-	auto metadata_data = FlatVector::GetData<string_t>(metadata);
++	auto metadata_data = FlatVector::GetDataMutable<string_t>(metadata);
+ 	for (idx_t row = 0; row < count; row++) {
+ 		uint64_t dictionary_count = 0;
+ 		if (variant.RowIsValid(row)) {
+@@ -739,7 +739,7 @@ static void CreateValues(UnifiedVariantVectorData &variant, Vector &value, optio
+                          optional_ptr<const SelectionVector> result_sel,
+                          optional_ptr<ParquetVariantShreddingState> shredding_state, idx_t count) {
+ 	auto &validity = FlatVector::Validity(value);
+-	auto value_data = FlatVector::GetData<string_t>(value);
++	auto value_data = FlatVector::GetDataMutable<string_t>(value);
+ 
+ 	for (idx_t i = 0; i < count; i++) {
+ 		idx_t value_index = 0;
+diff --git a/src/common/arrow/arrow_type_extension.cpp b/src/common/arrow/arrow_type_extension.cpp
+--- a/src/common/arrow/arrow_type_extension.cpp
++++ b/src/common/arrow/arrow_type_extension.cpp
+@@ -352,15 +352,15 @@ struct ArrowBignum {
+ struct ArrowBool8 {
+ 	static void ArrowToDuck(ClientContext &context, Vector &source, Vector &result, idx_t count) {
+ 		auto source_ptr = FlatVector::GetData<int8_t>(source);
+-		auto result_ptr = FlatVector::GetData<bool>(result);
++		auto result_ptr = FlatVector::GetDataMutable<bool>(result);
+ 		for (idx_t i = 0; i < count; i++) {
+ 			result_ptr[i] = source_ptr[i];
+ 		}
+ 	}
+ 	static void DuckToArrow(ClientContext &context, Vector &source, Vector &result, idx_t count) {
+ 		auto entries = source.Values<bool>(count);
+ 		auto &result_validity = FlatVector::Validity(result);
+-		auto result_ptr = FlatVector::GetData<int8_t>(result);
++		auto result_ptr = FlatVector::GetDataMutable<int8_t>(result);
+ 		for (idx_t i = 0; i < count; i++) {
+ 			auto entry = entries[i];
+ 			if (entry.IsValid()) {
+diff --git a/src/common/hive_partitioning.cpp b/src/common/hive_partitioning.cpp
+--- a/src/common/hive_partitioning.cpp
++++ b/src/common/hive_partitioning.cpp
+@@ -332,7 +332,7 @@ void HivePartitionedColumnData::ComputePartitionIndices(PartitionedColumnDataApp
+ 	}
+ 
+ 	const auto hashes = FlatVector::GetData<hash_t>(hashes_v);
+-	const auto partition_indices = FlatVector::GetData<idx_t>(state.partition_indices);
++	const auto partition_indices = FlatVector::GetDataMutable<idx_t>(state.partition_indices);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		auto &key = keys[i];
+ 		key.hash = hashes[i];
+diff --git a/src/common/radix_partitioning.cpp b/src/common/radix_partitioning.cpp
+--- a/src/common/radix_partitioning.cpp
++++ b/src/common/radix_partitioning.cpp
+@@ -100,7 +100,7 @@ struct ComputePartitionIndicesFunctor {
+ 			const auto &source_sel = *format.sel;
+ 
+ 			partition_indices.SetVectorType(VectorType::FLAT_VECTOR);
+-			const auto target = FlatVector::GetData<hash_t>(partition_indices);
++			const auto target = FlatVector::GetDataMutable<hash_t>(partition_indices);
+ 
+ 			if (source_sel.IsSet()) {
+ 				for (idx_t i = 0; i < append_count; i++) {
+diff --git a/src/common/row_operations/row_matcher.cpp b/src/common/row_operations/row_matcher.cpp
+--- a/src/common/row_operations/row_matcher.cpp
++++ b/src/common/row_operations/row_matcher.cpp
+@@ -132,7 +132,7 @@ static idx_t StructMatchEquality(Vector &lhs_vector, const TupleDataVectorFormat
+ 	// Create a Vector of pointers to the start of the TupleDataLayout of the STRUCT
+ 	Vector rhs_struct_row_locations(LogicalType::POINTER);
+ 	const auto rhs_offset_in_row = rhs_layout.GetOffsets()[col_idx];
+-	auto rhs_struct_locations = FlatVector::GetData<data_ptr_t>(rhs_struct_row_locations);
++	auto rhs_struct_locations = FlatVector::GetDataMutable<data_ptr_t>(rhs_struct_row_locations);
+ 	for (idx_t i = 0; i < match_count; i++) {
+ 		const auto idx = sel.get_index(i);
+ 		rhs_struct_locations[idx] = rhs_locations[idx] + rhs_offset_in_row;
+diff --git a/src/common/sort/sorted_run.cpp b/src/common/sort/sorted_run.cpp
+--- a/src/common/sort/sorted_run.cpp
++++ b/src/common/sort/sorted_run.cpp
+@@ -58,7 +58,7 @@ void SortedRunScanState::Clear() {
+ template <class SORT_KEY, class PHYSICAL_TYPE>
+ void TemplatedGetKeyAndPayload(SORT_KEY *const *const sort_keys, SORT_KEY *temp_keys, const idx_t &count,
+                                DataChunk &key, data_ptr_t *const payload_ptrs) {
+-	const auto key_data = FlatVector::GetData<PHYSICAL_TYPE>(key.data[0]);
++	const auto key_data = FlatVector::GetDataMutable<PHYSICAL_TYPE>(key.data[0]);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		auto &sort_key = temp_keys[i];
+ 		sort_key = *sort_keys[i];
+@@ -93,7 +93,7 @@ void SortedRunScanState::TemplatedScan(const SortedRun &sorted_run, const Vector
+ 	idx_t opc_idx = 0;
+ 
+ 	const auto sort_keys = FlatVector::GetData<SORT_KEY *const>(sort_key_pointers);
+-	const auto payload_ptrs = FlatVector::GetData<data_ptr_t>(payload_state.chunk_state.row_locations);
++	const auto payload_ptrs = FlatVector::GetDataMutable<data_ptr_t>(payload_state.chunk_state.row_locations);
+ 	bool gathered_payload = false;
+ 
+ 	// Decode from key
+@@ -179,7 +179,7 @@ template <SortKeyType SORT_KEY_TYPE>
+ static void TemplatedSetPayloadPointer(Vector &key_locations, Vector &payload_locations, const idx_t count) {
+ 	using SORT_KEY = SortKey<SORT_KEY_TYPE>;
+ 
+-	const auto key_locations_ptr = FlatVector::GetData<SORT_KEY *>(key_locations);
++	const auto key_locations_ptr = FlatVector::GetDataMutable<SORT_KEY *>(key_locations);
+ 	const auto payload_locations_ptr = FlatVector::GetData<data_ptr_t>(payload_locations);
+ 
+ 	for (idx_t i = 0; i < count; i++) {
+@@ -300,8 +300,8 @@ static void ReorderKeyData(TupleDataCollection &new_key_data, TupleDataAppendSta
+                            TupleDataChunkState &input, const idx_t &count) {
+ 	D_ASSERT(!SORT_KEY::CONSTANT_SIZE);
+ 	const auto row_locations = FlatVector::GetData<const SORT_KEY *>(input.row_locations);
+-	const auto heap_locations = FlatVector::GetData<data_ptr_t>(input.heap_locations);
+-	const auto heap_sizes = FlatVector::GetData<idx_t>(input.heap_sizes);
++	const auto heap_locations = FlatVector::GetDataMutable<data_ptr_t>(input.heap_locations);
++	const auto heap_sizes = FlatVector::GetDataMutable<idx_t>(input.heap_sizes);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		const auto &sort_key = *row_locations[i];
+ 		heap_locations[i] = sort_key.GetData();
+@@ -319,7 +319,7 @@ static void ReorderPayloadData(TupleDataCollection &new_payload_data,
+                                TupleDataAppendState &new_payload_data_append_state, SORT_KEY *const *const key_ptrs,
+                                TupleDataChunkState &input, const idx_t &count) {
+ 	D_ASSERT(SORT_KEY::HAS_PAYLOAD);
+-	const auto row_locations = FlatVector::GetData<data_ptr_t>(input.row_locations);
++	const auto row_locations = FlatVector::GetDataMutable<data_ptr_t>(input.row_locations);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		const auto &sort_key = *key_ptrs[i];
+ 		row_locations[i] = sort_key.GetPayload();
+@@ -361,7 +361,7 @@ static void TemplatedReorder(ClientContext &context, unique_ptr<TupleDataCollect
+ 	// These states will be populated for appends
+ 	TupleDataChunkState new_key_data_input;
+ 	TupleDataChunkState new_payload_data_input;
+-	const auto key_ptrs = FlatVector::GetData<SORT_KEY *>(new_key_data_input.row_locations);
++	const auto key_ptrs = FlatVector::GetDataMutable<SORT_KEY *>(new_key_data_input.row_locations);
+ 
+ 	// Iterate over sort keys
+ 	const idx_t total_count = key_data->Count();
+diff --git a/src/common/sort/sorted_run_merger.cpp b/src/common/sort/sorted_run_merger.cpp
+--- a/src/common/sort/sorted_run_merger.cpp
++++ b/src/common/sort/sorted_run_merger.cpp
+@@ -708,7 +708,7 @@ void SortedRunMergerLocalState::TemplatedScanPartition(SortedRunMergerGlobalStat
+ 
+ 	// Grab pointers to sort keys
+ 	const auto merged_partition_keys = reinterpret_cast<SORT_KEY *>(merged_partition.get()) + merged_partition_index;
+-	const auto sort_keys = FlatVector::GetData<SORT_KEY *>(sort_key_pointers);
++	const auto sort_keys = FlatVector::GetDataMutable<SORT_KEY *>(sort_key_pointers);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		sort_keys[i] = &merged_partition_keys[i];
+ 	}
+@@ -767,12 +767,12 @@ unique_ptr<SortedRun> SortedRunMergerLocalState::TemplatedMaterializePartition(S
+ 	const auto merged_partition_keys = reinterpret_cast<SORT_KEY *>(merged_partition.get()) + merged_partition_index;
+ 
+ 	TupleDataChunkState key_data_input;
+-	const auto key_locations = FlatVector::GetData<data_ptr_t>(key_data_input.row_locations);
+-	const auto key_heap_locations = FlatVector::GetData<data_ptr_t>(key_data_input.heap_locations);
+-	const auto key_heap_sizes = FlatVector::GetData<idx_t>(key_data_input.heap_sizes);
++	const auto key_locations = FlatVector::GetDataMutable<data_ptr_t>(key_data_input.row_locations);
++	const auto key_heap_locations = FlatVector::GetDataMutable<data_ptr_t>(key_data_input.heap_locations);
++	const auto key_heap_sizes = FlatVector::GetDataMutable<idx_t>(key_data_input.heap_sizes);
+ 
+ 	TupleDataChunkState payload_data_input;
+-	const auto payload_locations = FlatVector::GetData<data_ptr_t>(payload_data_input.row_locations);
++	const auto payload_locations = FlatVector::GetDataMutable<data_ptr_t>(payload_data_input.row_locations);
+ 
+ 	auto sorted_run = gstate.merger.sorted_runs[0]->CreateRunForMaterialization();
+ 
+diff --git a/src/common/types/column/column_data_allocator.cpp b/src/common/types/column/column_data_allocator.cpp
+--- a/src/common/types/column/column_data_allocator.cpp
++++ b/src/common/types/column/column_data_allocator.cpp
+@@ -229,7 +229,7 @@ void ColumnDataAllocator::UnswizzlePointers(ChunkManagementState &state, Vector
+ 	}
+ 
+ 	const auto &validity = FlatVector::Validity(result);
+-	const auto strings = FlatVector::GetData<string_t>(result);
++	const auto strings = FlatVector::GetDataMutable<string_t>(result);
+ 
+ 	// recompute pointers
+ 	const auto start = NumericCast<idx_t>(v_offset + swizzle_segment.offset);
+diff --git a/src/common/types/column/column_data_collection_segment.cpp b/src/common/types/column/column_data_collection_segment.cpp
+--- a/src/common/types/column/column_data_collection_segment.cpp
++++ b/src/common/types/column/column_data_collection_segment.cpp
+@@ -195,7 +195,7 @@ idx_t ColumnDataCollectionSegment::ReadVectorInternal(ChunkManagementState &stat
+ 	result.Resize(0, vector_count);
+ 	next_index = vector_index;
+ 	// now perform the copy of each of the vectors
+-	auto target_data = FlatVector::GetData(result);
++	auto target_data = FlatVector::GetDataMutable(result);
+ 	auto &target_validity = FlatVector::Validity(result);
+ 	idx_t current_offset = 0;
+ 	while (next_index.IsValid()) {
+diff --git a/src/common/types/geometry.cpp b/src/common/types/geometry.cpp
+--- a/src/common/types/geometry.cpp
++++ b/src/common/types/geometry.cpp
+@@ -1226,7 +1226,7 @@ static void ToPoints(Vector &source_vec, Vector &target_vec, idx_t row_count) {
+ 	double *vert_data[V::WIDTH];
+ 
+ 	for (idx_t i = 0; i < V::WIDTH; i++) {
+-		vert_data[i] = FlatVector::GetData<double>(vert_parts[i]);
++		vert_data[i] = FlatVector::GetDataMutable<double>(vert_parts[i]);
+ 	}
+ 
+ 	for (idx_t row_idx = 0; row_idx < row_count; row_idx++) {
+@@ -1256,11 +1256,11 @@ static void FromPoints(Vector &source_vec, Vector &target_vec, idx_t row_count,
+ 	source_vec.Flatten(row_count);
+ 
+ 	auto &vert_parts = StructVector::GetEntries(source_vec);
+-	const auto geom_data = FlatVector::GetData<string_t>(target_vec);
++	auto geom_data = FlatVector::GetDataMutable<string_t>(target_vec);
+ 	double *vert_data[V::WIDTH];
+ 
+ 	for (idx_t i = 0; i < V::WIDTH; i++) {
+-		vert_data[i] = FlatVector::GetData<double>(vert_parts[i]);
++		vert_data[i] = FlatVector::GetDataMutable<double>(vert_parts[i]);
+ 	}
+ 
+ 	for (idx_t row_idx = 0; row_idx < row_count; row_idx++) {
+@@ -1323,11 +1323,11 @@ static void ToLineStrings(Vector &source_vec, Vector &target_vec, idx_t row_coun
+ 	ListVector::Reserve(target_vec, vert_total);
+ 	ListVector::SetListSize(target_vec, vert_total);
+ 
+-	auto list_data = ListVector::GetData(target_vec);
++	auto list_data = FlatVector::GetDataMutable<list_entry_t>(target_vec);
+ 	auto &vert_parts = StructVector::GetEntries(ListVector::GetEntry(target_vec));
+ 	double *vert_data[V::WIDTH];
+ 	for (idx_t i = 0; i < V::WIDTH; i++) {
+-		vert_data[i] = FlatVector::GetData<double>(vert_parts[i]);
++		vert_data[i] = FlatVector::GetDataMutable<double>(vert_parts[i]);
+ 	}
+ 
+ 	// Second pass, write out the linestrings
+@@ -1369,12 +1369,12 @@ static void FromLineStrings(Vector &source_vec, Vector &target_vec, idx_t row_co
+ 	// Flatten the source vector to extract all vertices
+ 	source_vec.Flatten(row_count);
+ 
+-	const auto line_data = ListVector::GetData(source_vec);
++	const auto line_data = FlatVector::GetData<list_entry_t>(source_vec);
+ 	auto &vert_parts = StructVector::GetEntries(ListVector::GetEntry(source_vec));
+ 
+ 	double *vert_data[V::WIDTH];
+ 	for (idx_t i = 0; i < V::WIDTH; i++) {
+-		vert_data[i] = FlatVector::GetData<double>(vert_parts[i]);
++		vert_data[i] = FlatVector::GetDataMutable<double>(vert_parts[i]);
+ 	}
+ 
+ 	for (idx_t row_idx = 0; row_idx < row_count; row_idx++) {
+@@ -1409,7 +1409,7 @@ static void FromLineStrings(Vector &source_vec, Vector &target_vec, idx_t row_co
+ 		}
+ 
+ 		blob.Finalize();
+-		FlatVector::GetData<string_t>(target_vec)[out_idx] = blob;
++		FlatVector::GetDataMutable<string_t>(target_vec)[out_idx] = blob;
+ 	}
+ }
+ 
+@@ -1458,13 +1458,13 @@ static void ToPolygons(Vector &source_vec, Vector &target_vec, idx_t row_count)
+ 	ListVector::Reserve(ring_vec, vert_total);
+ 	ListVector::SetListSize(ring_vec, vert_total);
+ 
+-	const auto poly_data = ListVector::GetData(target_vec);
+-	const auto ring_data = ListVector::GetData(ring_vec);
++	auto poly_data = FlatVector::GetDataMutable<list_entry_t>(target_vec);
++	auto ring_data = FlatVector::GetDataMutable<list_entry_t>(ring_vec);
+ 	auto &vert_parts = StructVector::GetEntries(ListVector::GetEntry(ring_vec));
+ 	double *vert_data[V::WIDTH];
+ 
+ 	for (idx_t i = 0; i < V::WIDTH; i++) {
+-		vert_data[i] = FlatVector::GetData<double>(vert_parts[i]);
++		vert_data[i] = FlatVector::GetDataMutable<double>(vert_parts[i]);
+ 	}
+ 
+ 	for (idx_t row_idx = 0; row_idx < row_count; row_idx++) {
+@@ -1516,14 +1516,14 @@ template <class V = VertexXY>
+ static void FromPolygons(Vector &source_vec, Vector &target_vec, idx_t row_count, idx_t result_offset) {
+ 	source_vec.Flatten(row_count);
+ 
+-	const auto poly_data = ListVector::GetData(source_vec);
++	const auto poly_data = FlatVector::GetData<list_entry_t>(source_vec);
+ 	auto &ring_vec = ListVector::GetEntry(source_vec);
+-	const auto ring_data = ListVector::GetData(ring_vec);
++	const auto ring_data = FlatVector::GetData<list_entry_t>(ring_vec);
+ 	auto &vert_parts = StructVector::GetEntries(ListVector::GetEntry(ring_vec));
+ 
+ 	double *vert_data[V::WIDTH];
+ 	for (idx_t i = 0; i < V::WIDTH; i++) {
+-		vert_data[i] = FlatVector::GetData<double>(vert_parts[i]);
++		vert_data[i] = FlatVector::GetDataMutable<double>(vert_parts[i]);
+ 	}
+ 
+ 	for (idx_t row_idx = 0; row_idx < row_count; row_idx++) {
+@@ -1575,7 +1575,7 @@ static void FromPolygons(Vector &source_vec, Vector &target_vec, idx_t row_count
+ 		}
+ 
+ 		blob.Finalize();
+-		FlatVector::GetData<string_t>(target_vec)[out_idx] = blob;
++		FlatVector::GetDataMutable<string_t>(target_vec)[out_idx] = blob;
+ 	}
+ }
+ 
+@@ -1610,11 +1610,11 @@ static void ToMultiPoints(Vector &source_vec, Vector &target_vec, idx_t row_coun
+ 	ListVector::Reserve(target_vec, vert_total);
+ 	ListVector::SetListSize(target_vec, vert_total);
+ 
+-	auto mult_data = ListVector::GetData(target_vec);
++	auto mult_data = FlatVector::GetDataMutable<list_entry_t>(target_vec);
+ 	auto &vert_parts = StructVector::GetEntries(ListVector::GetEntry(target_vec));
+ 	double *vert_data[V::WIDTH];
+ 	for (idx_t i = 0; i < V::WIDTH; i++) {
+-		vert_data[i] = FlatVector::GetData<double>(vert_parts[i]);
++		vert_data[i] = FlatVector::GetDataMutable<double>(vert_parts[i]);
+ 	}
+ 
+ 	// Second pass, write out the multipoints
+@@ -1658,12 +1658,12 @@ static void FromMultiPoints(Vector &source_vec, Vector &target_vec, idx_t row_co
+ 	// Flatten the source vector to extract all vertices
+ 	source_vec.Flatten(row_count);
+ 
+-	const auto mult_data = ListVector::GetData(source_vec);
++	const auto mult_data = FlatVector::GetData<list_entry_t>(source_vec);
+ 	auto &vert_parts = StructVector::GetEntries(ListVector::GetEntry(source_vec));
+ 
+ 	double *vert_data[V::WIDTH];
+ 	for (idx_t i = 0; i < V::WIDTH; i++) {
+-		vert_data[i] = FlatVector::GetData<double>(vert_parts[i]);
++		vert_data[i] = FlatVector::GetDataMutable<double>(vert_parts[i]);
+ 	}
+ 
+ 	for (idx_t row_idx = 0; row_idx < row_count; row_idx++) {
+@@ -1711,7 +1711,7 @@ static void FromMultiPoints(Vector &source_vec, Vector &target_vec, idx_t row_co
+ 		}
+ 
+ 		blob.Finalize();
+-		FlatVector::GetData<string_t>(target_vec)[out_idx] = blob;
++		FlatVector::GetDataMutable<string_t>(target_vec)[out_idx] = blob;
+ 	}
+ }
+ 
+@@ -1767,12 +1767,12 @@ static void ToMultiLineStrings(Vector &source_vec, Vector &target_vec, idx_t row
+ 	ListVector::Reserve(line_vec, vert_total);
+ 	ListVector::SetListSize(line_vec, vert_total);
+ 
+-	const auto mult_data = ListVector::GetData(target_vec);
+-	const auto line_data = ListVector::GetData(line_vec);
++	auto mult_data = FlatVector::GetDataMutable<list_entry_t>(target_vec);
++	auto line_data = FlatVector::GetDataMutable<list_entry_t>(line_vec);
+ 	auto &vert_parts = StructVector::GetEntries(ListVector::GetEntry(line_vec));
+ 	double *vert_data[V::WIDTH];
+ 	for (idx_t i = 0; i < V::WIDTH; i++) {
+-		vert_data[i] = FlatVector::GetData<double>(vert_parts[i]);
++		vert_data[i] = FlatVector::GetDataMutable<double>(vert_parts[i]);
+ 	}
+ 
+ 	// Second pass, write out the multilinestrings
+@@ -1828,13 +1828,13 @@ static void FromMultiLineStrings(Vector &source_vec, Vector &target_vec, idx_t r
+ 
+ 	source_vec.Flatten(row_count);
+ 
+-	const auto mult_data = ListVector::GetData(source_vec);
++	const auto mult_data = FlatVector::GetData<list_entry_t>(source_vec);
+ 	auto &line_vec = ListVector::GetEntry(source_vec);
+-	const auto line_data = ListVector::GetData(line_vec);
++	const auto line_data = FlatVector::GetData<list_entry_t>(line_vec);
+ 	auto &vert_parts = StructVector::GetEntries(ListVector::GetEntry(line_vec));
+ 	double *vert_data[V::WIDTH];
+ 	for (idx_t i = 0; i < V::WIDTH; i++) {
+-		vert_data[i] = FlatVector::GetData<double>(vert_parts[i]);
++		vert_data[i] = FlatVector::GetDataMutable<double>(vert_parts[i]);
+ 	}
+ 
+ 	for (idx_t row_idx = 0; row_idx < row_count; row_idx++) {
+@@ -1891,7 +1891,7 @@ static void FromMultiLineStrings(Vector &source_vec, Vector &target_vec, idx_t r
+ 			}
+ 		}
+ 		blob.Finalize();
+-		FlatVector::GetData<string_t>(target_vec)[out_idx] = blob;
++		FlatVector::GetDataMutable<string_t>(target_vec)[out_idx] = blob;
+ 	}
+ }
+ 
+@@ -1952,13 +1952,13 @@ static void ToMultiPolygons(Vector &source_vec, Vector &target_vec, idx_t row_co
+ 	ListVector::Reserve(ring_vec, vert_total);
+ 	ListVector::SetListSize(ring_vec, vert_total);
+ 
+-	const auto mult_data = ListVector::GetData(target_vec);
+-	const auto poly_data = ListVector::GetData(poly_vec);
+-	const auto ring_data = ListVector::GetData(ring_vec);
++	auto mult_data = FlatVector::GetDataMutable<list_entry_t>(target_vec);
++	auto poly_data = FlatVector::GetDataMutable<list_entry_t>(poly_vec);
++	auto ring_data = FlatVector::GetDataMutable<list_entry_t>(ring_vec);
+ 	auto &vert_parts = StructVector::GetEntries(ListVector::GetEntry(ring_vec));
+ 	double *vert_data[V::WIDTH];
+ 	for (idx_t i = 0; i < V::WIDTH; i++) {
+-		vert_data[i] = FlatVector::GetData<double>(vert_parts[i]);
++		vert_data[i] = FlatVector::GetDataMutable<double>(vert_parts[i]);
+ 	}
+ 
+ 	// Second pass, write out the multipolygons
+@@ -2022,15 +2022,15 @@ static void FromMultiPolygons(Vector &source_vec, Vector &target_vec, idx_t row_
+ 	// Flatten the source vector to extract all vertices
+ 	source_vec.Flatten(row_count);
+ 
+-	const auto mult_data = ListVector::GetData(source_vec);
++	const auto mult_data = FlatVector::GetData<list_entry_t>(source_vec);
+ 	auto &poly_vec = ListVector::GetEntry(source_vec);
+-	const auto poly_data = ListVector::GetData(poly_vec);
++	const auto poly_data = FlatVector::GetData<list_entry_t>(poly_vec);
+ 	auto &ring_vec = ListVector::GetEntry(poly_vec);
+-	const auto ring_data = ListVector::GetData(ring_vec);
++	const auto ring_data = FlatVector::GetData<list_entry_t>(ring_vec);
+ 	auto &vert_parts = StructVector::GetEntries(ListVector::GetEntry(ring_vec));
+ 	double *vert_data[V::WIDTH];
+ 	for (idx_t i = 0; i < V::WIDTH; i++) {
+-		vert_data[i] = FlatVector::GetData<double>(vert_parts[i]);
++		vert_data[i] = FlatVector::GetDataMutable<double>(vert_parts[i]);
+ 	}
+ 
+ 	for (idx_t row_idx = 0; row_idx < row_count; row_idx++) {
+@@ -2101,7 +2101,7 @@ static void FromMultiPolygons(Vector &source_vec, Vector &target_vec, idx_t row_
+ 		}
+ 
+ 		blob.Finalize();
+-		FlatVector::GetData<string_t>(target_vec)[out_idx] = blob;
++		FlatVector::GetDataMutable<string_t>(target_vec)[out_idx] = blob;
+ 	}
+ }
+ 
+@@ -2487,7 +2487,7 @@ void Geometry::FromSpatialGeometry(const string_t &source, string_t &target, Vec
+ 
+ void Geometry::FromSpatialGeometry(Vector &source_vec, Vector &target_vec, idx_t count, idx_t result_offset) {
+ 	auto entries = source_vec.Values<string_t>(count);
+-	const auto target_data = FlatVector::GetData<string_t>(target_vec);
++	auto target_data = FlatVector::GetDataMutable<string_t>(target_vec);
+ 
+ 	auto &target_mask = FlatVector::Validity(target_vec);
+ 
+diff --git a/src/common/types/list_segment.cpp b/src/common/types/list_segment.cpp
+--- a/src/common/types/list_segment.cpp
++++ b/src/common/types/list_segment.cpp
+@@ -402,7 +402,7 @@ static void ReadDataFromPrimitiveSegment(const ListSegmentFunctions &, const Lis
+ 		}
+ 	}
+ 
+-	auto aggr_vector_data = FlatVector::GetData<T>(result);
++	auto aggr_vector_data = FlatVector::GetDataMutable<T>(result);
+ 
+ 	// load values
+ 	for (idx_t i = 0; i < segment->count; i++) {
+@@ -418,7 +418,7 @@ static void ReadDataFromVarcharSegment(const ListSegmentFunctions &, const ListS
+ 	auto &aggr_vector_validity = FlatVector::Validity(result);
+ 
+ 	// use length and (reconstructed) offset to get the correct substrings
+-	auto aggr_vector_data = FlatVector::GetData<string_t>(result);
++	auto aggr_vector_data = FlatVector::GetDataMutable<string_t>(result);
+ 	auto str_length_data = GetListLengthData(segment);
+ 
+ 	auto null_mask = GetNullMask(segment);
+@@ -472,7 +472,7 @@ static void ReadDataFromListSegment(const ListSegmentFunctions &functions, const
+ 		}
+ 	}
+ 
+-	auto list_vector_data = FlatVector::GetData<list_entry_t>(result);
++	auto list_vector_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 
+ 	// get the starting offset
+ 	idx_t offset = 0;
+diff --git a/src/common/types/row/tuple_data_allocator.cpp b/src/common/types/row/tuple_data_allocator.cpp
+--- a/src/common/types/row/tuple_data_allocator.cpp
++++ b/src/common/types/row/tuple_data_allocator.cpp
+@@ -146,7 +146,7 @@ bool TupleDataAllocator::BuildFastPath(TupleDataSegment &segment, TupleDataPinSt
+ 	}
+ 
+ 	// We can do the fast path append!
+-	auto row_locations = FlatVector::GetData<data_ptr_t>(chunk_state.row_locations);
++	auto row_locations = FlatVector::GetDataMutable<data_ptr_t>(chunk_state.row_locations);
+ 	const auto base_row_ptr = GetRowPointer(pin_state, part) + part.count * row_width;
+ 	for (idx_t i = 0; i < append_count; i++) {
+ 		row_locations[append_offset + i] = base_row_ptr + i * row_width;
+@@ -397,9 +397,9 @@ void TupleDataAllocator::InitializeChunkStateInternal(TupleDataPinState &pin_sta
+                                                       bool init_heap_sizes,
+                                                       unsafe_vector<reference<TupleDataChunkPart>> &parts,
+                                                       optional_ptr<SortKeyPayloadState> sort_key_payload_state) {
+-	const auto row_locations = FlatVector::GetData<data_ptr_t>(chunk_state.row_locations);
+-	const auto heap_sizes = FlatVector::GetData<idx_t>(chunk_state.heap_sizes);
+-	const auto heap_locations = FlatVector::GetData<data_ptr_t>(chunk_state.heap_locations);
++	const auto row_locations = FlatVector::GetDataMutable<data_ptr_t>(chunk_state.row_locations);
++	const auto heap_sizes = FlatVector::GetDataMutable<idx_t>(chunk_state.heap_sizes);
++	const auto heap_locations = FlatVector::GetDataMutable<data_ptr_t>(chunk_state.heap_locations);
+ 
+ 	for (auto &part_ref : parts) {
+ 		auto &part = part_ref.get();
+@@ -640,7 +640,7 @@ void TupleDataAllocator::FindHeapPointers(TupleDataChunkState &chunk_state, Sele
+                                           const idx_t base_col_offset) {
+ 	D_ASSERT(!layout.AllConstant());
+ 	const auto row_locations = FlatVector::GetData<data_ptr_t>(chunk_state.row_locations);
+-	const auto heap_locations = FlatVector::GetData<data_ptr_t>(chunk_state.heap_locations);
++	const auto heap_locations = FlatVector::GetDataMutable<data_ptr_t>(chunk_state.heap_locations);
+ 
+ 	const auto all_valid = layout.CannotHaveNull();
+ 	const auto column_count = layout.ColumnCount();
+diff --git a/src/common/types/row/tuple_data_collection.cpp b/src/common/types/row/tuple_data_collection.cpp
+--- a/src/common/types/row/tuple_data_collection.cpp
++++ b/src/common/types/row/tuple_data_collection.cpp
+@@ -471,7 +471,7 @@ void TupleDataCollection::CopyRows(TupleDataChunkState &chunk_state, TupleDataCh
+ void TupleDataCollection::FindHeapPointers(TupleDataChunkState &chunk_state, const idx_t chunk_count) const {
+ 	D_ASSERT(!layout.AllConstant());
+ 	const auto row_locations = FlatVector::GetData<data_ptr_t>(chunk_state.row_locations);
+-	const auto heap_sizes = FlatVector::GetData<idx_t>(chunk_state.heap_sizes);
++	const auto heap_sizes = FlatVector::GetDataMutable<idx_t>(chunk_state.heap_sizes);
+ 
+ 	auto &not_found = chunk_state.utility;
+ 	idx_t not_found_count = 0;
+diff --git a/src/common/types/row/tuple_data_iterator.cpp b/src/common/types/row/tuple_data_iterator.cpp
+--- a/src/common/types/row/tuple_data_iterator.cpp
++++ b/src/common/types/row/tuple_data_iterator.cpp
+@@ -82,15 +82,15 @@ TupleDataChunkState &TupleDataChunkIterator::GetChunkState() {
+ }
+ 
+ data_ptr_t *TupleDataChunkIterator::GetRowLocations() {
+-	return FlatVector::GetData<data_ptr_t>(state.chunk_state.row_locations);
++	return FlatVector::GetDataMutable<data_ptr_t>(state.chunk_state.row_locations);
+ }
+ 
+ data_ptr_t *TupleDataChunkIterator::GetHeapLocations() {
+-	return FlatVector::GetData<data_ptr_t>(state.chunk_state.heap_locations);
++	return FlatVector::GetDataMutable<data_ptr_t>(state.chunk_state.heap_locations);
+ }
+ 
+ idx_t *TupleDataChunkIterator::GetHeapSizes() {
+-	return FlatVector::GetData<idx_t>(state.chunk_state.heap_sizes);
++	return FlatVector::GetDataMutable<idx_t>(state.chunk_state.heap_sizes);
+ }
+ 
+ } // namespace duckdb
+diff --git a/src/common/types/row/tuple_data_scatter_gather.cpp b/src/common/types/row/tuple_data_scatter_gather.cpp
+--- a/src/common/types/row/tuple_data_scatter_gather.cpp
++++ b/src/common/types/row/tuple_data_scatter_gather.cpp
+@@ -110,7 +110,7 @@ void TupleDataCollection::ComputeHeapSizes(TupleDataChunkState &chunk_state, con
+                                            const SelectionVector &append_sel, const idx_t append_count) {
+ 	ResetCombinedListData(chunk_state.vector_data);
+ 
+-	auto heap_sizes = FlatVector::GetData<idx_t>(chunk_state.heap_sizes);
++	auto heap_sizes = FlatVector::GetDataMutable<idx_t>(chunk_state.heap_sizes);
+ 	std::fill_n(heap_sizes, append_count, 0);
+ 
+ 	for (idx_t col_idx = 0; col_idx < new_chunk.ColumnCount(); col_idx++) {
+@@ -158,7 +158,7 @@ void TupleDataCollection::ComputeHeapSizes(Vector &heap_sizes_v, const Vector &s
+ 		return;
+ 	}
+ 
+-	const auto heap_sizes = FlatVector::GetData<idx_t>(heap_sizes_v);
++	const auto heap_sizes = FlatVector::GetDataMutable<idx_t>(heap_sizes_v);
+ 
+ 	// Source
+ 	const auto &source_vector_data = source_format.unified;
+@@ -270,7 +270,7 @@ void TupleDataCollection::SortKeyComputeHeapSizes(TupleDataChunkState &chunk_sta
+ 		return;
+ 	}
+ 
+-	const auto heap_sizes = FlatVector::GetData<idx_t>(chunk_state.heap_sizes);
++	const auto heap_sizes = FlatVector::GetDataMutable<idx_t>(chunk_state.heap_sizes);
+ 
+ 	const auto &source_vector_data = chunk_state.vector_data[0].unified;
+ 	const auto &source_sel = *source_vector_data.sel;
+@@ -329,7 +329,7 @@ void TupleDataCollection::ComputeFixedWithinCollectionHeapSizes(Vector &heap_siz
+ 	const auto &list_validity = list_data.validity;
+ 
+ 	// Target
+-	auto heap_sizes = FlatVector::GetData<idx_t>(heap_sizes_v);
++	auto heap_sizes = FlatVector::GetDataMutable<idx_t>(heap_sizes_v);
+ 
+ 	D_ASSERT(TypeIsConstantSize(source_v.GetType().InternalType()));
+ 	const auto type_size = GetTypeIdSize(source_v.GetType().InternalType());
+@@ -369,7 +369,7 @@ void TupleDataCollection::StringWithinCollectionComputeHeapSizes(Vector &heap_si
+ 	const auto &source_validity = source_data.validity;
+ 
+ 	// Target
+-	auto heap_sizes = FlatVector::GetData<idx_t>(heap_sizes_v);
++	auto heap_sizes = FlatVector::GetDataMutable<idx_t>(heap_sizes_v);
+ 
+ 	for (idx_t i = 0; i < append_count; i++) {
+ 		const auto list_idx = list_sel.get_index(append_sel.get_index(i));
+@@ -411,7 +411,7 @@ void TupleDataCollection::StructWithinCollectionComputeHeapSizes(Vector &heap_si
+ 	const auto &list_validity = list_data.validity;
+ 
+ 	// Target
+-	auto heap_sizes = FlatVector::GetData<idx_t>(heap_sizes_v);
++	auto heap_sizes = FlatVector::GetDataMutable<idx_t>(heap_sizes_v);
+ 
+ 	for (idx_t i = 0; i < append_count; i++) {
+ 		const auto list_idx = list_sel.get_index(append_sel.get_index(i));
+@@ -483,7 +483,7 @@ void TupleDataCollection::CollectionWithinCollectionComputeHeapSizes(Vector &hea
+ 	const auto &child_list_validity = child_list_data.validity;
+ 
+ 	// Target
+-	auto heap_sizes = FlatVector::GetData<idx_t>(heap_sizes_v);
++	auto heap_sizes = FlatVector::GetDataMutable<idx_t>(heap_sizes_v);
+ 
+ 	// Figure out actual child list size (can differ from ListVector::GetListSize if dict/const vector),
+ 	// and we cannot use ConstantVector::ZeroSelectionVector because it may need to be longer than STANDARD_VECTOR_SIZE
+@@ -657,7 +657,7 @@ void TupleDataCollection::Scatter(TupleDataChunkState &chunk_state, const DataCh
+ 	Vector heap_locations_copy(LogicalType::POINTER);
+ 	if (!layout.AllConstant()) {
+ 		const auto heap_locations = FlatVector::GetData<data_ptr_t>(chunk_state.heap_locations);
+-		const auto copied_heap_locations = FlatVector::GetData<data_ptr_t>(heap_locations_copy);
++		const auto copied_heap_locations = FlatVector::GetDataMutable<data_ptr_t>(heap_locations_copy);
+ 		for (idx_t i = 0; i < append_count; i++) {
+ 			copied_heap_locations[i] = heap_locations[i];
+ 		}
+@@ -722,7 +722,7 @@ template <class T, bool HAS_APPEND_SEL, bool HAS_SOURCE_SEL, bool ALL_VALID>
+ #endif
+ static void TupleDataTemplatedScatterInternal(const Vector &, const TupleDataVectorFormat &source_format,
+                                               const SelectionVector &append_sel, const idx_t append_count,
+-                                              const TupleDataLayout &layout, const Vector &row_locations,
++                                              const TupleDataLayout &layout, Vector &row_locations,
+                                               Vector &heap_locations, const idx_t col_idx, const UnifiedVectorFormat &,
+                                               const vector<TupleDataScatterFunction> &) {
+ 	// Source
+@@ -739,7 +739,7 @@ static void TupleDataTemplatedScatterInternal(const Vector &, const TupleDataVec
+ 
+ 	// Target
+ 	const auto target_locations = FlatVector::GetData<data_ptr_t>(row_locations);
+-	const auto target_heap_locations = FlatVector::GetData<data_ptr_t>(heap_locations);
++	const auto target_heap_locations = FlatVector::GetDataMutable<data_ptr_t>(heap_locations);
+ 
+ 	// Precompute mask indexes
+ 	idx_t entry_idx;
+@@ -767,8 +767,8 @@ static void TupleDataTemplatedScatterInternal(const Vector &, const TupleDataVec
+ template <class T>
+ static void TupleDataTemplatedScatter(const Vector &source, const TupleDataVectorFormat &source_format,
+                                       const SelectionVector &append_sel, const idx_t append_count,
+-                                      const TupleDataLayout &layout, const Vector &row_locations,
+-                                      Vector &heap_locations, const idx_t col_idx, const UnifiedVectorFormat &dummy_arg,
++                                      const TupleDataLayout &layout, Vector &row_locations, Vector &heap_locations,
++                                      const idx_t col_idx, const UnifiedVectorFormat &dummy_arg,
+                                       const vector<TupleDataScatterFunction> &child_functions) {
+ #ifdef DUCKDB_SMALLER_BINARY
+ 	TupleDataTemplatedScatterInternal<T>(source, source_format, append_sel, append_count, layout, row_locations,
+@@ -825,8 +825,8 @@ static void TupleDataTemplatedScatter(const Vector &source, const TupleDataVecto
+ template <class T, SortKeyType SORT_KEY_TYPE>
+ void TupleDataSortKeyScatter(const Vector &, const TupleDataVectorFormat &source_format,
+                              const SelectionVector &append_sel, const idx_t append_count, const TupleDataLayout &layout,
+-                             const Vector &row_locations, Vector &heap_locations, const idx_t,
+-                             const UnifiedVectorFormat &, const vector<TupleDataScatterFunction> &) {
++                             Vector &row_locations, Vector &heap_locations, const idx_t, const UnifiedVectorFormat &,
++                             const vector<TupleDataScatterFunction> &) {
+ 	D_ASSERT(layout.IsSortKeyLayout());
+ 	D_ASSERT(layout.GetSortKeyType() == SORT_KEY_TYPE);
+ 	using SORT_KEY = SortKey<SORT_KEY_TYPE>;
+@@ -838,8 +838,8 @@ void TupleDataSortKeyScatter(const Vector &, const TupleDataVectorFormat &source
+ 	const auto &validity = source_data.validity;
+ 
+ 	// Target
+-	const auto target_locations = FlatVector::GetData<SORT_KEY *>(row_locations);
+-	const auto target_heap_locations = FlatVector::GetData<data_ptr_t>(heap_locations);
++	const auto target_locations = FlatVector::GetDataMutable<SORT_KEY *>(row_locations);
++	const auto target_heap_locations = FlatVector::GetDataMutable<data_ptr_t>(heap_locations);
+ 
+ 	if (validity.CannotHaveNull()) {
+ 		// Fast path
+@@ -866,7 +866,7 @@ void TupleDataSortKeyScatter(const Vector &, const TupleDataVectorFormat &source
+ 
+ static void TupleDataStructScatter(const Vector &source, const TupleDataVectorFormat &source_format,
+                                    const SelectionVector &append_sel, const idx_t append_count,
+-                                   const TupleDataLayout &layout, const Vector &row_locations, Vector &heap_locations,
++                                   const TupleDataLayout &layout, Vector &row_locations, Vector &heap_locations,
+                                    const idx_t col_idx, const UnifiedVectorFormat &dummy_arg,
+                                    const vector<TupleDataScatterFunction> &child_functions) {
+ 	// Source
+@@ -895,7 +895,7 @@ static void TupleDataStructScatter(const Vector &source, const TupleDataVectorFo
+ 
+ 	// Create a Vector of pointers to the TupleDataLayout of the STRUCT
+ 	Vector struct_row_locations(LogicalType::POINTER, append_count);
+-	auto struct_target_locations = FlatVector::GetData<data_ptr_t>(struct_row_locations);
++	auto struct_target_locations = FlatVector::GetDataMutable<data_ptr_t>(struct_row_locations);
+ 	const auto offset_in_row = layout.GetOffsets()[col_idx];
+ 	for (idx_t i = 0; i < append_count; i++) {
+ 		struct_target_locations[i] = target_locations[i] + offset_in_row;
+@@ -925,7 +925,7 @@ static void TupleDataStructScatter(const Vector &source, const TupleDataVectorFo
+ //------------------------------------------------------------------------------
+ static void TupleDataListScatter(const Vector &source, const TupleDataVectorFormat &source_format,
+                                  const SelectionVector &append_sel, const idx_t append_count,
+-                                 const TupleDataLayout &layout, const Vector &row_locations, Vector &heap_locations,
++                                 const TupleDataLayout &layout, Vector &row_locations, Vector &heap_locations,
+                                  const idx_t col_idx, const UnifiedVectorFormat &,
+                                  const vector<TupleDataScatterFunction> &child_functions) {
+ 	// Source
+@@ -936,7 +936,7 @@ static void TupleDataListScatter(const Vector &source, const TupleDataVectorForm
+ 
+ 	// Target
+ 	const auto target_locations = FlatVector::GetData<data_ptr_t>(row_locations);
+-	const auto target_heap_locations = FlatVector::GetData<data_ptr_t>(heap_locations);
++	const auto target_heap_locations = FlatVector::GetDataMutable<data_ptr_t>(heap_locations);
+ 
+ 	// Precompute mask indexes
+ 	idx_t entry_idx;
+@@ -974,7 +974,7 @@ static void TupleDataListScatter(const Vector &source, const TupleDataVectorForm
+ //------------------------------------------------------------------------------
+ static void TupleDataArrayScatter(const Vector &source, const TupleDataVectorFormat &source_format,
+                                   const SelectionVector &append_sel, const idx_t append_count,
+-                                  const TupleDataLayout &layout, const Vector &row_locations, Vector &heap_locations,
++                                  const TupleDataLayout &layout, Vector &row_locations, Vector &heap_locations,
+                                   const idx_t col_idx, const UnifiedVectorFormat &,
+                                   const vector<TupleDataScatterFunction> &child_functions) {
+ 	// Source
+@@ -986,7 +986,7 @@ static void TupleDataArrayScatter(const Vector &source, const TupleDataVectorFor
+ 
+ 	// Target
+ 	const auto target_locations = FlatVector::GetData<data_ptr_t>(row_locations);
+-	const auto target_heap_locations = FlatVector::GetData<data_ptr_t>(heap_locations);
++	const auto target_heap_locations = FlatVector::GetDataMutable<data_ptr_t>(heap_locations);
+ 
+ 	// Precompute mask indexes
+ 	idx_t entry_idx;
+@@ -1025,7 +1025,7 @@ static void TupleDataArrayScatter(const Vector &source, const TupleDataVectorFor
+ template <class T>
+ static void TupleDataTemplatedWithinCollectionScatter(const Vector &, const TupleDataVectorFormat &source_format,
+                                                       const SelectionVector &append_sel, const idx_t append_count,
+-                                                      const TupleDataLayout &, const Vector &, Vector &heap_locations,
++                                                      const TupleDataLayout &, Vector &, Vector &heap_locations,
+                                                       const idx_t, const UnifiedVectorFormat &list_data,
+                                                       const vector<TupleDataScatterFunction> &) {
+ 	// Parent list data
+@@ -1040,7 +1040,7 @@ static void TupleDataTemplatedWithinCollectionScatter(const Vector &, const Tupl
+ 	const auto &source_validity = source_data.validity;
+ 
+ 	// Target
+-	const auto target_heap_locations = FlatVector::GetData<data_ptr_t>(heap_locations);
++	const auto target_heap_locations = FlatVector::GetDataMutable<data_ptr_t>(heap_locations);
+ 
+ 	for (idx_t i = 0; i < append_count; i++) {
+ 		const auto list_idx = list_sel.get_index(append_sel.get_index(i));
+@@ -1082,7 +1082,7 @@ static void TupleDataTemplatedWithinCollectionScatter(const Vector &, const Tupl
+ 
+ static void TupleDataStructWithinCollectionScatter(const Vector &source, const TupleDataVectorFormat &source_format,
+                                                    const SelectionVector &append_sel, const idx_t append_count,
+-                                                   const TupleDataLayout &layout, const Vector &row_locations,
++                                                   const TupleDataLayout &layout, Vector &row_locations,
+                                                    Vector &heap_locations, const idx_t,
+                                                    const UnifiedVectorFormat &list_data,
+                                                    const vector<TupleDataScatterFunction> &child_functions) {
+@@ -1097,7 +1097,7 @@ static void TupleDataStructWithinCollectionScatter(const Vector &source, const T
+ 	const auto &source_validity = source_data.validity;
+ 
+ 	// Target
+-	const auto target_heap_locations = FlatVector::GetData<data_ptr_t>(heap_locations);
++	const auto target_heap_locations = FlatVector::GetDataMutable<data_ptr_t>(heap_locations);
+ 
+ 	// Initialize the validity of the STRUCTs
+ 	for (idx_t i = 0; i < append_count; i++) {
+@@ -1142,13 +1142,12 @@ static void TupleDataStructWithinCollectionScatter(const Vector &source, const T
+ }
+ 
+ template <class COLLECTION_VECTOR>
+-static void TupleDataCollectionWithinCollectionScatter(const Vector &child_list,
+-                                                       const TupleDataVectorFormat &child_list_format,
+-                                                       const SelectionVector &append_sel, const idx_t append_count,
+-                                                       const TupleDataLayout &layout, const Vector &row_locations,
+-                                                       Vector &heap_locations, const idx_t col_idx,
+-                                                       const UnifiedVectorFormat &list_data,
+-                                                       const vector<TupleDataScatterFunction> &child_functions) {
++static void
++TupleDataCollectionWithinCollectionScatter(const Vector &child_list, const TupleDataVectorFormat &child_list_format,
++                                           const SelectionVector &append_sel, const idx_t append_count,
++                                           const TupleDataLayout &layout, Vector &row_locations, Vector &heap_locations,
++                                           const idx_t col_idx, const UnifiedVectorFormat &list_data,
++                                           const vector<TupleDataScatterFunction> &child_functions) {
+ 	// Parent list data
+ 	const auto &list_sel = *list_data.sel;
+ 	const auto list_entries = UnifiedVectorFormat::GetDataUnsafe<list_entry_t>(list_data);
+@@ -1161,7 +1160,7 @@ static void TupleDataCollectionWithinCollectionScatter(const Vector &child_list,
+ 	const auto &child_list_validity = child_list_data.validity;
+ 
+ 	// Target
+-	const auto target_heap_locations = FlatVector::GetData<data_ptr_t>(heap_locations);
++	const auto target_heap_locations = FlatVector::GetDataMutable<data_ptr_t>(heap_locations);
+ 
+ 	for (idx_t i = 0; i < append_count; i++) {
+ 		const auto list_idx = list_sel.get_index(append_sel.get_index(i));
+@@ -1390,7 +1389,7 @@ static void TupleDataTemplatedGatherInternal(const TupleDataLayout &layout, Vect
+ 	const auto source_locations = FlatVector::GetData<data_ptr_t>(row_locations);
+ 
+ 	// Target
+-	auto target_data = FlatVector::GetData<T>(target);
++	auto target_data = FlatVector::GetDataMutable<T>(target);
+ 	auto &target_validity = FlatVector::Validity(target);
+ 
+ 	// Precompute mask indexes
+@@ -1497,7 +1496,7 @@ static void TupleDataStructGather(const TupleDataLayout &layout, Vector &row_loc
+ 
+ 	// Get validity of the struct and create a Vector of pointers to the start of the TupleDataLayout of the STRUCT
+ 	Vector struct_row_locations(LogicalType::POINTER);
+-	auto struct_source_locations = FlatVector::GetData<data_ptr_t>(struct_row_locations);
++	auto struct_source_locations = FlatVector::GetDataMutable<data_ptr_t>(struct_row_locations);
+ 	const auto offset_in_row = layout.GetOffsets()[col_idx];
+ 	for (idx_t i = 0; i < scan_count; i++) {
+ 		const auto source_idx = scan_sel.get_index(i);
+@@ -1551,7 +1550,7 @@ static void TupleDataListGather(const TupleDataLayout &layout, Vector &row_locat
+ 
+ 	// Load pointers to the data from the row
+ 	Vector heap_locations(LogicalType::POINTER);
+-	const auto source_heap_locations = FlatVector::GetData<data_ptr_t>(heap_locations);
++	const auto source_heap_locations = FlatVector::GetDataMutable<data_ptr_t>(heap_locations);
+ 
+ 	const auto offset_in_row = layout.GetOffsets()[col_idx];
+ 	auto list_size_before = ListVector::GetListSize(target);
+@@ -1603,10 +1602,10 @@ TupleDataTemplatedWithinCollectionGather(const TupleDataLayout &, Vector &heap_l
+ 	const auto &list_validity = FlatVector::Validity(*list_vector);
+ 
+ 	// Source
+-	const auto source_heap_locations = FlatVector::GetData<data_ptr_t>(heap_locations);
++	const auto source_heap_locations = FlatVector::GetDataMutable<data_ptr_t>(heap_locations);
+ 
+ 	// Target
+-	const auto target_data = FlatVector::GetData<T>(target);
++	const auto target_data = FlatVector::GetDataMutable<T>(target);
+ 	auto &target_validity = FlatVector::Validity(target);
+ 
+ 	uint64_t target_offset = list_size_before;
+@@ -1655,7 +1654,7 @@ static void TupleDataStructWithinCollectionGather(const TupleDataLayout &layout,
+ 	const auto &list_validity = FlatVector::Validity(*list_vector);
+ 
+ 	// Source
+-	const auto source_heap_locations = FlatVector::GetData<data_ptr_t>(heap_locations);
++	const auto source_heap_locations = FlatVector::GetDataMutable<data_ptr_t>(heap_locations);
+ 
+ 	// Target
+ 	auto &target_validity = FlatVector::Validity(target);
+@@ -1707,7 +1706,7 @@ static void TupleDataCollectionWithinCollectionGather(const TupleDataLayout &lay
+ 	const auto &list_validity = FlatVector::Validity(*list_vector);
+ 
+ 	// Source
+-	const auto source_heap_locations = FlatVector::GetData<data_ptr_t>(heap_locations);
++	const auto source_heap_locations = FlatVector::GetDataMutable<data_ptr_t>(heap_locations);
+ 
+ 	// Target
+ 	const auto target_list_entries = FlatVector::GetDataUnsafe<list_entry_t>(target);
+diff --git a/src/common/types/variant/variant.cpp b/src/common/types/variant/variant.cpp
+--- a/src/common/types/variant/variant.cpp
++++ b/src/common/types/variant/variant.cpp
+@@ -8,14 +8,14 @@ namespace duckdb {
+ VariantVectorData::VariantVectorData(Vector &variant)
+     : variant(variant), keys_index_validity(FlatVector::Validity(VariantVector::GetChildrenKeysIndex(variant))),
+       keys(VariantVector::GetKeys(variant)) {
+-	blob_data = FlatVector::GetData<string_t>(VariantVector::GetData(variant));
+-	type_ids_data = FlatVector::GetData<uint8_t>(VariantVector::GetValuesTypeId(variant));
+-	byte_offset_data = FlatVector::GetData<uint32_t>(VariantVector::GetValuesByteOffset(variant));
+-	keys_index_data = FlatVector::GetData<uint32_t>(VariantVector::GetChildrenKeysIndex(variant));
+-	values_index_data = FlatVector::GetData<uint32_t>(VariantVector::GetChildrenValuesIndex(variant));
+-	values_data = FlatVector::GetData<list_entry_t>(VariantVector::GetValues(variant));
+-	children_data = FlatVector::GetData<list_entry_t>(VariantVector::GetChildren(variant));
+-	keys_data = FlatVector::GetData<list_entry_t>(keys);
++	blob_data = FlatVector::GetDataMutable<string_t>(VariantVector::GetData(variant));
++	type_ids_data = FlatVector::GetDataMutable<uint8_t>(VariantVector::GetValuesTypeId(variant));
++	byte_offset_data = FlatVector::GetDataMutable<uint32_t>(VariantVector::GetValuesByteOffset(variant));
++	keys_index_data = FlatVector::GetDataMutable<uint32_t>(VariantVector::GetChildrenKeysIndex(variant));
++	values_index_data = FlatVector::GetDataMutable<uint32_t>(VariantVector::GetChildrenValuesIndex(variant));
++	values_data = FlatVector::GetDataMutable<list_entry_t>(VariantVector::GetValues(variant));
++	children_data = FlatVector::GetDataMutable<list_entry_t>(VariantVector::GetChildren(variant));
++	keys_data = FlatVector::GetDataMutable<list_entry_t>(keys);
+ }
+ 
+ UnifiedVariantVectorData::UnifiedVariantVectorData(const RecursiveUnifiedVectorFormat &variant)
+diff --git a/src/common/types/variant/variant_value.cpp b/src/common/types/variant/variant_value.cpp
+--- a/src/common/types/variant/variant_value.cpp
++++ b/src/common/types/variant/variant_value.cpp
+@@ -576,17 +576,18 @@ static void ConvertValue(const VariantValue &value, VariantVectorData &result, i
+ 
+ //! Copied and modified from 'to_variant.cpp'
+ static void InitializeVariants(DataChunk &offsets, Vector &result, SelectionVector &keys_selvec, idx_t &selvec_size) {
++	auto count = offsets.size();
+ 	auto &keys = VariantVector::GetKeys(result);
+-	auto keys_data = ListVector::GetData(keys);
++	auto keys_data = FlatVector::Writer<list_entry_t>(keys, count);
+ 
+ 	auto &children = VariantVector::GetChildren(result);
+-	auto children_data = ListVector::GetData(children);
++	auto children_data = FlatVector::Writer<list_entry_t>(children, count);
+ 
+ 	auto &values = VariantVector::GetValues(result);
+-	auto values_data = ListVector::GetData(values);
++	auto values_data = FlatVector::Writer<list_entry_t>(values, count);
+ 
+ 	auto &blob = VariantVector::GetData(result);
+-	auto blob_data = FlatVector::GetData<string_t>(blob);
++	auto blob_data = FlatVector::Writer<string_t>(blob, count);
+ 
+ 	idx_t children_offset = 0;
+ 	idx_t values_offset = 0;
+@@ -597,7 +598,6 @@ static void InitializeVariants(DataChunk &offsets, Vector &result, SelectionVect
+ 	auto values_sizes = variant::OffsetData::GetValues(offsets);
+ 	auto blob_sizes = variant::OffsetData::GetBlob(offsets);
+ 
+-	auto count = offsets.size();
+ 	for (idx_t i = 0; i < count; i++) {
+ 		auto &keys_entry = keys_data[i];
+ 		auto &children_entry = children_data[i];
+@@ -619,7 +619,7 @@ static void InitializeVariants(DataChunk &offsets, Vector &result, SelectionVect
+ 		values_offset += values_entry.length;
+ 
+ 		//! value
+-		blob_data[i] = StringVector::EmptyString(blob, blob_sizes[i]);
++		blob_data[i].EmptyString(blob_sizes[i]);
+ 	}
+ 
+ 	//! Reserve for the children of the lists
+diff --git a/src/common/types/vector.cpp b/src/common/types/vector.cpp
+--- a/src/common/types/vector.cpp
++++ b/src/common/types/vector.cpp
+@@ -508,50 +508,51 @@ void Vector::SetValue(idx_t index, const Value &val) {
+ 	}
+ 	switch (physical_type) {
+ 	case PhysicalType::BOOL:
+-		FlatVector::GetData<bool>(*this)[index] = val.GetValueUnsafe<bool>();
++		FlatVector::GetDataMutable<bool>(*this)[index] = val.GetValueUnsafe<bool>();
+ 		break;
+ 	case PhysicalType::INT8:
+-		FlatVector::GetData<int8_t>(*this)[index] = val.GetValueUnsafe<int8_t>();
++		FlatVector::GetDataMutable<int8_t>(*this)[index] = val.GetValueUnsafe<int8_t>();
+ 		break;
+ 	case PhysicalType::INT16:
+-		FlatVector::GetData<int16_t>(*this)[index] = val.GetValueUnsafe<int16_t>();
++		FlatVector::GetDataMutable<int16_t>(*this)[index] = val.GetValueUnsafe<int16_t>();
+ 		break;
+ 	case PhysicalType::INT32:
+-		FlatVector::GetData<int32_t>(*this)[index] = val.GetValueUnsafe<int32_t>();
++		FlatVector::GetDataMutable<int32_t>(*this)[index] = val.GetValueUnsafe<int32_t>();
+ 		break;
+ 	case PhysicalType::INT64:
+-		FlatVector::GetData<int64_t>(*this)[index] = val.GetValueUnsafe<int64_t>();
++		FlatVector::GetDataMutable<int64_t>(*this)[index] = val.GetValueUnsafe<int64_t>();
+ 		break;
+ 	case PhysicalType::INT128:
+-		FlatVector::GetData<hugeint_t>(*this)[index] = val.GetValueUnsafe<hugeint_t>();
++		FlatVector::GetDataMutable<hugeint_t>(*this)[index] = val.GetValueUnsafe<hugeint_t>();
+ 		break;
+ 	case PhysicalType::UINT8:
+-		FlatVector::GetData<uint8_t>(*this)[index] = val.GetValueUnsafe<uint8_t>();
++		FlatVector::GetDataMutable<uint8_t>(*this)[index] = val.GetValueUnsafe<uint8_t>();
+ 		break;
+ 	case PhysicalType::UINT16:
+-		FlatVector::GetData<uint16_t>(*this)[index] = val.GetValueUnsafe<uint16_t>();
++		FlatVector::GetDataMutable<uint16_t>(*this)[index] = val.GetValueUnsafe<uint16_t>();
+ 		break;
+ 	case PhysicalType::UINT32:
+-		FlatVector::GetData<uint32_t>(*this)[index] = val.GetValueUnsafe<uint32_t>();
++		FlatVector::GetDataMutable<uint32_t>(*this)[index] = val.GetValueUnsafe<uint32_t>();
+ 		break;
+ 	case PhysicalType::UINT64:
+-		FlatVector::GetData<uint64_t>(*this)[index] = val.GetValueUnsafe<uint64_t>();
++		FlatVector::GetDataMutable<uint64_t>(*this)[index] = val.GetValueUnsafe<uint64_t>();
+ 		break;
+ 	case PhysicalType::UINT128:
+-		FlatVector::GetData<uhugeint_t>(*this)[index] = val.GetValueUnsafe<uhugeint_t>();
++		FlatVector::GetDataMutable<uhugeint_t>(*this)[index] = val.GetValueUnsafe<uhugeint_t>();
+ 		break;
+ 	case PhysicalType::FLOAT:
+-		FlatVector::GetData<float>(*this)[index] = val.GetValueUnsafe<float>();
++		FlatVector::GetDataMutable<float>(*this)[index] = val.GetValueUnsafe<float>();
+ 		break;
+ 	case PhysicalType::DOUBLE:
+-		FlatVector::GetData<double>(*this)[index] = val.GetValueUnsafe<double>();
++		FlatVector::GetDataMutable<double>(*this)[index] = val.GetValueUnsafe<double>();
+ 		break;
+ 	case PhysicalType::INTERVAL:
+-		FlatVector::GetData<interval_t>(*this)[index] = val.GetValueUnsafe<interval_t>();
++		FlatVector::GetDataMutable<interval_t>(*this)[index] = val.GetValueUnsafe<interval_t>();
+ 		break;
+ 	case PhysicalType::VARCHAR: {
+ 		if (!val.IsNull()) {
+-			FlatVector::GetData<string_t>(*this)[index] = StringVector::AddStringOrBlob(*this, StringValue::Get(val));
++			FlatVector::GetDataMutable<string_t>(*this)[index] =
++			    StringVector::AddStringOrBlob(*this, StringValue::Get(val));
+ 		}
+ 		break;
+ 	}
+@@ -578,7 +579,7 @@ void Vector::SetValue(idx_t index, const Value &val) {
+ 	case PhysicalType::LIST: {
+ 		auto offset = ListVector::GetListSize(*this);
+ 		if (val.IsNull()) {
+-			auto &entry = FlatVector::GetData<list_entry_t>(*this)[index];
++			auto &entry = FlatVector::GetDataMutable<list_entry_t>(*this)[index];
+ 			ListVector::PushBack(*this, Value());
+ 			entry.length = 1;
+ 			entry.offset = offset;
+@@ -590,7 +591,7 @@ void Vector::SetValue(idx_t index, const Value &val) {
+ 				}
+ 			}
+ 			//! now set the pointer
+-			auto &entry = FlatVector::GetData<list_entry_t>(*this)[index];
++			auto &entry = FlatVector::GetDataMutable<list_entry_t>(*this)[index];
+ 			entry.length = val_children.size();
+ 			entry.offset = offset;
+ 		}
+@@ -1519,7 +1520,7 @@ void Vector::Deserialize(Deserializer &deserializer, idx_t count) {
+ 
+ 		VectorOperations::ReadFromStorage(ptr.get(), count, *this);
+ 	} else if (logical_type.id() == LogicalTypeId::GEOMETRY) {
+-		auto blobs = FlatVector::GetData<string_t>(*this);
++		auto blobs = FlatVector::GetDataMutable<string_t>(*this);
+ 
+ 		if (geometry_format == GeometryStorageType::WKB) {
+ 			deserializer.ReadList(102, "data", [&](Deserializer::List &list, idx_t i) {
+@@ -1543,7 +1544,7 @@ void Vector::Deserialize(Deserializer &deserializer, idx_t count) {
+ 	} else {
+ 		switch (logical_type.InternalType()) {
+ 		case PhysicalType::VARCHAR: {
+-			auto strings = FlatVector::GetData<string_t>(*this);
++			auto strings = FlatVector::GetDataMutable<string_t>(*this);
+ 			auto byte_data_length =
+ 			    deserializer.ReadPropertyWithExplicitDefault<optional_idx>(107, "byte_data_length", optional_idx());
+ 			if (byte_data_length.IsValid()) { // new serialization
+@@ -1590,7 +1591,7 @@ void Vector::Deserialize(Deserializer &deserializer, idx_t count) {
+ 			ListVector::SetListSize(*this, list_size);
+ 
+ 			// Read the entries
+-			auto list_entries = FlatVector::GetData<list_entry_t>(*this);
++			auto list_entries = FlatVector::GetDataMutable<list_entry_t>(*this);
+ 			deserializer.ReadList(105, "entries", [&](Deserializer::List &list, idx_t i) {
+ 				list.ReadObject([&](Deserializer &obj) {
+ 					list_entries[i].offset = obj.ReadProperty<uint64_t>(100, "offset");
+@@ -2004,7 +2005,7 @@ void Vector::DebugShuffleNestedVector(Vector &vector, idx_t count) {
+ 		if (vector.GetVectorType() != VectorType::FLAT_VECTOR) {
+ 			break;
+ 		}
+-		auto list_entries = FlatVector::GetData<list_entry_t>(vector);
++		auto list_entries = FlatVector::GetDataMutable<list_entry_t>(vector);
+ 		idx_t child_count = 0;
+ 		for (idx_t r = 0; r < count; r++) {
+ 			if (FlatVector::IsNull(vector, r)) {
+diff --git a/src/common/vector/constant_vector.cpp b/src/common/vector/constant_vector.cpp
+--- a/src/common/vector/constant_vector.cpp
++++ b/src/common/vector/constant_vector.cpp
+@@ -97,7 +97,7 @@ void ConstantVector::Reference(Vector &vector, const Vector &source, idx_t posit
+ 
+ 		// add the list entry as the first element of "vector"
+ 		// FIXME: we only need to allocate space for 1 tuple here
+-		auto target_data = FlatVector::GetData<list_entry_t>(vector);
++		auto target_data = FlatVector::GetDataMutable<list_entry_t>(vector);
+ 		target_data[0] = list_entry;
+ 
+ 		// create a reference to the child list of the source vector
+@@ -174,7 +174,7 @@ void ConstantVector::Reference(Vector &vector, const Vector &source, idx_t posit
+ template <class T>
+ static void TemplatedFlattenConstantVector(const Vector &const_vector, Vector &result, idx_t count) {
+ 	auto constant = *ConstantVector::GetData<T>(const_vector);
+-	auto output = FlatVector::GetData<T>(result);
++	auto output = FlatVector::GetDataMutable<T>(result);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		output[i] = constant;
+ 	}
+diff --git a/src/common/vector/fsst_vector.cpp b/src/common/vector/fsst_vector.cpp
+--- a/src/common/vector/fsst_vector.cpp
++++ b/src/common/vector/fsst_vector.cpp
+@@ -69,7 +69,7 @@ void FSSTVector::DecompressVector(const Vector &src, Vector &dst, idx_t src_offs
+ 	auto dst_mask = FlatVector::Validity(dst);
+ 	auto ldata = FSSTVector::GetCompressedData(src);
+ 	auto decoder = FSSTVector::GetDecoder(src);
+-	auto tdata = FlatVector::GetData<string_t>(dst);
++	auto tdata = FlatVector::GetDataMutable<string_t>(dst);
+ 	auto &str_allocator = StringVector::GetStringAllocator(dst);
+ 	for (idx_t i = 0; i < copy_count; i++) {
+ 		auto source_idx = sel->get_index(src_offset + i);
+diff --git a/src/common/vector/string_vector.cpp b/src/common/vector/string_vector.cpp
+--- a/src/common/vector/string_vector.cpp
++++ b/src/common/vector/string_vector.cpp
+@@ -4,8 +4,7 @@
+ namespace duckdb {
+ 
+ FlatVector::FlatStringWriter::FlatStringWriter(Vector &vector, idx_t count)
+-    : vector(vector), data(FlatVector::GetData<string_t>(vector)), validity(FlatVector::Validity(vector)),
+-      count(count) {
++    : vector(vector), data(GetDataMutable<string_t>(vector)), validity(Validity(vector)), count(count) {
+ }
+ 
+ void FlatVector::FlatStringWriter::InitializeHeap() {
+diff --git a/src/common/vector/union_vector.cpp b/src/common/vector/union_vector.cpp
+--- a/src/common/vector/union_vector.cpp
++++ b/src/common/vector/union_vector.cpp
+@@ -68,7 +68,7 @@ void UnionVector::SetToMember(Vector &union_vector, union_tag_t tag, Vector &mem
+ 				FlatVector::Validity(tag_vector) = FlatVector::Validity(member_vector);
+ 			}
+ 
+-			auto tag_data = FlatVector::GetData<union_tag_t>(tag_vector);
++			auto tag_data = FlatVector::GetDataMutable<union_tag_t>(tag_vector);
+ 			memset(tag_data, tag, count);
+ 		}
+ 	}
+diff --git a/src/common/vector_operations/comparison_operators.cpp b/src/common/vector_operations/comparison_operators.cpp
+--- a/src/common/vector_operations/comparison_operators.cpp
++++ b/src/common/vector_operations/comparison_operators.cpp
+@@ -175,7 +175,7 @@ static void NestedComparisonExecutor(Vector &left, Vector &right, Vector &result
+ 	}
+ 
+ 	result.SetVectorType(VectorType::FLAT_VECTOR);
+-	auto result_data = FlatVector::GetData<bool>(result);
++	auto result_data = FlatVector::GetDataMutable<bool>(result);
+ 	auto &result_validity = FlatVector::Validity(result);
+ 
+ 	UnifiedVectorFormat leftv, rightv;
+diff --git a/src/common/vector_operations/generators.cpp b/src/common/vector_operations/generators.cpp
+--- a/src/common/vector_operations/generators.cpp
++++ b/src/common/vector_operations/generators.cpp
+@@ -59,7 +59,7 @@ void TemplatedGenerateSequence(Vector &result, idx_t count, const SelectionVecto
+ 		throw InternalException("Sequence start or increment out of type range");
+ 	}
+ 	result.SetVectorType(VectorType::FLAT_VECTOR);
+-	auto result_data = FlatVector::GetData<T>(result);
++	auto result_data = FlatVector::GetDataMutable<T>(result);
+ 	auto value = static_cast<uint64_t>(start);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		auto idx = sel.get_index(i);
+diff --git a/src/common/vector_operations/is_distinct_from.cpp b/src/common/vector_operations/is_distinct_from.cpp
+--- a/src/common/vector_operations/is_distinct_from.cpp
++++ b/src/common/vector_operations/is_distinct_from.cpp
+@@ -52,7 +52,7 @@ void DistinctExecuteGeneric(Vector &left, Vector &right, Vector &result, idx_t c
+ 		right.ToUnifiedFormat(count, rdata);
+ 
+ 		result.SetVectorType(VectorType::FLAT_VECTOR);
+-		auto result_data = FlatVector::GetData<RESULT_TYPE>(result);
++		auto result_data = FlatVector::GetDataMutable<RESULT_TYPE>(result);
+ 		DistinctExecuteGenericLoop<LEFT_TYPE, RIGHT_TYPE, RESULT_TYPE, OP>(
+ 		    UnifiedVectorFormat::GetData<LEFT_TYPE>(ldata), UnifiedVectorFormat::GetData<RIGHT_TYPE>(rdata),
+ 		    result_data, ldata.sel, rdata.sel, count, ldata.validity, rdata.validity, FlatVector::Validity(result));
+@@ -174,9 +174,9 @@ idx_t DistinctSelectGeneric(Vector &left, Vector &right, const SelectionVector *
+ #ifndef DUCKDB_SMALLER_BINARY
+ template <class LEFT_TYPE, class RIGHT_TYPE, class OP, bool LEFT_CONSTANT, bool RIGHT_CONSTANT, bool NO_NULL,
+           bool HAS_TRUE_SEL, bool HAS_FALSE_SEL>
+-idx_t DistinctSelectFlatLoop(LEFT_TYPE *__restrict ldata, RIGHT_TYPE *__restrict rdata, const SelectionVector *sel,
+-                             idx_t count, ValidityMask &lmask, ValidityMask &rmask, SelectionVector *true_sel,
+-                             SelectionVector *false_sel) {
++idx_t DistinctSelectFlatLoop(const LEFT_TYPE *__restrict ldata, const RIGHT_TYPE *__restrict rdata,
++                             const SelectionVector *sel, idx_t count, ValidityMask &lmask, ValidityMask &rmask,
++                             SelectionVector *true_sel, SelectionVector *false_sel) {
+ 	idx_t true_count = 0, false_count = 0;
+ 	for (idx_t i = 0; i < count; i++) {
+ 		idx_t result_idx = sel->get_index(i);
+@@ -202,7 +202,7 @@ idx_t DistinctSelectFlatLoop(LEFT_TYPE *__restrict ldata, RIGHT_TYPE *__restrict
+ }
+ 
+ template <class LEFT_TYPE, class RIGHT_TYPE, class OP, bool LEFT_CONSTANT, bool RIGHT_CONSTANT, bool NO_NULL>
+-idx_t DistinctSelectFlatLoopSelSwitch(LEFT_TYPE *__restrict ldata, RIGHT_TYPE *__restrict rdata,
++idx_t DistinctSelectFlatLoopSelSwitch(const LEFT_TYPE *__restrict ldata, const RIGHT_TYPE *__restrict rdata,
+                                       const SelectionVector *sel, idx_t count, ValidityMask &lmask, ValidityMask &rmask,
+                                       SelectionVector *true_sel, SelectionVector *false_sel) {
+ 	if (true_sel && false_sel) {
+@@ -219,7 +219,7 @@ idx_t DistinctSelectFlatLoopSelSwitch(LEFT_TYPE *__restrict ldata, RIGHT_TYPE *_
+ }
+ 
+ template <class LEFT_TYPE, class RIGHT_TYPE, class OP, bool LEFT_CONSTANT, bool RIGHT_CONSTANT>
+-idx_t DistinctSelectFlatLoopSwitch(LEFT_TYPE *__restrict ldata, RIGHT_TYPE *__restrict rdata,
++idx_t DistinctSelectFlatLoopSwitch(const LEFT_TYPE *__restrict ldata, const RIGHT_TYPE *__restrict rdata,
+                                    const SelectionVector *sel, idx_t count, ValidityMask &lmask, ValidityMask &rmask,
+                                    SelectionVector *true_sel, SelectionVector *false_sel) {
+ 	return DistinctSelectFlatLoopSelSwitch<LEFT_TYPE, RIGHT_TYPE, OP, LEFT_CONSTANT, RIGHT_CONSTANT, true>(
+@@ -229,8 +229,8 @@ idx_t DistinctSelectFlatLoopSwitch(LEFT_TYPE *__restrict ldata, RIGHT_TYPE *__re
+ template <class LEFT_TYPE, class RIGHT_TYPE, class OP, bool LEFT_CONSTANT, bool RIGHT_CONSTANT>
+ idx_t DistinctSelectFlat(Vector &left, Vector &right, const SelectionVector *sel, idx_t count,
+                          SelectionVector *true_sel, SelectionVector *false_sel) {
+-	auto ldata = FlatVector::GetData<LEFT_TYPE>(left);
+-	auto rdata = FlatVector::GetData<RIGHT_TYPE>(right);
++	const auto ldata = FlatVector::GetData<LEFT_TYPE>(left);
++	const auto rdata = FlatVector::GetData<RIGHT_TYPE>(right);
+ 	if (LEFT_CONSTANT) {
+ 		ValidityMask validity;
+ 		if (ConstantVector::IsNull(left)) {
+diff --git a/src/common/vector_operations/numeric_inplace_operators.cpp b/src/common/vector_operations/numeric_inplace_operators.cpp
+--- a/src/common/vector_operations/numeric_inplace_operators.cpp
++++ b/src/common/vector_operations/numeric_inplace_operators.cpp
+@@ -30,7 +30,7 @@ void VectorOperations::AddInPlace(Vector &input, int64_t right, idx_t count) {
+ 	}
+ 	default: {
+ 		D_ASSERT(input.GetVectorType() == VectorType::FLAT_VECTOR);
+-		auto data = FlatVector::GetData<uintptr_t>(input);
++		auto data = FlatVector::GetDataMutable<uintptr_t>(input);
+ 		for (idx_t i = 0; i < count; i++) {
+ 			data[i] = UnsafeNumericCast<uintptr_t>(UnsafeNumericCast<int64_t>(data[i]) + right);
+ 		}
+diff --git a/src/common/vector_operations/vector_copy.cpp b/src/common/vector_operations/vector_copy.cpp
+--- a/src/common/vector_operations/vector_copy.cpp
++++ b/src/common/vector_operations/vector_copy.cpp
+@@ -28,7 +28,7 @@ template <class T>
+ void TemplatedCopy(const Vector &source, const SelectionVector &sel, Vector &target, idx_t source_offset,
+                    idx_t target_offset, idx_t copy_count) {
+ 	auto ldata = FlatVector::GetData<T>(source);
+-	auto tdata = FlatVector::GetData<T>(target);
++	auto tdata = FlatVector::GetDataMutable<T>(target);
+ 	for (idx_t i = 0; i < copy_count; i++) {
+ 		auto source_idx = sel.get_index(source_offset + i);
+ 		tdata[target_offset + i] = ldata[source_idx];
+@@ -220,7 +220,7 @@ void VectorOperations::Copy(const Vector &source_p, Vector &target, const Select
+ 
+ 		auto &source_child = ListVector::GetEntry(*source);
+ 		auto sdata = FlatVector::GetData<list_entry_t>(*source);
+-		auto tdata = FlatVector::GetData<list_entry_t>(target);
++		auto tdata = FlatVector::GetDataMutable<list_entry_t>(target);
+ 
+ 		if (target_vector_type == VectorType::CONSTANT_VECTOR) {
+ 			// If we are only writing one value, then the copied values (if any) are contiguous
+diff --git a/src/common/vector_operations/vector_hash.cpp b/src/common/vector_operations/vector_hash.cpp
+--- a/src/common/vector_operations/vector_hash.cpp
++++ b/src/common/vector_operations/vector_hash.cpp
+@@ -84,12 +84,12 @@ void TemplatedLoopHash(Vector &input, Vector &result, const SelectionVector *rse
+ 
+ 		if (idata.sel->IsSet()) {
+ 			TightLoopHash<HAS_RSEL, true, T, INPUT_IS_ALREADY_HASH>(UnifiedVectorFormat::GetData<T>(idata),
+-			                                                        FlatVector::GetData<hash_t>(result), rsel, count,
+-			                                                        idata.sel, idata.validity);
++			                                                        FlatVector::GetDataMutable<hash_t>(result), rsel,
++			                                                        count, idata.sel, idata.validity);
+ 		} else {
+ 			TightLoopHash<HAS_RSEL, false, T, INPUT_IS_ALREADY_HASH>(UnifiedVectorFormat::GetData<T>(idata),
+-			                                                         FlatVector::GetData<hash_t>(result), rsel, count,
+-			                                                         idata.sel, idata.validity);
++			                                                         FlatVector::GetDataMutable<hash_t>(result), rsel,
++			                                                         count, idata.sel, idata.validity);
+ 		}
+ 	}
+ }
+@@ -125,7 +125,7 @@ template <bool HAS_RSEL, bool FIRST_HASH>
+ void ListLoopHash(Vector &input, Vector &hashes, const SelectionVector *rsel, idx_t count) {
+ 	// FIXME: if we want to be more efficient we shouldn't flatten, but the logic here currently requires it
+ 	hashes.Flatten(count);
+-	auto hdata = FlatVector::GetData<hash_t>(hashes);
++	auto hdata = FlatVector::GetDataMutable<hash_t>(hashes);
+ 
+ 	UnifiedVectorFormat idata;
+ 	input.ToUnifiedFormat(count, idata);
+@@ -140,7 +140,7 @@ void ListLoopHash(Vector &input, Vector &hashes, const SelectionVector *rsel, id
+ 		VectorOperations::Hash(child, child_hashes, child_count);
+ 		child_hashes.Flatten(child_count);
+ 	}
+-	auto chdata = FlatVector::GetData<hash_t>(child_hashes);
++	auto chdata = FlatVector::GetDataMutable<hash_t>(child_hashes);
+ 
+ 	// Reduce the number of entries to check to the non-empty ones
+ 	SelectionVector unprocessed(count);
+@@ -215,7 +215,7 @@ void ListLoopHash(Vector &input, Vector &hashes, const SelectionVector *rsel, id
+ template <bool HAS_RSEL, bool FIRST_HASH>
+ void ArrayLoopHash(Vector &input, Vector &hashes, const SelectionVector *rsel, idx_t count) {
+ 	hashes.Flatten(count);
+-	auto hdata = FlatVector::GetData<hash_t>(hashes);
++	auto hdata = FlatVector::GetDataMutable<hash_t>(hashes);
+ 
+ 	UnifiedVectorFormat idata;
+ 	input.ToUnifiedFormat(count, idata);
+@@ -234,7 +234,7 @@ void ArrayLoopHash(Vector &input, Vector &hashes, const SelectionVector *rsel, i
+ 		Vector child_hashes(LogicalType::HASH, child_count);
+ 		VectorOperations::Hash(child, child_hashes, child_count);
+ 		child_hashes.Flatten(child_count);
+-		auto chdata = FlatVector::GetData<hash_t>(child_hashes);
++		auto chdata = FlatVector::GetDataMutable<hash_t>(child_hashes);
+ 
+ 		for (idx_t i = 0; i < count; i++) {
+ 			auto lidx = idata.sel->get_index(i);
+@@ -267,7 +267,7 @@ void ArrayLoopHash(Vector &input, Vector &hashes, const SelectionVector *rsel, i
+ 				// Hash the array slice
+ 				Vector dict_vec(child, array_sel, array_size);
+ 				VectorOperations::Hash(dict_vec, array_hashes, array_size);
+-				auto ahdata = FlatVector::GetData<hash_t>(array_hashes);
++				auto ahdata = FlatVector::GetDataMutable<hash_t>(array_hashes);
+ 
+ 				if (FIRST_HASH) {
+ 					hdata[ridx] = 0;
+@@ -408,18 +408,18 @@ void TemplatedLoopCombineHash(Vector &input, Vector &hashes, const SelectionVect
+ 			// now re-initialize the hashes vector to an empty flat vector
+ 			hashes.SetVectorType(VectorType::FLAT_VECTOR);
+ 			TightLoopCombineHashConstant<HAS_RSEL, T, INPUT_IS_ALREADY_HASH>(
+-			    UnifiedVectorFormat::GetData<T>(idata), constant_hash, FlatVector::GetData<hash_t>(hashes), rsel, count,
+-			    idata.sel, idata.validity);
++			    UnifiedVectorFormat::GetData<T>(idata), constant_hash, FlatVector::GetDataMutable<hash_t>(hashes), rsel,
++			    count, idata.sel, idata.validity);
+ 		} else {
+ 			D_ASSERT(hashes.GetVectorType() == VectorType::FLAT_VECTOR);
+ 			if (idata.sel->IsSet()) {
+-				TightLoopCombineHash<HAS_RSEL, true, T, INPUT_IS_ALREADY_HASH>(UnifiedVectorFormat::GetData<T>(idata),
+-				                                                               FlatVector::GetData<hash_t>(hashes),
+-				                                                               rsel, count, idata.sel, idata.validity);
++				TightLoopCombineHash<HAS_RSEL, true, T, INPUT_IS_ALREADY_HASH>(
++				    UnifiedVectorFormat::GetData<T>(idata), FlatVector::GetDataMutable<hash_t>(hashes), rsel, count,
++				    idata.sel, idata.validity);
+ 			} else {
+-				TightLoopCombineHash<HAS_RSEL, false, T, INPUT_IS_ALREADY_HASH>(UnifiedVectorFormat::GetData<T>(idata),
+-				                                                                FlatVector::GetData<hash_t>(hashes),
+-				                                                                rsel, count, idata.sel, idata.validity);
++				TightLoopCombineHash<HAS_RSEL, false, T, INPUT_IS_ALREADY_HASH>(
++				    UnifiedVectorFormat::GetData<T>(idata), FlatVector::GetDataMutable<hash_t>(hashes), rsel, count,
++				    idata.sel, idata.validity);
+ 			}
+ 		}
+ 	}
+diff --git a/src/execution/aggregate_hashtable.cpp b/src/execution/aggregate_hashtable.cpp
+--- a/src/execution/aggregate_hashtable.cpp
++++ b/src/execution/aggregate_hashtable.cpp
+@@ -449,13 +449,13 @@ optional_idx GroupedAggregateHashTable::TryAddDictionaryGroups(DataChunk &groups
+ 	auto new_dict_addresses = FlatVector::GetData<uintptr_t>(new_dictionary_pointers);
+ 	// for each of the new groups, add them to the global (cached) list of addresses for the dictionary
+ 	auto &dictionary_addresses = *dict_state.dictionary_addresses;
+-	auto dict_addresses = FlatVector::GetData<uintptr_t>(dictionary_addresses);
++	auto dict_addresses = FlatVector::GetDataMutable<uintptr_t>(dictionary_addresses);
+ 	for (idx_t i = 0; i < unique_count; i++) {
+ 		auto dict_idx = unique_entries.get_index(i);
+ 		dict_addresses[dict_idx] = new_dict_addresses[i] + layout_ptr->GetAggrOffset();
+ 	}
+ 	// now set up the addresses for the aggregates
+-	auto result_addresses = FlatVector::GetData<uintptr_t>(state.addresses);
++	auto result_addresses = FlatVector::GetDataMutable<uintptr_t>(state.addresses);
+ 	for (idx_t i = 0; i < groups.size(); i++) {
+ 		auto dict_idx = offsets.get_index(i);
+ 		result_addresses[i] = dict_addresses[dict_idx];
+@@ -499,7 +499,7 @@ optional_idx GroupedAggregateHashTable::TryAddConstantGroups(DataChunk &groups,
+ 	}
+ 
+ 	auto new_dict_addresses = FlatVector::GetData<uintptr_t>(new_dictionary_pointers);
+-	auto result_addresses = FlatVector::GetData<uintptr_t>(state.addresses);
++	auto result_addresses = FlatVector::GetDataMutable<uintptr_t>(state.addresses);
+ 	uintptr_t aggregate_address = new_dict_addresses[0] + layout_ptr->GetAggrOffset();
+ 	for (idx_t i = 0; i < payload.size(); i++) {
+ 		result_addresses[i] = aggregate_address;
+@@ -689,7 +689,7 @@ idx_t GroupedAggregateHashTable::FindOrCreateGroupsInternal(DataChunk &groups, V
+ 	const auto hashes = FlatVector::GetData<hash_t>(group_hashes_v);
+ 
+ 	addresses_v.Flatten(chunk_size);
+-	const auto addresses = FlatVector::GetData<data_ptr_t>(addresses_v);
++	const auto addresses = FlatVector::GetDataMutable<data_ptr_t>(addresses_v);
+ 
+ 	if (skip_lookups) {
+ 		// Just appending now
+@@ -712,8 +712,8 @@ idx_t GroupedAggregateHashTable::FindOrCreateGroupsInternal(DataChunk &groups, V
+ 
+ 	// Compute the entry in the table based on the hash using a modulo,
+ 	// and precompute the hash salts for faster comparison below
+-	const auto ht_offsets = FlatVector::GetData<uint64_t>(state.ht_offsets);
+-	const auto hash_salts = FlatVector::GetData<hash_t>(state.hash_salts);
++	const auto ht_offsets = FlatVector::GetDataMutable<uint64_t>(state.ht_offsets);
++	const auto hash_salts = FlatVector::GetDataMutable<hash_t>(state.hash_salts);
+ 
+ 	// We also compute the occupied count, which is essentially useless.
+ 	// However, this loop is branchless, while the main lookup loop below is not.
+diff --git a/src/execution/expression_executor/execute_case.cpp b/src/execution/expression_executor/execute_case.cpp
+--- a/src/execution/expression_executor/execute_case.cpp
++++ b/src/execution/expression_executor/execute_case.cpp
+@@ -95,7 +95,7 @@ void ExpressionExecutor::Execute(const BoundCaseExpression &expr, ExpressionStat
+ template <class T>
+ void TemplatedFillLoop(Vector &vector, Vector &result, const SelectionVector &sel, sel_t count) {
+ 	result.SetVectorType(VectorType::FLAT_VECTOR);
+-	auto res = FlatVector::GetData<T>(result);
++	auto res = FlatVector::GetDataMutable<T>(result);
+ 	auto &result_mask = FlatVector::Validity(result);
+ 	if (vector.GetVectorType() == VectorType::CONSTANT_VECTOR) {
+ 		auto data = ConstantVector::GetData<T>(vector);
+diff --git a/src/execution/expression_executor/execute_function.cpp b/src/execution/expression_executor/execute_function.cpp
+--- a/src/execution/expression_executor/execute_function.cpp
++++ b/src/execution/expression_executor/execute_function.cpp
+@@ -185,7 +185,7 @@ static void ExecuteSelectFunction(const BoundFunctionExpression &expr, DataChunk
+ 
+ 	result.SetVectorType(VectorType::FLAT_VECTOR);
+ 	auto count = args.size();
+-	auto result_data = FlatVector::GetData<bool>(result);
++	auto result_data = FlatVector::GetDataMutable<bool>(result);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		result_data[i] = false;
+ 	}
+diff --git a/src/execution/join_hashtable.cpp b/src/execution/join_hashtable.cpp
+--- a/src/execution/join_hashtable.cpp
++++ b/src/execution/join_hashtable.cpp
+@@ -164,8 +164,8 @@ static void ApplyBitmaskAndGetSaltBuild(Vector &hashes_v, Vector &salt_v, const
+ 		hashes_v.Flatten(count);
+ 	} else {
+ 		hashes_v.Flatten(count);
+-		auto salts = FlatVector::GetData<hash_t>(salt_v);
+-		auto hashes = FlatVector::GetData<hash_t>(hashes_v);
++		auto salts = FlatVector::GetDataMutable<hash_t>(salt_v);
++		auto hashes = FlatVector::GetDataMutable<hash_t>(hashes_v);
+ 		for (idx_t i = 0; i < count; i++) {
+ 			salts[i] = ht_entry_t::ExtractSalt(hashes[i]);
+ 			hashes[i] &= bitmask;
+@@ -180,8 +180,8 @@ idx_t GetOptionalIndex(const SelectionVector *sel, const idx_t idx) {
+ 
+ static void AddPointerToCompare(JoinHashTable::ProbeState &state, const ht_entry_t &entry, Vector &pointers_result_v,
+                                 idx_t row_ht_offset, idx_t &keys_to_compare_count, const idx_t &row_index) {
+-	const auto row_ptr_insert_to = FlatVector::GetData<data_ptr_t>(pointers_result_v);
+-	const auto ht_offsets_and_salts = FlatVector::GetData<idx_t>(state.ht_offsets_and_salts_v);
++	const auto row_ptr_insert_to = FlatVector::GetDataMutable<data_ptr_t>(pointers_result_v);
++	const auto ht_offsets_and_salts = FlatVector::GetDataMutable<idx_t>(state.ht_offsets_and_salts_v);
+ 
+ 	state.keys_to_compare_sel.set_index(keys_to_compare_count, row_index);
+ 	row_ptr_insert_to[row_index] = entry.GetPointer();
+@@ -196,7 +196,7 @@ static void AddPointerToCompare(JoinHashTable::ProbeState &state, const ht_entry
+ template <bool USE_SALTS, bool HAS_SEL>
+ static idx_t ProbeForPointersInternal(JoinHashTable::ProbeState &state, JoinHashTable &ht, ht_entry_t *entries,
+                                       Vector &pointers_result_v, const SelectionVector *row_sel, idx_t &count) {
+-	auto hashes_dense = FlatVector::GetData<hash_t>(state.hashes_dense_v);
++	auto hashes_dense = FlatVector::GetDataMutable<hash_t>(state.hashes_dense_v);
+ 
+ 	idx_t keys_to_compare_count = 0;
+ 
+@@ -271,7 +271,7 @@ static void GetRowPointersInternal(DataChunk &keys, TupleDataChunkState &key_sta
+ 		hashes_v.ToUnifiedFormat(count, hashes_unified_v);
+ 
+ 		auto hashes_unified = UnifiedVectorFormat::GetData<hash_t>(hashes_unified_v);
+-		auto hashes_dense = FlatVector::GetData<idx_t>(state.hashes_dense_v);
++		auto hashes_dense = FlatVector::GetDataMutable<idx_t>(state.hashes_dense_v);
+ 
+ 		for (idx_t i = 0; i < count; i++) {
+ 			const auto row_index = row_sel->get_index(i);
+@@ -313,7 +313,7 @@ static void GetRowPointersInternal(DataChunk &keys, TupleDataChunkState &key_sta
+ 		}
+ 
+ 		const auto ht_offsets_and_salts = FlatVector::GetData<idx_t>(state.ht_offsets_and_salts_v);
+-		const auto hashes_dense = FlatVector::GetData<hash_t>(state.hashes_dense_v);
++		const auto hashes_dense = FlatVector::GetDataMutable<hash_t>(state.hashes_dense_v);
+ 
+ 		// For all the non-matches, increment the offset to continue probing but keep the salt intact
+ 		for (idx_t i = 0; i < keys_no_match_count; i++) {
+@@ -606,10 +606,10 @@ static void InsertHashesLoop(atomic<ht_entry_t> entries[], Vector &row_locations
+ 	const auto &layout = data_collection.GetLayout();
+ 
+ 	// the salts offset for each row to insert
+-	const auto ht_offsets = FlatVector::GetData<idx_t>(hashes_v);
++	const auto ht_offsets = FlatVector::GetDataMutable<idx_t>(hashes_v);
+ 	const auto hash_salts = FlatVector::GetData<hash_t>(state.salt_v);
+ 	// the row locations of the rows that are already in the hash table
+-	const auto rhs_row_locations = FlatVector::GetData<data_ptr_t>(state.rhs_row_locations);
++	const auto rhs_row_locations = FlatVector::GetDataMutable<data_ptr_t>(state.rhs_row_locations);
+ 	// the row locations of the rows that are to be inserted
+ 	const auto lhs_row_locations = FlatVector::GetData<data_ptr_t>(row_locations);
+ 
+@@ -806,7 +806,7 @@ void JoinHashTable::Finalize(idx_t chunk_idx_from, idx_t chunk_idx_to, bool para
+ 	D_ASSERT(hash_map.get());
+ 
+ 	Vector hashes(LogicalType::HASH);
+-	auto hash_data = FlatVector::GetData<hash_t>(hashes);
++	auto hash_data = FlatVector::GetDataMutable<hash_t>(hashes);
+ 
+ 	TupleDataChunkIterator iterator(*data_collection, TupleDataPinProperties::KEEP_EVERYTHING_PINNED, chunk_idx_from,
+ 	                                chunk_idx_to, false);
+@@ -1074,7 +1074,7 @@ void ScanStructure::AdvancePointers(const SelectionVector &sel, const idx_t sel_
+ 
+ 	// now for all the pointers, we move on to the next set of pointers
+ 	idx_t new_count = 0;
+-	auto ptrs = FlatVector::GetData<data_ptr_t>(this->pointers);
++	auto ptrs = FlatVector::GetDataMutable<data_ptr_t>(this->pointers);
+ 	for (idx_t i = 0; i < sel_count; i++) {
+ 		auto idx = sel.get_index(i);
+ 		ptrs[idx] = LoadPointer(ptrs[idx] + ht.pointer_offset);
+@@ -1270,7 +1270,7 @@ void ScanStructure::NextAntiJoin(DataChunk &keys, DataChunk &probe_data, DataChu
+ }
+ 
+ void ScanStructure::NextRightSemiOrAntiJoin(DataChunk &keys, DataChunk &probe_data) {
+-	const auto ptrs = FlatVector::GetData<data_ptr_t>(pointers);
++	const auto ptrs = FlatVector::GetDataMutable<data_ptr_t>(pointers);
+ 	while (!PointersExhausted()) {
+ 		// resolve the equality_predicates for this set of keys
+ 		idx_t result_count = ResolvePredicates(keys, probe_data, chain_match_sel_vector, nullptr);
+@@ -1327,7 +1327,7 @@ void ScanStructure::ConstructMarkJoinResult(DataChunk &join_keys, DataChunk &pro
+ 
+ 	// first we set the NULL values from the join keys
+ 	// if there is any NULL in the keys, the result is NULL
+-	auto bool_result = FlatVector::GetData<bool>(mark_vector);
++	auto bool_result = FlatVector::GetDataMutable<bool>(mark_vector);
+ 	auto &mask = FlatVector::Validity(mark_vector);
+ 	for (idx_t col_idx = 0; col_idx < join_keys.ColumnCount(); col_idx++) {
+ 		if (ht.null_values_are_equal[col_idx]) {
+@@ -1396,7 +1396,7 @@ void ScanStructure::NextMarkJoin(DataChunk &keys, DataChunk &probe_data, DataChu
+ 		auto &result_vector = result.data.back();
+ 		// first set the null mask based on whether there were NULL values in the join key
+ 		result_vector.SetVectorType(VectorType::FLAT_VECTOR);
+-		auto bool_result = FlatVector::GetData<bool>(result_vector);
++		auto bool_result = FlatVector::GetDataMutable<bool>(result_vector);
+ 		auto &mask = FlatVector::Validity(result_vector);
+ 
+ 		// Set null mask based on NULL values in join key
+@@ -1542,7 +1542,7 @@ void ScanStructure::NextSingleJoin(DataChunk &keys, DataChunk &probe_data, DataC
+ 
+ void JoinHashTable::ScanFullOuter(JoinHTScanState &state, Vector &addresses, DataChunk &result) const {
+ 	// scan the HT starting from the current position and check which rows from the build side did not find a match
+-	auto key_locations = FlatVector::GetData<data_ptr_t>(addresses);
++	auto key_locations = FlatVector::GetDataMutable<data_ptr_t>(addresses);
+ 	idx_t found_entries = 0;
+ 
+ 	auto &iterator = state.iterator;
+@@ -1605,7 +1605,7 @@ void JoinHashTable::ScanFullOuter(JoinHTScanState &state, Vector &addresses, Dat
+ 
+ idx_t JoinHashTable::FillWithHTOffsets(JoinHTScanState &state, Vector &addresses) {
+ 	// iterate over HT
+-	auto key_locations = FlatVector::GetData<data_ptr_t>(addresses);
++	auto key_locations = FlatVector::GetDataMutable<data_ptr_t>(addresses);
+ 	idx_t key_count = 0;
+ 
+ 	auto &iterator = state.iterator;
+diff --git a/src/execution/operator/aggregate/physical_streaming_window.cpp b/src/execution/operator/aggregate/physical_streaming_window.cpp
+--- a/src/execution/operator/aggregate/physical_streaming_window.cpp
++++ b/src/execution/operator/aggregate/physical_streaming_window.cpp
+@@ -428,7 +428,7 @@ void StreamingWindowState::AggregateState::Execute(ExecutionContext &context, Da
+ 	// Check for COUNT(*)
+ 	if (wexpr.children.empty()) {
+ 		D_ASSERT(GetTypeIdSize(result.GetType().InternalType()) == sizeof(int64_t));
+-		auto data = FlatVector::GetData<int64_t>(result);
++		auto data = FlatVector::GetDataMutable<int64_t>(result);
+ 		auto &unfiltered = aggr_state.unfiltered;
+ 		for (idx_t i = 0; i < count; ++i) {
+ 			unfiltered += int64_t(filter_mask.RowIsValid(i));
+@@ -609,7 +609,7 @@ void PhysicalStreamingWindow::ExecuteFunctions(ExecutionContext &context, DataCh
+ 		case ExpressionType::WINDOW_ROW_NUMBER: {
+ 			// Set row numbers
+ 			int64_t start_row = gstate.row_number;
+-			auto rdata = FlatVector::GetData<int64_t>(output.data[col_idx]);
++			auto rdata = FlatVector::GetDataMutable<int64_t>(output.data[col_idx]);
+ 			for (idx_t i = 0; i < count; i++) {
+ 				rdata[i] = NumericCast<int64_t>(start_row + NumericCast<int64_t>(i));
+ 			}
+diff --git a/src/execution/operator/csv_scanner/scanner/string_value_scanner.cpp b/src/execution/operator/csv_scanner/scanner/string_value_scanner.cpp
+--- a/src/execution/operator/csv_scanner/scanner/string_value_scanner.cpp
++++ b/src/execution/operator/csv_scanner/scanner/string_value_scanner.cpp
+@@ -105,7 +105,7 @@ StringValueResult::StringValueResult(CSVStates &states, CSVStateMachine &state_m
+ 	// Initialize Parse Chunk
+ 	parse_chunk.Initialize(buffer_allocator, logical_types, result_size);
+ 	for (auto &col : parse_chunk.data) {
+-		vector_ptr.push_back(FlatVector::GetData(col));
++		vector_ptr.push_back(FlatVector::GetDataMutable(col));
+ 		validity_mask.push_back(&FlatVector::Validity(col));
+ 	}
+ 
+diff --git a/src/execution/operator/join/physical_asof_join.cpp b/src/execution/operator/join/physical_asof_join.cpp
+--- a/src/execution/operator/join/physical_asof_join.cpp
++++ b/src/execution/operator/join/physical_asof_join.cpp
+@@ -238,7 +238,7 @@ class AsOfPayloadScanner {
+ 		using BLOCK_ITERATOR = block_iterator_t<ExternalBlockIteratorState, SORT_KEY>;
+ 		BLOCK_ITERATOR itr(block_state, chunk_idx, 0);
+ 
+-		const auto sort_keys = FlatVector::GetData<SORT_KEY *>(sort_key_pointers);
++		const auto sort_keys = FlatVector::GetDataMutable<SORT_KEY *>(sort_key_pointers);
+ 		const auto result_count = NextSize();
+ 		for (idx_t i = 0; i < result_count; ++i) {
+ 			const auto idx = block_state.GetIndex(chunk_idx, i);
+diff --git a/src/execution/operator/join/physical_comparison_join.cpp b/src/execution/operator/join/physical_comparison_join.cpp
+--- a/src/execution/operator/join/physical_comparison_join.cpp
++++ b/src/execution/operator/join/physical_comparison_join.cpp
+@@ -134,7 +134,7 @@ void PhysicalComparisonJoin::ConstructEmptyJoinResult(JoinType join_type, bool h
+ 		// entry if the HT has NULL values (i.e. result set had values, but all were NULL), return a vector that
+ 		// has NULL for every input entry
+ 		if (!has_null) {
+-			auto bool_result = FlatVector::GetData<bool>(result_vector);
++			auto bool_result = FlatVector::GetDataMutable<bool>(result_vector);
+ 			for (idx_t i = 0; i < result.size(); i++) {
+ 				bool_result[i] = false;
+ 			}
+diff --git a/src/execution/operator/join/physical_iejoin.cpp b/src/execution/operator/join/physical_iejoin.cpp
+--- a/src/execution/operator/join/physical_iejoin.cpp
++++ b/src/execution/operator/join/physical_iejoin.cpp
+@@ -374,7 +374,7 @@ class IEJoinCursor {
+ 	const T &operator[](idx_t row_idx) {
+ 		auto index = Seek(row_idx);
+ 		auto &source = chunk.data[0];
+-		const auto data_ptr = reinterpret_cast<T *>(FlatVector::GetData<VECTOR_TYPE>(source));
++		const auto data_ptr = reinterpret_cast<const T *>(FlatVector::GetData<VECTOR_TYPE>(source));
+ 		return data_ptr[index];
+ 	}
+ 
+diff --git a/src/execution/operator/join/physical_nested_loop_join.cpp b/src/execution/operator/join/physical_nested_loop_join.cpp
+--- a/src/execution/operator/join/physical_nested_loop_join.cpp
++++ b/src/execution/operator/join/physical_nested_loop_join.cpp
+@@ -83,7 +83,7 @@ void PhysicalJoin::ConstructMarkJoinResult(DataChunk &join_keys, DataChunk &left
+ 	mark_vector.SetVectorType(VectorType::FLAT_VECTOR);
+ 	// first we set the NULL values from the join keys
+ 	// if there is any NULL in the keys, the result is NULL
+-	auto bool_result = FlatVector::GetData<bool>(mark_vector);
++	auto bool_result = FlatVector::GetDataMutable<bool>(mark_vector);
+ 	auto &mask = FlatVector::Validity(mark_vector);
+ 	for (idx_t col_idx = 0; col_idx < join_keys.ColumnCount(); col_idx++) {
+ 		auto entries = join_keys.data[col_idx].Validity(join_keys.size());
+diff --git a/src/execution/operator/join/physical_range_join.cpp b/src/execution/operator/join/physical_range_join.cpp
+--- a/src/execution/operator/join/physical_range_join.cpp
++++ b/src/execution/operator/join/physical_range_join.cpp
+@@ -465,7 +465,7 @@ static void TemplatedSliceSortedPayload(DataChunk &chunk, const SortedRun &sorte
+ 	using BLOCK_ITERATOR = block_iterator_t<ExternalBlockIteratorState, SORT_KEY>;
+ 	BLOCK_ITERATOR itr(state, chunk_idx, 0);
+ 
+-	const auto sort_keys = FlatVector::GetData<SORT_KEY *>(sort_key_pointers);
++	const auto sort_keys = FlatVector::GetDataMutable<SORT_KEY *>(sort_key_pointers);
+ 	const auto result_size = NumericCast<idx_t>(result.size());
+ 
+ 	for (idx_t i = 0; i < result_size; ++i) {
+diff --git a/src/execution/perfect_aggregate_hashtable.cpp b/src/execution/perfect_aggregate_hashtable.cpp
+--- a/src/execution/perfect_aggregate_hashtable.cpp
++++ b/src/execution/perfect_aggregate_hashtable.cpp
+@@ -34,7 +34,7 @@ PerfectAggregateHashTable::PerfectAggregateHashTable(ClientContext &context, All
+ 	memset(group_is_set.get(), 0, total_groups * sizeof(bool));
+ 
+ 	// initialize the hash table for each entry
+-	auto address_data = FlatVector::GetData<uintptr_t>(addresses);
++	auto address_data = FlatVector::GetDataMutable<uintptr_t>(addresses);
+ 	idx_t init_count = 0;
+ 	for (idx_t i = 0; i < total_groups; i++) {
+ 		address_data[init_count] = uintptr_t(data) + (tuple_size * i);
+@@ -116,7 +116,7 @@ static void ComputeGroupLocation(Vector &group, Value &min, uintptr_t *address_d
+ 
+ void PerfectAggregateHashTable::AddChunk(DataChunk &groups, DataChunk &payload) {
+ 	// first we need to find the location in the HT of each of the groups
+-	auto address_data = FlatVector::GetData<uintptr_t>(addresses);
++	auto address_data = FlatVector::GetDataMutable<uintptr_t>(addresses);
+ 	// zero-initialize the address data
+ 	memset(address_data, 0, groups.size() * sizeof(uintptr_t));
+ 	D_ASSERT(groups.ColumnCount() == group_minima.size());
+@@ -166,8 +166,8 @@ void PerfectAggregateHashTable::Combine(PerfectAggregateHashTable &other) {
+ 
+ 	Vector source_addresses(LogicalType::POINTER);
+ 	Vector target_addresses(LogicalType::POINTER);
+-	auto source_addresses_ptr = FlatVector::GetData<data_ptr_t>(source_addresses);
+-	auto target_addresses_ptr = FlatVector::GetData<data_ptr_t>(target_addresses);
++	auto source_addresses_ptr = FlatVector::GetDataMutable<data_ptr_t>(source_addresses);
++	auto target_addresses_ptr = FlatVector::GetDataMutable<data_ptr_t>(target_addresses);
+ 
+ 	// iterate over all entries of both hash tables and call combine for all entries that can be combined
+ 	data_ptr_t source_ptr = other.data;
+@@ -201,7 +201,7 @@ void PerfectAggregateHashTable::Combine(PerfectAggregateHashTable &other) {
+ template <class T>
+ static void ReconstructGroupVectorTemplated(uint32_t group_values[], Value &min, idx_t mask, idx_t shift,
+                                             idx_t entry_count, Vector &result) {
+-	auto data = FlatVector::GetData<T>(result);
++	auto data = FlatVector::GetDataMutable<T>(result);
+ 	auto &validity_mask = FlatVector::Validity(result);
+ 	auto min_data = min.GetValueUnsafe<T>();
+ 	for (idx_t i = 0; i < entry_count; i++) {
+@@ -253,7 +253,7 @@ static void ReconstructGroupVector(uint32_t group_values[], Value &min, idx_t re
+ }
+ 
+ void PerfectAggregateHashTable::Scan(idx_t &scan_position, DataChunk &result) {
+-	auto data_pointers = FlatVector::GetData<data_ptr_t>(addresses);
++	auto data_pointers = FlatVector::GetDataMutable<data_ptr_t>(addresses);
+ 	uint32_t group_values[STANDARD_VECTOR_SIZE];
+ 
+ 	// iterate over the HT until we either have exhausted the entire HT, or
+@@ -299,7 +299,7 @@ void PerfectAggregateHashTable::Destroy() {
+ 	}
+ 	// there are aggregates with destructors: loop over the hash table
+ 	// and call the destructor method for each of the aggregates
+-	auto data_pointers = FlatVector::GetData<data_ptr_t>(addresses);
++	auto data_pointers = FlatVector::GetDataMutable<data_ptr_t>(addresses);
+ 	idx_t count = 0;
+ 
+ 	// iterate over all initialised slots of the hash table
+diff --git a/src/function/aggregate/distributive/count.cpp b/src/function/aggregate/distributive/count.cpp
+--- a/src/function/aggregate/distributive/count.cpp
++++ b/src/function/aggregate/distributive/count.cpp
+@@ -40,7 +40,7 @@ struct CountStarFunction : public BaseCountFunction {
+ 	                   data_ptr_t l_state, const SubFrames &frames, Vector &result, idx_t rid) {
+ 		D_ASSERT(partition.column_ids.empty());
+ 
+-		auto data = FlatVector::GetData<RESULT_TYPE>(result);
++		auto data = FlatVector::GetDataMutable<RESULT_TYPE>(result);
+ 		RESULT_TYPE total = 0;
+ 		for (const auto &frame : frames) {
+ 			const auto begin = frame.start;
+@@ -132,7 +132,7 @@ struct CountFunction : public BaseCountFunction {
+ 	                         idx_t count) {
+ 		auto &input = inputs[0];
+ 		if (input.GetVectorType() == VectorType::FLAT_VECTOR && states.GetVectorType() == VectorType::FLAT_VECTOR) {
+-			auto sdata = FlatVector::GetData<STATE *>(states);
++			auto sdata = FlatVector::GetDataMutable<STATE *>(states);
+ 			CountFlatLoop(sdata, FlatVector::Validity(input), count);
+ 		} else {
+ 			UnifiedVectorFormat idata, sdata;
+diff --git a/src/function/cast/array_casts.cpp b/src/function/cast/array_casts.cpp
+--- a/src/function/cast/array_casts.cpp
++++ b/src/function/cast/array_casts.cpp
+@@ -109,14 +109,14 @@ static bool ArrayToVarcharCast(Vector &source, Vector &result, idx_t count, Cast
+ 	auto &child_validity = FlatVector::Validity(child);
+ 
+ 	auto in_data = FlatVector::GetData<string_t>(child);
+-	auto out_data = FlatVector::GetData<string_t>(result);
++	auto result_data = FlatVector::Writer<string_t>(result, count);
+ 
+ 	static constexpr const idx_t SEP_LENGTH = 2;
+ 	static constexpr const idx_t NULL_LENGTH = 4;
+ 
+ 	for (idx_t i = 0; i < count; i++) {
+ 		if (!validity.RowIsValid(i)) {
+-			FlatVector::SetNull(result, i, true);
++			result_data.SetInvalid(i);
+ 			continue;
+ 		}
+ 
+@@ -131,8 +131,8 @@ static bool ArrayToVarcharCast(Vector &source, Vector &result, idx_t count, Cast
+ 			array_varchar_length += child_validity.RowIsValid(elem_idx) ? elem.GetSize() : NULL_LENGTH;
+ 		}
+ 
+-		out_data[i] = StringVector::EmptyString(result, array_varchar_length);
+-		auto dataptr = out_data[i].GetDataWriteable();
++		auto &out_str = result_data[i].EmptyString(array_varchar_length);
++		auto dataptr = out_str.GetDataWriteable();
+ 		idx_t offset = 0;
+ 		dataptr[offset++] = '[';
+ 
+@@ -154,7 +154,7 @@ static bool ArrayToVarcharCast(Vector &source, Vector &result, idx_t count, Cast
+ 			}
+ 		}
+ 		dataptr[offset++] = ']';
+-		out_data[i].Finalize();
++		out_str.Finalize();
+ 	}
+ 
+ 	if (is_constant) {
+@@ -185,21 +185,16 @@ static bool ArrayToListCast(Vector &source, Vector &result, idx_t count, CastPar
+ 	CastParameters child_parameters(parameters, cast_data.child_cast_info.cast_data, parameters.local_state);
+ 	bool all_ok = cast_data.child_cast_info.function(source_child, result_child, child_count, child_parameters);
+ 
+-	auto list_data = ListVector::GetData(result);
++	auto list_data = FlatVector::Writer<list_entry_t>(result, count);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		if (FlatVector::IsNull(source, i)) {
+-			FlatVector::SetNull(result, i, true);
++			list_data.SetInvalid(i);
+ 			continue;
+ 		}
+ 
+ 		list_data[i].offset = i * array_size;
+ 		list_data[i].length = array_size;
+ 	}
+-
+-	if (count == 1) {
+-		result.SetVectorType(VectorType::CONSTANT_VECTOR);
+-	}
+-
+ 	return all_ok;
+ }
+ 
+diff --git a/src/function/cast/list_casts.cpp b/src/function/cast/list_casts.cpp
+--- a/src/function/cast/list_casts.cpp
++++ b/src/function/cast/list_casts.cpp
+@@ -58,7 +58,7 @@ bool ListCast::ListToListCast(Vector &source, Vector &result, idx_t count, CastP
+ 		FlatVector::SetValidity(result, FlatVector::Validity(source));
+ 
+ 		auto ldata = FlatVector::GetData<list_entry_t>(source);
+-		auto tdata = FlatVector::GetData<list_entry_t>(result);
++		auto tdata = FlatVector::GetDataMutable<list_entry_t>(result);
+ 		for (idx_t i = 0; i < count; i++) {
+ 			tdata[i] = ldata[i];
+ 		}
+diff --git a/src/function/cast/map_cast.cpp b/src/function/cast/map_cast.cpp
+--- a/src/function/cast/map_cast.cpp
++++ b/src/function/cast/map_cast.cpp
+@@ -37,7 +37,7 @@ static bool MapToVarcharCast(Vector &source, Vector &result, idx_t count, CastPa
+ 	key_str.Flatten(ListVector::GetListSize(source));
+ 	val_str.Flatten(ListVector::GetListSize(source));
+ 
+-	auto list_data = ListVector::GetData(varchar_map);
++	auto list_data = FlatVector::GetData<list_entry_t>(varchar_map);
+ 	auto key_data = FlatVector::GetData<string_t>(key_str);
+ 	auto val_data = FlatVector::GetData<string_t>(val_str);
+ 	auto &key_validity = FlatVector::Validity(key_str);
+diff --git a/src/function/cast/string_cast.cpp b/src/function/cast/string_cast.cpp
+--- a/src/function/cast/string_cast.cpp
++++ b/src/function/cast/string_cast.cpp
+@@ -65,7 +65,7 @@ static bool StringEnumCast(Vector &source, Vector &result, idx_t count, CastPara
+ 		auto source_data = UnifiedVectorFormat::GetData<string_t>(vdata);
+ 		auto source_sel = vdata.sel;
+ 		auto source_mask = vdata.validity;
+-		auto result_data = FlatVector::GetData<T>(result);
++		auto result_data = FlatVector::GetDataMutable<T>(result);
+ 		auto &result_mask = FlatVector::Validity(result);
+ 
+ 		VectorTryCastData vector_cast_data(result, parameters);
+@@ -149,8 +149,8 @@ bool VectorStringToList::StringToNestedTypeCastLoop(const string_t *source_data,
+ 	ListVector::Reserve(result, total_list_size);
+ 	ListVector::SetListSize(result, total_list_size);
+ 
+-	auto list_data = ListVector::GetData(result);
+-	auto child_data = FlatVector::GetData<string_t>(varchar_vector);
++	auto list_data = FlatVector::GetDataMutable<list_entry_t>(result);
++	auto child_data = FlatVector::GetDataMutable<string_t>(varchar_vector);
+ 
+ 	VectorTryCastData vector_cast_data(result, parameters);
+ 	idx_t total = 0;
+@@ -298,12 +298,12 @@ bool VectorStringToMap::StringToNestedTypeCastLoop(const string_t *source_data,
+ 
+ 	Vector varchar_key_vector(LogicalType::VARCHAR, total_elements);
+ 	Vector varchar_val_vector(LogicalType::VARCHAR, total_elements);
+-	auto child_key_data = FlatVector::GetData<string_t>(varchar_key_vector);
+-	auto child_val_data = FlatVector::GetData<string_t>(varchar_val_vector);
++	auto child_key_data = FlatVector::GetDataMutable<string_t>(varchar_key_vector);
++	auto child_val_data = FlatVector::GetDataMutable<string_t>(varchar_val_vector);
+ 
+ 	ListVector::Reserve(result, total_elements);
+ 	ListVector::SetListSize(result, total_elements);
+-	auto list_data = ListVector::GetData(result);
++	auto list_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 
+ 	VectorTryCastData vector_cast_data(result, parameters);
+ 	idx_t total = 0;
+@@ -397,7 +397,7 @@ bool VectorStringToArray::StringToNestedTypeCastLoop(const string_t *source_data
+ 
+ 	auto child_count = array_size * count;
+ 	Vector varchar_vector(LogicalType::VARCHAR, child_count);
+-	auto child_data = FlatVector::GetData<string_t>(varchar_vector);
++	auto child_data = FlatVector::GetDataMutable<string_t>(varchar_vector);
+ 
+ 	VectorTryCastData vector_cast_data(result, parameters);
+ 	idx_t total = 0;
+diff --git a/src/function/cast/struct_cast.cpp b/src/function/cast/struct_cast.cpp
+--- a/src/function/cast/struct_cast.cpp
++++ b/src/function/cast/struct_cast.cpp
+@@ -336,7 +336,7 @@ static bool StructToMapCast(Vector &source, Vector &result, idx_t count, CastPar
+ 
+ 	// Check for nulls in the source rows, and set the list data
+ 	auto validity_entries = source.Validity(count);
+-	auto list_data = ListVector::GetData(result);
++	auto list_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		if (!validity_entries.IsValid(i)) { // is row null?
+ 			// Note: this must be a FlatVector because if we set it to be a ConstantVector and that was null then we've
+diff --git a/src/function/cast/union_casts.cpp b/src/function/cast/union_casts.cpp
+--- a/src/function/cast/union_casts.cpp
++++ b/src/function/cast/union_casts.cpp
+@@ -279,7 +279,7 @@ static bool UnionToUnionCast(Vector &source, Vector &result, idx_t count, CastPa
+ 			if (entry.IsValid()) {
+ 				// map the tag
+ 				auto target_tag = cast_data.tag_map[entry.value];
+-				FlatVector::GetData<union_tag_t>(result_tag_vector)[row_idx] =
++				FlatVector::GetDataMutable<union_tag_t>(result_tag_vector)[row_idx] =
+ 				    UnsafeNumericCast<union_tag_t>(target_tag);
+ 			} else {
+ 				// Issue: The members of the result is not always flatvectors
+diff --git a/src/function/cast/variant/from_variant.cpp b/src/function/cast/variant/from_variant.cpp
+--- a/src/function/cast/variant/from_variant.cpp
++++ b/src/function/cast/variant/from_variant.cpp
+@@ -157,7 +157,7 @@ static bool CastVariantToPrimitive(FromVariantConversionData &conversion_data, V
+ 	auto &variant = conversion_data.variant;
+ 
+ 	auto &target_type = result.GetType();
+-	auto result_data = FlatVector::GetData<T>(result);
++	auto result_data = FlatVector::GetDataMutable<T>(result);
+ 	auto &result_validity = FlatVector::Validity(result);
+ 
+ 	bool all_valid = true;
+@@ -259,17 +259,17 @@ static bool ConvertVariantToList(FromVariantConversionData &conversion_data, Vec
+ 
+ 	ListVector::Reserve(result, total_offset + total_children);
+ 	auto &child = ListVector::GetEntry(result);
+-	auto list_data = ListVector::GetData(result);
++	auto result_data = FlatVector::Writer<list_entry_t>(result, offset + count);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		auto row_index = row.IsValid() ? row.GetIndex() : i;
+ 		auto &child_data_entry = child_data[i];
+ 
+ 		if (!validity.RowIsValid(i)) {
+-			FlatVector::SetNull(result, offset + i, true);
++			result_data.SetInvalid(offset + i);
+ 			continue;
+ 		}
+ 
+-		auto &entry = list_data[i + offset];
++		auto &entry = result_data[i + offset];
+ 		entry.offset = total_offset;
+ 		entry.length = child_data_entry.child_count;
+ 		total_offset += entry.length;
+diff --git a/src/function/cast/variant/to_variant.cpp b/src/function/cast/variant/to_variant.cpp
+--- a/src/function/cast/variant/to_variant.cpp
++++ b/src/function/cast/variant/to_variant.cpp
+@@ -34,16 +34,16 @@ void InitializeOffsets(DataChunk &offsets, idx_t count) {
+ static void InitializeVariants(DataChunk &offsets, Vector &result, SelectionVector &keys_selvec, idx_t &selvec_size,
+                                OrderedOwningStringMap<uint32_t> &dictionary) {
+ 	auto &keys = VariantVector::GetKeys(result);
+-	auto keys_data = ListVector::GetData(keys);
++	auto keys_data = FlatVector::GetDataMutable<list_entry_t>(keys);
+ 
+ 	auto &children = VariantVector::GetChildren(result);
+-	auto children_data = ListVector::GetData(children);
++	auto children_data = FlatVector::GetDataMutable<list_entry_t>(children);
+ 
+ 	auto &values = VariantVector::GetValues(result);
+-	auto values_data = ListVector::GetData(values);
++	auto values_data = FlatVector::GetDataMutable<list_entry_t>(values);
+ 
+ 	auto &blob = VariantVector::GetData(result);
+-	auto blob_data = FlatVector::GetData<string_t>(blob);
++	auto blob_data = FlatVector::GetDataMutable<string_t>(blob);
+ 
+ 	idx_t keys_offset = 0;
+ 	idx_t children_offset = 0;
+@@ -264,7 +264,7 @@ static bool CastToVARIANT(Vector &source, Vector &result, idx_t count, CastParam
+ 	VariantUtils::FinalizeVariantKeys(result, dictionary, keys_selvec, keys_selvec_size);
+ 	//! Finalize the 'data'
+ 	auto &blob = VariantVector::GetData(result);
+-	auto blob_data = FlatVector::GetData<string_t>(blob);
++	auto blob_data = FlatVector::GetDataMutable<string_t>(blob);
+ 	auto blob_offsets = OffsetData::GetBlob(offsets);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		auto size = blob_offsets[i];
+diff --git a/src/function/cast/vector_cast_helpers.cpp b/src/function/cast/vector_cast_helpers.cpp
+--- a/src/function/cast/vector_cast_helpers.cpp
++++ b/src/function/cast/vector_cast_helpers.cpp
+@@ -533,7 +533,7 @@ bool VectorStringToStruct::SplitStruct(const string_t &input, vector<Vector> &va
+ 				return false;
+ 			}
+ 			auto &child_vec = varchar_vectors[child_idx];
+-			auto string_data = FlatVector::GetData<string_t>(child_vec);
++			auto string_data = FlatVector::GetDataMutable<string_t>(child_vec);
+ 			auto &child_mask = child_masks[child_idx].get();
+ 
+ 			if (!start_pos.IsValid()) {
+@@ -576,7 +576,7 @@ bool VectorStringToStruct::SplitStruct(const string_t &input, vector<Vector> &va
+ 				return false;
+ 			}
+ 			auto &child_vec = varchar_vectors[child_idx];
+-			auto string_data = FlatVector::GetData<string_t>(child_vec);
++			auto string_data = FlatVector::GetDataMutable<string_t>(child_vec);
+ 			auto &child_mask = child_masks[child_idx].get();
+ 
+ 			if (!start_pos.IsValid()) {
+diff --git a/src/function/scalar/create_sort_key.cpp b/src/function/scalar/create_sort_key.cpp
+--- a/src/function/scalar/create_sort_key.cpp
++++ b/src/function/scalar/create_sort_key.cpp
+@@ -675,7 +675,7 @@ void ConstructSortKey(SortKeyVectorData &vector_data, SortKeyConstructInfo &info
+ void PrepareSortData(Vector &result, idx_t size, SortKeyLengthInfo &key_lengths, data_ptr_t *data_pointers) {
+ 	switch (result.GetType().id()) {
+ 	case LogicalTypeId::BLOB: {
+-		auto result_data = FlatVector::GetData<string_t>(result);
++		auto result_data = FlatVector::GetDataMutable<string_t>(result);
+ 		for (idx_t r = 0; r < size; r++) {
+ 			auto blob_size = key_lengths.variable_lengths[r] + key_lengths.constant_length;
+ 			result_data[r] = StringVector::EmptyString(result, blob_size);
+@@ -687,7 +687,7 @@ void PrepareSortData(Vector &result, idx_t size, SortKeyLengthInfo &key_lengths,
+ 		break;
+ 	}
+ 	case LogicalTypeId::BIGINT: {
+-		auto result_data = FlatVector::GetData<int64_t>(result);
++		auto result_data = FlatVector::GetDataMutable<int64_t>(result);
+ 		for (idx_t r = 0; r < size; r++) {
+ 			result_data[r] = 0;
+ 			data_pointers[r] = data_ptr_cast(&result_data[r]);
+@@ -703,7 +703,7 @@ void FinalizeSortData(Vector &result, idx_t size, const SortKeyLengthInfo &key_l
+                       const unsafe_vector<idx_t> &offsets) {
+ 	switch (result.GetType().id()) {
+ 	case LogicalTypeId::BLOB: {
+-		auto result_data = FlatVector::GetData<string_t>(result);
++		auto result_data = FlatVector::GetDataMutable<string_t>(result);
+ 		// call Finalize on the result
+ 		for (idx_t r = 0; r < size; r++) {
+ 			result_data[r].SetSizeAndFinalize(NumericCast<uint32_t>(offsets[r]),
+@@ -712,7 +712,7 @@ void FinalizeSortData(Vector &result, idx_t size, const SortKeyLengthInfo &key_l
+ 		break;
+ 	}
+ 	case LogicalTypeId::BIGINT: {
+-		auto result_data = FlatVector::GetData<int64_t>(result);
++		auto result_data = FlatVector::GetDataMutable<int64_t>(result);
+ 		for (idx_t r = 0; r < size; r++) {
+ 			result_data[r] = BSwapIfLE(result_data[r]);
+ 		}
+@@ -941,8 +941,8 @@ void TemplatedDecodeSortKey(DecodeSortKeyData decode_data_arr[], DecodeSortKeyVe
+                             const idx_t result_offset, const idx_t count) {
+ 	const auto is_const = result.GetVectorType() == VectorType::CONSTANT_VECTOR;
+ 	auto &result_validity = is_const ? ConstantVector::Validity(result) : FlatVector::Validity(result);
+-	const auto result_data =
+-	    is_const ? ConstantVector::GetData<typename OP::TYPE>(result) : FlatVector::GetData<typename OP::TYPE>(result);
++	const auto result_data = is_const ? ConstantVector::GetData<typename OP::TYPE>(result)
++	                                  : FlatVector::GetDataMutable<typename OP::TYPE>(result);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		const auto result_idx = result_offset + i;
+ 		auto &decode_data = decode_data_arr[i];
+@@ -988,7 +988,7 @@ void DecodeSortKeyList(DecodeSortKeyData decode_data_arr[], DecodeSortKeyVectorD
+ 	const auto is_const = result.GetVectorType() == VectorType::CONSTANT_VECTOR;
+ 	auto &result_validity = is_const ? ConstantVector::Validity(result) : FlatVector::Validity(result);
+ 	const auto list_data =
+-	    is_const ? ConstantVector::GetData<list_entry_t>(result) : FlatVector::GetData<list_entry_t>(result);
++	    is_const ? ConstantVector::GetData<list_entry_t>(result) : FlatVector::GetDataMutable<list_entry_t>(result);
+ 	auto &child_vector = ListVector::GetEntry(result);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		const auto result_idx = result_offset + i;
+diff --git a/src/function/scalar/list/list_intersect.cpp b/src/function/scalar/list/list_intersect.cpp
+--- a/src/function/scalar/list/list_intersect.cpp
++++ b/src/function/scalar/list/list_intersect.cpp
+@@ -71,7 +71,6 @@ static void ListIntersectFunction(DataChunk &args, ExpressionState &state, Vecto
+ 	const auto l_sortkey_ptr = FlatVector::GetData<string_t>(l_sortkey_vec);
+ 	const auto r_sortkey_ptr = FlatVector::GetData<string_t>(r_sortkey_vec);
+ 
+-	auto *result_data = FlatVector::GetData<list_entry_t>(result);
+ 	auto &result_entry = ListVector::GetEntry(result);
+ 
+ 	string_set_t set;
+@@ -87,7 +86,7 @@ static void ListIntersectFunction(DataChunk &args, ExpressionState &state, Vecto
+ 	ValidityMask result_entry_validity_mask(max_result_length);
+ 	idx_t offset = 0;
+ 
+-	auto &result_validity = FlatVector::Validity(result);
++	auto result_data = FlatVector::Writer<list_entry_t>(result);
+ 	for (idx_t i = 0; i < row_count; i++) {
+ 		const auto l_idx = l_format.sel->get_index(i);
+ 		const auto r_idx = r_format.sel->get_index(i);
+@@ -98,7 +97,7 @@ static void ListIntersectFunction(DataChunk &args, ExpressionState &state, Vecto
+ 		result_data[i].offset = offset;
+ 
+ 		if (!l_valid) {
+-			result_validity.SetInvalid(i);
++			result_data.SetInvalid(i);
+ 			result_data[i].length = 0;
+ 			continue;
+ 		}
+diff --git a/src/function/scalar/list/list_resize.cpp b/src/function/scalar/list/list_resize.cpp
+--- a/src/function/scalar/list/list_resize.cpp
++++ b/src/function/scalar/list/list_resize.cpp
+@@ -48,8 +48,7 @@ static void ListResizeFunction(DataChunk &args, ExpressionState &, Vector &resul
+ 	ListVector::SetListSize(result, child_vector_size.value);
+ 
+ 	result.SetVectorType(VectorType::FLAT_VECTOR);
+-	auto result_entries = FlatVector::GetData<list_entry_t>(result);
+-	auto &result_validity = FlatVector::Validity(result);
++	auto result_entries = FlatVector::Writer<list_entry_t>(result);
+ 	auto &result_child_vector = ListVector::GetEntry(result);
+ 
+ 	// Get the default values, if provided.
+@@ -67,7 +66,7 @@ static void ListResizeFunction(DataChunk &args, ExpressionState &, Vector &resul
+ 
+ 		// Set to NULL, if the list is NULL.
+ 		if (!lists_data.validity.RowIsValid(list_idx)) {
+-			result_validity.SetInvalid(row_idx);
++			result_entries.SetInvalid(row_idx);
+ 			continue;
+ 		}
+ 
+diff --git a/src/function/scalar/list/list_select.cpp b/src/function/scalar/list/list_select.cpp
+--- a/src/function/scalar/list/list_select.cpp
++++ b/src/function/scalar/list/list_select.cpp
+@@ -100,10 +100,10 @@ void ListSelectFunction(const DataChunk &args, ExpressionState &state, Vector &r
+ 	}
+ 
+ 	ListVector::Reserve(result, result_length);
+-	auto result_data = FlatVector::GetData<list_entry_t>(result);
+ 	SelectionVector result_selection_vec = SelectionVector(result_length);
+ 	ValidityMask entry_validity_mask = ValidityMask(result_length);
+-	ValidityMask &result_validity_mask = FlatVector::Validity(result);
++
++	auto result_data = FlatVector::Writer<list_entry_t>(result, count);
+ 	auto &result_entry = ListVector::GetEntry(result);
+ 
+ 	idx_t offset = 0;
+@@ -116,7 +116,7 @@ void ListSelectFunction(const DataChunk &args, ExpressionState &state, Vector &r
+ 			selection_len = selection_lists_data[selection_list_idx].length;
+ 			selection_offset = selection_lists_data[selection_list_idx].offset;
+ 		} else {
+-			result_validity_mask.SetInvalid(j);
++			result_data.SetInvalid(j);
+ 			continue;
+ 		}
+ 		// Get length and offset of input list for current output row
+@@ -127,7 +127,7 @@ void ListSelectFunction(const DataChunk &args, ExpressionState &state, Vector &r
+ 			input_length = input_lists_data[input_list_idx].length;
+ 			input_offset = input_lists_data[input_list_idx].offset;
+ 		} else {
+-			result_validity_mask.SetInvalid(j);
++			result_data.SetInvalid(j);
+ 			continue;
+ 		}
+ 		result_data[j].offset = offset;
+diff --git a/src/function/scalar/list/list_zip.cpp b/src/function/scalar/list/list_zip.cpp
+--- a/src/function/scalar/list/list_zip.cpp
++++ b/src/function/scalar/list/list_zip.cpp
+@@ -16,7 +16,7 @@ namespace duckdb {
+ static void ListZipFunction(DataChunk &args, ExpressionState &state, Vector &result) {
+ 	idx_t count = args.size();
+ 	idx_t args_size = args.ColumnCount();
+-	auto *result_data = FlatVector::GetData<list_entry_t>(result);
++	auto result_data = FlatVector::Writer<list_entry_t>(result, count);
+ 	auto &result_struct = ListVector::GetEntry(result);
+ 	auto &struct_entries = StructVector::GetEntries(result_struct);
+ 	bool truncate_flags_set = false;
+diff --git a/src/function/scalar/nested_functions.cpp b/src/function/scalar/nested_functions.cpp
+--- a/src/function/scalar/nested_functions.cpp
++++ b/src/function/scalar/nested_functions.cpp
+@@ -12,7 +12,7 @@ void MapUtil::ReinterpretMap(Vector &result, Vector &input, idx_t count) {
+ 	auto &input_values = MapVector::GetValues(input);
+ 
+ 	// Copy the list offsets and top-level validity
+-	auto result_data = FlatVector::GetData<list_entry_t>(result);
++	auto result_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 	auto &result_validity = FlatVector::Validity(result);
+ 	for (auto entry : input.Values<list_entry_t>(count)) {
+ 		if (!entry.IsValid()) {
+diff --git a/src/function/scalar/string/concat.cpp b/src/function/scalar/string/concat.cpp
+--- a/src/function/scalar/string/concat.cpp
++++ b/src/function/scalar/string/concat.cpp
+@@ -142,7 +142,7 @@ struct ListConcatInputData {
+ void ListConcatFunction(DataChunk &args, ExpressionState &state, Vector &result, bool is_operator) {
+ 	auto count = args.size();
+ 
+-	auto result_entries = FlatVector::GetData<list_entry_t>(result);
++	auto result_entries = FlatVector::GetDataMutable<list_entry_t>(result);
+ 	vector<ListConcatInputData> input_data;
+ 	for (auto &input : args.data) {
+ 		if (!is_operator && input.GetType().id() == LogicalTypeId::SQLNULL) {
+diff --git a/src/function/scalar/string/regexp.cpp b/src/function/scalar/string/regexp.cpp
+--- a/src/function/scalar/string/regexp.cpp
++++ b/src/function/scalar/string/regexp.cpp
+@@ -317,7 +317,7 @@ static void RegexExtractStructFunction(DataChunk &args, ExpressionState &state,
+ 			                                            UnsafeNumericCast<int>(groups.size()));
+ 			for (size_t col = 0; col < child_entries.size(); ++col) {
+ 				auto &child_entry = child_entries[col];
+-				auto cdata = FlatVector::GetData<string_t>(child_entry);
++				auto cdata = FlatVector::GetDataMutable<string_t>(child_entry);
+ 				auto &extracted = ws[col];
+ 				cdata[entry.index] =
+ 				    string_t(extracted.data(), UnsafeNumericCast<uint32_t>(match ? extracted.size() : 0));
+diff --git a/src/function/scalar/string/regexp/regexp_extract_all.cpp b/src/function/scalar/string/regexp/regexp_extract_all.cpp
+--- a/src/function/scalar/string/regexp/regexp_extract_all.cpp
++++ b/src/function/scalar/string/regexp/regexp_extract_all.cpp
+@@ -63,7 +63,7 @@ void ExtractSingleTuple(const string_t &string, duckdb_re2::RE2 &pattern, int32_
+ 	auto current_list_size = ListVector::GetListSize(result);
+ 	auto current_list_capacity = ListVector::GetListCapacity(result);
+ 
+-	auto result_data = FlatVector::GetData<list_entry_t>(result);
++	auto result_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 	auto &list_entry = result_data[row];
+ 	list_entry.offset = current_list_size;
+ 
+@@ -87,7 +87,7 @@ void ExtractSingleTuple(const string_t &string, duckdb_re2::RE2 &pattern, int32_
+ 			ListVector::Reserve(result, current_list_capacity * 2);
+ 			current_list_capacity = ListVector::GetListCapacity(result);
+ 		}
+-		auto list_content = FlatVector::GetData<string_t>(child_vector);
++		auto list_content = FlatVector::GetDataMutable<string_t>(child_vector);
+ 		auto &child_validity = FlatVector::Validity(child_vector);
+ 
+ 		// Write the captured groups into the list-child vector
+@@ -210,7 +210,7 @@ void RegexpExtractAll::Execute(DataChunk &args, ExpressionState &state, Vector &
+ 		if (!pattern_valid || !string_entry.IsValid() || !GetGroupIndex(args, row, group_index)) {
+ 			// If something is NULL, the result is NULL
+ 			// FIXME: do we even need 'SPECIAL_HANDLING'?
+-			auto result_data = FlatVector::GetData<list_entry_t>(result);
++			auto result_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 			auto &result_validity = FlatVector::Validity(result);
+ 			result_data[row].length = 0;
+ 			result_data[row].offset = ListVector::GetListSize(result);
+@@ -243,7 +243,7 @@ static void ExtractStructAllSingleTuple(const string_t &string_val, duckdb_re2::
+                                         vector<duckdb_re2::StringPiece> &group_spans, vector<Vector> &child_entries,
+                                         Vector &result, idx_t row) {
+ 	const idx_t group_count = child_entries.size();
+-	auto list_entries = FlatVector::GetData<list_entry_t>(result);
++	auto list_entries = FlatVector::Writer<list_entry_t>(result);
+ 	idx_t current_list_size = ListVector::GetListSize(result);
+ 	list_entries[row].offset = current_list_size;
+ 
+@@ -258,7 +258,7 @@ static void ExtractStructAllSingleTuple(const string_t &string_val, duckdb_re2::
+ 		for (idx_t g = 0; g < group_count; g++) {
+ 			auto &child_vec = child_entries[g];
+ 			child_vec.SetVectorType(VectorType::FLAT_VECTOR);
+-			auto cdata = FlatVector::GetData<string_t>(child_vec);
++			auto cdata = FlatVector::GetDataMutable<string_t>(child_vec);
+ 			auto &span = group_spans[g + 1];
+ 			if (span.empty()) {
+ 				if (span.begin() == nullptr) {
+@@ -309,8 +309,7 @@ void RegexpExtractAllStruct::Execute(DataChunk &args, ExpressionState &state, Ve
+ 
+ 	auto &lstate = ExecuteFunctionState::GetFunctionState(state)->Cast<RegexLocalState>();
+ 
+-	auto &list_validity = FlatVector::Validity(result);
+-	auto list_entries = FlatVector::GetData<list_entry_t>(result);
++	auto list_entries = FlatVector::Writer<list_entry_t>(result, args.size());
+ 
+ 	vector<duckdb_re2::StringPiece> group_spans(group_count + 1);
+ 
+@@ -319,7 +318,7 @@ void RegexpExtractAllStruct::Execute(DataChunk &args, ExpressionState &state, Ve
+ 		if (!string_entry.IsValid()) {
+ 			list_entries[row].offset = ListVector::GetListSize(result);
+ 			list_entries[row].length = 0;
+-			list_validity.SetInvalid(row);
++			list_entries.SetInvalid(row);
+ 			continue;
+ 		}
+ 		auto &string_val = string_entry.value;
+diff --git a/src/function/scalar/string/string_split.cpp b/src/function/scalar/string/string_split.cpp
+--- a/src/function/scalar/string/string_split.cpp
++++ b/src/function/scalar/string/string_split.cpp
+@@ -29,7 +29,7 @@ struct StringSplitInput {
+ 			ListVector::SetListSize(result_list, offset + list_idx);
+ 			ListVector::Reserve(result_list, ListVector::GetListCapacity(result_list) * 2);
+ 		}
+-		FlatVector::GetData<string_t>(result_child)[list_entry] =
++		FlatVector::GetDataMutable<string_t>(result_child)[list_entry] =
+ 		    string_t(split_data, UnsafeNumericCast<uint32_t>(split_size));
+ 	}
+ };
+@@ -119,7 +119,7 @@ void StringSplitExecutor(DataChunk &args, ExpressionState &state, Vector &result
+ 	result.SetVectorType(VectorType::FLAT_VECTOR);
+ 	ListVector::SetListSize(result, 0);
+ 
+-	auto list_struct_data = FlatVector::GetData<list_entry_t>(result);
++	auto list_struct_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 
+ 	// count all the splits and set up the list entries
+ 	auto &child_entry = ListVector::GetEntry(result);
+diff --git a/src/function/scalar/struct/remap_struct.cpp b/src/function/scalar/struct/remap_struct.cpp
+--- a/src/function/scalar/struct/remap_struct.cpp
++++ b/src/function/scalar/struct/remap_struct.cpp
+@@ -105,7 +105,7 @@ void RemapMap(Vector &input, Vector &default_vector, Vector &result, idx_t resul
+ 			return;
+ 		}
+ 		auto list_data = FlatVector::GetData<list_entry_t>(input);
+-		auto result_list_data = FlatVector::GetData<list_entry_t>(result);
++		auto result_list_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 		memcpy(result_list_data, list_data, sizeof(list_entry_t));
+ 	} else {
+ 		auto entries = input.Values<list_entry_t>(result_size);
+@@ -118,7 +118,7 @@ void RemapMap(Vector &input, Vector &default_vector, Vector &result, idx_t resul
+ 			}
+ 			has_top_level_null = result_validity.CanHaveNull();
+ 		}
+-		auto result_list_data = FlatVector::GetData<list_entry_t>(result);
++		auto result_list_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 		for (idx_t i = 0; i < result_size; i++) {
+ 			result_list_data[i] = entries.GetValueUnsafe(i);
+ 		}
+@@ -154,7 +154,7 @@ void RemapList(Vector &input, Vector &default_vector, Vector &result, idx_t resu
+ 			return;
+ 		}
+ 		auto list_data = FlatVector::GetData<list_entry_t>(input);
+-		auto result_list_data = FlatVector::GetData<list_entry_t>(result);
++		auto result_list_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 		memcpy(result_list_data, list_data, sizeof(list_entry_t));
+ 	} else {
+ 		auto entries = input.Values<list_entry_t>(result_size);
+@@ -167,7 +167,7 @@ void RemapList(Vector &input, Vector &default_vector, Vector &result, idx_t resu
+ 			}
+ 			has_top_level_null = result_validity.CanHaveNull();
+ 		}
+-		auto result_list_data = FlatVector::GetData<list_entry_t>(result);
++		auto result_list_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 		for (idx_t i = 0; i < result_size; i++) {
+ 			result_list_data[i] = entries.GetValueUnsafe(i);
+ 		}
+diff --git a/src/function/scalar/system/aggregate_export.cpp b/src/function/scalar/system/aggregate_export.cpp
+--- a/src/function/scalar/system/aggregate_export.cpp
++++ b/src/function/scalar/system/aggregate_export.cpp
+@@ -122,7 +122,7 @@ struct AggregateStateLayout {
+ 	// Works only on a legacy state format where the entire state is stored as a blob
+ 	void Store(Vector &result, idx_t row, data_ptr_t src) const {
+ 		D_ASSERT(!is_struct);
+-		auto result_ptr = FlatVector::GetData<string_t>(result);
++		auto result_ptr = FlatVector::GetDataMutable<string_t>(result);
+ 		result_ptr[row] = StringVector::AddStringOrBlob(result, const_char_ptr_cast(src), state_size);
+ 	}
+ 
+@@ -179,7 +179,7 @@ struct CopyFromInputFieldOp {
+ 		auto input_child_data = FlatVector::GetData<T>(input_child);
+ 
+ 		auto &result_child = StructVector::GetEntries(result_vec)[field_idx];
+-		auto result_child_data = FlatVector::GetData<T>(result_child);
++		auto result_child_data = FlatVector::GetDataMutable<T>(result_child);
+ 
+ 		for (idx_t i = 0; i < count; i++) {
+ 			idx_t row = sel.get_index(i);
+@@ -277,7 +277,7 @@ void SerializeStructFields(const AggregateStateLayout &layout, Vector &result, i
+ 
+ 			// we need to write to the buffers with the current offset the child is pointing to in the state
+ 			Vector child_addresses(LogicalType::POINTER);
+-			auto child_ptrs = FlatVector::GetData<data_ptr_t>(child_addresses);
++			auto child_ptrs = FlatVector::GetDataMutable<data_ptr_t>(child_addresses);
+ 			for (idx_t row = 0; row < count; row++) {
+ 				child_ptrs[row] = addresses_ptrs[row] + offset_in_state;
+ 			}
+@@ -328,7 +328,7 @@ static void VerifyStructStateRoundtrip(const AggregateStateLayout &layout, const
+ 
+ 	// AggregateStateFinalize: packed buffer -> result values
+ 	Vector addresses_vec(LogicalType::POINTER);
+-	auto addresses_finalize = FlatVector::GetData<data_ptr_t>(addresses_vec);
++	auto addresses_finalize = FlatVector::GetDataMutable<data_ptr_t>(addresses_vec);
+ 	for (idx_t i = 0; i < valid_count; i++) {
+ 		addresses_finalize[i] = temp_state_buf.get() + i * layout.aligned_state_size;
+ 	}
+@@ -401,7 +401,7 @@ void AggregateStateFinalize(DataChunk &input, ExpressionState &state_p, Vector &
+ 
+ 	AggregateStateLayout layout(input.data[0].GetType(), bind_data.state_size);
+ 
+-	auto state_vec_ptr = FlatVector::GetData<data_ptr_t>(local_state.addresses);
++	auto state_vec_ptr = FlatVector::GetDataMutable<data_ptr_t>(local_state.addresses);
+ 
+ 	input.data[0].Flatten(input.size());
+ 
+@@ -558,8 +558,8 @@ void AggregateStateCombine(DataChunk &input, ExpressionState &state_p, Vector &r
+ 
+ 	// Handle both-valid rows - batched load, combine, store
+ 	if (both_valid_count > 0) {
+-		auto state0_ptrs = FlatVector::GetData<data_ptr_t>(local_state.addresses0);
+-		auto state1_ptrs = FlatVector::GetData<data_ptr_t>(local_state.addresses1);
++		auto state0_ptrs = FlatVector::GetDataMutable<data_ptr_t>(local_state.addresses0);
++		auto state1_ptrs = FlatVector::GetDataMutable<data_ptr_t>(local_state.addresses1);
+ 
+ 		// Pack state buffer pointers in selection order (not row order)
+ 		for (idx_t i = 0; i < both_valid_count; i++) {
+@@ -715,7 +715,7 @@ void ExportAggregateFinalize(Vector &state, AggregateInputData &aggr_input_data,
+                              idx_t offset) {
+ 	D_ASSERT(offset == 0);
+ 	auto &bind_data = aggr_input_data.bind_data->Cast<ExportAggregateFunctionBindData>();
+-	auto addresses_ptrs = FlatVector::GetData<data_ptr_t>(state);
++	auto addresses_ptrs = FlatVector::GetDataMutable<data_ptr_t>(state);
+ 
+ 	auto state_size = bind_data.aggregate->function.GetStateSizeCallback()(bind_data.aggregate->function);
+ 
+@@ -792,12 +792,12 @@ void CombineAggrUpdate(Vector inputs[], AggregateInputData &aggr_input_data, idx
+ 
+ 	// source_vec holds pointers to the binary states buffer (temp_state_buf) deserialized from the input states
+ 	Vector source_vec(LogicalType::POINTER);
+-	auto source_ptrs = FlatVector::GetData<data_ptr_t>(source_vec);
++	auto source_ptrs = FlatVector::GetDataMutable<data_ptr_t>(source_vec);
+ 
+ 	// target_vec will hold pointers to the binary state buffer where the combined states should be stored, built by the
+ 	// underlying aggregate function's combine callback
+ 	Vector target_vec(LogicalType::POINTER);
+-	auto target_ptrs = FlatVector::GetData<data_ptr_t>(target_vec);
++	auto target_ptrs = FlatVector::GetDataMutable<data_ptr_t>(target_vec);
+ 
+ 	for (idx_t i = 0; i < count; i++) {
+ 		auto temp_ptr = temp_state_buf.get() + i * aligned_size;
+@@ -819,7 +819,7 @@ void CombineAggrFinalize(Vector &state, AggregateInputData &aggr_input_data, Vec
+ 	auto &bind_data = aggr_input_data.bind_data->Cast<ExportAggregateBindData>();
+ 	auto &underlying_aggr = bind_data.aggr;
+ 	auto state_size = bind_data.state_size;
+-	auto addresses_ptrs = FlatVector::GetData<data_ptr_t>(state);
++	auto addresses_ptrs = FlatVector::GetDataMutable<data_ptr_t>(state);
+ 
+ 	AggregateStateLayout layout(underlying_aggr.GetStateType(), state_size);
+ 
+diff --git a/src/function/scalar/variant/variant_extract.cpp b/src/function/scalar/variant/variant_extract.cpp
+--- a/src/function/scalar/variant/variant_extract.cpp
++++ b/src/function/scalar/variant/variant_extract.cpp
+@@ -242,14 +242,13 @@ void VariantUtils::VariantExtract(Vector &variant_vec, const vector<VariantPathC
+ 	result_values.Initialize(false, count);
+ 	ListVector::Reserve(result_values, values_list_size);
+ 	ListVector::SetListSize(result_values, values_list_size);
+-	auto result_values_data = FlatVector::GetData<list_entry_t>(result_values);
+-	auto &result_values_validity = FlatVector::Validity(result_values);
++	auto result_data = FlatVector::Writer<list_entry_t>(result_values);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		if (!validity.RowIsValid(i)) {
+-			result_values_validity.SetInvalid(i);
++			result_data.SetInvalid(i);
+ 			continue;
+ 		}
+-		result_values_data[i] = values_data[values.sel->get_index(i)];
++		result_data[i] = values_data[values.sel->get_index(i)];
+ 	}
+ 
+ 	auto &result_indices = components.size() % 2 == 0 ? value_index_sel : new_value_index_sel;
+diff --git a/src/function/scalar/variant/variant_utils.cpp b/src/function/scalar/variant/variant_utils.cpp
+--- a/src/function/scalar/variant/variant_utils.cpp
++++ b/src/function/scalar/variant/variant_utils.cpp
+@@ -191,7 +191,7 @@ void VariantUtils::FinalizeVariantKeys(Vector &variant, OrderedOwningStringMap<u
+                                        SelectionVector &sel, idx_t sel_size) {
+ 	auto &keys = VariantVector::GetKeys(variant);
+ 	auto &keys_entry = ListVector::GetEntry(keys);
+-	auto keys_entry_data = FlatVector::GetData<string_t>(keys_entry);
++	auto keys_entry_data = FlatVector::GetDataMutable<string_t>(keys_entry);
+ 
+ 	bool already_sorted = true;
+ 
+diff --git a/src/function/table/arrow_conversion.cpp b/src/function/table/arrow_conversion.cpp
+--- a/src/function/table/arrow_conversion.cpp
++++ b/src/function/table/arrow_conversion.cpp
+@@ -129,7 +129,7 @@ static ArrowListOffsetData ConvertArrowListOffsetsTemplated(Vector &vector, Arro
+ 	idx_t cur_offset = 0;
+ 	auto offsets = ArrowBufferData<BUFFER_TYPE>(array, 1) + effective_offset;
+ 	start_offset = offsets[0];
+-	auto list_data = FlatVector::GetData<list_entry_t>(vector);
++	auto list_data = FlatVector::GetDataMutable<list_entry_t>(vector);
+ 	for (idx_t i = 0; i < size; i++) {
+ 		auto &le = list_data[i];
+ 		le.offset = cur_offset;
+@@ -158,7 +158,7 @@ static ArrowListOffsetData ConvertArrowListViewOffsetsTemplated(Vector &vector,
+ 	// when we scan the child data
+ 
+ 	auto lowest_offset = size ? offsets[0] : 0;
+-	auto list_data = FlatVector::GetData<list_entry_t>(vector);
++	auto list_data = FlatVector::GetDataMutable<list_entry_t>(vector);
+ 	for (idx_t i = 0; i < size; i++) {
+ 		auto &le = list_data[i];
+ 		le.offset = offsets[i];
+@@ -336,7 +336,7 @@ static void ArrowToDuckDBMapVerify(Vector &vector, idx_t count) {
+ 
+ template <class T>
+ static void SetVectorString(Vector &vector, idx_t size, char *cdata, T *offsets) {
+-	auto strings = FlatVector::GetData<string_t>(vector);
++	auto strings = FlatVector::GetDataMutable<string_t>(vector);
+ 	for (idx_t row_idx = 0; row_idx < size; row_idx++) {
+ 		if (FlatVector::IsNull(vector, row_idx)) {
+ 			continue;
+@@ -351,7 +351,7 @@ static void SetVectorString(Vector &vector, idx_t size, char *cdata, T *offsets)
+ }
+ 
+ static void SetVectorStringView(Vector &vector, idx_t size, ArrowArray &array, idx_t current_pos) {
+-	auto strings = FlatVector::GetData<string_t>(vector);
++	auto strings = FlatVector::GetDataMutable<string_t>(vector);
+ 	auto arrow_string = ArrowBufferData<arrow_string_view_t>(array, 1) + current_pos;
+ 
+ 	for (idx_t row_idx = 0; row_idx < size; row_idx++) {
+@@ -391,7 +391,7 @@ static void DirectConversion(Vector &vector, ArrowArray &array, idx_t chunk_offs
+ template <class T>
+ static void TimeConversion(Vector &vector, ArrowArray &array, idx_t chunk_offset, int64_t nested_offset,
+                            int64_t parent_offset, idx_t size, int64_t conversion) {
+-	auto tgt_ptr = FlatVector::GetData<dtime_t>(vector);
++	auto tgt_ptr = FlatVector::GetDataMutable<dtime_t>(vector);
+ 	auto &validity_mask = FlatVector::Validity(vector);
+ 	auto src_ptr = static_cast<const T *>(array.buffers[1]) +
+ 	               GetEffectiveOffset(array, parent_offset, chunk_offset, nested_offset);
+@@ -416,7 +416,7 @@ static void TimeConversion(Vector &vector, ArrowArray &array, idx_t chunk_offset
+ template <class T>
+ static void TimeNSConversion(Vector &vector, ArrowArray &array, idx_t chunk_offset, int64_t nested_offset,
+                              int64_t parent_offset, idx_t size, int64_t conversion) {
+-	auto tgt_ptr = FlatVector::GetData<dtime_ns_t>(vector);
++	auto tgt_ptr = FlatVector::GetDataMutable<dtime_ns_t>(vector);
+ 	auto &validity_mask = FlatVector::Validity(vector);
+ 	auto src_ptr = static_cast<const T *>(array.buffers[1]) +
+ 	               GetEffectiveOffset(array, parent_offset, chunk_offset, nested_offset);
+@@ -442,7 +442,7 @@ static void TimeNSConversion(Vector &vector, ArrowArray &array, idx_t chunk_offs
+ 
+ static void UUIDConversion(Vector &vector, const ArrowArray &array, idx_t chunk_offset, int64_t nested_offset,
+                            int64_t parent_offset, idx_t size) {
+-	auto tgt_ptr = FlatVector::GetData<hugeint_t>(vector);
++	auto tgt_ptr = FlatVector::GetDataMutable<hugeint_t>(vector);
+ 	auto &validity_mask = FlatVector::Validity(vector);
+ 	auto src_ptr = static_cast<const hugeint_t *>(array.buffers[1]) +
+ 	               GetEffectiveOffset(array, parent_offset, chunk_offset, nested_offset);
+@@ -468,7 +468,7 @@ static void UUIDConversion(Vector &vector, const ArrowArray &array, idx_t chunk_
+ 
+ static void TimestampTZConversion(Vector &vector, ArrowArray &array, idx_t chunk_offset, int64_t nested_offset,
+                                   int64_t parent_offset, idx_t size, int64_t conversion) {
+-	auto tgt_ptr = FlatVector::GetData<timestamp_t>(vector);
++	auto tgt_ptr = FlatVector::GetDataMutable<timestamp_t>(vector);
+ 	auto &validity_mask = FlatVector::Validity(vector);
+ 	auto src_ptr =
+ 	    ArrowBufferData<int64_t>(array, 1) + GetEffectiveOffset(array, parent_offset, chunk_offset, nested_offset);
+@@ -492,7 +492,7 @@ static void TimestampTZConversion(Vector &vector, ArrowArray &array, idx_t chunk
+ 
+ static void IntervalConversionUs(Vector &vector, ArrowArray &array, idx_t chunk_offset, int64_t nested_offset,
+                                  int64_t parent_offset, idx_t size, int64_t conversion) {
+-	auto tgt_ptr = FlatVector::GetData<interval_t>(vector);
++	auto tgt_ptr = FlatVector::GetDataMutable<interval_t>(vector);
+ 	auto src_ptr =
+ 	    ArrowBufferData<int64_t>(array, 1) + GetEffectiveOffset(array, parent_offset, chunk_offset, nested_offset);
+ 	for (idx_t row = 0; row < size; row++) {
+@@ -506,7 +506,7 @@ static void IntervalConversionUs(Vector &vector, ArrowArray &array, idx_t chunk_
+ 
+ static void IntervalConversionMonths(Vector &vector, ArrowArray &array, idx_t chunk_offset, int64_t nested_offset,
+                                      int64_t parent_offset, idx_t size) {
+-	auto tgt_ptr = FlatVector::GetData<interval_t>(vector);
++	auto tgt_ptr = FlatVector::GetDataMutable<interval_t>(vector);
+ 	auto src_ptr =
+ 	    ArrowBufferData<int32_t>(array, 1) + GetEffectiveOffset(array, parent_offset, chunk_offset, nested_offset);
+ 	for (idx_t row = 0; row < size; row++) {
+@@ -518,7 +518,7 @@ static void IntervalConversionMonths(Vector &vector, ArrowArray &array, idx_t ch
+ 
+ static void IntervalConversionMonthDayNanos(Vector &vector, ArrowArray &array, idx_t chunk_offset,
+                                             int64_t nested_offset, int64_t parent_offset, idx_t size) {
+-	auto tgt_ptr = FlatVector::GetData<interval_t>(vector);
++	auto tgt_ptr = FlatVector::GetDataMutable<interval_t>(vector);
+ 	auto src_ptr = ArrowBufferData<ArrowInterval>(array, 1) +
+ 	               GetEffectiveOffset(array, parent_offset, chunk_offset, nested_offset);
+ 	for (idx_t row = 0; row < size; row++) {
+@@ -750,7 +750,7 @@ void ConvertDecimal(SRC src_ptr, Vector &vector, ArrowArray &array, idx_t size,
+                     DecimalBitWidth arrow_bit_width) {
+ 	switch (vector.GetType().InternalType()) {
+ 	case PhysicalType::INT16: {
+-		auto tgt_ptr = FlatVector::GetData<int16_t>(vector);
++		auto tgt_ptr = FlatVector::GetDataMutable<int16_t>(vector);
+ 		for (idx_t row = 0; row < size; row++) {
+ 			if (val_mask.RowIsValid(row)) {
+ 				auto result = TryCast::Operation(src_ptr[row], tgt_ptr[row]);
+@@ -767,7 +767,7 @@ void ConvertDecimal(SRC src_ptr, Vector &vector, ArrowArray &array, idx_t size,
+ 			                                    GetEffectiveOffset(array, NumericCast<int64_t>(parent_offset),
+ 			                                                       chunk_offset, nested_offset));
+ 		} else {
+-			auto tgt_ptr = FlatVector::GetData<int32_t>(vector);
++			auto tgt_ptr = FlatVector::GetDataMutable<int32_t>(vector);
+ 			for (idx_t row = 0; row < size; row++) {
+ 				if (val_mask.RowIsValid(row)) {
+ 					auto result = TryCast::Operation(src_ptr[row], tgt_ptr[row]);
+@@ -785,7 +785,7 @@ void ConvertDecimal(SRC src_ptr, Vector &vector, ArrowArray &array, idx_t size,
+ 			                                    GetEffectiveOffset(array, NumericCast<int64_t>(parent_offset),
+ 			                                                       chunk_offset, nested_offset));
+ 		} else {
+-			auto tgt_ptr = FlatVector::GetData<int64_t>(vector);
++			auto tgt_ptr = FlatVector::GetDataMutable<int64_t>(vector);
+ 			for (idx_t row = 0; row < size; row++) {
+ 				if (val_mask.RowIsValid(row)) {
+ 					auto result = TryCast::Operation(src_ptr[row], tgt_ptr[row]);
+@@ -803,7 +803,7 @@ void ConvertDecimal(SRC src_ptr, Vector &vector, ArrowArray &array, idx_t size,
+ 			                                    GetEffectiveOffset(array, NumericCast<int64_t>(parent_offset),
+ 			                                                       chunk_offset, nested_offset));
+ 		} else {
+-			auto tgt_ptr = FlatVector::GetData<hugeint_t>(vector);
++			auto tgt_ptr = FlatVector::GetDataMutable<hugeint_t>(vector);
+ 			for (idx_t row = 0; row < size; row++) {
+ 				if (val_mask.RowIsValid(row)) {
+ 					auto result = TryCast::Operation(src_ptr[row], tgt_ptr[row]);
+@@ -848,7 +848,7 @@ void ArrowToDuckDBConversion::ColumnArrowToDuckDB(Vector &vector, ArrowArray &ar
+ 		auto effective_offset =
+ 		    GetEffectiveOffset(array, NumericCast<int64_t>(parent_offset), chunk_offset, nested_offset);
+ 		auto src_ptr = ArrowBufferData<uint8_t>(array, 1) + effective_offset / 8;
+-		auto tgt_ptr = (uint8_t *)FlatVector::GetData(vector);
++		auto tgt_ptr = (uint8_t *)FlatVector::GetDataMutable(vector);
+ 		int src_pos = 0;
+ 		idx_t cur_bit = effective_offset % 8;
+ 		for (idx_t row = 0; row < size; row++) {
+@@ -949,7 +949,7 @@ void ArrowToDuckDBConversion::ColumnArrowToDuckDB(Vector &vector, ArrowArray &ar
+ 			//! convert date from nanoseconds to days
+ 			auto src_ptr = ArrowBufferData<uint64_t>(array, 1) +
+ 			               GetEffectiveOffset(array, NumericCast<int64_t>(parent_offset), chunk_offset, nested_offset);
+-			auto tgt_ptr = FlatVector::GetData<date_t>(vector);
++			auto tgt_ptr = FlatVector::GetDataMutable<date_t>(vector);
+ 			for (idx_t row = 0; row < size; row++) {
+ 				tgt_ptr[row] = date_t(UnsafeNumericCast<int32_t>(static_cast<int64_t>(src_ptr[row]) /
+ 				                                                 static_cast<int64_t>(1000 * 60 * 60 * 24)));
+@@ -981,7 +981,7 @@ void ArrowToDuckDBConversion::ColumnArrowToDuckDB(Vector &vector, ArrowArray &ar
+ 			break;
+ 		}
+ 		case ArrowDateTimeType::NANOSECONDS: {
+-			auto tgt_ptr = FlatVector::GetData<dtime_t>(vector);
++			auto tgt_ptr = FlatVector::GetDataMutable<dtime_t>(vector);
+ 			auto src_ptr = ArrowBufferData<int64_t>(array, 1) +
+ 			               GetEffectiveOffset(array, NumericCast<int64_t>(parent_offset), chunk_offset, nested_offset);
+ 			for (idx_t row = 0; row < size; row++) {
+@@ -1042,7 +1042,7 @@ void ArrowToDuckDBConversion::ColumnArrowToDuckDB(Vector &vector, ArrowArray &ar
+ 			break;
+ 		}
+ 		case ArrowDateTimeType::NANOSECONDS: {
+-			auto tgt_ptr = FlatVector::GetData<timestamp_t>(vector);
++			auto tgt_ptr = FlatVector::GetDataMutable<timestamp_t>(vector);
+ 			auto src_ptr = ArrowBufferData<int64_t>(array, 1) +
+ 			               GetEffectiveOffset(array, NumericCast<int64_t>(parent_offset), chunk_offset, nested_offset);
+ 			for (idx_t row = 0; row < size; row++) {
+@@ -1076,7 +1076,7 @@ void ArrowToDuckDBConversion::ColumnArrowToDuckDB(Vector &vector, ArrowArray &ar
+ 			break;
+ 		}
+ 		case ArrowDateTimeType::NANOSECONDS: {
+-			auto tgt_ptr = FlatVector::GetData<interval_t>(vector);
++			auto tgt_ptr = FlatVector::GetDataMutable<interval_t>(vector);
+ 			auto src_ptr = ArrowBufferData<int64_t>(array, 1) +
+ 			               GetEffectiveOffset(array, NumericCast<int64_t>(parent_offset), chunk_offset, nested_offset);
+ 			for (idx_t row = 0; row < size; row++) {
+diff --git a/src/function/table/direct_file_reader.cpp b/src/function/table/direct_file_reader.cpp
+--- a/src/function/table/direct_file_reader.cpp
++++ b/src/function/table/direct_file_reader.cpp
+@@ -93,7 +93,7 @@ AsyncResult DirectFileReader::Scan(ClientContext &context, GlobalTableFunctionSt
+ 			case ReadFileBindData::FILE_NAME_COLUMN: {
+ 				auto &file_name_vector = output.data[col_idx];
+ 				auto file_name_string = StringVector::AddString(file_name_vector, file.path);
+-				FlatVector::GetData<string_t>(file_name_vector)[out_idx] = file_name_string;
++				FlatVector::GetDataMutable<string_t>(file_name_vector)[out_idx] = file_name_string;
+ 			} break;
+ 			case ReadFileBindData::FILE_CONTENT_COLUMN: {
+ 				const auto file_size = file_handle->GetFileSize();
+@@ -132,7 +132,7 @@ AsyncResult DirectFileReader::Scan(ClientContext &context, GlobalTableFunctionSt
+ 				}
+ 
+ 				auto &file_content_vector = output.data[col_idx];
+-				auto &content_string = FlatVector::GetData<string_t>(file_content_vector)[out_idx];
++				auto &content_string = FlatVector::GetDataMutable<string_t>(file_content_vector)[out_idx];
+ 				content_string = string_t(char_ptr_cast(state.stream->GetData()),
+ 				                          NumericCast<uint32_t>(state.stream->GetPosition()));
+ 
+@@ -142,7 +142,7 @@ AsyncResult DirectFileReader::Scan(ClientContext &context, GlobalTableFunctionSt
+ 			} break;
+ 			case ReadFileBindData::FILE_SIZE_COLUMN: {
+ 				auto &file_size_vector = output.data[col_idx];
+-				FlatVector::GetData<int64_t>(file_size_vector)[out_idx] =
++				FlatVector::GetDataMutable<int64_t>(file_size_vector)[out_idx] =
+ 				    NumericCast<int64_t>(file_handle->GetFileSize());
+ 			} break;
+ 			case ReadFileBindData::FILE_LAST_MODIFIED_COLUMN: {
+@@ -151,7 +151,7 @@ AsyncResult DirectFileReader::Scan(ClientContext &context, GlobalTableFunctionSt
+ 				// correctly)
+ 				try {
+ 					const auto timestamp_seconds = fs.GetLastModifiedTime(*file_handle);
+-					FlatVector::GetData<timestamp_tz_t>(last_modified_vector)[out_idx] =
++					FlatVector::GetDataMutable<timestamp_tz_t>(last_modified_vector)[out_idx] =
+ 					    timestamp_tz_t(timestamp_seconds);
+ 				} catch (std::exception &ex) {
+ 					ErrorData error(ex);
+diff --git a/src/function/table/range.cpp b/src/function/table/range.cpp
+--- a/src/function/table/range.cpp
++++ b/src/function/table/range.cpp
+@@ -355,7 +355,7 @@ static OperatorResultType RangeDateTimeFunction(ExecutionContext &context, Table
+ 			return OperatorResultType::HAVE_MORE_OUTPUT;
+ 		}
+ 		idx_t size = 0;
+-		auto data = FlatVector::GetData<timestamp_t>(output.data[0]);
++		auto data = FlatVector::GetDataMutable<timestamp_t>(output.data[0]);
+ 		while (true) {
+ 			if (state.Finished(state.current_state)) {
+ 				break;
+diff --git a/src/function/variant/variant_shredding.cpp b/src/function/variant/variant_shredding.cpp
+--- a/src/function/variant/variant_shredding.cpp
++++ b/src/function/variant/variant_shredding.cpp
+@@ -10,7 +10,7 @@ namespace duckdb {
+ static void WriteShreddedPrimitive(UnifiedVariantVectorData &variant, Vector &result, const SelectionVector &sel,
+                                    const SelectionVector &value_index_sel, const SelectionVector &result_sel,
+                                    idx_t count, idx_t type_size) {
+-	auto result_data = FlatVector::GetData(result);
++	auto result_data = FlatVector::GetDataMutable(result);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		auto row = sel[i];
+ 		auto result_row = result_sel[i];
+@@ -29,7 +29,7 @@ template <class T>
+ static void WriteShreddedDecimal(UnifiedVariantVectorData &variant, Vector &result, const SelectionVector &sel,
+                                  const SelectionVector &value_index_sel, const SelectionVector &result_sel,
+                                  idx_t count) {
+-	auto result_data = FlatVector::GetData(result);
++	auto result_data = FlatVector::GetDataMutable(result);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		auto row = sel[i];
+ 		auto result_row = result_sel[i];
+@@ -161,7 +161,7 @@ void VariantShredding::WriteTypedPrimitiveValues(UnifiedVariantVectorData &varia
+ }
+ 
+ void VariantShredding::WriteMissingField(Vector &vector, idx_t index) {
+-	FlatVector::GetData<uint32_t>(vector)[index] = 0;
++	FlatVector::GetDataMutable<uint32_t>(vector)[index] = 0;
+ }
+ 
+ void VariantShredding::WriteTypedObjectValues(UnifiedVariantVectorData &variant, Vector &result,
+@@ -262,7 +262,7 @@ void VariantShredding::WriteTypedObjectValues(UnifiedVariantVectorData &variant,
+ void VariantShredding::WriteTypedArrayValues(UnifiedVariantVectorData &variant, Vector &result,
+                                              const SelectionVector &sel, const SelectionVector &value_index_sel,
+                                              const SelectionVector &result_sel, idx_t count) {
+-	auto list_data = FlatVector::GetData<list_entry_t>(result);
++	auto list_data = FlatVector::Writer<list_entry_t>(result);
+ 
+ 	auto nested_data = make_unsafe_uniq_array_uninitialized<VariantNestedData>(count);
+ 
+diff --git a/src/function/window/window_aggregate_states.cpp b/src/function/window/window_aggregate_states.cpp
+--- a/src/function/window/window_aggregate_states.cpp
++++ b/src/function/window/window_aggregate_states.cpp
+@@ -15,8 +15,7 @@ void WindowAggregateStates::Initialize(idx_t count) {
+ 	auto state_ptr = states.data();
+ 
+ 	statef = make_uniq<Vector>(LogicalType::POINTER, count);
+-	auto state_f_data = FlatVector::GetData<data_ptr_t>(*statef);
+-
++	auto state_f_data = FlatVector::Writer<data_ptr_t>(*statef, count);
+ 	for (idx_t i = 0; i < count; ++i, state_ptr += state_size) {
+ 		state_f_data[i] = state_ptr;
+ 		aggr.function.GetStateInitCallback()(aggr.function, state_ptr);
+diff --git a/src/function/window/window_boundaries_state.cpp b/src/function/window/window_boundaries_state.cpp
+--- a/src/function/window/window_boundaries_state.cpp
++++ b/src/function/window/window_boundaries_state.cpp
+@@ -463,7 +463,7 @@ void WindowBoundariesState::Bounds(DataChunk &bounds, idx_t row_idx, optional_pt
+ 
+ void WindowBoundariesState::PartitionBegin(DataChunk &bounds, idx_t row_idx, const idx_t count, bool is_jump,
+                                            const ValidityMask &partition_mask) {
+-	auto partition_begin_data = FlatVector::GetData<idx_t>(bounds.data[PARTITION_BEGIN]);
++	auto partition_begin_data = FlatVector::Writer<idx_t>(bounds.data[PARTITION_BEGIN]);
+ 
+ 	//	OVER()
+ 	if (partition_count + order_count == 0) {
+@@ -494,7 +494,7 @@ void WindowBoundariesState::PartitionBegin(DataChunk &bounds, idx_t row_idx, con
+ 
+ void WindowBoundariesState::PartitionEnd(DataChunk &bounds, idx_t row_idx, const idx_t count, bool is_jump,
+                                          const ValidityMask &partition_mask) {
+-	auto partition_end_data = FlatVector::GetData<idx_t>(bounds.data[PARTITION_END]);
++	auto partition_end_data = FlatVector::Writer<idx_t>(bounds.data[PARTITION_END]);
+ 
+ 	//	OVER()
+ 	if (partition_count + order_count == 0) {
+@@ -504,7 +504,7 @@ void WindowBoundariesState::PartitionEnd(DataChunk &bounds, idx_t row_idx, const
+ 		return;
+ 	}
+ 
+-	auto partition_begin_data = FlatVector::GetData<const idx_t>(bounds.data[PARTITION_BEGIN]);
++	auto partition_begin_data = FlatVector::Writer<const idx_t>(bounds.data[PARTITION_BEGIN]);
+ 	for (idx_t chunk_idx = 0; chunk_idx < count; ++chunk_idx, ++row_idx) {
+ 		// determine partition and peer group boundaries to ultimately figure out window size
+ 		const auto is_same_partition = !partition_mask.RowIsValidUnsafe(row_idx);
+@@ -527,7 +527,7 @@ void WindowBoundariesState::PartitionEnd(DataChunk &bounds, idx_t row_idx, const
+ 
+ void WindowBoundariesState::PeerBegin(DataChunk &bounds, idx_t row_idx, const idx_t count, bool is_jump,
+                                       const ValidityMask &partition_mask, const ValidityMask &order_mask) {
+-	auto peer_begin_data = FlatVector::GetData<idx_t>(bounds.data[PEER_BEGIN]);
++	auto peer_begin_data = FlatVector::Writer<idx_t>(bounds.data[PEER_BEGIN]);
+ 
+ 	//	OVER()
+ 	if (partition_count + order_count == 0) {
+@@ -570,7 +570,7 @@ void WindowBoundariesState::PeerEnd(DataChunk &bounds, idx_t row_idx, const idx_
+ 
+ 	auto partition_end_data = FlatVector::GetData<const idx_t>(bounds.data[PARTITION_END]);
+ 	auto peer_begin_data = FlatVector::GetData<const idx_t>(bounds.data[PEER_BEGIN]);
+-	auto peer_end_data = FlatVector::GetData<idx_t>(bounds.data[PEER_END]);
++	auto peer_end_data = FlatVector::Writer<idx_t>(bounds.data[PEER_END]);
+ 	auto prev_end = peer_begin_data[0];
+ 	for (idx_t chunk_idx = 0; chunk_idx < count; ++chunk_idx, ++row_idx) {
+ 		const auto peer_start = peer_begin_data[chunk_idx];
+@@ -588,7 +588,7 @@ void WindowBoundariesState::ValidBegin(DataChunk &bounds, idx_t row_idx, const i
+                                        optional_ptr<WindowCursor> range) {
+ 	auto partition_begin_data = FlatVector::GetData<const idx_t>(bounds.data[PARTITION_BEGIN]);
+ 	auto partition_end_data = FlatVector::GetData<const idx_t>(bounds.data[PARTITION_END]);
+-	auto valid_begin_data = FlatVector::GetData<idx_t>(bounds.data[VALID_BEGIN]);
++	auto valid_begin_data = FlatVector::Writer<idx_t>(bounds.data[VALID_BEGIN]);
+ 
+ 	//	OVER()
+ 	D_ASSERT(partition_count + order_count != 0);
+@@ -621,7 +621,7 @@ void WindowBoundariesState::ValidEnd(DataChunk &bounds, idx_t row_idx, const idx
+                                      optional_ptr<WindowCursor> range) {
+ 	auto partition_end_data = FlatVector::GetData<const idx_t>(bounds.data[PARTITION_END]);
+ 	auto valid_begin_data = FlatVector::GetData<const idx_t>(bounds.data[VALID_BEGIN]);
+-	auto valid_end_data = FlatVector::GetData<idx_t>(bounds.data[VALID_END]);
++	auto valid_end_data = FlatVector::Writer<idx_t>(bounds.data[VALID_END]);
+ 
+ 	//	OVER()
+ 	D_ASSERT(partition_count + order_count != 0);
+@@ -654,10 +654,10 @@ void WindowBoundariesState::FrameBegin(DataChunk &bounds, idx_t row_idx, const i
+                                        optional_ptr<WindowCursor> range) {
+ 	auto partition_begin_data = FlatVector::GetData<idx_t>(bounds.data[PARTITION_BEGIN]);
+ 	auto partition_end_data = FlatVector::GetData<const idx_t>(bounds.data[PARTITION_END]);
+-	auto peer_begin_data = FlatVector::GetData<idx_t>(bounds.data[PEER_BEGIN]);
++	auto peer_begin_data = FlatVector::GetDataMutable<idx_t>(bounds.data[PEER_BEGIN]);
+ 	auto valid_begin_data = FlatVector::GetData<const idx_t>(bounds.data[VALID_BEGIN]);
+ 	auto valid_end_data = FlatVector::GetData<const idx_t>(bounds.data[VALID_END]);
+-	auto frame_begin_data = FlatVector::GetData<idx_t>(bounds.data[FRAME_BEGIN]);
++	auto frame_begin_data = FlatVector::GetDataMutable<idx_t>(bounds.data[FRAME_BEGIN]);
+ 
+ 	idx_t window_start = NumericLimits<idx_t>::Maximum();
+ 
+@@ -810,10 +810,10 @@ void WindowBoundariesState::FrameEnd(DataChunk &bounds, idx_t row_idx, const idx
+                                      optional_ptr<WindowCursor> range) {
+ 	auto partition_begin_data = FlatVector::GetData<const idx_t>(bounds.data[PARTITION_BEGIN]);
+ 	auto partition_end_data = FlatVector::GetData<idx_t>(bounds.data[PARTITION_END]);
+-	auto peer_end_data = FlatVector::GetData<idx_t>(bounds.data[PEER_END]);
++	auto peer_end_data = FlatVector::GetDataMutable<idx_t>(bounds.data[PEER_END]);
+ 	auto valid_begin_data = FlatVector::GetData<const idx_t>(bounds.data[VALID_BEGIN]);
+ 	auto valid_end_data = FlatVector::GetData<const idx_t>(bounds.data[VALID_END]);
+-	auto frame_end_data = FlatVector::GetData<idx_t>(bounds.data[FRAME_END]);
++	auto frame_end_data = FlatVector::GetDataMutable<idx_t>(bounds.data[FRAME_END]);
+ 
+ 	idx_t window_end = NumericLimits<idx_t>::Maximum();
+ 
+diff --git a/src/function/window/window_constant_aggregator.cpp b/src/function/window/window_constant_aggregator.cpp
+--- a/src/function/window/window_constant_aggregator.cpp
++++ b/src/function/window/window_constant_aggregator.cpp
+@@ -230,7 +230,7 @@ void WindowConstantAggregatorLocalState::Sink(ExecutionContext &context, DataChu
+ 	    1;
+ 
+ 	auto state_f_data = statef.GetData();
+-	auto state_p_data = FlatVector::GetData<data_ptr_t>(statep);
++	auto state_p_data = FlatVector::GetDataMutable<data_ptr_t>(statep);
+ 
+ 	auto &child_idx = gstate.aggregator.child_idx;
+ 	for (column_t c = 0; c < child_idx.size(); ++c) {
+diff --git a/src/function/window/window_distinct_aggregator.cpp b/src/function/window/window_distinct_aggregator.cpp
+--- a/src/function/window/window_distinct_aggregator.cpp
++++ b/src/function/window/window_distinct_aggregator.cpp
+@@ -259,7 +259,7 @@ void WindowDistinctAggregatorLocalState::Sink(ExecutionContext &context, DataChu
+ 	const auto count = sink_chunk.size();
+ 	sort_chunk.Reset();
+ 	auto &sorted_vec = sort_chunk.data.back();
+-	auto sorted = FlatVector::GetData<idx_t>(sorted_vec);
++	auto sorted = FlatVector::GetDataMutable<idx_t>(sorted_vec);
+ 	std::iota(sorted, sorted + count, input_idx);
+ 
+ 	// Our arguments are being fully materialised,
+@@ -540,12 +540,12 @@ void WindowDistinctSortTree::BuildRun(idx_t level_nr, idx_t run_idx, WindowDisti
+ 
+ 	//! The states to update
+ 	auto &update_v = ldastate.update_v;
+-	auto updates = FlatVector::GetData<data_ptr_t>(update_v);
++	auto updates = FlatVector::Writer<data_ptr_t>(update_v);
+ 
+ 	auto &source_v = ldastate.source_v;
+-	auto sources = FlatVector::GetData<data_ptr_t>(source_v);
++	auto sources = FlatVector::Writer<data_ptr_t>(source_v);
+ 	auto &target_v = ldastate.target_v;
+-	auto targets = FlatVector::GetData<data_ptr_t>(target_v);
++	auto targets = FlatVector::Writer<data_ptr_t>(target_v);
+ 
+ 	auto &zipped_tree = gdastate.zipped_tree;
+ 	auto &zipped_level = zipped_tree.tree[level_nr].first;
+@@ -646,8 +646,8 @@ void WindowDistinctAggregatorLocalState::FlushStates() {
+ void WindowDistinctAggregatorLocalState::Evaluate(ExecutionContext &context,
+                                                   const WindowDistinctAggregatorGlobalState &gdstate,
+                                                   const DataChunk &bounds, Vector &result, idx_t count, idx_t row_idx) {
+-	auto ldata = FlatVector::GetData<const_data_ptr_t>(statel);
+-	auto pdata = FlatVector::GetData<data_ptr_t>(statep);
++	auto ldata = FlatVector::GetDataMutable<const_data_ptr_t>(statel);
++	auto pdata = FlatVector::GetDataMutable<data_ptr_t>(statep);
+ 
+ 	const auto &merge_sort_tree = gdstate.merge_sort_tree;
+ 	const auto &levels_flat_native = gdstate.levels_flat_native;
+diff --git a/src/function/window/window_naive_aggregator.cpp b/src/function/window/window_naive_aggregator.cpp
+--- a/src/function/window/window_naive_aggregator.cpp
++++ b/src/function/window/window_naive_aggregator.cpp
+@@ -108,7 +108,7 @@ WindowNaiveLocalState::WindowNaiveLocalState(ExecutionContext &context, const Wi
+ 	D_ASSERT(statef.GetVectorType() == VectorType::FLAT_VECTOR);
+ 	statef.SetVectorType(VectorType::CONSTANT_VECTOR);
+ 	statef.Flatten(STANDARD_VECTOR_SIZE);
+-	auto fdata = FlatVector::GetData<data_ptr_t>(statef);
++	auto fdata = FlatVector::GetDataMutable<data_ptr_t>(statef);
+ 	for (idx_t i = 0; i < STANDARD_VECTOR_SIZE; ++i) {
+ 		fdata[i] = state_ptr;
+ 		state_ptr += aggregator.state_size;
+@@ -226,8 +226,8 @@ void WindowNaiveLocalState::Evaluate(ExecutionContext &context, const WindowAggr
+ 	auto &filter_mask = gsink.filter_mask;
+ 	const auto types = cursor->chunk.GetTypes();
+ 
+-	auto fdata = FlatVector::GetData<data_ptr_t>(statef);
+-	auto pdata = FlatVector::GetData<data_ptr_t>(statep);
++	auto fdata = FlatVector::GetDataMutable<data_ptr_t>(statef);
++	auto pdata = FlatVector::GetDataMutable<data_ptr_t>(statep);
+ 
+ 	HashRow hash_row(*this);
+ 	EqualRow equal_row(*this);
+@@ -247,7 +247,7 @@ void WindowNaiveLocalState::Evaluate(ExecutionContext &context, const WindowAggr
+ 			OperatorSinkInput sink {*global_sink, *local_sink, interrupt};
+ 
+ 			idx_t orderby_count = 0;
+-			auto orderby_row = FlatVector::GetData<idx_t>(orderby_sink.data.back());
++			auto orderby_row = FlatVector::GetDataMutable<idx_t>(orderby_sink.data.back());
+ 			for (const auto &frame : frames) {
+ 				for (auto f = frame.start; f < frame.end; ++f) {
+ 					//	FILTER before the ORDER BY
+@@ -294,7 +294,7 @@ void WindowNaiveLocalState::Evaluate(ExecutionContext &context, const WindowAggr
+ 			OperatorSourceInput source {*global_source, *local_source, interrupt};
+ 			orderby_scan.Reset();
+ 			for (; SourceResultType::FINISHED != sort->GetData(context, orderby_scan, source); orderby_scan.Reset()) {
+-				orderby_row = FlatVector::GetData<idx_t>(orderby_scan.data[0]);
++				orderby_row = FlatVector::GetDataMutable<idx_t>(orderby_scan.data[0]);
+ 				for (idx_t i = 0; i < orderby_scan.size(); ++i) {
+ 					const auto f = orderby_row[i];
+ 					//	Seek to the current position
+diff --git a/src/function/window/window_rank_function.cpp b/src/function/window/window_rank_function.cpp
+--- a/src/function/window/window_rank_function.cpp
++++ b/src/function/window/window_rank_function.cpp
+@@ -162,7 +162,7 @@ void WindowRankExecutor::EvaluateInternal(ExecutionContext &context, DataChunk &
+                                           idx_t row_idx, OperatorSinkInput &sink) const {
+ 	auto &gpeer = sink.global_state.Cast<WindowPeerGlobalState>();
+ 	auto &lpeer = sink.local_state.Cast<WindowPeerLocalState>();
+-	auto rdata = FlatVector::GetData<int64_t>(result);
++	auto rdata = FlatVector::GetDataMutable<int64_t>(result);
+ 
+ 	if (gpeer.use_framing) {
+ 		auto frame_begin = FlatVector::GetData<const idx_t>(lpeer.bounds.data[FRAME_BEGIN]);
+@@ -235,7 +235,7 @@ void WindowDenseRankExecutor::EvaluateInternal(ExecutionContext &context, DataCh
+ 	auto &order_mask = gpeer.order_mask;
+ 	auto partition_begin = FlatVector::GetData<const idx_t>(lpeer.bounds.data[PARTITION_BEGIN]);
+ 	auto peer_begin = FlatVector::GetData<const idx_t>(lpeer.bounds.data[PEER_BEGIN]);
+-	auto rdata = FlatVector::GetData<int64_t>(result);
++	auto rdata = FlatVector::GetDataMutable<int64_t>(result);
+ 
+ 	//	Reset to "previous" row
+ 	//	Resetting is slow because we have to rescan the mask.
+@@ -341,7 +341,7 @@ void WindowPercentRankExecutor::EvaluateInternal(ExecutionContext &context, Data
+                                                  idx_t count, idx_t row_idx, OperatorSinkInput &sink) const {
+ 	auto &gpeer = sink.global_state.Cast<WindowPeerGlobalState>();
+ 	auto &lpeer = sink.local_state.Cast<WindowPeerLocalState>();
+-	auto rdata = FlatVector::GetData<double>(result);
++	auto rdata = FlatVector::GetDataMutable<double>(result);
+ 
+ 	if (gpeer.use_framing) {
+ 		auto frame_begin = FlatVector::GetData<const idx_t>(lpeer.bounds.data[FRAME_BEGIN]);
+@@ -427,7 +427,7 @@ void WindowCumeDistExecutor::EvaluateInternal(ExecutionContext &context, DataChu
+                                               idx_t count, idx_t row_idx, OperatorSinkInput &sink) const {
+ 	auto &gpeer = sink.global_state.Cast<WindowPeerGlobalState>();
+ 	auto &lpeer = sink.local_state.Cast<WindowPeerLocalState>();
+-	auto rdata = FlatVector::GetData<double>(result);
++	auto rdata = FlatVector::GetDataMutable<double>(result);
+ 
+ 	if (gpeer.use_framing) {
+ 		auto frame_begin = FlatVector::GetData<const idx_t>(lpeer.bounds.data[FRAME_BEGIN]);
+diff --git a/src/function/window/window_rownumber_function.cpp b/src/function/window/window_rownumber_function.cpp
+--- a/src/function/window/window_rownumber_function.cpp
++++ b/src/function/window/window_rownumber_function.cpp
+@@ -133,7 +133,7 @@ void WindowRowNumberExecutor::EvaluateInternal(ExecutionContext &context, DataCh
+                                                idx_t count, idx_t row_idx, OperatorSinkInput &sink) const {
+ 	auto &grstate = sink.global_state.Cast<WindowRowNumberGlobalState>();
+ 	auto &lrstate = sink.local_state.Cast<WindowRowNumberLocalState>();
+-	auto rdata = FlatVector::GetData<int64_t>(result);
++	auto rdata = FlatVector::GetDataMutable<int64_t>(result);
+ 
+ 	if (grstate.use_framing) {
+ 		auto frame_begin = FlatVector::GetData<const idx_t>(lrstate.bounds.data[FRAME_BEGIN]);
+@@ -209,7 +209,7 @@ void WindowNtileExecutor::EvaluateInternal(ExecutionContext &context, DataChunk
+ 		partition_begin = FlatVector::GetData<const idx_t>(lrstate.bounds.data[FRAME_BEGIN]);
+ 		partition_end = FlatVector::GetData<const idx_t>(lrstate.bounds.data[FRAME_END]);
+ 	}
+-	auto rdata = FlatVector::GetData<int64_t>(result);
++	auto rdata = FlatVector::GetDataMutable<int64_t>(result);
+ 	WindowInputExpression ntile_col(eval_chunk, ntile_idx);
+ 	for (idx_t i = 0; i < count; ++i, ++row_idx) {
+ 		if (ntile_col.CellIsNull(i)) {
+diff --git a/src/function/window/window_segment_tree.cpp b/src/function/window/window_segment_tree.cpp
+--- a/src/function/window/window_segment_tree.cpp
++++ b/src/function/window/window_segment_tree.cpp
+@@ -169,7 +169,7 @@ WindowSegmentTreePart::WindowSegmentTreePart(ArenaAllocator &allocator, const Ag
+ 	D_ASSERT(statef.GetVectorType() == VectorType::FLAT_VECTOR);
+ 	statef.SetVectorType(VectorType::CONSTANT_VECTOR);
+ 	statef.Flatten(STANDARD_VECTOR_SIZE);
+-	auto fdata = FlatVector::GetData<data_ptr_t>(statef);
++	auto fdata = FlatVector::GetDataMutable<data_ptr_t>(statef);
+ 	for (idx_t i = 0; i < STANDARD_VECTOR_SIZE; ++i) {
+ 		fdata[i] = state_ptr;
+ 		state_ptr += state_size;
+@@ -219,7 +219,7 @@ void WindowSegmentTreePart::ExtractFrame(idx_t begin, idx_t end, data_ptr_t stat
+ 	//	If we are not filtering,
+ 	//	just update the shared dictionary selection to the range
+ 	//	Otherwise set it to the input rows that pass the filter
+-	auto states = FlatVector::GetData<data_ptr_t>(statep);
++	auto states = FlatVector::GetDataMutable<data_ptr_t>(statep);
+ 	if (filter_mask.CannotHaveNull()) {
+ 		const auto offset = cursor->RowOffset(begin);
+ 		for (idx_t i = 0; i < count; ++i) {
+@@ -266,8 +266,8 @@ void WindowSegmentTreePart::WindowSegmentValue(const WindowSegmentTreeGlobalStat
+ 		// find out where the states begin
+ 		auto begin_ptr = tree.levels_flat_native.GetStatePtr(begin + tree.levels_flat_start[l_idx - 1]);
+ 		// set up a vector of pointers that point towards the set of states
+-		auto ldata = FlatVector::GetData<const_data_ptr_t>(statel);
+-		auto pdata = FlatVector::GetData<data_ptr_t>(statep);
++		auto ldata = FlatVector::GetDataMutable<const_data_ptr_t>(statel);
++		auto pdata = FlatVector::GetDataMutable<data_ptr_t>(statep);
+ 		for (idx_t i = 0; i < count; i++) {
+ 			pdata[flush_count] = state_ptr;
+ 			ldata[flush_count++] = begin_ptr;
+@@ -454,7 +454,7 @@ void WindowSegmentTreePart::Evaluate(const WindowSegmentTreeGlobalState &tree, c
+ }
+ 
+ void WindowSegmentTreePart::Initialize(idx_t count) {
+-	auto fdata = FlatVector::GetData<data_ptr_t>(statef);
++	auto fdata = FlatVector::GetDataMutable<data_ptr_t>(statef);
+ 	for (idx_t rid = 0; rid < count; ++rid) {
+ 		auto state_ptr = fdata[rid];
+ 		aggr.function.GetStateInitCallback()(aggr.function, state_ptr);
+@@ -464,7 +464,7 @@ void WindowSegmentTreePart::Initialize(idx_t count) {
+ void WindowSegmentTreePart::EvaluateUpperLevels(const WindowSegmentTreeGlobalState &tree, const idx_t *begins,
+                                                 const idx_t *ends, const idx_t *bounds, idx_t count, idx_t row_idx,
+                                                 FramePart frame_part) {
+-	auto fdata = FlatVector::GetData<data_ptr_t>(statef);
++	auto fdata = FlatVector::GetDataMutable<data_ptr_t>(statef);
+ 
+ 	const auto exclude_mode = tree.tree.exclude_mode;
+ 	const bool begin_on_curr_row = frame_part == FramePart::RIGHT && exclude_mode == WindowExcludeMode::CURRENT_ROW;
+@@ -481,8 +481,8 @@ void WindowSegmentTreePart::EvaluateUpperLevels(const WindowSegmentTreeGlobalSta
+ 	//  We do this first because we want to share only tree aggregations
+ 	idx_t prev_begin = 1;
+ 	idx_t prev_end = 0;
+-	auto ldata = FlatVector::GetData<data_ptr_t>(statel);
+-	auto pdata = FlatVector::GetData<data_ptr_t>(statep);
++	auto ldata = FlatVector::GetDataMutable<data_ptr_t>(statel);
++	auto pdata = FlatVector::GetDataMutable<data_ptr_t>(statep);
+ 	data_ptr_t prev_state = nullptr;
+ 	for (idx_t rid = 0, cur_row = row_idx; rid < count; ++rid, ++cur_row) {
+ 		auto state_ptr = fdata[rid];
+@@ -563,7 +563,7 @@ void WindowSegmentTreePart::EvaluateUpperLevels(const WindowSegmentTreeGlobalSta
+ void WindowSegmentTreePart::EvaluateLeaves(const WindowSegmentTreeGlobalState &tree, const idx_t *begins,
+                                            const idx_t *ends, const idx_t *bounds, idx_t count, idx_t row_idx,
+                                            FramePart frame_part, FramePart leaf_part) {
+-	auto fdata = FlatVector::GetData<data_ptr_t>(statef);
++	auto fdata = FlatVector::GetDataMutable<data_ptr_t>(statef);
+ 
+ 	// For order-sensitive aggregates, we have to process the ragged leaves in two pieces.
+ 	// The left side have to be added before the main tree followed by the ragged right sides.
+diff --git a/src/function/window/window_value_function.cpp b/src/function/window/window_value_function.cpp
+--- a/src/function/window/window_value_function.cpp
++++ b/src/function/window/window_value_function.cpp
+@@ -847,7 +847,7 @@ template <typename T>
+ static void FillInterpolateFunc(Vector &result, idx_t i, WindowCursor &cursor, idx_t lo, idx_t hi, double slope) {
+ 	const auto y0 = cursor.GetCell<T>(0, lo);
+ 	const auto y1 = cursor.GetCell<T>(0, hi);
+-	auto data = FlatVector::GetData<T>(result);
++	auto data = FlatVector::GetDataMutable<T>(result);
+ 	if (slope < 0 || slope > 1) {
+ 		if (TryExtrapolateOperator::Operation(y0, slope, y1, data[i])) {
+ 			FlatVector::SetNull(result, i, false);
+diff --git a/src/include/duckdb/common/types/conflict_manager.hpp b/src/include/duckdb/common/types/conflict_manager.hpp
+--- a/src/include/duckdb/common/types/conflict_manager.hpp
++++ b/src/include/duckdb/common/types/conflict_manager.hpp
+@@ -216,7 +216,7 @@ class ConflictManager {
+ 		conflict_data[i].inverted_sel = make_uniq<SelectionVector>(chunk_size);
+ 		conflict_data[i].validity.Initialize(chunk_size, false);
+ 		conflict_data[i].row_ids = make_uniq<Vector>(LogicalType::ROW_TYPE, chunk_size);
+-		conflict_data[i].row_ids_data = FlatVector::GetData<row_t>(*conflict_data[i].row_ids);
++		conflict_data[i].row_ids_data = FlatVector::GetDataMutable<row_t>(*conflict_data[i].row_ids);
+ 		return conflict_data[i];
+ 	}
+ 
+diff --git a/src/include/duckdb/common/types/row/block_iterator.hpp b/src/include/duckdb/common/types/row/block_iterator.hpp
+--- a/src/include/duckdb/common/types/row/block_iterator.hpp
++++ b/src/include/duckdb/common/types/row/block_iterator.hpp
+@@ -148,7 +148,8 @@ class BlockIteratorState<BlockIteratorStateType::EXTERNAL>
+ public:
+ 	explicit BlockIteratorState(TupleDataCollection &key_data_p, optional_ptr<TupleDataCollection> payload_data_p)
+ 	    : BlockIteratorStateBase(key_data_p.Count()), current_chunk_idx(DConstants::INVALID_INDEX),
+-	      key_data(key_data_p), key_ptrs(FlatVector::GetData<data_ptr_t>(key_scan_state.chunk_state.row_locations)),
++	      key_data(key_data_p),
++	      key_ptrs(FlatVector::GetDataMutable<data_ptr_t>(key_scan_state.chunk_state.row_locations)),
+ 	      payload_data(payload_data_p), keep_pinned(false), pin_payload(false) {
+ 		key_data.InitializeScan(key_scan_state);
+ 		if (payload_data) {
+diff --git a/src/include/duckdb/common/types/row/tuple_data_collection.hpp b/src/include/duckdb/common/types/row/tuple_data_collection.hpp
+--- a/src/include/duckdb/common/types/row/tuple_data_collection.hpp
++++ b/src/include/duckdb/common/types/row/tuple_data_collection.hpp
+@@ -21,7 +21,7 @@ struct RowOperationsState;
+ 
+ typedef void (*tuple_data_scatter_function_t)(const Vector &source, const TupleDataVectorFormat &source_format,
+                                               const SelectionVector &append_sel, const idx_t append_count,
+-                                              const TupleDataLayout &layout, const Vector &row_locations,
++                                              const TupleDataLayout &layout, Vector &row_locations,
+                                               Vector &heap_locations, const idx_t col_idx,
+                                               const UnifiedVectorFormat &list_format,
+                                               const vector<TupleDataScatterFunction> &child_functions);
+diff --git a/src/include/duckdb/common/vector/flat_vector.hpp b/src/include/duckdb/common/vector/flat_vector.hpp
+--- a/src/include/duckdb/common/vector/flat_vector.hpp
++++ b/src/include/duckdb/common/vector/flat_vector.hpp
+@@ -50,18 +50,25 @@ struct FlatVector {
+ #endif
+ 	}
+ 
+-	static inline data_ptr_t GetData(Vector &vector) {
++	static inline const_data_ptr_t GetData(Vector &vector) {
+ 		return ConstantVector::GetData(vector);
+ 	}
+ 	static inline const_data_ptr_t GetData(const Vector &vector) {
+ 		return ConstantVector::GetData(vector);
+ 	}
++	static inline data_ptr_t GetDataMutable(Vector &vector) {
++		return ConstantVector::GetData(vector);
++	}
+ 	template <class T>
+ 	static inline const T *GetData(const Vector &vector) {
+ 		return ConstantVector::GetData<T>(vector);
+ 	}
+ 	template <class T>
+-	static inline T *GetData(Vector &vector) {
++	static inline const T *GetData(Vector &vector) {
++		return ConstantVector::GetData<T>(vector);
++	}
++	template <class T>
++	static inline T *GetDataMutable(Vector &vector) {
+ 		return ConstantVector::GetData<T>(vector);
+ 	}
+ 	template <class T>
+@@ -103,7 +110,7 @@ struct FlatVector {
+ 	template <class T>
+ 	struct FlatVectorWriter {
+ 		FlatVectorWriter(Vector &vector, idx_t count)
+-		    : data(FlatVector::GetData<T>(vector)), validity(FlatVector::Validity(vector)), count(count) {
++		    : data(GetDataMutable<T>(vector)), validity(Validity(vector)), count(count) {
+ 		}
+ 
+ 		void SetInvalid(idx_t idx) {
+diff --git a/src/include/duckdb/common/vector/list_vector.hpp b/src/include/duckdb/common/vector/list_vector.hpp
+--- a/src/include/duckdb/common/vector/list_vector.hpp
++++ b/src/include/duckdb/common/vector/list_vector.hpp
+@@ -60,17 +60,18 @@ class VectorListBuffer : public StandardVectorBuffer {
+ };
+ 
+ struct ListVector {
+-	static inline const list_entry_t *GetData(const Vector &v) {
++	[[deprecated("Use FlatVector::GetData<list_entry_t> instead")]] static inline const list_entry_t *
++	GetData(const Vector &v) {
+ 		if (v.GetVectorType() == VectorType::DICTIONARY_VECTOR) {
+ 			throw InternalException("ListVector::GetData called on dictionary vector");
+ 		}
+ 		return FlatVector::GetData<const list_entry_t>(v);
+ 	}
+-	static inline list_entry_t *GetData(Vector &v) {
++	[[deprecated("Use FlatVector::GetData<list_entry_t> instead")]] static inline list_entry_t *GetData(Vector &v) {
+ 		if (v.GetVectorType() == VectorType::DICTIONARY_VECTOR) {
+ 			throw InternalException("ListVector::GetData called on dictionary vector");
+ 		}
+-		return FlatVector::GetData<list_entry_t>(v);
++		return FlatVector::GetDataMutable<list_entry_t>(v);
+ 	}
+ 	//! Gets a reference to the underlying child-vector of a list
+ 	DUCKDB_API static const Vector &GetEntry(const Vector &vector);
+diff --git a/src/include/duckdb/common/vector_operations/aggregate_executor.hpp b/src/include/duckdb/common/vector_operations/aggregate_executor.hpp
+--- a/src/include/duckdb/common/vector_operations/aggregate_executor.hpp
++++ b/src/include/duckdb/common/vector_operations/aggregate_executor.hpp
+@@ -254,7 +254,7 @@ class AggregateExecutor {
+ 			OP::template ConstantOperation<STATE_TYPE, OP>(**sdata, aggr_input_data, count);
+ #ifndef DUCKDB_SMALLER_BINARY
+ 		} else if (states.GetVectorType() == VectorType::FLAT_VECTOR) {
+-			auto sdata = FlatVector::GetData<STATE_TYPE *>(states);
++			auto sdata = FlatVector::GetDataMutable<STATE_TYPE *>(states);
+ 			NullaryFlatLoop<STATE_TYPE, OP>(sdata, aggr_input_data, count);
+ #endif
+ 		} else {
+@@ -286,7 +286,7 @@ class AggregateExecutor {
+ 		} else if (input.GetVectorType() == VectorType::FLAT_VECTOR &&
+ 		           states.GetVectorType() == VectorType::FLAT_VECTOR) {
+ 			auto idata = FlatVector::GetData<INPUT_TYPE>(input);
+-			auto sdata = FlatVector::GetData<STATE_TYPE *>(states);
++			auto sdata = FlatVector::GetDataMutable<STATE_TYPE *>(states);
+ 			UnaryFlatLoop<STATE_TYPE, INPUT_TYPE, OP>(idata, aggr_input_data, sdata, FlatVector::Validity(input),
+ 			                                          count);
+ #endif
+@@ -408,7 +408,7 @@ class AggregateExecutor {
+ 			result.SetVectorType(VectorType::FLAT_VECTOR);
+ 
+ 			auto sdata = FlatVector::GetData<STATE_TYPE *>(states);
+-			auto rdata = FlatVector::GetData<RESULT_TYPE>(result);
++			auto rdata = FlatVector::GetDataMutable<RESULT_TYPE>(result);
+ 			AggregateFinalizeData finalize_data(result, aggr_input_data);
+ 			for (idx_t i = 0; i < count; i++) {
+ 				finalize_data.result_idx = i + offset;
+diff --git a/src/include/duckdb/common/vector_operations/binary_executor.hpp b/src/include/duckdb/common/vector_operations/binary_executor.hpp
+--- a/src/include/duckdb/common/vector_operations/binary_executor.hpp
++++ b/src/include/duckdb/common/vector_operations/binary_executor.hpp
+@@ -156,7 +156,7 @@ struct BinaryExecutor {
+ 		}
+ 
+ 		result.SetVectorType(VectorType::FLAT_VECTOR);
+-		auto result_data = FlatVector::GetData<RESULT_TYPE>(result);
++		auto result_data = FlatVector::GetDataMutable<RESULT_TYPE>(result);
+ 		auto &result_validity = FlatVector::Validity(result);
+ 		if (LEFT_CONSTANT) {
+ 			if (OPWRAPPER::AddsNulls()) {
+@@ -224,7 +224,7 @@ struct BinaryExecutor {
+ 		right.ToUnifiedFormat(count, rdata);
+ 
+ 		result.SetVectorType(VectorType::FLAT_VECTOR);
+-		auto result_data = FlatVector::GetData<RESULT_TYPE>(result);
++		auto result_data = FlatVector::GetDataMutable<RESULT_TYPE>(result);
+ 		ExecuteGenericLoop<LEFT_TYPE, RIGHT_TYPE, RESULT_TYPE, OPWRAPPER, OP, FUNC>(
+ 		    UnifiedVectorFormat::GetData<LEFT_TYPE>(ldata), UnifiedVectorFormat::GetData<RIGHT_TYPE>(rdata),
+ 		    result_data, ldata.sel, rdata.sel, count, ldata.validity, rdata.validity, FlatVector::Validity(result),
+diff --git a/src/include/duckdb/common/vector_operations/generic_executor.hpp b/src/include/duckdb/common/vector_operations/generic_executor.hpp
+--- a/src/include/duckdb/common/vector_operations/generic_executor.hpp
++++ b/src/include/duckdb/common/vector_operations/generic_executor.hpp
+@@ -47,7 +47,7 @@ struct PrimitiveType {
+ 	}
+ 
+ 	static void AssignResult(Vector &result, idx_t i, PrimitiveType<INPUT_TYPE> value) {
+-		auto result_data = FlatVector::GetData<INPUT_TYPE>(result);
++		auto result_data = FlatVector::GetDataMutable<INPUT_TYPE>(result);
+ 		result_data[i] = value.val;
+ 	}
+ };
+@@ -88,7 +88,7 @@ struct StructTypeUnary {
+ 	static void AssignResult(Vector &result, idx_t i, StructTypeUnary<A_TYPE> value) {
+ 		auto &entries = StructVector::GetEntries(result);
+ 
+-		auto a_data = FlatVector::GetData<A_TYPE>(entries[0]);
++		auto a_data = FlatVector::GetDataMutable<A_TYPE>(entries[0]);
+ 		a_data[i] = value.a_val;
+ 	}
+ };
+@@ -119,8 +119,8 @@ struct StructTypeBinary {
+ 	static void AssignResult(Vector &result, idx_t i, StructTypeBinary<A_TYPE, B_TYPE> value) {
+ 		auto &entries = StructVector::GetEntries(result);
+ 
+-		auto a_data = FlatVector::GetData<A_TYPE>(entries[0]);
+-		auto b_data = FlatVector::GetData<B_TYPE>(entries[1]);
++		auto a_data = FlatVector::GetDataMutable<A_TYPE>(entries[0]);
++		auto b_data = FlatVector::GetDataMutable<B_TYPE>(entries[1]);
+ 		a_data[i] = value.a_val;
+ 		b_data[i] = value.b_val;
+ 	}
+@@ -158,9 +158,9 @@ struct StructTypeTernary {
+ 	static void AssignResult(Vector &result, idx_t i, StructTypeTernary<A_TYPE, B_TYPE, C_TYPE> value) {
+ 		auto &entries = StructVector::GetEntries(result);
+ 
+-		auto a_data = FlatVector::GetData<A_TYPE>(entries[0]);
+-		auto b_data = FlatVector::GetData<B_TYPE>(entries[1]);
+-		auto c_data = FlatVector::GetData<C_TYPE>(entries[2]);
++		auto a_data = FlatVector::GetDataMutable<A_TYPE>(entries[0]);
++		auto b_data = FlatVector::GetDataMutable<B_TYPE>(entries[1]);
++		auto c_data = FlatVector::GetDataMutable<C_TYPE>(entries[2]);
+ 		a_data[i] = value.a_val;
+ 		b_data[i] = value.b_val;
+ 		c_data[i] = value.c_val;
+@@ -205,10 +205,10 @@ struct StructTypeQuaternary {
+ 	static void AssignResult(Vector &result, idx_t i, StructTypeQuaternary<A_TYPE, B_TYPE, C_TYPE, D_TYPE> value) {
+ 		auto &entries = StructVector::GetEntries(result);
+ 
+-		auto a_data = FlatVector::GetData<A_TYPE>(entries[0]);
+-		auto b_data = FlatVector::GetData<B_TYPE>(entries[1]);
+-		auto c_data = FlatVector::GetData<C_TYPE>(entries[2]);
+-		auto d_data = FlatVector::GetData<D_TYPE>(entries[3]);
++		auto a_data = FlatVector::GetDataMutable<A_TYPE>(entries[0]);
++		auto b_data = FlatVector::GetDataMutable<B_TYPE>(entries[1]);
++		auto c_data = FlatVector::GetDataMutable<C_TYPE>(entries[2]);
++		auto d_data = FlatVector::GetDataMutable<D_TYPE>(entries[3]);
+ 
+ 		a_data[i] = value.a_val;
+ 		b_data[i] = value.b_val;
+@@ -235,7 +235,7 @@ struct GenericListType {
+ 		auto list_size = value.values.size();
+ 		ListVector::Reserve(result, current_size + list_size);
+ 
+-		auto list_entries = FlatVector::GetData<list_entry_t>(result);
++		auto list_entries = FlatVector::GetDataMutable<list_entry_t>(result);
+ 		list_entries[i].offset = current_size;
+ 		list_entries[i].length = list_size;
+ 
+diff --git a/src/include/duckdb/common/vector_operations/senary_executor.hpp b/src/include/duckdb/common/vector_operations/senary_executor.hpp
+--- a/src/include/duckdb/common/vector_operations/senary_executor.hpp
++++ b/src/include/duckdb/common/vector_operations/senary_executor.hpp
+@@ -54,7 +54,7 @@ struct SenaryExecutor {
+ 			}
+ 		} else {
+ 			result.SetVectorType(VectorType::FLAT_VECTOR);
+-			auto result_data = FlatVector::GetData<TR>(result);
++			auto result_data = FlatVector::GetDataMutable<TR>(result);
+ 			auto &result_validity = FlatVector::Validity(result);
+ 
+ 			bool all_valid = true;
+diff --git a/src/include/duckdb/common/vector_operations/septenary_executor.hpp b/src/include/duckdb/common/vector_operations/septenary_executor.hpp
+--- a/src/include/duckdb/common/vector_operations/septenary_executor.hpp
++++ b/src/include/duckdb/common/vector_operations/septenary_executor.hpp
+@@ -55,7 +55,7 @@ struct SeptenaryExecutor {
+ 			}
+ 		} else {
+ 			result.SetVectorType(VectorType::FLAT_VECTOR);
+-			auto result_data = FlatVector::GetData<TR>(result);
++			auto result_data = FlatVector::GetDataMutable<TR>(result);
+ 			auto &result_validity = FlatVector::Validity(result);
+ 
+ 			bool all_valid = true;
+diff --git a/src/include/duckdb/common/vector_operations/ternary_executor.hpp b/src/include/duckdb/common/vector_operations/ternary_executor.hpp
+--- a/src/include/duckdb/common/vector_operations/ternary_executor.hpp
++++ b/src/include/duckdb/common/vector_operations/ternary_executor.hpp
+@@ -98,7 +98,7 @@ struct TernaryExecutor {
+ 
+ 			ExecuteLoop<A_TYPE, B_TYPE, C_TYPE, RESULT_TYPE, OPWRAPPER>(
+ 			    UnifiedVectorFormat::GetData<A_TYPE>(adata), UnifiedVectorFormat::GetData<B_TYPE>(bdata),
+-			    UnifiedVectorFormat::GetData<C_TYPE>(cdata), FlatVector::GetData<RESULT_TYPE>(result), count,
++			    UnifiedVectorFormat::GetData<C_TYPE>(cdata), FlatVector::GetDataMutable<RESULT_TYPE>(result), count,
+ 			    *adata.sel, *bdata.sel, *cdata.sel, adata.validity, bdata.validity, cdata.validity,
+ 			    FlatVector::Validity(result), fun);
+ 		}
+diff --git a/src/include/duckdb/common/vector_operations/unary_executor.hpp b/src/include/duckdb/common/vector_operations/unary_executor.hpp
+--- a/src/include/duckdb/common/vector_operations/unary_executor.hpp
++++ b/src/include/duckdb/common/vector_operations/unary_executor.hpp
+@@ -161,7 +161,7 @@ struct UnaryExecutor {
+ #ifndef DUCKDB_SMALLER_BINARY
+ 		case VectorType::FLAT_VECTOR: {
+ 			result.SetVectorType(VectorType::FLAT_VECTOR);
+-			auto result_data = FlatVector::GetData<RESULT_TYPE>(result);
++			auto result_data = FlatVector::GetDataMutable<RESULT_TYPE>(result);
+ 			auto ldata = FlatVector::GetData<INPUT_TYPE>(input);
+ 
+ 			ExecuteFlat<INPUT_TYPE, RESULT_TYPE, OPWRAPPER, OP>(ldata, result_data, count, FlatVector::Validity(input),
+@@ -182,7 +182,7 @@ struct UnaryExecutor {
+ 					auto &dictionary_values = DictionaryVector::Child(input);
+ 					if (dictionary_values.GetVectorType() == VectorType::FLAT_VECTOR) {
+ 						// execute the function over the dictionary
+-						auto result_data = FlatVector::GetData<RESULT_TYPE>(result);
++						auto result_data = FlatVector::GetDataMutable<RESULT_TYPE>(result);
+ 						auto ldata = FlatVector::GetData<INPUT_TYPE>(dictionary_values);
+ 						ExecuteFlat<INPUT_TYPE, RESULT_TYPE, OPWRAPPER, OP>(
+ 						    ldata, result_data, dict_size.GetIndex(), FlatVector::Validity(dictionary_values),
+@@ -202,7 +202,7 @@ struct UnaryExecutor {
+ 			input.ToUnifiedFormat(count, vdata);
+ 
+ 			result.SetVectorType(VectorType::FLAT_VECTOR);
+-			auto result_data = FlatVector::GetData<RESULT_TYPE>(result);
++			auto result_data = FlatVector::GetDataMutable<RESULT_TYPE>(result);
+ 			auto ldata = UnifiedVectorFormat::GetData<INPUT_TYPE>(vdata);
+ 
+ 			ExecuteLoop<INPUT_TYPE, RESULT_TYPE, OPWRAPPER, OP>(ldata, result_data, count, vdata.sel, vdata.validity,
+diff --git a/src/include/duckdb/function/aggregate/minmax_n_helpers.hpp b/src/include/duckdb/function/aggregate/minmax_n_helpers.hpp
+--- a/src/include/duckdb/function/aggregate/minmax_n_helpers.hpp
++++ b/src/include/duckdb/function/aggregate/minmax_n_helpers.hpp
+@@ -311,7 +311,7 @@ struct MinMaxFixedValue {
+ 	}
+ 
+ 	static void Assign(Vector &vector, const idx_t idx, const TYPE &value, const bool nulls_last) {
+-		FlatVector::GetData<T>(vector)[idx] = value;
++		FlatVector::GetDataMutable<T>(vector)[idx] = value;
+ 	}
+ 
+ 	// Nothing to do here
+@@ -334,7 +334,7 @@ struct MinMaxStringValue {
+ 	}
+ 
+ 	static void Assign(Vector &vector, const idx_t idx, const TYPE &value, const bool nulls_last) {
+-		FlatVector::GetData<string_t>(vector)[idx] = StringVector::AddStringOrBlob(vector, value);
++		FlatVector::GetDataMutable<string_t>(vector)[idx] = StringVector::AddStringOrBlob(vector, value);
+ 	}
+ 
+ 	// Nothing to do here
+@@ -409,7 +409,7 @@ struct MinMaxFixedValueOrNull {
+ 
+ 	static void Assign(Vector &vector, const idx_t idx, const TYPE &value, const bool nulls_last) {
+ 		FlatVector::Validity(vector).Set(idx, value.is_valid);
+-		FlatVector::GetData<T>(vector)[idx] = value.value;
++		FlatVector::GetDataMutable<T>(vector)[idx] = value.value;
+ 	}
+ 
+ 	static EXTRA_STATE CreateExtraState(Vector &input, idx_t count) {
+@@ -459,7 +459,6 @@ struct MinMaxNOperation {
+ 		state_vector.ToUnifiedFormat(count, state_format);
+ 
+ 		const auto states = UnifiedVectorFormat::GetData<STATE *>(state_format);
+-		auto &mask = FlatVector::Validity(result);
+ 
+ 		const auto old_len = ListVector::GetListSize(result);
+ 
+@@ -474,7 +473,7 @@ struct MinMaxNOperation {
+ 		// Resize the list vector to fit the new entries
+ 		ListVector::Reserve(result, old_len + new_entries);
+ 
+-		const auto list_entries = FlatVector::GetData<list_entry_t>(result);
++		auto result_data = FlatVector::Writer<list_entry_t>(result, offset + count);
+ 		auto &child_data = ListVector::GetEntry(result);
+ 
+ 		idx_t current_offset = old_len;
+@@ -484,12 +483,12 @@ struct MinMaxNOperation {
+ 			auto &state = *states[state_idx];
+ 
+ 			if (!state.is_initialized || state.heap.IsEmpty()) {
+-				mask.SetInvalid(rid);
++				result_data.SetInvalid(rid);
+ 				continue;
+ 			}
+ 
+ 			// Add the entries to the list vector
+-			auto &list_entry = list_entries[rid];
++			auto &list_entry = result_data[rid];
+ 			list_entry.offset = current_offset;
+ 			list_entry.length = state.heap.Size();
+ 
+diff --git a/src/include/duckdb/function/cast/variant/to_variant_fwd.hpp b/src/include/duckdb/function/cast/variant/to_variant_fwd.hpp
+--- a/src/include/duckdb/function/cast/variant/to_variant_fwd.hpp
++++ b/src/include/duckdb/function/cast/variant/to_variant_fwd.hpp
+@@ -20,16 +20,16 @@ void InitializeOffsets(DataChunk &offsets, idx_t count);
+ struct OffsetData {
+ public:
+ 	static uint32_t *GetKeys(DataChunk &offsets) {
+-		return FlatVector::GetData<uint32_t>(offsets.data[0]);
++		return FlatVector::GetDataMutable<uint32_t>(offsets.data[0]);
+ 	}
+ 	static uint32_t *GetChildren(DataChunk &offsets) {
+-		return FlatVector::GetData<uint32_t>(offsets.data[1]);
++		return FlatVector::GetDataMutable<uint32_t>(offsets.data[1]);
+ 	}
+ 	static uint32_t *GetValues(DataChunk &offsets) {
+-		return FlatVector::GetData<uint32_t>(offsets.data[2]);
++		return FlatVector::GetDataMutable<uint32_t>(offsets.data[2]);
+ 	}
+ 	static uint32_t *GetBlob(DataChunk &offsets) {
+-		return FlatVector::GetData<uint32_t>(offsets.data[3]);
++		return FlatVector::GetDataMutable<uint32_t>(offsets.data[3]);
+ 	}
+ };
+ 
+diff --git a/src/include/duckdb/function/window/window_aggregate_states.hpp b/src/include/duckdb/function/window/window_aggregate_states.hpp
+--- a/src/include/duckdb/function/window/window_aggregate_states.hpp
++++ b/src/include/duckdb/function/window/window_aggregate_states.hpp
+@@ -23,7 +23,7 @@ struct WindowAggregateStates {
+ 		return states.size() / state_size;
+ 	}
+ 	data_ptr_t *GetData() {
+-		return FlatVector::GetData<data_ptr_t>(*statef);
++		return FlatVector::GetDataMutable<data_ptr_t>(*statef);
+ 	}
+ 	data_ptr_t GetStatePtr(idx_t idx) {
+ 		return states.data() + idx * state_size;
+diff --git a/src/include/duckdb/storage/compression/alp/alp_scan.hpp b/src/include/duckdb/storage/compression/alp/alp_scan.hpp
+--- a/src/include/duckdb/storage/compression/alp/alp_scan.hpp
++++ b/src/include/duckdb/storage/compression/alp/alp_scan.hpp
+@@ -216,7 +216,7 @@ void AlpScanPartial(ColumnSegment &segment, ColumnScanState &state, idx_t scan_c
+ 	auto &scan_state = (AlpScanState<T> &)*state.scan_state;
+ 
+ 	// Get the pointer to the result values
+-	auto current_result_ptr = FlatVector::GetData<T>(result);
++	auto current_result_ptr = FlatVector::GetDataMutable<T>(result);
+ 	result.SetVectorType(VectorType::FLAT_VECTOR);
+ 	current_result_ptr += result_offset;
+ 
+diff --git a/src/include/duckdb/storage/compression/chimp/chimp_fetch.hpp b/src/include/duckdb/storage/compression/chimp/chimp_fetch.hpp
+--- a/src/include/duckdb/storage/compression/chimp/chimp_fetch.hpp
++++ b/src/include/duckdb/storage/compression/chimp/chimp_fetch.hpp
+@@ -22,7 +22,7 @@ void ChimpFetchRow(ColumnSegment &segment, ColumnFetchState &state, row_t row_id
+ 
+ 	ChimpScanState<T> scan_state(segment);
+ 	scan_state.Skip(segment, UnsafeNumericCast<idx_t>(row_id));
+-	auto result_data = FlatVector::GetData<INTERNAL_TYPE>(result);
++	auto result_data = FlatVector::GetDataMutable<INTERNAL_TYPE>(result);
+ 
+ 	if (scan_state.GroupFinished() && scan_state.total_value_count < scan_state.segment_count) {
+ 		scan_state.LoadGroup(scan_state.group_state.values);
+diff --git a/src/include/duckdb/storage/compression/chimp/chimp_scan.hpp b/src/include/duckdb/storage/compression/chimp/chimp_scan.hpp
+--- a/src/include/duckdb/storage/compression/chimp/chimp_scan.hpp
++++ b/src/include/duckdb/storage/compression/chimp/chimp_scan.hpp
+@@ -260,7 +260,7 @@ void ChimpScanPartial(ColumnSegment &segment, ColumnScanState &state, idx_t scan
+ 	using INTERNAL_TYPE = typename ChimpType<T>::TYPE;
+ 	auto &scan_state = state.scan_state->Cast<ChimpScanState<T>>();
+ 
+-	T *result_data = FlatVector::GetData<T>(result);
++	T *result_data = FlatVector::GetDataMutable<T>(result);
+ 	result.SetVectorType(VectorType::FLAT_VECTOR);
+ 
+ 	auto current_result_ptr = (INTERNAL_TYPE *)(result_data + result_offset);
+diff --git a/src/logging/log_storage.cpp b/src/logging/log_storage.cpp
+--- a/src/logging/log_storage.cpp
++++ b/src/logging/log_storage.cpp
+@@ -597,33 +597,33 @@ BufferingLogStorage::~BufferingLogStorage() {
+ static void WriteLoggingContextsToChunk(DataChunk &chunk, const RegisteredLoggingContext &context, idx_t &col) {
+ 	auto size = chunk.size();
+ 
+-	auto context_id_data = FlatVector::GetData<idx_t>(chunk.data[col++]);
++	auto context_id_data = FlatVector::GetDataMutable<idx_t>(chunk.data[col++]);
+ 	context_id_data[size] = context.context_id;
+ 
+-	auto context_scope_data = FlatVector::GetData<string_t>(chunk.data[col]);
++	auto context_scope_data = FlatVector::GetDataMutable<string_t>(chunk.data[col]);
+ 	context_scope_data[size] = StringVector::AddString(chunk.data[col++], EnumUtil::ToString(context.context.scope));
+ 
+ 	if (context.context.connection_id.IsValid()) {
+-		auto client_context_data = FlatVector::GetData<idx_t>(chunk.data[col++]);
++		auto client_context_data = FlatVector::GetDataMutable<idx_t>(chunk.data[col++]);
+ 		client_context_data[size] = context.context.connection_id.GetIndex();
+ 	} else {
+ 		FlatVector::Validity(chunk.data[col++]).SetInvalid(size);
+ 	}
+ 	if (context.context.transaction_id.IsValid()) {
+-		auto client_context_data = FlatVector::GetData<idx_t>(chunk.data[col++]);
++		auto client_context_data = FlatVector::GetDataMutable<idx_t>(chunk.data[col++]);
+ 		client_context_data[size] = context.context.transaction_id.GetIndex();
+ 	} else {
+ 		FlatVector::Validity(chunk.data[col++]).SetInvalid(size);
+ 	}
+ 	if (context.context.query_id.IsValid()) {
+-		auto client_context_data = FlatVector::GetData<idx_t>(chunk.data[col++]);
++		auto client_context_data = FlatVector::GetDataMutable<idx_t>(chunk.data[col++]);
+ 		client_context_data[size] = context.context.query_id.GetIndex();
+ 	} else {
+ 		FlatVector::Validity(chunk.data[col++]).SetInvalid(size);
+ 	}
+ 
+ 	if (context.context.thread_id.IsValid()) {
+-		auto thread_data = FlatVector::GetData<idx_t>(chunk.data[col++]);
++		auto thread_data = FlatVector::GetDataMutable<idx_t>(chunk.data[col++]);
+ 		thread_data[size] = context.context.thread_id.GetIndex();
+ 	} else {
+ 		FlatVector::Validity(chunk.data[col++]).SetInvalid(size);
+@@ -653,23 +653,23 @@ void BufferingLogStorage::WriteLogEntry(timestamp_t timestamp, LogLevel level, c
+ 	idx_t col = 0;
+ 
+ 	if (normalize_contexts) {
+-		auto context_id_data = FlatVector::GetData<idx_t>(log_entries_buffer->data[col++]);
++		auto context_id_data = FlatVector::GetDataMutable<idx_t>(log_entries_buffer->data[col++]);
+ 		context_id_data[size] = context.context_id;
+ 	} else {
+ 		WriteLoggingContextsToChunk(*log_entries_buffer, context, col);
+ 	}
+ 
+-	auto timestamp_data = FlatVector::GetData<timestamp_t>(log_entries_buffer->data[col++]);
++	auto timestamp_data = FlatVector::GetDataMutable<timestamp_t>(log_entries_buffer->data[col++]);
+ 	timestamp_data[size] = timestamp;
+ 
+-	auto type_data = FlatVector::GetData<string_t>(log_entries_buffer->data[col]);
++	auto type_data = FlatVector::GetDataMutable<string_t>(log_entries_buffer->data[col]);
+ 	type_data[size] = StringVector::AddString(log_entries_buffer->data[col++], log_type);
+ 
+-	auto level_data = FlatVector::GetData<string_t>(log_entries_buffer->data[col]);
++	auto level_data = FlatVector::GetDataMutable<string_t>(log_entries_buffer->data[col]);
+ 	level_data[size] = StringVector::AddString(log_entries_buffer->data[col++],
+ 	                                           EnumUtil::ToString(level)); // TODO: do cast on write out
+ 
+-	auto message_data = FlatVector::GetData<string_t>(log_entries_buffer->data[col]);
++	auto message_data = FlatVector::GetDataMutable<string_t>(log_entries_buffer->data[col]);
+ 	message_data[size] = StringVector::AddString(log_entries_buffer->data[col++], log_message);
+ 
+ 	log_entries_buffer->SetCardinality(size + 1);
+diff --git a/src/main/appender.cpp b/src/main/appender.cpp
+--- a/src/main/appender.cpp
++++ b/src/main/appender.cpp
+@@ -87,7 +87,7 @@ void BaseAppender::EndRow() {
+ 
+ template <class SRC, class DST>
+ void BaseAppender::AppendValueInternal(Vector &col, SRC input) {
+-	FlatVector::GetData<DST>(col)[chunk.size()] = Cast::Operation<SRC, DST>(input);
++	FlatVector::GetDataMutable<DST>(col)[chunk.size()] = Cast::Operation<SRC, DST>(input);
+ }
+ 
+ template <class SRC, class DST>
+@@ -99,7 +99,7 @@ void BaseAppender::AppendDecimalValueInternal(Vector &col, SRC input) {
+ 		auto width = DecimalType::GetWidth(type);
+ 		auto scale = DecimalType::GetScale(type);
+ 		CastParameters parameters;
+-		auto &result = FlatVector::GetData<DST>(col)[chunk.size()];
++		auto &result = FlatVector::GetDataMutable<DST>(col)[chunk.size()];
+ 		TryCastToDecimal::Operation<SRC, DST>(input, result, parameters, width, scale);
+ 		return;
+ 	}
+@@ -196,7 +196,7 @@ void BaseAppender::AppendValueInternal(T input) {
+ 		AppendValueInternal<T, interval_t>(col, input);
+ 		break;
+ 	case LogicalTypeId::VARCHAR:
+-		FlatVector::GetData<string_t>(col)[chunk.size()] =
++		FlatVector::GetDataMutable<string_t>(col)[chunk.size()] =
+ 		    StringCast::Operation<T>(input, StringVector::GetStringHeap(col));
+ 		break;
+ 	default:
+diff --git a/src/main/capi/data_chunk-c.cpp b/src/main/capi/data_chunk-c.cpp
+--- a/src/main/capi/data_chunk-c.cpp
++++ b/src/main/capi/data_chunk-c.cpp
+@@ -117,7 +117,7 @@ void *duckdb_vector_get_data(duckdb_vector vector) {
+ 		return nullptr;
+ 	}
+ 	auto v = reinterpret_cast<duckdb::Vector *>(vector);
+-	return duckdb::FlatVector::GetData(*v);
++	return duckdb::FlatVector::GetDataMutable(*v);
+ }
+ 
+ uint64_t *duckdb_vector_get_validity(duckdb_vector vector) {
+@@ -182,7 +182,7 @@ void duckdb_unsafe_vector_assign_string_element_len(duckdb_vector vector, idx_t
+ 		return;
+ 	}
+ 	auto v = reinterpret_cast<duckdb::Vector *>(vector);
+-	auto data = duckdb::FlatVector::GetData<duckdb::string_t>(*v);
++	auto data = duckdb::FlatVector::GetDataMutable<duckdb::string_t>(*v);
+ 	data[index] = duckdb::StringVector::AddStringOrBlob(*v, str, str_len);
+ }
+ 
+diff --git a/src/main/capi/logical_types-c.cpp b/src/main/capi/logical_types-c.cpp
+--- a/src/main/capi/logical_types-c.cpp
++++ b/src/main/capi/logical_types-c.cpp
+@@ -123,7 +123,7 @@ duckdb_logical_type duckdb_create_enum_type(const char **member_names, idx_t mem
+ 		return nullptr;
+ 	}
+ 	duckdb::Vector enum_vector(duckdb::LogicalType::VARCHAR, member_count);
+-	auto enum_vector_ptr = duckdb::FlatVector::GetData<duckdb::string_t>(enum_vector);
++	auto enum_vector_ptr = duckdb::FlatVector::GetDataMutable<duckdb::string_t>(enum_vector);
+ 
+ 	for (idx_t i = 0; i < member_count; i++) {
+ 		if (!member_names[i]) {
+diff --git a/src/planner/filter/perfect_hash_join_filter.cpp b/src/planner/filter/perfect_hash_join_filter.cpp
+--- a/src/planner/filter/perfect_hash_join_filter.cpp
++++ b/src/planner/filter/perfect_hash_join_filter.cpp
+@@ -29,7 +29,7 @@ static FilterPropagateResult TemplatedCheckStatistics(const PerfectHashJoinExecu
+ 	}
+ 
+ 	Vector range_vec(type, DEFAULT_STANDARD_VECTOR_SIZE);
+-	auto range_data = FlatVector::GetData<T>(range_vec);
++	auto range_data = FlatVector::GetDataMutable<T>(range_vec);
+ 	T val = min;
+ 	for (; val < max; val += 1) {
+ 		*range_data++ = val;
+diff --git a/src/storage/compression/bitpacking.cpp b/src/storage/compression/bitpacking.cpp
+--- a/src/storage/compression/bitpacking.cpp
++++ b/src/storage/compression/bitpacking.cpp
+@@ -771,7 +771,7 @@ void BitpackingScanPartial(ColumnSegment &segment, ColumnScanState &state, idx_t
+                            idx_t result_offset) {
+ 	auto &scan_state = state.scan_state->Cast<BitpackingScanState<T>>();
+ 
+-	T *result_data = FlatVector::GetData<T>(result);
++	T *result_data = FlatVector::GetDataMutable<T>(result);
+ 	result.SetVectorType(VectorType::FLAT_VECTOR);
+ 
+ 	//! Because FOR offsets all our values to be 0 or above, we can always skip sign extension here
+@@ -874,7 +874,7 @@ void BitpackingFetchRow(ColumnSegment &segment, ColumnFetchState &state, row_t r
+ 	D_ASSERT(scan_state.current_group_offset < BITPACKING_METADATA_GROUP_SIZE);
+ 
+ 	D_ASSERT(result.GetVectorType() == VectorType::FLAT_VECTOR);
+-	T *result_data = FlatVector::GetData<T>(result);
++	T *result_data = FlatVector::GetDataMutable<T>(result);
+ 	T *current_result_ptr = result_data + result_idx;
+ 
+ 	idx_t offset_in_compression_group =
+diff --git a/src/storage/compression/dict_fsst/decompression.cpp b/src/storage/compression/dict_fsst/decompression.cpp
+--- a/src/storage/compression/dict_fsst/decompression.cpp
++++ b/src/storage/compression/dict_fsst/decompression.cpp
+@@ -103,7 +103,7 @@ void CompressedStringScanState::Initialize(bool initialize_dictionary) {
+ 
+ 	dictionary = DictionaryVector::CreateReusableDictionary(segment.type, dict_count);
+ 	auto &dict_data = dictionary->data;
+-	auto dict_child_data = FlatVector::GetData<string_t>(dict_data);
++	auto dict_child_data = FlatVector::GetDataMutable<string_t>(dict_data);
+ 	auto &validity = FlatVector::Validity(dict_data);
+ 	D_ASSERT(dict_count >= 1);
+ 	validity.SetInvalid(0);
+diff --git a/src/storage/compression/dictionary/decompression.cpp b/src/storage/compression/dictionary/decompression.cpp
+--- a/src/storage/compression/dictionary/decompression.cpp
++++ b/src/storage/compression/dictionary/decompression.cpp
+@@ -50,7 +50,7 @@ void CompressedStringScanState::Initialize(ColumnSegment &segment, bool initiali
+ 
+ 	dictionary = DictionaryVector::CreateReusableDictionary(segment.type, index_buffer_count);
+ 	dictionary_size = index_buffer_count;
+-	auto dict_child_data = FlatVector::GetData<string_t>(dictionary->data);
++	auto dict_child_data = FlatVector::GetDataMutable<string_t>(dictionary->data);
+ 	FlatVector::SetNull(dictionary->data, 0, true);
+ 	for (uint32_t i = 1; i < index_buffer_count; i++) {
+ 		// NOTE: the passing of dict_child_vector, will not be used, its for big strings
+diff --git a/src/storage/compression/fixed_size_uncompressed.cpp b/src/storage/compression/fixed_size_uncompressed.cpp
+--- a/src/storage/compression/fixed_size_uncompressed.cpp
++++ b/src/storage/compression/fixed_size_uncompressed.cpp
+@@ -163,7 +163,7 @@ void FixedSizeScanPartial(ColumnSegment &segment, ColumnScanState &state, idx_t
+ 
+ 	// copy the data from the base table
+ 	result.SetVectorType(VectorType::FLAT_VECTOR);
+-	memcpy(FlatVector::GetData(result) + result_offset * sizeof(T), source_data, scan_count * sizeof(T));
++	memcpy(FlatVector::GetDataMutable(result) + result_offset * sizeof(T), source_data, scan_count * sizeof(T));
+ }
+ 
+ template <class T>
+@@ -190,7 +190,7 @@ void FixedSizeFetchRow(ColumnSegment &segment, ColumnFetchState &state, row_t ro
+ 	// first fetch the data from the base table
+ 	auto data_ptr = handle.Ptr() + segment.GetBlockOffset() + NumericCast<idx_t>(row_id) * sizeof(T);
+ 
+-	memcpy(FlatVector::GetData(result) + result_idx * sizeof(T), data_ptr, sizeof(T));
++	memcpy(FlatVector::GetDataMutable(result) + result_idx * sizeof(T), data_ptr, sizeof(T));
+ }
+ 
+ //===--------------------------------------------------------------------===//
+diff --git a/src/storage/compression/fsst.cpp b/src/storage/compression/fsst.cpp
+--- a/src/storage/compression/fsst.cpp
++++ b/src/storage/compression/fsst.cpp
+@@ -671,11 +671,11 @@ void FSSTStorage::StringScanPartial(ColumnSegment &segment, ColumnScanState &sta
+ 			result_data = FSSTVector::GetCompressedData(result);
+ 		} else {
+ 			D_ASSERT(result.GetVectorType() == VectorType::FLAT_VECTOR);
+-			result_data = FlatVector::GetData<string_t>(result);
++			result_data = FlatVector::GetDataMutable<string_t>(result);
+ 		}
+ 	} else {
+ 		D_ASSERT(result.GetVectorType() == VectorType::FLAT_VECTOR);
+-		result_data = FlatVector::GetData<string_t>(result);
++		result_data = FlatVector::GetDataMutable<string_t>(result);
+ 	}
+ 
+ 	auto offsets = StartScan(scan_state, base_data, start, scan_count);
+@@ -721,7 +721,7 @@ void FSSTStorage::Select(ColumnSegment &segment, ColumnScanState &state, idx_t v
+ 
+ 	auto &str_allocator = StringVector::GetStringAllocator(result);
+ 	auto offsets = StartScan(scan_state, base_data, start, vector_count);
+-	auto result_data = FlatVector::GetData<string_t>(result);
++	auto result_data = FlatVector::GetDataMutable<string_t>(result);
+ 
+ 	for (idx_t i = 0; i < sel_count; i++) {
+ 		idx_t index = sel.get_index(i);
+@@ -746,7 +746,7 @@ void FSSTStorage::StringFetchRow(ColumnSegment &segment, ColumnFetchState &state
+ 	auto block_size = segment.GetBlockSize();
+ 	auto have_symbol_table = ParseFSSTSegmentHeader(base_ptr, &decoder, &width, block_size);
+ 
+-	auto result_data = FlatVector::GetData<string_t>(result);
++	auto result_data = FlatVector::GetDataMutable<string_t>(result);
+ 	if (!have_symbol_table) {
+ 		// There is no FSST symtable. This is only the case for empty strings or NULLs. We emit an empty string.
+ 		result_data[result_idx] = string_t(nullptr, 0);
+diff --git a/src/storage/compression/numeric_constant.cpp b/src/storage/compression/numeric_constant.cpp
+--- a/src/storage/compression/numeric_constant.cpp
++++ b/src/storage/compression/numeric_constant.cpp
+@@ -36,7 +36,7 @@ template <class T>
+ void ConstantFillFunction(ColumnSegment &segment, Vector &result, idx_t start_idx, idx_t count) {
+ 	auto &nstats = segment.stats.statistics;
+ 
+-	auto data = FlatVector::GetData<T>(result);
++	auto data = FlatVector::GetDataMutable<T>(result);
+ 	auto constant_value = NumericStats::GetMin<T>(nstats);
+ 	for (idx_t i = 0; i < count; i++) {
+ 		data[start_idx + i] = constant_value;
+@@ -74,7 +74,7 @@ template <class T>
+ void ConstantScanFunction(ColumnSegment &segment, ColumnScanState &state, idx_t scan_count, Vector &result) {
+ 	auto &nstats = segment.stats.statistics;
+ 
+-	auto data = FlatVector::GetData<T>(result);
++	auto data = FlatVector::GetDataMutable<T>(result);
+ 	data[0] = NumericStats::GetMin<T>(nstats);
+ 	result.SetVectorType(VectorType::CONSTANT_VECTOR);
+ }
+diff --git a/src/storage/compression/rle.cpp b/src/storage/compression/rle.cpp
+--- a/src/storage/compression/rle.cpp
++++ b/src/storage/compression/rle.cpp
+@@ -365,7 +365,7 @@ void RLEScanPartialInternal(ColumnSegment &segment, ColumnScanState &state, idx_
+ 		return;
+ 	}
+ 
+-	auto result_data = FlatVector::GetData<T>(result);
++	auto result_data = FlatVector::GetDataMutable<T>(result);
+ 
+ 	const idx_t result_end = result_offset + scan_count;
+ 	while (result_offset < result_end) {
+@@ -479,7 +479,7 @@ void RLEFilter(ColumnSegment &segment, ColumnScanState &state, idx_t vector_coun
+ 		return;
+ 	}
+ 	// scan (the subset of) the matching runs AND set the output selection vector with the rows that match
+-	auto result_data = FlatVector::GetData<T>(result);
++	auto result_data = FlatVector::GetDataMutable<T>(result);
+ 	result.SetVectorType(VectorType::FLAT_VECTOR);
+ 
+ 	idx_t matching_count = 0;
+@@ -557,7 +557,7 @@ void RLEFetchRow(ColumnSegment &segment, ColumnFetchState &state, row_t row_id,
+ 
+ 	auto data = scan_state.handle.Ptr() + segment.GetBlockOffset();
+ 	auto data_pointer = reinterpret_cast<T *>(data + RLEConstants::RLE_HEADER_SIZE);
+-	auto result_data = FlatVector::GetData<T>(result);
++	auto result_data = FlatVector::GetDataMutable<T>(result);
+ 	result_data[result_idx] = data_pointer[scan_state.entry_pos];
+ }
+ 
+diff --git a/src/storage/compression/roaring/common.cpp b/src/storage/compression/roaring/common.cpp
+--- a/src/storage/compression/roaring/common.cpp
++++ b/src/storage/compression/roaring/common.cpp
+@@ -217,7 +217,7 @@ unique_ptr<SegmentScanState> RoaringInitScan(const QueryContext &context, Column
+ // Scan base data
+ //===--------------------------------------------------------------------===//
+ void ExtractValidityMaskToData(const ValidityMask &validity, Vector &dst, idx_t offset, idx_t scan_count) {
+-	auto write_ptr = FlatVector::GetData<uint8_t>(dst) + offset;
++	auto write_ptr = FlatVector::GetDataMutable<uint8_t>(dst) + offset;
+ 	if (validity.CannotHaveNull()) {
+ 		memset(write_ptr, 1, scan_count); // 1 is for valid
+ 	} else if (scan_count % BitpackingPrimitives::BITPACKING_ALGORITHM_GROUP_SIZE == 0) {
+@@ -232,6 +232,7 @@ void ExtractValidityMaskToData(const ValidityMask &validity, Vector &dst, idx_t
+ 		memcpy(write_ptr, tmp_data.get(), scan_count);
+ 	}
+ }
++
+ void RoaringScanPartial(ColumnSegment &segment, ColumnScanState &state, idx_t scan_count, Vector &result,
+                         idx_t result_offset) {
+ 	auto &scan_state = state.scan_state->Cast<RoaringScanState>();
+diff --git a/src/storage/compression/string_uncompressed.cpp b/src/storage/compression/string_uncompressed.cpp
+--- a/src/storage/compression/string_uncompressed.cpp
++++ b/src/storage/compression/string_uncompressed.cpp
+@@ -98,7 +98,7 @@ void UncompressedStringStorage::StringScanPartial(ColumnSegment &segment, Column
+ 	auto baseptr = scan_state.handle.Ptr() + segment.GetBlockOffset();
+ 	auto dict_end = GetDictionaryEnd(segment, scan_state.handle);
+ 	auto base_data = reinterpret_cast<int32_t *>(baseptr + DICTIONARY_HEADER_SIZE);
+-	auto result_data = FlatVector::GetData<string_t>(result);
++	auto result_data = FlatVector::GetDataMutable<string_t>(result);
+ 
+ 	int32_t previous_offset = start > 0 ? base_data[start - 1] : 0;
+ 
+@@ -129,7 +129,7 @@ void UncompressedStringStorage::Select(ColumnSegment &segment, ColumnScanState &
+ 	auto baseptr = scan_state.handle.Ptr() + segment.GetBlockOffset();
+ 	auto dict_end = GetDictionaryEnd(segment, scan_state.handle);
+ 	auto base_data = reinterpret_cast<int32_t *>(baseptr + DICTIONARY_HEADER_SIZE);
+-	auto result_data = FlatVector::GetData<string_t>(result);
++	auto result_data = FlatVector::GetDataMutable<string_t>(result);
+ 
+ 	for (idx_t i = 0; i < sel_count; i++) {
+ 		idx_t index = start + sel.get_index(i);
+@@ -168,7 +168,7 @@ void UncompressedStringStorage::StringFetchRow(ColumnSegment &segment, ColumnFet
+ 	auto baseptr = handle.Ptr() + segment.GetBlockOffset();
+ 	auto dict_end = GetDictionaryEnd(segment, handle);
+ 	auto base_data = reinterpret_cast<int32_t *>(baseptr + DICTIONARY_HEADER_SIZE);
+-	auto result_data = FlatVector::GetData<string_t>(result);
++	auto result_data = FlatVector::GetDataMutable<string_t>(result);
+ 
+ 	auto dict_offset = base_data[row_id];
+ 	uint32_t string_length;
+diff --git a/src/storage/compression/zstd.cpp b/src/storage/compression/zstd.cpp
+--- a/src/storage/compression/zstd.cpp
++++ b/src/storage/compression/zstd.cpp
+@@ -936,7 +936,7 @@ struct ZSTDScanState : public SegmentScanState {
+ 		}
+ 		auto &allocator = StringVector::GetStringAllocator(result);
+ 		auto uncompressed_data = StringVector::AllocateShrinkableBuffer(allocator, uncompressed_length);
+-		auto string_data = FlatVector::GetData<string_t>(result);
++		auto string_data = FlatVector::GetDataMutable<string_t>(result);
+ 
+ 		DecompressString(scan_state, uncompressed_data, uncompressed_length);
+ 
+diff --git a/src/storage/data_table.cpp b/src/storage/data_table.cpp
+--- a/src/storage/data_table.cpp
++++ b/src/storage/data_table.cpp
+@@ -1441,7 +1441,7 @@ idx_t DataTable::Delete(TableDeleteState &state, ClientContext &context, Vector
+ 	auto storage = local_storage.GetStorage(*this);
+ 
+ 	row_identifiers.Flatten(count);
+-	auto ids = FlatVector::GetData<row_t>(row_identifiers);
++	auto ids = FlatVector::GetDataMutable<row_t>(row_identifiers);
+ 
+ 	idx_t pos = 0;
+ 	idx_t delete_count = 0;
+@@ -1632,7 +1632,8 @@ void DataTable::Update(TableUpdateState &state, ClientContext &context, Vector &
+ 		row_ids_slice.Slice(row_ids, sel_global_update, n_global_update);
+ 		row_ids_slice.Flatten(n_global_update);
+ 
+-		row_groups->Update(transaction, *this, FlatVector::GetData<row_t>(row_ids_slice), column_ids, updates_slice);
++		row_groups->Update(transaction, *this, FlatVector::GetDataMutable<row_t>(row_ids_slice), column_ids,
++		                   updates_slice);
+ 	}
+ }
+ 
+diff --git a/src/storage/local_storage.cpp b/src/storage/local_storage.cpp
+--- a/src/storage/local_storage.cpp
++++ b/src/storage/local_storage.cpp
+@@ -543,7 +543,7 @@ idx_t LocalStorage::Delete(DataTable &table, Vector &row_ids, idx_t count) {
+ 		                                           IndexRemovalType::MAIN_INDEX_ONLY);
+ 	}
+ 
+-	auto ids = FlatVector::GetData<row_t>(row_ids);
++	auto ids = FlatVector::GetDataMutable<row_t>(row_ids);
+ 	idx_t delete_count = storage->GetCollection().Delete(TransactionData(0, 0), table, ids, count);
+ 	storage->deleted_rows += delete_count;
+ 	return delete_count;
+@@ -555,7 +555,7 @@ void LocalStorage::Update(DataTable &table, Vector &row_ids, const vector<Physic
+ 	auto storage = table_manager.GetStorage(table);
+ 	D_ASSERT(storage);
+ 
+-	auto ids = FlatVector::GetData<row_t>(row_ids);
++	auto ids = FlatVector::GetDataMutable<row_t>(row_ids);
+ 	storage->GetCollection().Update(TransactionData(0, 0), table, ids, column_ids, updates);
+ }
+ 
+diff --git a/src/storage/table/column_data_checkpointer.cpp b/src/storage/table/column_data_checkpointer.cpp
+--- a/src/storage/table/column_data_checkpointer.cpp
++++ b/src/storage/table/column_data_checkpointer.cpp
+@@ -65,7 +65,7 @@ static void CreateIntermediateVector(vector<reference<ColumnCheckpointState>> &s
+ 	chunk.Initialize(Allocator::DefaultAllocator(), types);
+ 	if (type.id() == LogicalTypeId::VALIDITY) {
+ 		auto data = FlatVector::GetData<bool>(chunk.data[0]);
+-		memset(data, 0, sizeof(bool) * STANDARD_VECTOR_SIZE);
++		memset((void *)data, 0, sizeof(bool) * STANDARD_VECTOR_SIZE);
+ 	}
+ }
+ 
+diff --git a/src/storage/table/list_column_data.cpp b/src/storage/table/list_column_data.cpp
+--- a/src/storage/table/list_column_data.cpp
++++ b/src/storage/table/list_column_data.cpp
+@@ -290,7 +290,7 @@ void ListColumnData::FetchRow(TransactionData transaction, ColumnFetchState &sta
+ 	validity->FetchRow(transaction, *state.child_states[0], storage_index, row_id, result, result_idx);
+ 
+ 	auto &validity_mask = FlatVector::Validity(result);
+-	auto list_data = FlatVector::GetData<list_entry_t>(result);
++	auto list_data = FlatVector::GetDataMutable<list_entry_t>(result);
+ 	auto &list_entry = list_data[result_idx];
+ 	// set the list entry offset to the size of the current list
+ 	list_entry.offset = ListVector::GetListSize(result);
+diff --git a/src/storage/table/row_group.cpp b/src/storage/table/row_group.cpp
+--- a/src/storage/table/row_group.cpp
++++ b/src/storage/table/row_group.cpp
+@@ -982,7 +982,7 @@ void RowGroup::Update(TransactionData transaction, DataTable &data_table, DataCh
+ void RowGroup::UpdateColumn(TransactionData transaction, DataTable &data_table, DataChunk &updates, Vector &row_ids,
+                             idx_t offset, idx_t count, const vector<column_t> &column_path, idx_t row_group_start) {
+ 	D_ASSERT(updates.ColumnCount() == 1);
+-	auto ids = FlatVector::GetData<row_t>(row_ids);
++	auto ids = FlatVector::GetDataMutable<row_t>(row_ids);
+ 
+ 	auto primary_column_idx = column_path[0];
+ 	D_ASSERT(primary_column_idx < columns.size());
+diff --git a/src/storage/table/row_group_collection.cpp b/src/storage/table/row_group_collection.cpp
+--- a/src/storage/table/row_group_collection.cpp
++++ b/src/storage/table/row_group_collection.cpp
+@@ -1059,7 +1059,7 @@ void RowGroupCollection::RemoveFromIndexes(const QueryContext &context, TableInd
+ void RowGroupCollection::UpdateColumn(TransactionData transaction, DataTable &data_table, Vector &row_ids,
+                                       const vector<column_t> &column_path, DataChunk &updates) {
+ 	D_ASSERT(updates.size() >= 1);
+-	auto ids = FlatVector::GetData<row_t>(row_ids);
++	auto ids = FlatVector::GetDataMutable<row_t>(row_ids);
+ 	idx_t pos = 0;
+ 	auto row_groups = GetRowGroups();
+ 	do {
+diff --git a/src/storage/table/row_id_column_data.cpp b/src/storage/table/row_id_column_data.cpp
+--- a/src/storage/table/row_id_column_data.cpp
++++ b/src/storage/table/row_id_column_data.cpp
+@@ -78,7 +78,7 @@ void RowIdColumnData::Filter(TransactionData transaction, idx_t vector_index, Co
+ 	// Generate row ids
+ 	// Create sequence for row ids
+ 	result.SetVectorType(VectorType::FLAT_VECTOR);
+-	auto result_data = FlatVector::GetData<row_t>(result);
++	auto result_data = FlatVector::Writer<row_t>(result);
+ 	for (size_t sel_idx = 0; sel_idx < count; sel_idx++) {
+ 		result_data[sel.get_index(sel_idx)] = UnsafeNumericCast<int64_t>(current_row + sel.get_index(sel_idx));
+ 	}
+@@ -97,7 +97,7 @@ void RowIdColumnData::Filter(TransactionData transaction, idx_t vector_index, Co
+ void RowIdColumnData::Select(TransactionData transaction, idx_t vector_index, ColumnScanState &state, Vector &result,
+                              SelectionVector &sel, idx_t count) {
+ 	result.SetVectorType(VectorType::FLAT_VECTOR);
+-	auto result_data = FlatVector::GetData<row_t>(result);
++	auto result_data = FlatVector::Writer<row_t>(result, count);
+ 	auto row_start = GetRowStart(state);
+ 	for (size_t sel_idx = 0; sel_idx < count; sel_idx++) {
+ 		result_data[sel_idx] = UnsafeNumericCast<row_t>(row_start + state.offset_in_column + sel.get_index(sel_idx));
+@@ -112,7 +112,7 @@ idx_t RowIdColumnData::Fetch(ColumnScanState &state, row_t row_id, Vector &resul
+ void RowIdColumnData::FetchRow(TransactionData transaction, ColumnFetchState &state, const StorageIndex &storage_index,
+                                row_t row_id, Vector &result, idx_t result_idx) {
+ 	result.SetVectorType(VectorType::FLAT_VECTOR);
+-	auto data = FlatVector::GetData<row_t>(result);
++	auto data = FlatVector::GetDataMutable<row_t>(result);
+ 	auto row_start = state.row_group->GetRowStart();
+ 	data[result_idx] = UnsafeNumericCast<row_t>(row_start) + row_id;
+ }
+diff --git a/src/storage/table/update_segment.cpp b/src/storage/table/update_segment.cpp
+--- a/src/storage/table/update_segment.cpp
++++ b/src/storage/table/update_segment.cpp
+@@ -158,7 +158,7 @@ static void MergeUpdateInfo(UpdateInfo &current, T *result_data) {
+ 
+ template <class T>
+ static void UpdateMergeFetch(transaction_t start_time, transaction_t transaction_id, UpdateInfo &info, Vector &result) {
+-	auto result_data = FlatVector::GetData<T>(result);
++	auto result_data = FlatVector::GetDataMutable<T>(result);
+ 	UpdateInfo::UpdatesForTransaction(info, start_time, transaction_id,
+ 	                                  [&](UpdateInfo &current) { MergeUpdateInfo<T>(current, result_data); });
+ }
+@@ -239,7 +239,7 @@ static void FetchCommittedValidity(UpdateInfo &info, Vector &result) {
+ 
+ template <class T>
+ static void TemplatedFetchCommitted(UpdateInfo &info, Vector &result) {
+-	auto result_data = FlatVector::GetData<T>(result);
++	auto result_data = FlatVector::GetDataMutable<T>(result);
+ 	MergeUpdateInfo<T>(info, result_data);
+ }
+ 
+@@ -336,7 +336,7 @@ static void MergeUpdateInfoRange(UpdateInfo &current, idx_t start, idx_t end, id
+ template <class T>
+ static void TemplatedFetchCommittedRange(UpdateInfo &info, idx_t start, idx_t end, idx_t result_offset,
+                                          Vector &result) {
+-	auto result_data = FlatVector::GetData<T>(result);
++	auto result_data = FlatVector::GetDataMutable<T>(result);
+ 	MergeUpdateInfoRange<T>(info, start, end, result_offset, result_data);
+ }
+ 
+@@ -440,7 +440,7 @@ static void FetchRowValidity(transaction_t start_time, transaction_t transaction
+ template <class T>
+ static void TemplatedFetchRow(transaction_t start_time, transaction_t transaction_id, UpdateInfo &info, idx_t row_idx,
+                               Vector &result, idx_t result_idx) {
+-	auto result_data = FlatVector::GetData<T>(result);
++	auto result_data = FlatVector::GetDataMutable<T>(result);
+ 	UpdateInfo::UpdatesForTransaction(info, start_time, transaction_id, [&](UpdateInfo &current) {
+ 		auto info_data = current.GetData<T>();
+ 		auto tuples = current.GetTuples();
+@@ -943,7 +943,7 @@ template <class T>
+ static void MergeUpdateLoop(UpdateInfo &base_info, Vector &base_data, UpdateInfo &update_info,
+                             UnifiedVectorFormat &update, row_t *ids, idx_t count, const SelectionVector &sel,
+                             idx_t row_group_start) {
+-	auto base_table_data = FlatVector::GetData<T>(base_data);
++	auto base_table_data = FlatVector::GetDataMutable<T>(base_data);
+ 	auto update_vector_data = update.GetData<T>(update);
+ 	MergeUpdateLoopInternal<T, T>(base_info, base_table_data, update_info, *update.sel, update_vector_data, ids, count,
+ 	                              sel, row_group_start);
+@@ -1298,7 +1298,7 @@ void UpdateSegment::Update(TransactionData transaction, DataTable &data_table, i
+ 	if (statistics_update_function == UpdateStringStatistics) {
+ 		// for strings - we need to push all strings we are going to place here into the string heap of the segment
+ 		update_p.Flatten(count);
+-		auto update_data = FlatVector::GetData<string_t>(update_p);
++		auto update_data = FlatVector::GetDataMutable<string_t>(update_p);
+ 		auto &validity = FlatVector::Validity(update_p);
+ 		for (idx_t i = 0; i < count; i++) {
+ 			if (validity.RowIsValid(i)) {
+diff --git a/src/storage/table/variant/variant_shredding.cpp b/src/storage/table/variant/variant_shredding.cpp
+--- a/src/storage/table/variant/variant_shredding.cpp
++++ b/src/storage/table/variant/variant_shredding.cpp
+@@ -563,7 +563,7 @@ void DuckDBVariantShredding::AnalyzeVariantValues(UnifiedVariantVectorData &vari
+ 	// auto &validity = FlatVector::Validity(value);
+ 	uint32_t *untyped_data = nullptr;
+ 	if (untyped_values) {
+-		untyped_data = FlatVector::GetData<uint32_t>(*untyped_values);
++		untyped_data = FlatVector::GetDataMutable<uint32_t>(*untyped_values);
+ 	}
+ 
+ 	for (uint32_t i = 0; i < static_cast<uint32_t>(count); i++) {
+diff --git a/src/storage/wal_replay.cpp b/src/storage/wal_replay.cpp
+--- a/src/storage/wal_replay.cpp
++++ b/src/storage/wal_replay.cpp
+@@ -1161,7 +1161,7 @@ void WriteAheadLogDeserializer::ReplayRowGroupData() {
+ 			column_ids.emplace_back(col.StorageOid());
+ 		}
+ 		Vector row_id_vector(LogicalType::ROW_TYPE, STANDARD_VECTOR_SIZE);
+-		auto row_ids = FlatVector::GetData<row_t>(row_id_vector);
++		auto row_ids = FlatVector::GetDataMutable<row_t>(row_id_vector);
+ 		auto current_row_id = storage.GetTotalRows();
+ 		for (auto &chunk : new_row_groups.Chunks(transaction, column_ids)) {
+ 			for (idx_t r = 0; r < chunk.size(); r++) {
+diff --git a/src/transaction/wal_write_state.cpp b/src/transaction/wal_write_state.cpp
+--- a/src/transaction/wal_write_state.cpp
++++ b/src/transaction/wal_write_state.cpp
+@@ -189,7 +189,7 @@ void WALWriteState::WriteDelete(DeleteInfo &info) {
+ 		vector<LogicalType> delete_types = {LogicalType::ROW_TYPE};
+ 		delete_chunk->Initialize(Allocator::DefaultAllocator(), delete_types);
+ 	}
+-	auto rows = FlatVector::GetData<row_t>(delete_chunk->data[0]);
++	auto rows = FlatVector::GetDataMutable<row_t>(delete_chunk->data[0]);
+ 	if (info.is_consecutive) {
+ 		for (idx_t i = 0; i < info.count; i++) {
+ 			rows[i] = UnsafeNumericCast<int64_t>(info.base_row + i);
+@@ -227,7 +227,7 @@ void WALWriteState::WriteUpdate(UpdateInfo &info) {
+ 	info.segment->FetchCommitted(info.vector_index, update_chunk->data[0]);
+ 
+ 	// write the row ids into the chunk
+-	auto row_ids = FlatVector::GetData<row_t>(update_chunk->data[1]);
++	auto row_ids = FlatVector::GetDataMutable<row_t>(update_chunk->data[1]);
+ 	idx_t start = info.row_group_start + info.vector_index * STANDARD_VECTOR_SIZE;
+ 	auto tuples = info.GetTuples();
+ 	for (idx_t i = 0; i < info.N; i++) {
+@@ -236,7 +236,7 @@ void WALWriteState::WriteUpdate(UpdateInfo &info) {
+ 	if (column_data.type.id() == LogicalTypeId::VALIDITY) {
+ 		// zero-initialize the booleans
+ 		// FIXME: this is only required because of NullValue<T> in Vector::Serialize...
+-		auto booleans = FlatVector::GetData<bool>(update_chunk->data[0]);
++		auto booleans = FlatVector::GetDataMutable<bool>(update_chunk->data[0]);
+ 		for (idx_t i = 0; i < info.N; i++) {
+ 			auto idx = tuples[i];
+ 			booleans[idx] = false;
+diff --git a/tools/shell/shell_renderer.cpp b/tools/shell/shell_renderer.cpp
+--- a/tools/shell/shell_renderer.cpp
++++ b/tools/shell/shell_renderer.cpp
+@@ -323,7 +323,7 @@ bool RenderingQueryResult::TryConvertChunk() {
+ 	if (renderer.HasConvertValue()) {
+ 		for (idx_t c = 0; c < result.ColumnCount(); c++) {
+ 			auto &str_vec = varchar_chunk->data[c];
+-			auto strings = duckdb::FlatVector::GetData<duckdb::string_t>(str_vec);
++			auto strings = duckdb::FlatVector::GetDataMutable<duckdb::string_t>(str_vec);
+ 			for (idx_t r = 0; r < varchar_chunk->size(); r++) {
+ 				if (duckdb::FlatVector::IsNull(str_vec, r)) {
+ 					continue;
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

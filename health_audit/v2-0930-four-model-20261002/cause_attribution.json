@@ -1,0 +1,58 @@
+{
+  "checked_at": "2026-10-02T06:08:21.166579+00:00",
+  "scope": "Four v2-0930 main runs and selected 32GiB retry trajectories; read-only investigation; no extra experiments.",
+  "fixed_environment_and_integration": [
+    {
+      "issue": "Claude native runtime cannot execute in dromara__dax-pay-c_f88f383",
+      "evidence": "All three Claude runs fail with cannot execute: required file not found before solving; exact missing runtime/ELF interpreter not independently identified."
+    },
+    {
+      "issue": "Repository working directory not initialized consistently",
+      "evidence": "docker image inspect across all82 cached base images:56 default root,6 /go,20 /testbed. Converter emits raw problem statement without a /testbed wrapper. Three GLM/Kimi trials requested clarification without tool calls. Non-/testbed cwd alone is not proof of a failed trial."
+    },
+    {
+      "issue": "Missing /tmp/test.patch in three Rust tasks",
+      "evidence": "Raw v2 records contain nonempty test_patch (miden2883,forgecode720,xremap2298 chars), converter does not write that field into verifier assets. It relies on a file already present inside the image."
+    }
+  ],
+  "fixed_verifier_design": {
+    "source_provenance": "82/82 generated eval.sh files equal source v2-eval.json eval_script after trailing-newline normalization;72 include patch --batch --fuzz=5 fallback. Wrapper maps effective shell exit to reward, without asserting tests executed or setup succeeded.",
+    "problems": [
+      "Reversing already-present test changes; partial/rejected patches do not abort reliably.",
+      "Zero tests can return zero and be rewarded.",
+      "actor-framework eval.sh builds with cmake --build build -j then ctest even if build failed.",
+      "Kimi 32GiB actor-framework verifier stdout line317: ninja build stopped: subcommand failed;line325:100% tests passed out of2;line328:OMNIGRIL_EXIT_CODE=0. This raises stale/incompletely rebuilt test artifact risk, not proof of which exact old binary was used."
+    ]
+  },
+  "mixed_agent_resource_configuration": {
+    "live_checks": "Running containers have NanoCpus4000000000, memory34359738368, cpu.max400000 100000, but nproc192.",
+    "commands": {
+      "GLM actor-framework": "cmake --build build -j $(nproc)",
+      "Kimi actor-framework": "ninja -j\"$(nproc)\"; native tool observation explicitly printed192",
+      "Qwen actor-framework": "cmake --build build -j128",
+      "Qwen gemini-cli": "npx vitest run src/ui, without explicit worker cap"
+    },
+    "conclusion": "Agent commands trigger excessive child-process concurrency; CPU quota does not restrict CPU visibility here, and setup/verifier do not consistently bound workers.32GiB does not establish that normal bounded builds intrinsically need more memory."
+  },
+  "potentially_transient": [
+    {
+      "issue": "Kimi/free-claude-code-845 API socket closed",
+      "evidence": "Terminal result at turn73:API Error:The socket connection was closed unexpectedly.",
+      "uncertainty": "Single transport failure; cannot assign specifically to sidecar,upstream provider,or local network."
+    },
+    {
+      "issue": "Maven Central429",
+      "evidence": "Tetrad and daxpay verifier logs show dependency download Too Many Requests.",
+      "uncertainty": "External throttling is temporal, but uncached evaluation dependencies are a systematic reproducibility weakness."
+    }
+  ],
+  "agent_or_test_contract_failures_need_case_review": [
+    "Missing project modules/functions or compiler type errors can be implementation bugs, test-contract mismatch, or verifier damage; not automatically missing environment dependencies.",
+    "DeepLabCut Luna executed34tests with33pass1fail on deprecation warning behavior; no target patch failure detected for this trial.",
+    "Agent added tests can collide by name with injected tests; isolate/reset injected test targets deterministically before interpreting failure."
+  ],
+  "dataset_answer_exposure": {
+    "evidence": "Qwen DeepLabCut and Kimi wavesurfer successfully cherry-picked upstream solution commits already present in repository.",
+    "attribution": "Dataset/image repository history exposes future solution; agent uses exposed data. Not a random infrastructure failure and not necessarily a harness protocol violation."
+  }
+}

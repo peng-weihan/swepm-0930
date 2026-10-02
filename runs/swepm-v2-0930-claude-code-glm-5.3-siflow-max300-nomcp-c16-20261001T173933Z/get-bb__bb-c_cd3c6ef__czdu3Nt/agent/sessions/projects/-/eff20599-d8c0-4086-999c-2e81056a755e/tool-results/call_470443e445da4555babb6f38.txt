@@ -1,0 +1,202 @@
+testbed/apps/server/test/threads/thread-send.test.ts:4:import { sendQueuedDraft } from "../../src/services/threads/queued-drafts.js";
+testbed/apps/server/test/threads/thread-send.test.ts:9:  seedDraft,
+testbed/apps/server/test/threads/thread-send.test.ts:228:  it("records thread prompt history for idle queued draft auto-sends", async () => {
+testbed/apps/server/test/threads/thread-send.test.ts:232:        id: "host-thread-send-queued-draft-history",
+testbed/apps/server/test/threads/thread-send.test.ts:249:        providerThreadId: "provider-thread-send-queued-draft-history",
+testbed/apps/server/test/threads/thread-send.test.ts:252:        { type: "text", text: "send queued draft" },
+testbed/apps/server/test/threads/thread-send.test.ts:254:      const draft = seedDraft(harness.deps, {
+testbed/apps/server/test/threads/thread-send.test.ts:259:      await sendQueuedDraft(harness.deps, {
+testbed/apps/server/test/threads/thread-send.test.ts:260:        draftId: draft.id,
+testbed/apps/server/test/threads/timeline-service.test.ts:2227:  it("loads details for stale turn-summary ranges whose queued draft is accepted by the next turn", async () => {
+testbed/apps/server/test/threads/timeline-service.test.ts:2369:  it("keeps requested-turn accepted drafts while filtering drafts accepted by later turns", async () => {
+testbed/apps/server/test/services/prompt-history.test.ts:5:  createDraft,
+testbed/apps/server/test/services/prompt-history.test.ts:314:  it("returns thread follow-up history with queued drafts merged in", () => {
+testbed/apps/server/test/services/prompt-history.test.ts:348:    createDraft(db, noopNotifier, {
+testbed/apps/server/test/services/prompt-history.test.ts:367:        id: expect.stringMatching(/^draft:/u),
+testbed/apps/server/test/public/public-thread-data.test.ts:4:  createDraftId,
+testbed/apps/server/test/public/public-thread-data.test.ts:9:  getDraft,
+testbed/apps/server/test/public/public-thread-data.test.ts:22:  threadDraftListResponseSchema,
+testbed/apps/server/test/public/public-thread-data.test.ts:37:  seedDraft,
+testbed/apps/server/test/public/public-thread-data.test.ts:49:const draftIdResponseSchema = z.object({
+testbed/apps/server/test/public/public-thread-data.test.ts:861:  it("creates and deletes thread drafts", async () => {
+testbed/apps/server/test/public/public-thread-data.test.ts:904:        `/api/v1/threads/${thread.id}/drafts`,
+testbed/apps/server/test/public/public-thread-data.test.ts:911:            input: [{ type: "text", text: "Draft from test" }],
+testbed/apps/server/test/public/public-thread-data.test.ts:918:      const draft = draftIdResponseSchema.parse(await readJson(createResponse));
+testbed/apps/server/test/public/public-thread-data.test.ts:919:      expect(getDraft(harness.db, draft.id)).toMatchObject({
+testbed/apps/server/test/public/public-thread-data.test.ts:920:        id: draft.id,
+testbed/apps/server/test/public/public-thread-data.test.ts:924:        `/api/v1/threads/${thread.id}/drafts/${draft.id}`,
+testbed/apps/server/test/public/public-thread-data.test.ts:931:      expect(getDraft(harness.db, draft.id)).toBeNull();
+testbed/apps/server/test/public/public-thread-data.test.ts:937:  it("auto-sends drafts created on idle provider threads", async () => {
+testbed/apps/server/test/public/public-thread-data.test.ts:941:        id: "host-draft-create-idle-auto-send",
+testbed/apps/server/test/public/public-thread-data.test.ts:945:        path: "/tmp/draft-create-idle-auto-send-source",
+testbed/apps/server/test/public/public-thread-data.test.ts:950:        path: "/tmp/draft-create-idle-auto-send-environment",
+testbed/apps/server/test/public/public-thread-data.test.ts:961:        providerThreadId: "provider-draft-create-idle-auto-send",
+testbed/apps/server/test/public/public-thread-data.test.ts:965:        `/api/v1/threads/${thread.id}/drafts`,
+testbed/apps/server/test/public/public-thread-data.test.ts:972:            input: [{ type: "text", text: "Draft ready to send" }],
+testbed/apps/server/test/public/public-thread-data.test.ts:978:      const draft = draftIdResponseSchema.parse(await readJson(createResponse));
+testbed/apps/server/test/public/public-thread-data.test.ts:987:        input: [{ type: "text", text: "Draft ready to send" }],
+testbed/apps/server/test/public/public-thread-data.test.ts:989:          providerThreadId: "provider-draft-create-idle-auto-send",
+testbed/apps/server/test/public/public-thread-data.test.ts:992:      expect(getDraft(harness.db, draft.id)).toBeNull();
+testbed/apps/server/test/public/public-thread-data.test.ts:999:  it("lists queued thread drafts", async () => {
+testbed/apps/server/test/public/public-thread-data.test.ts:1014:      seedDraft(harness.deps, {
+testbed/apps/server/test/public/public-thread-data.test.ts:1016:        content: [{ type: "text", text: "First queued draft" }],
+testbed/apps/server/test/public/public-thread-data.test.ts:1022:      seedDraft(harness.deps, {
+testbed/apps/server/test/public/public-thread-data.test.ts:1024:        content: [{ type: "text", text: "Second queued draft" }],
+testbed/apps/server/test/public/public-thread-data.test.ts:1032:        `/api/v1/threads/${thread.id}/drafts`,
+testbed/apps/server/test/public/public-thread-data.test.ts:1036:      const drafts = threadDraftListResponseSchema.parse(
+testbed/apps/server/test/public/public-thread-data.test.ts:1039:      expect(drafts).toHaveLength(2);
+testbed/apps/server/test/public/public-thread-data.test.ts:1040:      expect(drafts).toEqual(
+testbed/apps/server/test/public/public-thread-data.test.ts:1043:            content: [{ type: "text", text: "First queued draft" }],
+testbed/apps/server/test/public/public-thread-data.test.ts:1050:            content: [{ type: "text", text: "Second queued draft" }],
+testbed/apps/server/test/public/public-thread-data.test.ts:1116:      seedDraft(harness.deps, {
+testbed/apps/server/test/public/public-thread-data.test.ts:1118:        content: [{ type: "text", text: "Queued draft" }],
+testbed/apps/server/test/public/public-thread-data.test.ts:1200:      expect(bootstrap.drafts).toHaveLength(1);
+testbed/apps/server/test/public/public-thread-data.test.ts:1203:      expect(bootstrap.drafts[0]?.content).toEqual([
+testbed/apps/server/test/public/public-thread-data.test.ts:1204:        { type: "text", text: "Queued draft" },
+testbed/apps/server/test/public/public-thread-data.test.ts:1210:          [{ type: "text", text: "Queued draft" }],
+testbed/apps/server/test/public/public-thread-data.test.ts:1255:  it("inherits thread default execution options when draft overrides are omitted", async () => {
+testbed/apps/server/test/public/public-thread-data.test.ts:1298:        `/api/v1/threads/${thread.id}/drafts`,
+testbed/apps/server/test/public/public-thread-data.test.ts:1305:            input: [{ type: "text", text: "Draft from test" }],
+testbed/apps/server/test/public/public-thread-data.test.ts:1310:      const draft = draftIdResponseSchema.parse(await readJson(createResponse));
+testbed/apps/server/test/public/public-thread-data.test.ts:1311:      expect(getDraft(harness.db, draft.id)).toMatchObject({
+testbed/apps/server/test/public/public-thread-data.test.ts:1312:        id: draft.id,
+testbed/apps/server/test/public/public-thread-data.test.ts:1323:  it("persists draft model and service tier and clears the draft after reprovision send", async () => {
+testbed/apps/server/test/public/public-thread-data.test.ts:1333:        path: "/tmp/draft-reprovision",
+testbed/apps/server/test/public/public-thread-data.test.ts:1344:        `/api/v1/threads/${thread.id}/drafts`,
+testbed/apps/server/test/public/public-thread-data.test.ts:1351:            input: [{ type: "text", text: "Draft from test" }],
+testbed/apps/server/test/public/public-thread-data.test.ts:1360:      const createdDraft = (await readJson(createResponse)) as {
+testbed/apps/server/test/public/public-thread-data.test.ts:1365:      expect(createdDraft).toMatchObject({
+testbed/apps/server/test/public/public-thread-data.test.ts:1371:        `/api/v1/threads/${thread.id}/drafts/${createdDraft.id}/send`,
+testbed/apps/server/test/public/public-thread-data.test.ts:1382:      expect(getDraft(harness.db, createdDraft.id)).toBeNull();
+testbed/apps/server/test/public/public-thread-data.test.ts:1428:  it("keeps drafts when send is attempted while a created thread is still starting", async () => {
+testbed/apps/server/test/public/public-thread-data.test.ts:1432:        id: "host-draft-created-thread-send",
+testbed/apps/server/test/public/public-thread-data.test.ts:1436:        path: "/tmp/draft-created-thread-send",
+testbed/apps/server/test/public/public-thread-data.test.ts:1441:        path: "/tmp/draft-created-thread-send",
+testbed/apps/server/test/public/public-thread-data.test.ts:1471:      const createDraftResponse = await harness.app.request(
+testbed/apps/server/test/public/public-thread-data.test.ts:1472:        `/api/v1/threads/${createdThread.id}/drafts`,
+testbed/apps/server/test/public/public-thread-data.test.ts:1479:            input: [{ type: "text", text: "Draft follow-up while starting" }],
+testbed/apps/server/test/public/public-thread-data.test.ts:1483:      expect(createDraftResponse.status).toBe(201);
+testbed/apps/server/test/public/public-thread-data.test.ts:1484:      const createdDraft = draftIdResponseSchema.parse(
+testbed/apps/server/test/public/public-thread-data.test.ts:1485:        await readJson(createDraftResponse),
+testbed/apps/server/test/public/public-thread-data.test.ts:1489:        `/api/v1/threads/${createdThread.id}/drafts/${createdDraft.id}/send`,
+testbed/apps/server/test/public/public-thread-data.test.ts:1504:      expect(getDraft(harness.db, createdDraft.id)).toMatchObject({
+testbed/apps/server/test/public/public-thread-data.test.ts:1505:        id: createdDraft.id,
+testbed/apps/server/test/public/public-thread-data.test.ts:2048:  it("fails loudly when stored draft content is malformed", async () => {
+testbed/apps/server/test/public/public-thread-data.test.ts:2064:      const draftId = createDraftId();
+testbed/apps/server/test/public/public-thread-data.test.ts:2065:      const draft = harness.db
+testbed/apps/server/test/public/public-thread-data.test.ts:2068:          id: draftId,
+testbed/apps/server/test/public/public-thread-data.test.ts:2083:        `/api/v1/threads/${thread.id}/drafts/${draft.id}/send`,
+testbed/apps/server/test/public/public-thread-data.test.ts:2096:        message: expect.stringContaining(`draft ${draft.id}`),
+testbed/apps/server/test/public/public-thread-interactions.test.ts:1:import { createDraft } from "@bb/db";
+testbed/apps/server/test/public/public-thread-interactions.test.ts:598:  it("rejects send and draft-send while a thread awaits user interaction", async () => {
+testbed/apps/server/test/public/public-thread-interactions.test.ts:617:      const draft = createDraft(harness.db, harness.hub, {
+testbed/apps/server/test/public/public-thread-interactions.test.ts:619:        content: [{ type: "text", text: "Queued draft" }],
+testbed/apps/server/test/public/public-thread-interactions.test.ts:669:      const draftSendResponse = await harness.app.request(
+testbed/apps/server/test/public/public-thread-interactions.test.ts:670:        `/api/v1/threads/${thread.id}/drafts/${draft.id}/send`,
+testbed/apps/server/test/public/public-thread-interactions.test.ts:679:      expect(draftSendResponse.status).toBe(409);
+testbed/apps/server/test/public/public-thread-interactions.test.ts:680:      await expect(readJson(draftSendResponse)).resolves.toEqual({
+testbed/apps/server/test/public/public-threads.manager-and-ownership.test.ts:9:  getDraft,
+testbed/apps/server/test/public/public-threads.manager-and-ownership.test.ts:29:  seedDraft,
+testbed/apps/server/test/public/public-threads.manager-and-ownership.test.ts:179:  it("queues thread.rename, returns thread events, sends drafts, and creates manager threads", async () => {
+testbed/apps/server/test/public/public-threads.manager-and-ownership.test.ts:240:      const draft = seedDraft(harness.deps, {
+testbed/apps/server/test/public/public-threads.manager-and-ownership.test.ts:242:        content: [{ type: "text", text: "Draft content" }],
+testbed/apps/server/test/public/public-threads.manager-and-ownership.test.ts:249:        providerThreadId: "provider-draft",
+testbed/apps/server/test/public/public-threads.manager-and-ownership.test.ts:255:      const draftSendResponse = await harness.app.request(
+testbed/apps/server/test/public/public-threads.manager-and-ownership.test.ts:256:        `/api/v1/threads/${thread.id}/drafts/${draft.id}/send`,
+testbed/apps/server/test/public/public-threads.manager-and-ownership.test.ts:265:      expect(draftSendResponse.status).toBe(200);
+testbed/apps/server/test/public/public-threads.manager-and-ownership.test.ts:266:      const draftCommand = await waitForQueuedCommand(
+testbed/apps/server/test/public/public-threads.manager-and-ownership.test.ts:271:      expect(draftCommand.command).toMatchObject({
+testbed/apps/server/test/public/public-threads.manager-and-ownership.test.ts:278:      expect(getDraft(harness.db, draft.id)).toBeNull();
+testbed/apps/server/test/public/public-authorization-regressions.test.ts:5:  getDraft,
+testbed/apps/server/test/public/public-authorization-regressions.test.ts:12:  seedDraft,
+testbed/apps/server/test/public/public-authorization-regressions.test.ts:163:  it("does not delete a draft through another thread route", async () => {
+testbed/apps/server/test/public/public-authorization-regressions.test.ts:167:        id: "host-draft-delete",
+testbed/apps/server/test/public/public-authorization-regressions.test.ts:184:      seedDraft(harness.deps, {
+testbed/apps/server/test/public/public-authorization-regressions.test.ts:186:        content: [{ type: "text", text: "Draft A" }],
+testbed/apps/server/test/public/public-authorization-regressions.test.ts:188:      const draftB = seedDraft(harness.deps, {
+testbed/apps/server/test/public/public-authorization-regressions.test.ts:190:        content: [{ type: "text", text: "Draft B" }],
+testbed/apps/server/test/public/public-authorization-regressions.test.ts:194:        `/api/v1/threads/${threadA.id}/drafts/${draftB.id}`,
+testbed/apps/server/test/public/public-authorization-regressions.test.ts:204:      expect(getDraft(harness.db, draftB.id)).toMatchObject({
+testbed/apps/server/test/public/public-authorization-regressions.test.ts:205:        id: draftB.id,
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:8:  getDraft,
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:26:  seedDraft,
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1017:  it("steers queued drafts for active threads with auto mode", async () => {
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1023:        path: "/tmp/thread-draft-steer-project",
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1028:        path: "/tmp/thread-draft-steer-project",
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1038:        providerThreadId: "provider-draft-steer",
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1047:        providerThreadId: "provider-draft-steer",
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1051:        scope: turnScope("turn-draft-steer"),
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1053:      const draft = seedDraft(harness.deps, {
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1060:        `/api/v1/threads/${thread.id}/drafts/${draft.id}/send`,
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1080:          expectedTurnId: "turn-draft-steer",
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1086:          providerThreadId: "provider-draft-steer",
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1089:      expect(getDraft(harness.db, draft.id)).toBeNull();
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1095:  it("sends queued drafts with explicit steer mode", async () => {
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1101:        path: "/tmp/thread-draft-explicit-steer-project",
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1106:        path: "/tmp/thread-draft-explicit-steer-project",
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1116:        providerThreadId: "provider-draft-explicit-steer",
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1125:        providerThreadId: "provider-draft-explicit-steer",
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1129:        scope: turnScope("turn-draft-explicit-steer"),
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1131:      const draft = seedDraft(harness.deps, {
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1138:        `/api/v1/threads/${thread.id}/drafts/${draft.id}/send`,
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1158:          expectedTurnId: "turn-draft-explicit-steer",
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1164:          providerThreadId: "provider-draft-explicit-steer",
+testbed/apps/server/test/public/public-threads.send-and-steer.test.ts:1167:      expect(getDraft(harness.db, draft.id)).toBeNull();
+testbed/apps/server/test/helpers/seed.ts:3:  createDraft,
+testbed/apps/server/test/helpers/seed.ts:171:export function seedDraft(
+testbed/apps/server/test/helpers/seed.ts:182:  return createDraft(deps.db, deps.hub, {
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:7:  getDraft,
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:11:  listDrafts,
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:35:  seedDraft,
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:46:import { sendNextQueuedDraftIfPresent } from "../../src/services/threads/queued-drafts.js";
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:129:  it("auto-sends the next queued draft when a turn completes", async () => {
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:141:        path: "/tmp/queued-draft-auto-send",
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:166:      const draft = seedDraft(harness.deps, {
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:209:      expect(getDraft(harness.db, draft.id)).toBeNull();
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:219:  it("responds before manager queued-draft auto-send waits on preferences", async () => {
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:223:        id: "host-event-manager-draft-auto-send",
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:231:        path: "/tmp/manager-queued-draft-auto-send",
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:242:        providerThreadId: "provider-manager-draft-auto-send",
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:246:      seedDraft(harness.deps, {
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:255:        turnId: "turn-manager-draft-auto-send",
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:256:        providerThreadId: "provider-manager-draft-auto-send",
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:270:                providerThreadId: "provider-manager-draft-auto-send",
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:271:                scope: turnScope("turn-manager-draft-auto-send"),
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:317:  it("auto-sends the next queued draft even when a pending interaction exists", async () => {
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:329:        path: "/tmp/queued-draft-auto-send-pending-interaction",
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:354:      seedDraft(harness.deps, {
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:386:        sendNextQueuedDraftIfPresent(harness.deps, {
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:469:        path: "/tmp/queued-draft-manager-notify-failure",
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:507:      const draft = seedDraft(harness.deps, {
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:556:      expect(getDraft(harness.db, draft.id)).toBeNull();
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:1620:        path: "/tmp/queued-draft-dedupe",
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:1645:      seedDraft(harness.deps, {
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:1651:      seedDraft(harness.deps, {
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:1704:      expect(listDrafts(harness.db, thread.id)).toHaveLength(1);
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:1726:        path: "/tmp/queued-draft-mixed-batch",
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:1760:      seedDraft(harness.deps, {
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:1766:      seedDraft(harness.deps, {
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:1772:      seedDraft(harness.deps, {
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:1850:      expect(listDrafts(harness.db, threadA.id)).toHaveLength(1);
+testbed/apps/server/test/internal/internal-event-side-effects.test.ts:1851:      expect(listDrafts(harness.db, threadB.id)).toHaveLength(0);
+testbed/apps/server/test/system/periodic-sweeps.test.ts:5:  claimDraft,
+testbed/apps/server/test/system/periodic-sweeps.test.ts:11:  getDraft,
+testbed/apps/server/test/system/periodic-sweeps.test.ts:50:import { sendQueuedDraft } from "../../src/services/threads/queued-drafts.js";
+testbed/apps/server/test/system/periodic-sweeps.test.ts:53:  seedDraft,
+testbed/apps/server/test/system/periodic-sweeps.test.ts:694:  it("auto-sends queued drafts left on idle threads", async () => {
+testbed/apps/server/test/system/periodic-sweeps.test.ts:698:        id: "host-periodic-queued-draft",
+testbed/apps/server/test/system/periodic-sweeps.test.ts:702:        path: "/tmp/periodic-queued-draft-source",
+testbed/apps/server/test/system/periodic-sweeps.test.ts:707:        path: "/tmp/periodic-queued-draft-environment",
+testbed/apps/server/test/system/periodic-sweeps.test.ts:718:        providerThreadId: "provider-periodic-queued-draft",
+testbed/apps/server/test/system/periodic-sweeps.test.ts:720:      const draft = seedDraft(harness.deps, {
+testbed/apps/server/test/system/periodic-sweeps.test.ts:736:          providerThreadId: "provider-periodic-queued-draft",
+testbed/apps/server/test/system/periodic-sweeps.test.ts:739:      expect(getDraft(harness.db, draft.id)).toBeNull();
+testbed/apps/server/test/system/periodic-sweeps.test.ts:746:  it("auto-sends stale claimed queued drafts left on idle threads", async () => {
+testbed/apps/server/test/system/periodic-sweeps.test.ts:750:        id: "host-periodic-stale-claimed-draft",
+testbed/apps/server/test/system/periodic-sweeps.test.ts:754:        path: "/tmp/periodic-stale-claimed-draft-source",
+testbed/apps/server/test/system/periodic-sweeps.test.ts:759:        path: "/tmp/periodic-stale-claimed-draft-environment",
+testbed/apps/server/test/system/periodic-sweeps.test.ts:770:        providerThreadId: "provider-periodic-stale-claimed-draft",
+testbed/apps/server/test/system/periodic-sweeps.test.ts:772:      const draft = seedDraft(harness.deps, {
+testbed/apps/server/test/system/periodic-sweeps.test.ts:776:      expect(claimDraft(harness.db, harness.hub, draft.id)?.id).toBe(draft.id);
+
+[Showing results with pagination = limit: 200]

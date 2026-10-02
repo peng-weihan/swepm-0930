@@ -1,0 +1,59 @@
+{
+  "instance_id": "cmu-phil__tetrad-c_5a3d308",
+  "overall_quality": "questionable",
+  "test_scope": "too_broad",
+  "confidence": 0.72,
+  "gold_patch_assessment": "The gold patch correctly renames DataSet.getColumn(Node) to getColumnIndex(Node) in the interface (DataSet.java), both implementations (BoxDataSet.java, NumberObjectDataSet.java), and approximately 50 call sites across tetrad-gui and tetrad-lib. However, it also includes two entirely new files (LatentParentRecovery.java ~578 lines, LatentParentRecoveryGraphWrapper.java ~104 lines), a prodConfig.xml addition to register the new model, and removal of unused imports in two files. These additions are unrelated to the getColumn→getColumnIndex rename described in the issue.",
+  "base_vs_gold_expectation": "Base + test patch → compilation failure (test patch uses getColumnIndex but interface still defines getColumn) → mvn test fails → reward=0. Gold + test patch → interface renamed + all call sites updated → compilation succeeds → tests pass → reward=1. This should work as intended. A candidate that renames ALL call sites (including those in the test patch) may face test patch application failure, though the fallback 'patch --fuzz=5' may handle already-applied hunks.",
+  "too_narrow_risks": [
+    "The test runs the entire Maven build (mvn clean test) rather than targeted compilation checks or specific unit tests. A candidate could pass by keeping getColumn as an alias/default method while adding getColumnIndex, avoiding the intended rename.",
+    "No specific test asserts that getColumn is removed; only compilation of call sites that use getColumnIndex proves the rename happened."
+  ],
+  "too_broad_risks": [
+    "Running 'mvn -B -ntp clean test' executes the entire test suite. Any pre-existing flaky test, network-dependent test, or test with timing sensitivity could cause a false-negative verdict unrelated to the candidate's changes.",
+    "The gold patch includes 682 lines of new unrelated code (LatentParentRecovery.java, LatentParentRecoveryGraphWrapper.java, prodConfig.xml). A candidate doing only the rename as instructed won't produce these files, but fortunately they don't affect compilation or test pass/fail since nothing references them.",
+    "Build timeout is 1800s and verifier timeout is 3600s for a full Maven build of a large Java project. Resource pressure (24GB RAM, 4 CPUs) could cause intermittent build failures."
+  ],
+  "implementation_coupling": [
+    "The gold patch is coupled to a specific set of files for the rename. A correct alternative that uses a delegation pattern (keeping getColumn as deprecated default calling getColumnIndex) would also satisfy the issue requirements but the test patch hard-codes the getColumnIndex name in its changed call sites, requiring the interface to define getColumnIndex.",
+    "The gold patch bundles unrelated new feature code (LatentParentRecovery algorithm). A candidate is not expected to produce this, and fortunately it's not needed for test success."
+  ],
+  "environment_risks": [
+    "Full Maven build of a multi-module Java project (tetrad-gui, tetrad-lib) requires significant memory and time. The 24GB RAM allocation should suffice but the build could be slow.",
+    "The Docker image is pre-built (key4127/refactor-dockerhub:cmu-phil__tetrad-c_5a3d308). Maven dependency resolution may rely on cached .m2 in the image; if cache is incomplete, network access for dependency download could fail or add significant time.",
+    "The eval script uses 'set +e' around mvn test and captures the exit code. If Maven hangs or times out, the OMNIGRIL_EXIT_CODE line may not be printed, falling back to raw_exit_code which should still be non-zero."
+  ],
+  "mismatches": [
+    "The gold patch includes approximately 790 lines of new files (LatentParentRecovery.java, LatentParentRecoveryGraphWrapper.java, prodConfig.xml changes) that are completely unrelated to the getColumn→getColumnIndex rename described in the issue statement. This inflates the gold patch and could confuse metrics comparing candidate output to gold.",
+    "The gold patch also removes unused imports (java.util.regex.Pattern in InterventionalHistogramModel.java, edu.cmu.tetrad.util.StatUtils in Histogram.java) which are unrelated cleanup.",
+    "The issue says to update ALL usages but the gold patch only covers a subset; the test patch covers the remainder. This split means a candidate following the instruction literally (renaming everything) would conflict with the test patch, though patch --fuzz=5 may handle already-applied hunks."
+  ],
+  "evidence": [
+    {
+      "file": "audit_tasks/cmu-phil__tetrad-c_5a3d308/instruction.md",
+      "detail": "Issue asks to rename getColumn(Node) to getColumnIndex(Node) across the entire codebase."
+    },
+    {
+      "file": "audit_tasks/cmu-phil__tetrad-c_5a3d308/solution/solve.sh",
+      "detail": "Gold patch renames interface+implementations+~50 call sites but also adds 2 entirely new files (LatentParentRecovery.java 578 lines, LatentParentRecoveryGraphWrapper.java 104 lines) and prodConfig.xml changes unrelated to the rename."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch renames ~25 additional call sites in other files. Together with the gold patch, all DataSet.getColumn call sites are covered."
+    },
+    {
+      "file": "audit_tasks/cmu-phil__tetrad-c_5a3d308/tests/eval.sh",
+      "detail": "Verification runs full 'mvn -B -ntp clean test' - very broad scope, any flaky test could fail the candidate."
+    },
+    {
+      "file": "/testbed/tetrad-lib/src/main/java/edu/cmu/tetrad/data/DataSet.java",
+      "detail": "Base commit has getColumn(Node) at line 104 and default getColumn(String) at lines 435-438. These are the methods to be renamed."
+    },
+    {
+      "file": "audit_tasks/cmu-phil__tetrad-c_5a3d308/tests/eval.sh",
+      "detail": "Uses 'git apply || patch --fuzz=5' fallback which may handle already-applied hunks if candidate makes changes overlapping with test patch."
+    }
+  ],
+  "recommended_action": "revise_instance",
+  "summary": "The instance tests a straightforward API rename (getColumn→getColumnIndex) across a large Java codebase. The gold+test patch split correctly covers all DataSet.getColumn call sites, and the base-vs-gold verification logic should work as intended. However, there are significant quality issues: (1) the gold patch includes ~790 lines of unrelated new feature code (LatentParentRecovery algorithm + GUI wrapper + config), polluting what should be a pure rename; (2) the test uses 'mvn clean test' which runs the entire test suite rather than targeted checks, risking false negatives from flaky tests; (3) a candidate following the issue instruction literally and renaming ALL occurrences would overlap with the test patch, potentially causing patch application failure. The unrelated code in the gold patch is the most serious issue as it inflates the expected diff and could mislead evaluation metrics."
+}

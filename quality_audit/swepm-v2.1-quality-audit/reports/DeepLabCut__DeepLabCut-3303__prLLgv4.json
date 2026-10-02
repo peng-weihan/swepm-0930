@@ -1,0 +1,53 @@
+{
+  "instance_id": "DeepLabCut__DeepLabCut-3303",
+  "overall_quality": "good",
+  "test_scope": "balanced",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch correctly addresses the stated issue by: (1) adding a new collect_video_paths() function in auxfun_videos.py that trusts explicit file paths when extensions=None while filtering directory contents by SUPPORTED_VIDEOS, (2) creating a deprecation utilities module (deprecation.py) with DLCDeprecationWarning, @deprecated, and @renamed_parameter decorators, (3) deprecating the old list_videos_in_folder and get_list_of_videos functions to delegate to the new function, (4) updating all callers across the codebase to use collect_video_paths, and (5) exporting collect_video_paths from deeplabcut.__init__.py. The implementation matches the issue requirements.",
+  "base_vs_gold_expectation": "On the unpatched base, the new test files (test_collect_video_paths.py and test_deprecation.py) would fail with ImportError since collect_video_paths and deeplabcut.utils.deprecation do not exist. The existing test_get_list_of_videos is modified to add @pytest.mark.filterwarnings('ignore::DeprecationWarning') which is a no-op on base (no deprecation warnings emitted) so it would still pass. The verifier should correctly accept the gold patch (all tests pass) and reject the base (ImportError failures in new test files).",
+  "too_narrow_risks": [
+    "Tests do not verify that collect_video_paths is exported from deeplabcut.__init__.py (i.e., accessible as deeplabcut.collect_video_paths). An implementation that only adds the function to auxfun_videos but omits the public API export would pass all tests.",
+    "Tests do not verify that existing callers (analyze_videos, create_labeled_video, etc.) actually switched from get_list_of_videos/list_videos_in_folder to collect_video_paths. A solution that adds the new function but doesn't update callers would pass.",
+    "No test verifies the renamed_parameter decorator is used on actual DLC functions or that videotype parameter still works on public APIs like analyze_videos."
+  ],
+  "too_broad_risks": [],
+  "implementation_coupling": [
+    "Tests import directly from deeplabcut.utils.auxfun_videos.collect_video_paths and deeplabcut.utils.deprecation, coupling to the exact module location. However, this matches the instruction requirements so it's reasonable.",
+    "Tests check __deprecated_info__ and __deprecated_params__ metadata attributes which are implementation-specific to the gold patch's decorator design. An alternative deprecation approach using different attribute names would fail."
+  ],
+  "environment_risks": [
+    "The gold patch uses pydantic.BaseModel in deprecation.py. pydantic is available in /opt/venv but NOT in /testbed/.venv. The eval.sh Python resolution correctly falls through to /opt/venv/bin/python, but if the resolution order changes or pydantic is removed, tests would fail with ImportError.",
+    "The gold patch moves 'packaging>=26' from optional gui dependency to core dependency in pyproject.toml. The package is already installed in /opt/venv, but the pyproject.toml change is not applied by the test patch — only the gold patch applies it. An alternative solution that adds deprecation.py without using packaging.version would need to handle this differently."
+  ],
+  "mismatches": [
+    "The task.toml categorizes this as 'debugging' but the issue is really a feature addition / API refactoring task (adding new public API, deprecation utilities, updating callers). This miscategorization does not affect test validity."
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch creates two new test files (test_collect_video_paths.py with 17 tests, test_deprecation.py with 16 tests) and modifies test_auxiliaryfunctions.py to add deprecation warning filters."
+    },
+    {
+      "file": "/testbed/deeplabcut/utils/auxfun_videos.py",
+      "detail": "Base file ends at line 646 with no collect_video_paths function, confirming the function must be added."
+    },
+    {
+      "file": "/testbed/deeplabcut/utils/deprecation.py",
+      "detail": "File does not exist on base, confirming the deprecation module must be created."
+    },
+    {
+      "file": "/audit_tasks/DeepLabCut__DeepLabCut-3303/tests/eval.sh",
+      "detail": "Eval script resolves Python via candidate list; /opt/venv/bin/python is selected (has pytest, pydantic, packaging). Tests run with -x -v --tb=short."
+    },
+    {
+      "file": "/testbed/deeplabcut/__init__.py",
+      "detail": "Base __init__.py imports from auxfun_videos but does not include collect_video_paths. The test patch does not verify this export exists."
+    },
+    {
+      "file": "/testbed/tests/test_auxiliaryfunctions.py",
+      "detail": "Existing test_get_list_of_videos at line 51 passes on base. Test patch adds deprecation warning filter markers so it continues to pass when get_list_of_videos is deprecated."
+    }
+  ],
+  "recommended_action": "keep",
+  "summary": "This is a well-constructed instance with a large gold patch (new utility module, deprecation decorators, and widespread caller updates) and comprehensive tests for the core new functionality. Tests properly reject the base (ImportError on missing modules) and accept the gold patch. The main limitation is that tests focus on unit-testing the new collect_video_paths and deprecation utilities but don't verify the public API export (deeplabcut.collect_video_paths) or that existing callers were updated. This means a partial solution that adds the new functions but doesn't update callers would pass. The deprecation metadata tests (__deprecated_info__, __deprecated_params__) are somewhat implementation-coupled, but they directly match the issue requirements. Environment dependencies (pydantic, packaging) are satisfied in the test environment. Overall quality is good."
+}

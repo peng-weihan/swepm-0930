@@ -1,0 +1,246 @@
+crates/forge_app/src/command_generator.rs:5:use schemars::JsonSchema;
+crates/forge_app/src/command_generator.rs:13:#[derive(Debug, Clone, Deserialize, JsonSchema)]
+crates/forge_app/src/command_generator.rs:93:        let schema = schemars::schema_for!(ShellCommandResponse);
+crates/forge_app/src/command_generator.rs:98:            .response_format(ResponseFormat::JsonSchema(Box::new(schema)))
+crates/forge_app/src/title_generator.rs:8:use schemars::JsonSchema;
+crates/forge_app/src/title_generator.rs:15:#[derive(Debug, Clone, Deserialize, JsonSchema)]
+crates/forge_app/src/title_generator.rs:63:        let schema = schemars::schema_for!(TitleResponse);
+crates/forge_app/src/title_generator.rs:70:            .response_format(ResponseFormat::JsonSchema(Box::new(schema)));
+crates/forge_app/src/git_app.rs:6:use schemars::JsonSchema;
+crates/forge_app/src/git_app.rs:49:#[derive(Debug, Clone, Deserialize, JsonSchema)]
+crates/forge_app/src/git_app.rs:367:        let schema = schemars::schema_for!(CommitMessageResponse);
+crates/forge_app/src/git_app.rs:375:            .response_format(ResponseFormat::JsonSchema(Box::new(schema)));
+crates/forge_app/src/dto/openai/request.rs:171:    JsonSchema {
+crates/forge_app/src/dto/openai/request.rs:362:                forge_domain::ResponseFormat::JsonSchema(schema) => {
+crates/forge_app/src/dto/openai/request.rs:372:                    ResponseFormat::JsonSchema { name, schema }
+crates/forge_app/src/dto/openai/request.rs:852:        use schemars::JsonSchema;
+crates/forge_app/src/dto/openai/request.rs:855:        #[derive(Deserialize, JsonSchema)]
+crates/forge_app/src/dto/openai/request.rs:862:        let schema = schemars::schema_for!(TestResponse);
+crates/forge_app/src/dto/openai/request.rs:864:            .response_format(forge_domain::ResponseFormat::JsonSchema(Box::new(schema)));
+crates/forge_app/src/data_gen.rs:19:type JsonSchema = String;
+crates/forge_app/src/data_gen.rs:60:    ) -> Result<(JsonSchema, Option<SystemPrompt>, Option<UserPrompt>, Input)> {
+crates/forge_app/src/apply_tunable_parameters.rs:48:    #[derive(schemars::JsonSchema)]
+crates/forge_app/src/apply_tunable_parameters.rs:68:            .input_schema(schemars::schema_for!(TestToolInput));
+crates/forge_app/src/dto/anthropic/request.rs:71:    JsonSchema { schema: schemars::Schema },
+crates/forge_app/src/dto/anthropic/request.rs:135:                forge_domain::ResponseFormat::JsonSchema(schema) => {
+crates/forge_app/src/dto/anthropic/request.rs:136:                    Some(OutputFormat::JsonSchema { schema: *schema })
+crates/forge_app/src/dto/anthropic/transforms/enforce_schema.rs:37:        if let Some(OutputFormat::JsonSchema { schema }) = request.output_format.take() {
+crates/forge_app/src/dto/anthropic/transforms/enforce_schema.rs:46:                        Some(OutputFormat::JsonSchema { schema: normalized_schema });
+crates/forge_app/src/dto/anthropic/transforms/enforce_schema.rs:49:                    request.output_format = Some(OutputFormat::JsonSchema { schema });
+crates/forge_app/src/dto/anthropic/transforms/enforce_schema.rs:53:                request.output_format = Some(OutputFormat::JsonSchema { schema });
+crates/forge_app/src/dto/anthropic/transforms/enforce_schema.rs:64:    use schemars::JsonSchema;
+crates/forge_app/src/dto/anthropic/transforms/enforce_schema.rs:69:    #[derive(Deserialize, JsonSchema)]
+crates/forge_app/src/dto/anthropic/transforms/enforce_schema.rs:77:    #[derive(Deserialize, JsonSchema)]
+crates/forge_app/src/dto/anthropic/transforms/enforce_schema.rs:85:        let schema = schemars::schema_for!(TestResponse);
+crates/forge_app/src/dto/anthropic/transforms/enforce_schema.rs:86:        let fixture = Request::default().output_format(OutputFormat::JsonSchema { schema });
+crates/forge_app/src/dto/anthropic/transforms/enforce_schema.rs:91:        if let Some(OutputFormat::JsonSchema { schema }) = actual.output_format {
+crates/forge_app/src/dto/anthropic/transforms/enforce_schema.rs:126:            panic!("Expected output_format to be Some(OutputFormat::JsonSchema)");
+crates/forge_app/src/dto/anthropic/transforms/remove_output_format.rs:44:    use schemars::JsonSchema;
+crates/forge_app/src/dto/anthropic/transforms/remove_output_format.rs:50:    #[derive(Deserialize, JsonSchema)]
+crates/forge_app/src/dto/anthropic/transforms/remove_output_format.rs:59:        let schema = schemars::schema_for!(TestResponse);
+crates/forge_app/src/dto/anthropic/transforms/remove_output_format.rs:60:        let fixture = Request::default().output_format(OutputFormat::JsonSchema { schema });
+crates/forge_app/src/dto/google/request.rs:385:                forge_domain::ResponseFormat::JsonSchema(_) => Some("application/json".to_string()),
+crates/forge_app/src/dto/google/request.rs:389:                forge_domain::ResponseFormat::JsonSchema(schema) => {
+crates/forge_app/src/dto/google/request.rs:815:        use schemars::schema_for;
+crates/forge_app/src/dto/google/request.rs:817:        #[derive(schemars::JsonSchema)]
+crates/forge_app/src/dto/google/request.rs:825:            input_schema: schema_for!(Args),
+crates/forge_app/src/dto/google/request.rs:899:        use schemars::schema_for;
+crates/forge_app/src/dto/google/request.rs:902:        #[derive(schemars::JsonSchema)]
+crates/forge_app/src/dto/google/request.rs:908:        let schema = schema_for!(TestResponse);
+crates/forge_app/src/dto/google/request.rs:910:            Context::default().response_format(ResponseFormat::JsonSchema(Box::new(schema)));
+crates/forge_domain/tests/workflow.rs:7:async fn generate_workflow_schema() -> anyhow::Result<()> {
+crates/forge_domain/tests/workflow.rs:8:    let schema = schemars::schema_for!(Workflow);
+crates/forge_domain/tests/workflow.rs:13:    let schema_path = Path::new(crate_root).join("../../forge.schema.json");
+crates/forge_domain/src/agent_definition.rs:6:use schemars::JsonSchema;
+crates/forge_domain/src/agent_definition.rs:16:#[derive(Debug, Display, Eq, PartialEq, Hash, Clone, Serialize, Deserialize, JsonSchema)]
+crates/forge_domain/src/agent_definition.rs:50:#[derive(Debug, Clone, Serialize, Deserialize, Merge, Setters, JsonSchema)]
+crates/forge_domain/src/agent_definition.rs:190:#[derive(Default, Debug, Clone, Serialize, Deserialize, Merge, Setters, JsonSchema, PartialEq)]
+crates/forge_domain/src/agent_definition.rs:216:#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, StrumDisplay)]
+crates/forge_domain/src/policies/config.rs:4:use schemars::JsonSchema;
+crates/forge_domain/src/policies/config.rs:13:#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+crates/forge_domain/src/max_tokens.rs:4:use schemars::JsonSchema;
+crates/forge_domain/src/max_tokens.rs:14:#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, JsonSchema)]
+crates/forge_domain/src/policies/rule.rs:5:use schemars::JsonSchema;
+crates/forge_domain/src/policies/rule.rs:11:#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+crates/forge_domain/src/policies/rule.rs:19:#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+crates/forge_domain/src/policies/rule.rs:27:#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+crates/forge_domain/src/policies/rule.rs:35:#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+crates/forge_domain/src/policies/rule.rs:43:#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+crates/forge_domain/src/suggest_config.rs:2:use schemars::JsonSchema;
+crates/forge_domain/src/suggest_config.rs:14:#[derive(Debug, Clone, Serialize, Deserialize, Setters, JsonSchema, PartialEq)]
+crates/forge_domain/src/policies/types.rs:3:use schemars::JsonSchema;
+crates/forge_domain/src/policies/types.rs:7:#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+crates/forge_domain/src/policies/policy.rs:3:use schemars::JsonSchema;
+crates/forge_domain/src/policies/policy.rs:11:#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+crates/forge_config/src/compact.rs:5:use schemars::JsonSchema;
+crates/forge_config/src/compact.rs:9:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, fake::Dummy)]
+crates/forge_config/src/compact.rs:30:    Debug, Clone, Serialize, Deserialize, Default, JsonSchema, Setters, PartialEq, fake::Dummy,
+crates/forge_config/src/compact.rs:56:#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema, PartialEq, fake::Dummy)]
+crates/forge_config/src/compact.rs:74:#[derive(Debug, Clone, Serialize, Deserialize, Setters, JsonSchema, PartialEq)]
+crates/forge_domain/src/tool_order.rs:6:use schemars::JsonSchema;
+crates/forge_domain/src/tool_order.rs:14:#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+crates/forge_domain/src/context.rs:33:    JsonSchema(Box<schemars::Schema>),
+crates/forge_domain/src/provider.rs:4:use schemars::JsonSchema;
+crates/forge_domain/src/provider.rs:36:    JsonSchema,
+crates/forge_domain/src/agent.rs:232:            input_schema: schemars::schema_for!(crate::AgentInput),
+crates/forge_domain/src/commit_config.rs:3:use schemars::JsonSchema;
+crates/forge_domain/src/commit_config.rs:14:#[derive(Default, Debug, Clone, Serialize, Deserialize, Merge, Setters, JsonSchema, PartialEq)]
+crates/forge_json_repair/src/schema_coercion.rs:448:    use schemars::{JsonSchema, schema_for};
+crates/forge_json_repair/src/schema_coercion.rs:454:    // Test structs with JsonSchema derive
+crates/forge_json_repair/src/schema_coercion.rs:455:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:461:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:468:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:474:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:481:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:488:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:494:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:500:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:508:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:516:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:522:    #[derive(JsonSchema, Deserialize, Serialize)]
+crates/forge_json_repair/src/schema_coercion.rs:530:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:536:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:542:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:548:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:554:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:560:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:566:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:572:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:578:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:584:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:590:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:596:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:602:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:608:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:614:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:620:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:626:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:632:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:638:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:647:        let schema = schema_for!(AgeData);
+crates/forge_json_repair/src/schema_coercion.rs:656:        let schema = schema_for!(RangeData);
+crates/forge_json_repair/src/schema_coercion.rs:665:        let schema = schema_for!(PriceData);
+crates/forge_json_repair/src/schema_coercion.rs:674:        let schema = schema_for!(BooleanData);
+crates/forge_json_repair/src/schema_coercion.rs:683:        let schema = schema_for!(AgeData);
+crates/forge_json_repair/src/schema_coercion.rs:692:        let schema = schema_for!(AgeData);
+crates/forge_json_repair/src/schema_coercion.rs:701:        let schema = schema_for!(UserWrapper);
+crates/forge_json_repair/src/schema_coercion.rs:710:        let schema = schema_for!(NumbersData);
+crates/forge_json_repair/src/schema_coercion.rs:719:        let schema = schema_for!(MixedData);
+crates/forge_json_repair/src/schema_coercion.rs:734:        let schema = schema_for!(PathData);
+crates/forge_json_repair/src/schema_coercion.rs:748:        let schema = schema_for!(IntOrNull);
+crates/forge_json_repair/src/schema_coercion.rs:764:        let schema = schema_for!(IntOrBoolData);
+crates/forge_json_repair/src/schema_coercion.rs:780:        let schema = schema_for!(AllOfIntNumber);
+crates/forge_json_repair/src/schema_coercion.rs:791:        let schema = schema_for!(IntOrBoolData);
+crates/forge_json_repair/src/schema_coercion.rs:801:        let schema = schema_for!(IntOrNull);
+crates/forge_json_repair/src/schema_coercion.rs:813:        let schema = schema_for!(CoordinatesData);
+crates/forge_json_repair/src/schema_coercion.rs:823:        let schema = schema_for!(MixedTupleData);
+crates/forge_json_repair/src/schema_coercion.rs:833:        let schema = schema_for!(ExtraItemsData);
+crates/forge_json_repair/src/schema_coercion.rs:843:        let schema = schema_for!(NestedUnionData);
+crates/forge_json_repair/src/schema_coercion.rs:853:        let schema = schema_for!(NullData);
+crates/forge_json_repair/src/schema_coercion.rs:868:        let schema = schema_for!(BoolData);
+crates/forge_json_repair/src/schema_coercion.rs:889:        let schema = schema_for!(LargeIntData);
+crates/forge_json_repair/src/schema_coercion.rs:907:        let schema = schema_for!(UnsignedIntData);
+crates/forge_json_repair/src/schema_coercion.rs:920:        let schema = schema_for!(ArrayData);
+crates/forge_json_repair/src/schema_coercion.rs:930:        let schema = schema_for!(EditsData);
+crates/forge_json_repair/src/schema_coercion.rs:940:        let schema = schema_for!(ConfigData);
+crates/forge_json_repair/src/schema_coercion.rs:950:        let schema = schema_for!(DataArray);
+crates/forge_json_repair/src/schema_coercion.rs:964:        let schema = schema_for!(ConfigWithComments);
+crates/forge_json_repair/src/schema_coercion.rs:974:        let schema = schema_for!(ItemsTrailingComma);
+crates/forge_json_repair/src/schema_coercion.rs:987:        let schema = schema_for!(MultiPatchData);
+crates/forge_json_repair/src/schema_coercion.rs:1019:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:1033:        let schema = schema_for!(AgentInput);
+crates/forge_json_repair/src/schema_coercion.rs:1051:        let schema = schema_for!(AgentInput);
+crates/forge_json_repair/src/schema_coercion.rs:1069:        let schema = schema_for!(AgentInput);
+crates/forge_json_repair/src/schema_coercion.rs:1089:        let schema = schema_for!(AgentInput);
+crates/forge_json_repair/src/schema_coercion.rs:1106:        let schema = schema_for!(AgentInput);
+crates/forge_json_repair/src/schema_coercion.rs:1123:        let schema = schema_for!(AgentInput);
+crates/forge_json_repair/src/schema_coercion.rs:1134:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:1141:    #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:1156:        let schema = schema_for!(SemanticSearchInput);
+crates/forge_json_repair/src/schema_coercion.rs:1170:        #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:1177:        #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:1187:        let schema = schema_for!(ItemList);
+crates/forge_json_repair/src/schema_coercion.rs:1201:        #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:1207:        #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:1217:        let schema = schema_for!(DeepList);
+crates/forge_json_repair/src/schema_coercion.rs:1231:        #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:1243:        let schema = settings.into_root_schema_for::<NullableStringData>();
+crates/forge_json_repair/src/schema_coercion.rs:1260:        #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:1269:        let schema = settings.into_root_schema_for::<NullableStringData>();
+crates/forge_json_repair/src/schema_coercion.rs:1279:        #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:1285:        let schema = schema_for!(RequiredStringData);
+crates/forge_json_repair/src/schema_coercion.rs:1296:        #[derive(JsonSchema)]
+crates/forge_json_repair/src/schema_coercion.rs:1305:        let schema = settings.into_root_schema_for::<NullableIntData>();
+crates/forge_domain/src/tools/definition/name.rs:4:use schemars::JsonSchema;
+crates/forge_domain/src/tools/definition/name.rs:7:#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+crates/forge_domain/src/transformer/transform_tool_calls.rs:223:                input_schema: schemars::schema_for!(()),
+crates/forge_domain/src/tools/definition/tool_definition.rs:24:            input_schema: schemars::schema_for!(()), // Empty input schema
+crates/forge_domain/src/top_k.rs:4:use schemars::JsonSchema;
+crates/forge_domain/src/top_k.rs:15:#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, JsonSchema)]
+crates/forge_domain/src/update.rs:5:use schemars::JsonSchema;
+crates/forge_domain/src/update.rs:8:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema)]
+crates/forge_domain/src/update.rs:27:#[derive(Debug, Clone, Serialize, Deserialize, Merge, Default, JsonSchema, Setters)]
+crates/forge_domain/src/skill.rs:4:use schemars::JsonSchema;
+crates/forge_domain/src/skill.rs:8:#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Setters, JsonSchema)]
+crates/forge_domain/src/tools/catalog.rs:11:use schemars::{JsonSchema, Schema};
+crates/forge_domain/src/tools/catalog.rs:29:    JsonSchema,
+crates/forge_domain/src/tools/catalog.rs:63:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:94:impl JsonSchema for TodoStatus {
+crates/forge_domain/src/tools/catalog.rs:105:#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, derive_setters::Setters)]
+crates/forge_domain/src/tools/catalog.rs:166:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:189:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:207:#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:291:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+crates/forge_domain/src/tools/catalog.rs:405:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:417:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:484:impl JsonSchema for PatchOperation {
+crates/forge_domain/src/tools/catalog.rs:494:impl JsonSchema for OutputMode {
+crates/forge_domain/src/tools/catalog.rs:504:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:525:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:532:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:570:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:582:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:614:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:628:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:642:#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:650:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:661:#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:677:#[derive(Default, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:691:#[derive(Default, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:705:#[derive(Default, Deserialize, JsonSchema, ToolDescription, PartialEq)]
+crates/forge_domain/src/tools/catalog.rs:711:#[derive(Deserialize, JsonSchema)]
+crates/forge_domain/src/tools/catalog.rs:722:#[derive(Deserialize, JsonSchema)]
+crates/forge_domain/src/tools/catalog.rs:813:            ToolCatalog::Patch(_) => r#gen.into_root_schema_for::<FSPatch>(),
+crates/forge_domain/src/tools/catalog.rs:814:            ToolCatalog::Shell(_) => r#gen.into_root_schema_for::<Shell>(),
+crates/forge_domain/src/tools/catalog.rs:815:            ToolCatalog::Followup(_) => r#gen.into_root_schema_for::<Followup>(),
+crates/forge_domain/src/tools/catalog.rs:816:            ToolCatalog::Fetch(_) => r#gen.into_root_schema_for::<NetFetch>(),
+crates/forge_domain/src/tools/catalog.rs:817:            ToolCatalog::FsSearch(_) => r#gen.into_root_schema_for::<FSSearch>(),
+crates/forge_domain/src/tools/catalog.rs:818:            ToolCatalog::SemSearch(_) => r#gen.into_root_schema_for::<SemanticSearch>(),
+crates/forge_domain/src/tools/catalog.rs:819:            ToolCatalog::Read(_) => r#gen.into_root_schema_for::<FSRead>(),
+crates/forge_domain/src/tools/catalog.rs:820:            ToolCatalog::Remove(_) => r#gen.into_root_schema_for::<FSRemove>(),
+crates/forge_domain/src/tools/catalog.rs:821:            ToolCatalog::Undo(_) => r#gen.into_root_schema_for::<FSUndo>(),
+crates/forge_domain/src/tools/catalog.rs:822:            ToolCatalog::Write(_) => r#gen.into_root_schema_for::<FSWrite>(),
+crates/forge_domain/src/tools/catalog.rs:823:            ToolCatalog::Plan(_) => r#gen.into_root_schema_for::<PlanCreate>(),
+crates/forge_domain/src/tools/catalog.rs:824:            ToolCatalog::Skill(_) => r#gen.into_root_schema_for::<SkillFetch>(),
+crates/forge_domain/src/tools/catalog.rs:825:            ToolCatalog::TodoWrite(_) => r#gen.into_root_schema_for::<TodoWrite>(),
+crates/forge_domain/src/tools/catalog.rs:826:            ToolCatalog::TodoRead(_) => r#gen.into_root_schema_for::<TodoRead>(),
+crates/forge_domain/src/tools/catalog.rs:1668:        let patch_schema = settings.into_root_schema_for::<PatchOperation>();
+crates/forge_domain/src/tools/catalog.rs:1682:        let output_schema = settings.into_root_schema_for::<OutputMode>();
+crates/forge_domain/src/compact/compact_config.rs:3:use schemars::JsonSchema;
+crates/forge_domain/src/compact/compact_config.rs:10:#[derive(Debug, Clone, Serialize, Deserialize, Merge, Setters, JsonSchema, PartialEq)]
+crates/forge_domain/src/compact/compact_config.rs:82:#[derive(Serialize, Deserialize, Debug, Clone, JsonSchema, PartialEq)]
+crates/forge_domain/src/top_p.rs:4:use schemars::JsonSchema;
+crates/forge_domain/src/top_p.rs:15:#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, JsonSchema)]
+crates/forge_domain/src/template.rs:3:use schemars::JsonSchema;
+crates/forge_domain/src/template.rs:14:impl<T> JsonSchema for Template<T> {
+crates/forge_domain/src/temperature.rs:4:use schemars::JsonSchema;
+crates/forge_domain/src/temperature.rs:15:#[derive(Debug, Clone, Copy, PartialEq, PartialOrd, JsonSchema)]
+crates/forge_domain/src/workflow.rs:5:use schemars::JsonSchema;
+crates/forge_domain/src/workflow.rs:14:#[derive(Debug, Clone, Serialize, Deserialize, Merge, Setters, JsonSchema)]
+crates/forge_domain/src/workflow.rs:132:#[derive(Default, Debug, Clone, Serialize, Deserialize, Merge, Setters, JsonSchema)]
+crates/forge_domain/src/model.rs:3:use schemars::JsonSchema;
+crates/forge_domain/src/model.rs:51:#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, Hash, Eq, Display, JsonSchema)]
+crates/forge_repo/src/provider/anthropic.rs:705:        use schemars::JsonSchema;
+crates/forge_repo/src/provider/anthropic.rs:708:        #[derive(Deserialize, JsonSchema)]
+crates/forge_repo/src/provider/anthropic.rs:747:        let schema = schemars::schema_for!(TestResponse);
+crates/forge_repo/src/provider/anthropic.rs:750:            .response_format(ResponseFormat::JsonSchema(Box::new(schema)));

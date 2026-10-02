@@ -1,0 +1,34 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+-- Found SQLite3: /usr/include (found version "3.40.1") 
+-- Checking for module 'libpq'
+--   Found libpq, version 15.19
+-- Looking for security/pam_appl.h
+-- Looking for security/pam_appl.h - found
+-- Looking for pam_start in pam
+-- Looking for pam_start in pam - found
+-- Found PkgConfig: /usr/bin/pkg-config (found version "1.8.1") 
+-- Checking for module 'libsecret-1'
+--   Found libsecret-1, version 0.20.5
+-- Configuring done
+[0/1] Re-running CMake...
+-- Configuring done
+FAILED: build.ninja 
+/usr/bin/cmake --regenerate-during-build -S/testbed -B/testbed/build
+Internal ctest changing into directory: /testbed/build
+Test project /testbed/build
+FAIL	github.com/JBailes/aimee/server-go/modules/delegates [build failed]
+FAIL	github.com/JBailes/aimee/server-go/modules/git [build failed]
+--- FAIL: TestRunnerIORefusesATreeNobodyIsServing (0.00s)
+    runner_io_test.go:92: submit to an unserved tree status = 4, want CapabilityAbsent
+FAIL
+FAIL	github.com/JBailes/aimee/server-go/modules/workspace	0.053s
+--- FAIL: TestModuleRegistryMatchesProcessContracts (0.00s)
+    main_test.go:40: delegates config = bus.ModuleProcessConfig{SocketPath:"", ModuleName:"delegates", PrincipalClass:0x1, PrincipalRef:0xa, Stages:[]bus.ModuleStage{bus.ModuleStage{EventKind:0x1a01, StageID:0x1}, bus.ModuleStage{EventKind:0x1a02, StageID:0x2}, bus.ModuleStage{EventKind:0x1a03, StageID:0x3}, bus.ModuleStage{EventKind:0x1a04, StageID:0x4}}, Handler:(bus.ModuleHandler)(0x59cca0)}, ok=true
+2026/10/02 00:37:57 roundtable review stage unavailable: AIMEE_HOME is unset
+--- FAIL: TestAdvertisedStagesMatchTheContractFile (0.00s)
+    main_test.go:117: git declares git-forge-request (event 7428) in process-contracts.json but never advertises it: calls fail CAPABILITY_ABSENT though the module is running
+    main_test.go:117: git declares git-credential-resolve (event 7429) in process-contracts.json but never advertises it: calls fail CAPABILITY_ABSENT though the module is running
+FAIL
+FAIL	github.com/JBailes/aimee/server-go/cmd/aimee-module	0.003s
+FAIL
+OMNIGRIL_EXIT_CODE=1

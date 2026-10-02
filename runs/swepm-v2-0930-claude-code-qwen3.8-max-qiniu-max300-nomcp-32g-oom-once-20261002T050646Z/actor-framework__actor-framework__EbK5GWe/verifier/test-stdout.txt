@@ -1,0 +1,85 @@
+SPECBUILD_RESOLVED_PYTHON=/opt/venv/bin/python
+Checking patch libcaf_core/caf/serialization.test.cpp...
+error: while searching for:
+  )_";
+}
+
+// TODO: update tests to use apply instead of value overload
+SCENARIO("binary serializer and deserializer handle vectors of booleans") {
+  GIVEN("a binary serializer") {
+    auto sink = binary_serializer_wrapper{sys};
+    WHEN("serializing a vector of booleans with 8 values") {
+      auto val = std::vector<bool>{true,  false, true, true,
+                                   false, false, true, false};
+      check(sink.sink.value(val));
+      THEN("deserializing the result produces the value again") {
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
+        auto copy = std::vector<bool>{};
+        check(source.value(copy));
+        check_eq(copy, val);
+      }
+    }
+    WHEN("serializing a vector of boolean with 9 values") {
+      auto val = std::vector<bool>{true,  false, true,  true, false,
+                                   false, true,  false, true};
+      check(sink.sink.value(val));
+      THEN("deserializing the result produces the value again") {
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
+        auto copy = std::vector<bool>{};
+        check(source.value(copy));
+        check_eq(copy, val);
+      }
+    }
+    WHEN("serializing a vector of boolean with 1 value") {
+      auto val = std::vector<bool>{true};
+      check(sink.sink.value(val));
+      THEN("deserializing the result produces the value again") {
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
+        auto copy = std::vector<bool>{};
+        check(source.value(copy));
+        check_eq(copy, val);
+      }
+    }
+    WHEN("serializing an empty vector of boolean") {
+      auto val = std::vector<bool>{};
+      check(sink.sink.value(val));
+      THEN("deserializing the result produces the value again") {
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
+        auto copy = std::vector<bool>{};
+        check(source.value(copy));
+        check_eq(copy, val);
+      }
+    }
+
+error: patch failed: libcaf_core/caf/serialization.test.cpp:882
+error: libcaf_core/caf/serialization.test.cpp: patch does not apply
+Checking patch libcaf_core/caf/serializer.test.cpp...
+error: while searching for:
+
+#include "caf/actor_system.hpp"
+#include "caf/actor_system_config.hpp"
+#include "caf/detail/default_actor_handle_codec.hpp"
+
+#include <vector>
+
+
+error: patch failed: libcaf_core/caf/serializer.test.cpp:8
+error: libcaf_core/caf/serializer.test.cpp: patch does not apply
+patching file libcaf_core/caf/serialization.test.cpp
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file libcaf_core/caf/serializer.test.cpp
+Reversed (or previously applied) patch detected!  Assuming -R.
+[1/3] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/serializer.test.cpp.o
+[2/3] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/serialization.test.cpp.o
+[3/3] Linking CXX executable libcaf_core/caf-core-test
+Internal ctest changing into directory: /testbed/build
+Test project /testbed/build
+    Start 162: caf.serialization
+1/2 Test #162: caf.serialization ................   Passed    0.03 sec
+    Start 163: caf.serializer
+2/2 Test #163: caf.serializer ...................   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) =   0.04 sec
+OMNIGRIL_EXIT_CODE=0

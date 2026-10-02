@@ -1,0 +1,3373 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -70,7 +70,7 @@ https://github.com/user-attachments/assets/35e27989-726d-4059-8662-bae610e46b42
+ 
+ ## Installation
+ 
+-No prerequisites - the app can detect supported runtimes/providers and guide setup from the UI.
++No prerequisites - the app can detect and use installed claude/codex/opencode and you can configure from the UI.
+ 
+ <table align="center">
+ <tr>
+@@ -125,7 +125,7 @@ No prerequisites - the app can detect supported runtimes/providers and guide set
+   - [Debug teammate runtimes](#debug-teammate-runtimes)
+   - [Build for distribution](#build-for-distribution)
+   - [Scripts](#scripts)
+-- [Roadmap](#roadmap)
++- [Ideas](#ideas)
+ - [Contributing](#contributing)
+ - [Security](#security)
+ - [License](#license)
+@@ -388,7 +388,7 @@ local packaging.
+ 
+ ---
+ 
+-## Roadmap
++## Ideas
+ 
+ - [ ] Planning mode to organize agent plans before execution
+ - [ ] Visual workflow editor ([@xyflow/react](https://github.com/xyflow/xyflow)) for building and orchestrating agent pipelines with drag & drop
+@@ -401,11 +401,12 @@ local packaging.
+ - [ ] `createTasksBatch` — IPC/service API to create many team tasks in one call (playbooks, markdown checklist import, scripts); complements single `createTask`
+ - [ ] Command palette — extend Cmd/Ctrl+K beyond project/session search to runnable actions (quick commands, navigation shortcuts, team/task operations) in a keyboard-first flow
+ - [ ] Custom kanban columns
+-- [ ] Run terminal commands
++- [x] Run terminal commands
+ - [x] Monitor agents processes/stats
+ - [ ] Reusable agents with SOUL.md
+ - [ ] Сommunicate via messenger
+ - [ ] SDK to programmatically launch agents
++...
+ 
+ ---
+ 
+diff --git a/mcp-server/package.json b/mcp-server/package.json
+--- a/mcp-server/package.json
++++ b/mcp-server/package.json
+@@ -22,7 +22,8 @@
+   "license": "MIT",
+   "repository": {
+     "type": "git",
+-    "url": "https://github.com/nickchernyy/agent-teams-mcp"
++    "url": "https://github.com/777genius/agent-teams-ai.git",
++    "directory": "mcp-server"
+   },
+   "scripts": {
+     "build": "tsup",
+diff --git a/mcp-server/src/tools/messageTools.ts b/mcp-server/src/tools/messageTools.ts
+--- a/mcp-server/src/tools/messageTools.ts
++++ b/mcp-server/src/tools/messageTools.ts
+@@ -4,6 +4,7 @@ import { z } from 'zod';
+ import { getController } from '../controller';
+ import { assertConfiguredTeam } from '../utils/teamConfig';
+ import { jsonTextContent } from '../utils/format';
++import { taskRefSchema } from '../utils/schemas';
+ 
+ const toolContextSchema = {
+   teamName: z.string().min(1),
+@@ -31,18 +32,11 @@ export function registerMessageTools(server: Pick<FastMCP, 'addTool'>) {
+             filename: z.string().min(1),
+             mimeType: z.string().min(1),
+             size: z.number().nonnegative(),
++            filePath: z.string().min(1).optional(),
+           })
+         )
+         .optional(),
+-      taskRefs: z
+-        .array(
+-          z.object({
+-            taskId: z.string().min(1),
+-            displayId: z.string().min(1),
+-            teamName: z.string().min(1),
+-          })
+-        )
+-        .optional(),
++      taskRefs: z.array(taskRefSchema).optional(),
+     }),
+     execute: async ({
+       teamName,
+diff --git a/mcp-server/src/tools/reviewTools.ts b/mcp-server/src/tools/reviewTools.ts
+--- a/mcp-server/src/tools/reviewTools.ts
++++ b/mcp-server/src/tools/reviewTools.ts
+@@ -4,6 +4,7 @@ import { z } from 'zod';
+ import { getController } from '../controller';
+ import { jsonTextContent, slimTask } from '../utils/format';
+ import { assertConfiguredTeam } from '../utils/teamConfig';
++import { taskRefSchema } from '../utils/schemas';
+ 
+ const toolContextSchema = {
+   teamName: z.string().min(1),
+@@ -94,8 +95,9 @@ export function registerReviewTools(server: Pick<FastMCP, 'addTool'>) {
+       from: z.string().optional(),
+       comment: z.string().optional(),
+       leadSessionId: z.string().optional(),
++      taskRefs: z.array(taskRefSchema).optional(),
+     }),
+-    execute: async ({ teamName, claudeDir, taskId, from, comment, leadSessionId }) => {
++    execute: async ({ teamName, claudeDir, taskId, from, comment, leadSessionId, taskRefs }) => {
+       assertConfiguredTeam(teamName, claudeDir);
+       return await Promise.resolve(
+         jsonTextContent(
+@@ -104,6 +106,7 @@ export function registerReviewTools(server: Pick<FastMCP, 'addTool'>) {
+               ...(from ? { from } : {}),
+               ...(comment ? { comment } : {}),
+               ...(leadSessionId ? { leadSessionId } : {}),
++              ...(taskRefs?.length ? { taskRefs } : {}),
+             }) as Record<string, unknown>
+           )
+         )
+diff --git a/mcp-server/src/tools/taskTools.ts b/mcp-server/src/tools/taskTools.ts
+--- a/mcp-server/src/tools/taskTools.ts
++++ b/mcp-server/src/tools/taskTools.ts
+@@ -4,6 +4,7 @@ import { z } from 'zod';
+ import { agentBlocks, getController } from '../controller';
+ import { assertConfiguredTeam } from '../utils/teamConfig';
+ import { jsonTextContent, taskWriteResult, slimTask } from '../utils/format';
++import { taskRefSchema } from '../utils/schemas';
+ 
+ /** stripAgentBlocks from canonical agentBlocks module — single source of truth for the tag format. */
+ const stripAgentBlocksFn = (text: string): string => agentBlocks.stripAgentBlocks(text);
+@@ -50,6 +51,8 @@ function buildCreateTaskPayload(params: {
+   blockedBy?: string[];
+   related?: string[];
+   prompt?: string;
++  descriptionTaskRefs?: z.infer<typeof taskRefSchema>[];
++  promptTaskRefs?: z.infer<typeof taskRefSchema>[];
+   startImmediately?: boolean;
+   sourceMessageId?: string;
+   sourceMessage?: Record<string, unknown>;
+@@ -63,6 +66,10 @@ function buildCreateTaskPayload(params: {
+     ...(params.blockedBy?.length ? { 'blocked-by': params.blockedBy.join(',') } : {}),
+     ...(params.related?.length ? { related: params.related.join(',') } : {}),
+     ...(params.prompt ? { prompt: params.prompt } : {}),
++    ...(params.descriptionTaskRefs?.length
++      ? { descriptionTaskRefs: params.descriptionTaskRefs }
++      : {}),
++    ...(params.promptTaskRefs?.length ? { promptTaskRefs: params.promptTaskRefs } : {}),
+     ...(params.startImmediately !== undefined ? { startImmediately: params.startImmediately } : {}),
+     ...(params.sourceMessageId ? { sourceMessageId: params.sourceMessageId } : {}),
+     ...(params.sourceMessage ? { sourceMessage: params.sourceMessage } : {}),
+@@ -83,6 +90,8 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
+       blockedBy: z.array(z.string().min(1)).optional(),
+       related: z.array(z.string().min(1)).optional(),
+       prompt: z.string().optional(),
++      descriptionTaskRefs: z.array(taskRefSchema).optional(),
++      promptTaskRefs: z.array(taskRefSchema).optional(),
+       startImmediately: z.boolean().optional(),
+     }),
+     execute: async ({
+@@ -96,6 +105,8 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
+       blockedBy,
+       related,
+       prompt,
++      descriptionTaskRefs,
++      promptTaskRefs,
+       startImmediately,
+     }) => {
+       assertConfiguredTeam(teamName, claudeDir);
+@@ -113,6 +124,8 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
+               blockedBy,
+               related,
+               prompt,
++              descriptionTaskRefs,
++              promptTaskRefs,
+               startImmediately,
+             })
+           )
+@@ -143,6 +156,8 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
+       blockedBy: z.array(z.string().min(1)).optional(),
+       related: z.array(z.string().min(1)).optional(),
+       prompt: z.string().optional(),
++      descriptionTaskRefs: z.array(taskRefSchema).optional(),
++      promptTaskRefs: z.array(taskRefSchema).optional(),
+       startImmediately: z.boolean().optional(),
+     }),
+     execute: async ({
+@@ -156,6 +171,8 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
+       blockedBy,
+       related,
+       prompt,
++      descriptionTaskRefs,
++      promptTaskRefs,
+       startImmediately,
+     }) => {
+       assertConfiguredTeam(teamName, claudeDir);
+@@ -232,6 +249,8 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
+               blockedBy,
+               related,
+               prompt,
++              descriptionTaskRefs,
++              promptTaskRefs,
+               startImmediately,
+               sourceMessageId: messageId,
+               sourceMessage,
+@@ -450,15 +469,17 @@ export function registerTaskTools(server: Pick<FastMCP, 'addTool'>) {
+       taskId: z.string().min(1),
+       text: z.string().min(1),
+       from: z.string().min(1),
++      taskRefs: z.array(taskRefSchema).optional(),
+     }),
+-    execute: async ({ teamName, claudeDir, taskId, text, from }) => {
++    execute: async ({ teamName, claudeDir, taskId, text, from, taskRefs }) => {
+       assertConfiguredTeam(teamName, claudeDir);
+       return await Promise.resolve(
+         jsonTextContent(
+           taskWriteResult(
+             getController(teamName, claudeDir).taskBoard.addTaskComment(taskId, {
+               text,
+               ...(from ? { from } : {}),
++              ...(taskRefs?.length ? { taskRefs } : {}),
+             }) as Record<string, unknown>
+           )
+         )
+diff --git a/mcp-server/src/tools/teamTools.ts b/mcp-server/src/tools/teamTools.ts
+--- a/mcp-server/src/tools/teamTools.ts
++++ b/mcp-server/src/tools/teamTools.ts
+@@ -3,6 +3,7 @@ import { z } from 'zod';
+ 
+ import { getController } from '../controller';
+ import { jsonTextContent } from '../utils/format';
++import { teamMemberMcpPolicySchema } from '../utils/schemas';
+ 
+ const controlContextSchema = {
+   claudeDir: z.string().min(1).optional(),
+@@ -29,6 +30,7 @@ const memberSchema = z.object({
+   model: z.string().min(1).optional(),
+   effort: effortSchema.optional(),
+   fastMode: fastModeSchema.optional(),
++  mcpPolicy: teamMemberMcpPolicySchema.optional(),
+ });
+ 
+ function controlFlags(args: {
+diff --git a/mcp-server/src/tools/workSyncTools.ts b/mcp-server/src/tools/workSyncTools.ts
+--- a/mcp-server/src/tools/workSyncTools.ts
++++ b/mcp-server/src/tools/workSyncTools.ts
+@@ -26,6 +26,7 @@ function buildRequiredReportFollowUp(input: {
+   memberName?: string;
+   from?: string;
+   controlUrl?: string;
++  waitTimeoutMs?: number;
+ }) {
+   const status = asRecord(input.status);
+   const agenda = asRecord(status?.agenda);
+@@ -70,6 +71,7 @@ function buildRequiredReportFollowUp(input: {
+         teamName: input.teamName,
+         ...(memberName ? { memberName } : {}),
+         ...(input.controlUrl ? { controlUrl: input.controlUrl } : {}),
++        ...(input.waitTimeoutMs ? { waitTimeoutMs: input.waitTimeoutMs } : {}),
+         state,
+         agendaFingerprint,
+         reportToken,
+@@ -114,6 +116,7 @@ export function registerWorkSyncTools(server: Pick<FastMCP, 'addTool'>) {
+           ...(memberName ? { memberName } : {}),
+           ...(from ? { from } : {}),
+           ...(controlUrl ? { controlUrl } : {}),
++          ...(waitTimeoutMs ? { waitTimeoutMs } : {}),
+         })
+       );
+     },
+diff --git a/mcp-server/src/utils/schemas.ts b/mcp-server/src/utils/schemas.ts
+new file mode 100644
+--- /dev/null
++++ b/mcp-server/src/utils/schemas.ts
+@@ -0,0 +1,19 @@
++import { z } from 'zod';
++
++export const taskRefSchema = z.object({
++  taskId: z.string().min(1),
++  displayId: z.string().min(1),
++  teamName: z.string().min(1),
++});
++
++export const teamMemberMcpPolicySchema = z.object({
++  mode: z.enum(['inheritLead', 'inheritScopes', 'strictAllowlist', 'appOnly']),
++  scopes: z
++    .object({
++      user: z.boolean().optional(),
++      project: z.boolean().optional(),
++      local: z.boolean().optional(),
++    })
++    .optional(),
++  serverNames: z.array(z.string().min(1).max(128)).optional(),
++});
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -94,7 +94,7 @@
+     "standalone:build": "node --max-old-space-size=8192 ./node_modules/electron-vite/bin/electron-vite.js build && node --max-old-space-size=8192 ./node_modules/vite/bin/vite.js build --config docker/vite.standalone.config.ts",
+     "standalone:start": "node dist-standalone/index.cjs",
+     "prepare": "husky",
+-    "postinstall": "electron-rebuild -f -o node-pty,ssh2,cpu-features,better-sqlite3 || echo 'native Electron rebuild failed (terminal/ssh features may be degraded)'; node ./scripts/ci/rebuild-better-sqlite3-node.cjs || echo 'test sqlite Node rebuild failed (sqlite tests may need node ./scripts/ci/rebuild-better-sqlite3-node.cjs)'; node ./scripts/ensure-electron-install.cjs"
++    "postinstall": "electron-rebuild -f -o node-pty,ssh2,cpu-features || echo 'native Electron rebuild failed (terminal/ssh features may be degraded)'; node ./scripts/ensure-electron-install.cjs"
+   },
+   "lint-staged": {
+     "src/**/*.{ts,tsx,js,jsx}": [
+@@ -311,8 +311,7 @@
+     "asar": true,
+     "asarUnpack": [
+       "out/renderer/**",
+-      "**/node_modules/node-pty/**",
+-      "**/node_modules/better-sqlite3/**"
++      "**/node_modules/node-pty/**"
+     ],
+     "extraResources": [
+       {
+@@ -419,95 +418,6 @@
+     ]
+   },
+   "packageManager": "pnpm@10.33.4+sha512.1c67b3b359b2d408119ba1ed289f34b8fc3c6873412bec6fd264fbdc82489e510fcbecb9ce9d22dae7f3b76269d8441046014bdca53b9979cd7a561ad631b800",
+-  "pnpm": {
+-    "auditConfig": {
+-      "ignoreGhsas": [
+-        "GHSA-5xrq-8626-4rwp"
+-      ]
+-    },
+-    "overrides": {
+-      "@terminal-platform/design-tokens": "file:vendor/terminal-platform/sdk/terminal-platform-design-tokens-0.1.0.tgz",
+-      "@terminal-platform/foundation": "file:vendor/terminal-platform/sdk/terminal-platform-foundation-0.1.0.tgz",
+-      "@terminal-platform/runtime-types": "file:vendor/terminal-platform/sdk/terminal-platform-runtime-types-0.1.0.tgz",
+-      "@terminal-platform/workspace-adapter-websocket": "file:vendor/terminal-platform/sdk/terminal-platform-workspace-adapter-websocket-0.1.0.tgz",
+-      "@terminal-platform/workspace-contracts": "file:vendor/terminal-platform/sdk/terminal-platform-workspace-contracts-0.1.0.tgz",
+-      "@terminal-platform/workspace-core": "file:vendor/terminal-platform/sdk/terminal-platform-workspace-core-0.1.0.tgz",
+-      "@terminal-platform/workspace-elements": "file:vendor/terminal-platform/sdk/terminal-platform-workspace-elements-0.1.0.tgz",
+-      "@terminal-platform/workspace-gateway-node": "file:vendor/terminal-platform/sdk/terminal-platform-workspace-gateway-node-0.1.0.tgz",
+-      "@terminal-platform/workspace-react": "file:vendor/terminal-platform/sdk/terminal-platform-workspace-react-0.1.0.tgz",
+-      "@babel/core": "7.29.7",
+-      "@hono/node-server@1": "1.19.13",
+-      "@opentelemetry/core": "2.8.0",
+-      "@xmldom/xmldom": "0.8.13",
+-      "axios": "1.16.1",
+-      "brace-expansion@1": "1.1.13",
+-      "brace-expansion@2": "2.0.3",
+-      "brace-expansion@5": "5.0.6",
+-      "defu": "6.1.5",
+-      "devalue": "5.8.1",
+-      "esbuild": "0.28.1",
+-      "fast-uri": "3.1.2",
+-      "file-type@21": "21.3.2",
+-      "flatted": "3.4.2",
+-      "follow-redirects": "1.16.0",
+-      "handlebars": "4.7.9",
+-      "hono": "4.12.25",
+-      "ip-address": "10.1.1",
+-      "launch-editor": "2.14.1",
+-      "lodash": "^4.18.1",
+-      "lodash-es": "^4.18.1",
+-      "markdown-it": "14.2.0",
+-      "js-yaml@3": "3.15.0",
+-      "js-yaml@4": "4.3.0",
+-      "@nuxt/devtools-kit>vite": "7.3.5",
+-      "minimatch@3": "3.1.4",
+-      "minimatch@5": "5.1.8",
+-      "minimatch@9": "9.0.7",
+-      "minimatch@10": "10.2.3",
+-      "nitropack": "2.13.4",
+-      "node-forge": "1.4.0",
+-      "path-to-regexp": "8.4.0",
+-      "picomatch@2": "2.3.2",
+-      "picomatch@4": "4.0.4",
+-      "postcss": "8.5.10",
+-      "qs": "6.15.2",
+-      "rollup": "4.59.0",
+-      "serialize-javascript": "7.0.5",
+-      "shell-quote": "1.8.4",
+-      "simple-git": "3.36.0",
+-      "smol-toml": "1.6.1",
+-      "srvx": "0.11.13",
+-      "tar": "7.5.17",
+-      "form-data": "4.0.6",
+-      "tmp": "0.2.7",
+-      "undici@6": "6.27.0",
+-      "undici@7": "7.28.0",
+-      "unhead": "2.1.13",
+-      "uuid": "^11.1.1",
+-      "vitepress>vite": "7.3.5",
+-      "ws": "8.21.0",
+-      "yaml": "2.9.0"
+-    },
+-    "onlyBuiltDependencies": [
+-      "electron",
+-      "node-pty",
+-      "cpu-features",
+-      "better-sqlite3"
+-    ],
+-    "patchedDependencies": {
+-      "@radix-ui/react-presence@1.1.5": "patches/@radix-ui__react-presence@1.1.5.patch",
+-      "@radix-ui/react-focus-scope@1.1.7": "patches/@radix-ui__react-focus-scope@1.1.7.patch",
+-      "@radix-ui/react-dismissable-layer@1.1.11": "patches/@radix-ui__react-dismissable-layer@1.1.11.patch",
+-      "@radix-ui/react-popper@1.2.8": "patches/@radix-ui__react-popper@1.2.8.patch",
+-      "@radix-ui/react-select@2.2.6": "patches/@radix-ui__react-select@2.2.6.patch",
+-      "@radix-ui/react-slot@1.2.3": "patches/@radix-ui__react-slot@1.2.3.patch",
+-      "@radix-ui/react-slot@1.2.4": "patches/@radix-ui__react-slot@1.2.4.patch",
+-      "@radix-ui/react-tooltip@1.2.8": "patches/@radix-ui__react-tooltip@1.2.8.patch",
+-      "@radix-ui/react-menu@2.1.16": "patches/@radix-ui__react-menu@2.1.16.patch",
+-      "@radix-ui/react-checkbox@1.3.3": "patches/@radix-ui__react-checkbox@1.3.3.patch",
+-      "fastmcp@3.35.0": "patches/fastmcp@3.35.0.patch"
+-    }
+-  },
+   "knip": {
+     "entry": [
+       "src/main/index.ts",
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -11,6 +11,89 @@ minimumReleaseAgeExclude:
+ strictPeerDependencies: true
+ peerDependencyRules:
+   allowedVersions:
+-    "@nuxt/schema": "3.21.8"
++    '@nuxt/schema': '3.21.8'
++
++auditConfig:
++  'ignoreGhsas':
++    - 'GHSA-5xrq-8626-4rwp'
++overrides:
++  '@terminal-platform/design-tokens': 'file:vendor/terminal-platform/sdk/terminal-platform-design-tokens-0.1.0.tgz'
++  '@terminal-platform/foundation': 'file:vendor/terminal-platform/sdk/terminal-platform-foundation-0.1.0.tgz'
++  '@terminal-platform/runtime-types': 'file:vendor/terminal-platform/sdk/terminal-platform-runtime-types-0.1.0.tgz'
++  '@terminal-platform/workspace-adapter-websocket': 'file:vendor/terminal-platform/sdk/terminal-platform-workspace-adapter-websocket-0.1.0.tgz'
++  '@terminal-platform/workspace-contracts': 'file:vendor/terminal-platform/sdk/terminal-platform-workspace-contracts-0.1.0.tgz'
++  '@terminal-platform/workspace-core': 'file:vendor/terminal-platform/sdk/terminal-platform-workspace-core-0.1.0.tgz'
++  '@terminal-platform/workspace-elements': 'file:vendor/terminal-platform/sdk/terminal-platform-workspace-elements-0.1.0.tgz'
++  '@terminal-platform/workspace-gateway-node': 'file:vendor/terminal-platform/sdk/terminal-platform-workspace-gateway-node-0.1.0.tgz'
++  '@terminal-platform/workspace-react': 'file:vendor/terminal-platform/sdk/terminal-platform-workspace-react-0.1.0.tgz'
++  '@babel/core': '7.29.7'
++  '@hono/node-server@1': '1.19.13'
++  '@opentelemetry/core': '2.8.0'
++  '@xmldom/xmldom': '0.8.13'
++  'axios': '1.16.1'
++  'brace-expansion@1': '1.1.13'
++  'brace-expansion@2': '2.0.3'
++  'brace-expansion@5': '5.0.6'
++  'defu': '6.1.5'
++  'devalue': '5.8.1'
++  'esbuild': '0.28.1'
++  'fast-uri': '3.1.2'
++  'file-type@21': '21.3.2'
++  'flatted': '3.4.2'
++  'follow-redirects': '1.16.0'
++  'handlebars': '4.7.9'
++  'hono': '4.12.25'
++  'ip-address': '10.1.1'
++  'launch-editor': '2.14.1'
++  'lodash': '^4.18.1'
++  'lodash-es': '^4.18.1'
++  'markdown-it': '14.2.0'
++  'js-yaml@3': '3.15.0'
++  'js-yaml@4': '4.3.0'
++  '@nuxt/devtools-kit>vite': '7.3.5'
++  'minimatch@3': '3.1.4'
++  'minimatch@5': '5.1.8'
++  'minimatch@9': '9.0.7'
++  'minimatch@10': '10.2.3'
++  'nitropack': '2.13.4'
++  'node-forge': '1.4.0'
++  'path-to-regexp': '8.4.0'
++  'picomatch@2': '2.3.2'
++  'picomatch@4': '4.0.4'
++  'postcss': '8.5.10'
++  'qs': '6.15.2'
++  'rollup': '4.59.0'
++  'serialize-javascript': '7.0.5'
++  'shell-quote': '1.8.4'
++  'simple-git': '3.36.0'
++  'smol-toml': '1.6.1'
++  'srvx': '0.11.13'
++  'tar': '7.5.17'
++  'form-data': '4.0.6'
++  'tmp': '0.2.7'
++  'undici@6': '6.27.0'
++  'undici@7': '7.28.0'
++  'unhead': '2.1.13'
++  'uuid': '^11.1.1'
++  'vitepress>vite': '7.3.5'
++  'ws': '8.21.0'
++  'yaml': '2.9.0'
++onlyBuiltDependencies:
++  - electron
++  - node-pty
++  - cpu-features
++patchedDependencies:
++  '@radix-ui/react-presence@1.1.5': 'patches/@radix-ui__react-presence@1.1.5.patch'
++  '@radix-ui/react-focus-scope@1.1.7': 'patches/@radix-ui__react-focus-scope@1.1.7.patch'
++  '@radix-ui/react-dismissable-layer@1.1.11': 'patches/@radix-ui__react-dismissable-layer@1.1.11.patch'
++  '@radix-ui/react-popper@1.2.8': 'patches/@radix-ui__react-popper@1.2.8.patch'
++  '@radix-ui/react-select@2.2.6': 'patches/@radix-ui__react-select@2.2.6.patch'
++  '@radix-ui/react-slot@1.2.3': 'patches/@radix-ui__react-slot@1.2.3.patch'
++  '@radix-ui/react-slot@1.2.4': 'patches/@radix-ui__react-slot@1.2.4.patch'
++  '@radix-ui/react-tooltip@1.2.8': 'patches/@radix-ui__react-tooltip@1.2.8.patch'
++  '@radix-ui/react-menu@2.1.16': 'patches/@radix-ui__react-menu@2.1.16.patch'
++  '@radix-ui/react-checkbox@1.3.3': 'patches/@radix-ui__react-checkbox@1.3.3.patch'
++  'fastmcp@3.35.0': 'patches/fastmcp@3.35.0.patch'
++
+ ignoredBuiltDependencies:
+   - esbuild
+diff --git a/src/features/localization/renderer/locales/ja/common.json b/src/features/localization/renderer/locales/ja/common.json
+--- a/src/features/localization/renderer/locales/ja/common.json
++++ b/src/features/localization/renderer/locales/ja/common.json
+@@ -736,12 +736,12 @@
+       "read": "採用情報"
+     },
+     "statusOptions": {
+-      "todo": "TODOの特長",
+-      "inProgress": "PROGRESSで",
+-      "needsFix": "NEEDS FIXESの特長",
+-      "done": "DONEの特長",
+-      "review": "REVIEWの特長",
+-      "approved": "APPROVEDの特長"
++      "todo": "TODO",
++      "inProgress": "IN PROGRESS",
++      "needsFix": "NEEDS FIXES",
++      "done": "DONE",
++      "review": "REVIEW",
++      "approved": "APPROVED"
+     }
+   },
+   "sessionItem": {
+diff --git a/src/features/localization/renderer/locales/ja/team.json b/src/features/localization/renderer/locales/ja/team.json
+--- a/src/features/localization/renderer/locales/ja/team.json
++++ b/src/features/localization/renderer/locales/ja/team.json
+@@ -418,10 +418,10 @@
+         "saveFileTooltip": "ファイルをディスクに保存する"
+       },
+       "badges": {
+-        "deleted": "DELETEDの特長",
+-        "manualReview": "MANUAL REVIEWの特長",
+-        "new": "NEWの特長",
+-        "worktree": "WORKTREEの特長"
++        "deleted": "DELETED",
++        "manualReview": "MANUAL REVIEW",
++        "new": "NEW",
++        "worktree": "WORKTREE"
+       },
+       "contentSource": {
+         "disk-current": "現在のディスク",
+@@ -598,7 +598,7 @@
+       "description": "このファイルの完全なエディタの差分を準備します。"
+     },
+     "loading": {
+-      "diff": "DIFFの特長",
++      "diff": "DIFF",
+       "ledgerObjectsProcessed": "{{count}}のレジャーオブジェクト処理",
+       "ledgerObjectsProcessed_one": "{{count}}のレジャーオブジェクト処理",
+       "ledgerObjectsProcessed_other": "{{count}}のレジャーオブジェクト処理",
+@@ -612,7 +612,7 @@
+       }
+     },
+     "progress": {
+-      "viewed": "{{viewed}}/{{total}}の特長 インタビュー"
++      "viewed": "{{viewed}}/{{total}} viewed"
+     },
+     "scope": {
+       "readMore": "もっと読む",
+@@ -1084,7 +1084,7 @@
+       "subject": "コンテンツ",
+       "subjectPlaceholder": "何をすべきか?",
+       "title": "タスクの作成",
+-      "todo": "TODOの特長"
++      "todo": "TODO"
+     },
+     "list": {
+       "columns": {
+@@ -2305,11 +2305,11 @@
+     },
+     "title": "カンバン",
+     "columns": {
+-      "todo": "TODOの特長",
+-      "inProgress": "PROGRESSで",
+-      "review": "REVIEWの特長",
+-      "done": "DONEの特長",
+-      "approved": "APPROVEDの特長"
++      "todo": "TODO",
++      "inProgress": "IN PROGRESS",
++      "review": "REVIEW",
++      "done": "DONE",
++      "approved": "APPROVED"
+     }
+   },
+   "worktreeGitReadiness": {
+diff --git a/src/main/http/teamRouteParsers.ts b/src/main/http/teamRouteParsers.ts
+--- a/src/main/http/teamRouteParsers.ts
++++ b/src/main/http/teamRouteParsers.ts
+@@ -8,6 +8,7 @@ import {
+   isTeamEffortLevelForProvider,
+ } from '@shared/utils/effortLevels';
+ import { isTeamProviderBackendId, migrateProviderBackendId } from '@shared/utils/providerBackend';
++import { normalizeTeamMemberMcpPolicy } from '@shared/utils/teamMemberMcpPolicy';
+ import { isTeamProviderId } from '@shared/utils/teamProvider';
+ import { isAbsolute } from 'path';
+ 
+@@ -216,6 +217,7 @@ export function parseCreateMembers(
+     const model = assertOptionalString(rawMember.model, 'member model');
+     const effort = assertOptionalEffort(rawMember.effort, providerId ?? defaultProviderId);
+     const fastMode = assertOptionalFastMode(rawMember.fastMode);
++    const mcpPolicy = normalizeTeamMemberMcpPolicy(rawMember.mcpPolicy);
+ 
+     return {
+       name,
+@@ -227,6 +229,7 @@ export function parseCreateMembers(
+       ...(model ? { model } : {}),
+       ...(effort ? { effort } : {}),
+       ...(fastMode ? { fastMode } : {}),
++      ...(mcpPolicy ? { mcpPolicy } : {}),
+     };
+   });
+ }
+@@ -239,6 +242,7 @@ export function parseLaunchRequest(teamName: string, body: unknown): TeamLaunchR
+   const model = assertOptionalString(payload.model, 'model');
+   const effort = assertOptionalEffort(payload.effort, providerId ?? 'anthropic');
+   const fastMode = assertOptionalFastMode(payload.fastMode);
++  const limitContext = assertOptionalBoolean(payload.limitContext, 'limitContext');
+   const clearContext = assertOptionalBoolean(payload.clearContext, 'clearContext');
+   const skipPermissions = assertOptionalBoolean(payload.skipPermissions, 'skipPermissions');
+   const worktree = assertOptionalString(payload.worktree, 'worktree');
+@@ -263,6 +267,9 @@ export function parseLaunchRequest(teamName: string, body: unknown): TeamLaunchR
+     ...(fastMode && {
+       fastMode,
+     }),
++    ...(limitContext !== undefined && {
++      limitContext,
++    }),
+     ...(clearContext !== undefined && {
+       clearContext,
+     }),
+diff --git a/src/main/http/teams.ts b/src/main/http/teams.ts
+--- a/src/main/http/teams.ts
++++ b/src/main/http/teams.ts
+@@ -84,9 +84,15 @@ function getStatusCode(error: unknown, fallback: number = 500): number {
+   if (error instanceof HttpBadRequestError) {
+     return 400;
+   }
++  if (isOpenCodeRuntimeValidationError(error)) {
++    return 400;
++  }
+   if (error instanceof HttpFeatureUnavailableError) {
+     return 501;
+   }
++  if (isRuntimeControlProviderRoutingError(error)) {
++    return 501;
++  }
+   if (error instanceof Error && error.name === 'RuntimeStaleEvidenceError') {
+     return 409;
+   }
+@@ -99,12 +105,25 @@ function getStatusCode(error: unknown, fallback: number = 500): number {
+   return fallback;
+ }
+ 
++function isOpenCodeRuntimeValidationError(error: unknown): boolean {
++  return (
++    error instanceof Error &&
++    (error.message.startsWith('OpenCode runtime payload ') ||
++      error.message.startsWith('OpenCode runtime permission '))
++  );
++}
++
++function isRuntimeControlProviderRoutingError(error: unknown): boolean {
++  return error instanceof Error && error.name === 'RuntimeControlProviderRoutingError';
++}
++
+ function shouldLogError(error: unknown): boolean {
+   const statusCode = getStatusCode(error);
+   return (
+     statusCode >= 500 &&
+     !(error instanceof HttpBadRequestError) &&
+-    !(error instanceof HttpFeatureUnavailableError)
++    !(error instanceof HttpFeatureUnavailableError) &&
++    !isRuntimeControlProviderRoutingError(error)
+   );
+ }
+ 
+diff --git a/src/main/ipc/teams.ts b/src/main/ipc/teams.ts
+--- a/src/main/ipc/teams.ts
++++ b/src/main/ipc/teams.ts
+@@ -2181,6 +2181,9 @@ async function validateProvisioningRequest(
+   if (!fastModeValidation.valid) {
+     return { valid: false, error: fastModeValidation.error };
+   }
++  if (payload.limitContext !== undefined && typeof payload.limitContext !== 'boolean') {
++    return { valid: false, error: 'limitContext must be a boolean' };
++  }
+ 
+   try {
+     await fs.promises.mkdir(cwd, { recursive: true });
+@@ -2237,6 +2240,7 @@ async function validateProvisioningRequest(
+       model: typeof payload.model === 'string' ? payload.model.trim() || undefined : undefined,
+       effort: effortValidation.value,
+       fastMode: fastModeValidation.value,
++      limitContext: typeof payload.limitContext === 'boolean' ? payload.limitContext : undefined,
+       skipPermissions:
+         typeof payload.skipPermissions === 'boolean' ? payload.skipPermissions : undefined,
+       worktree:
+@@ -2378,6 +2382,9 @@ async function handleLaunchTeam(
+   if (payload.model !== undefined && typeof payload.model !== 'string') {
+     return { success: false, error: 'model must be a string' };
+   }
++  if (payload.limitContext !== undefined && typeof payload.limitContext !== 'boolean') {
++    return { success: false, error: 'limitContext must be a boolean' };
++  }
+   const providerValidation = parseOptionalTeamProviderId(payload.providerId);
+   if (!providerValidation.valid) {
+     return { success: false, error: providerValidation.error };
+@@ -4124,6 +4131,7 @@ async function handleCreateConfig(
+       model: typeof model === 'string' ? model.trim() || undefined : undefined,
+       effort: effortValidation.value,
+       fastMode: fastModeValidation.value,
++      mcpPolicy: normalizeTeamMemberMcpPolicy((member as { mcpPolicy?: unknown }).mcpPolicy),
+     });
+   }
+ 
+diff --git a/src/main/services/team/CrossTeamOutbox.ts b/src/main/services/team/CrossTeamOutbox.ts
+--- a/src/main/services/team/CrossTeamOutbox.ts
++++ b/src/main/services/team/CrossTeamOutbox.ts
+@@ -24,30 +24,70 @@ function normalizeTaskRefsForDedupe(message: CrossTeamMessage): string {
+   return message.taskRefs?.length ? JSON.stringify(message.taskRefs) : '';
+ }
+ 
+-function buildCrossTeamDedupeKey(
+-  message: CrossTeamMessage,
+-  options: CrossTeamDedupeOptions
+-): string {
++function buildCrossTeamRouteKey(message: CrossTeamMessage): string[] {
+   return [
+-    options.stableIdentity ? String(message.messageId ?? '').trim() : '',
+-    options.stableIdentity ? String(message.conversationId ?? '').trim() : '',
+     normalizeForDedupe(message.fromTeam),
+     normalizeForDedupe(message.fromMember),
+     normalizeForDedupe(message.toTeam),
+     normalizeForDedupe(message.toMember),
++  ];
++}
++
++function stableMessageId(message: CrossTeamMessage): string {
++  return String(message.messageId ?? '').trim();
++}
++
++function stableConversationId(message: CrossTeamMessage): string {
++  return String(message.conversationId ?? '').trim();
++}
++
++function buildCrossTeamDedupeKey(message: CrossTeamMessage): string {
++  return [
++    ...buildCrossTeamRouteKey(message),
+     normalizeForDedupe(message.summary),
+     normalizeForDedupe(message.text),
+     normalizeTaskRefsForDedupe(message),
+   ].join('||');
+ }
+ 
++function hasSameRoute(left: CrossTeamMessage, right: CrossTeamMessage): boolean {
++  return buildCrossTeamRouteKey(left).join('||') === buildCrossTeamRouteKey(right).join('||');
++}
++
++function hasMatchingStableIdentity(left: CrossTeamMessage, right: CrossTeamMessage): boolean {
++  const leftMessageId = stableMessageId(left);
++  const rightMessageId = stableMessageId(right);
++  if (leftMessageId && rightMessageId && leftMessageId === rightMessageId) {
++    return true;
++  }
++
++  const leftConversationId = stableConversationId(left);
++  const rightConversationId = stableConversationId(right);
++  return Boolean(
++    leftConversationId && rightConversationId && leftConversationId === rightConversationId
++  );
++}
++
++function isDuplicateCrossTeamMessage(
++  entry: CrossTeamMessage,
++  message: CrossTeamMessage,
++  dedupeKey: string,
++  options: CrossTeamDedupeOptions
++): boolean {
++  if (options.stableIdentity && hasSameRoute(entry, message)) {
++    return hasMatchingStableIdentity(entry, message);
++  }
++
++  return buildCrossTeamDedupeKey(entry) === dedupeKey;
++}
++
+ function findRecentDuplicate(
+   list: CrossTeamMessage[],
+   message: CrossTeamMessage,
+   windowMs: number,
+   options: CrossTeamDedupeOptions
+ ): CrossTeamMessage | null {
+-  const dedupeKey = buildCrossTeamDedupeKey(message, options);
++  const dedupeKey = buildCrossTeamDedupeKey(message);
+   const cutoff = Date.now() - windowMs;
+ 
+   for (let i = list.length - 1; i >= 0; i -= 1) {
+@@ -56,7 +96,7 @@ function findRecentDuplicate(
+     if (!Number.isFinite(ts) || ts < cutoff) {
+       break;
+     }
+-    if (buildCrossTeamDedupeKey(entry, options) === dedupeKey) {
++    if (isDuplicateCrossTeamMessage(entry, message, dedupeKey, options)) {
+       return entry;
+     }
+   }
+diff --git a/src/main/services/team/CrossTeamService.ts b/src/main/services/team/CrossTeamService.ts
+--- a/src/main/services/team/CrossTeamService.ts
++++ b/src/main/services/team/CrossTeamService.ts
+@@ -113,7 +113,8 @@ export class CrossTeamService {
+       replyToConversationId ||
+       randomUUID();
+     const stableDedupeIdentity = Boolean(
+-      request.messageId?.trim() || request.conversationId?.trim()
++      request.requireRuntimeDelivery &&
++      (request.messageId?.trim() || request.conversationId?.trim())
+     );
+ 
+     // 1. Validate
+diff --git a/src/main/services/team/TeamProvisioningService.ts b/src/main/services/team/TeamProvisioningService.ts
+--- a/src/main/services/team/TeamProvisioningService.ts
++++ b/src/main/services/team/TeamProvisioningService.ts
+@@ -18,6 +18,7 @@ import { ProviderConnectionService } from '../runtime/ProviderConnectionService'
+ import { isOpenCodeServeCommand } from './opencode/bridge/OpenCodeManagedHostProcessCleanup';
+ import { OpenCodePromptDeliveryFollowUpPolicy } from './opencode/delivery/OpenCodePromptDeliveryFollowUpPolicy';
+ import { type OpenCodePromptDeliveryWatchdogCoordinator } from './opencode/delivery/OpenCodePromptDeliveryWatchdogCoordinator';
++import { type OpenCodePromptDeliveryWatchdogScheduler } from './opencode/delivery/OpenCodePromptDeliveryWatchdogScheduler';
+ import { OpenCodeRuntimeDeliveryProofReader } from './opencode/delivery/OpenCodeRuntimeDeliveryProofReader';
+ import { type OpenCodeVisibleReplyProofService } from './opencode/delivery/OpenCodeVisibleReplyProofService';
+ import { scheduleStaleAnthropicTeamApiKeyHelperCleanup } from './provisioning/TeamProvisioningAnthropicApiKeyHelperCleanup';
+@@ -83,10 +84,6 @@ import {
+   createTeamProvisioningOpenCodeLaunchWiringHostFromService,
+   type TeamProvisioningOpenCodeLaunchWiringServiceHost,
+ } from './provisioning/TeamProvisioningOpenCodeLaunchWiring';
+-import {
+-  createOpenCodePromptDeliveryWatchdogSchedulerFromService,
+-  type TeamProvisioningOpenCodePromptDeliveryWatchdogSchedulerServiceHost,
+-} from './provisioning/TeamProvisioningOpenCodePromptDeliveryWatchdogSchedulerFactory';
+ import {
+   createTeamProvisioningOpenCodeRuntimeDeliveryAdvisoryFromService,
+   type TeamProvisioningOpenCodeRuntimeDeliveryAdvisoryServiceHost,
+@@ -106,11 +103,7 @@ import {
+   type RememberOpenCodeRuntimePidFromBridgeServiceHost,
+ } from './provisioning/TeamProvisioningOpenCodeRuntimePidBridge';
+ import { createTeamProvisioningOpenCodeRuntimeRecoveryBoundary } from './provisioning/TeamProvisioningOpenCodeRuntimeRecoveryBoundaryFactory';
+-import {
+-  createTeamProvisioningOpenCodeRuntimeRecoveryFacadeFromService,
+-  type TeamProvisioningOpenCodeRuntimeRecoveryFacade,
+-  type TeamProvisioningOpenCodeRuntimeRecoveryFacadeServiceHost,
+-} from './provisioning/TeamProvisioningOpenCodeRuntimeRecoveryFacade';
++import { type TeamProvisioningOpenCodeRuntimeRecoveryFacade } from './provisioning/TeamProvisioningOpenCodeRuntimeRecoveryFacade';
+ import { createTeamProvisioningOpenCodeSecondaryBriefingBuilder } from './provisioning/TeamProvisioningOpenCodeSecondaryBriefingBuilder';
+ import { TeamProvisioningOutputRecoveryFacade } from './provisioning/TeamProvisioningOutputRecoveryFacade';
+ import { type TeamProvisioningPersistenceReconcileFacade } from './provisioning/TeamProvisioningPersistenceReconcileFacade';
+@@ -132,10 +125,6 @@ import {
+   createTeamProvisioningReevaluateMemberLaunchStatusDepsFromService,
+   type TeamProvisioningReevaluateMemberLaunchStatusServiceHost,
+ } from './provisioning/TeamProvisioningReevaluateMemberLaunchStatusPortsFactory';
+-import {
+-  createTeamProvisioningRequestAdmissionBoundary,
+-  type TeamProvisioningRequestAdmissionServiceHost,
+-} from './provisioning/TeamProvisioningRequestAdmission';
+ import { type RetainedClaudeLogsSnapshot } from './provisioning/TeamProvisioningRetainedLogs';
+ import {
+   MEMBER_SPAWN_AUDIT_MIN_INTERVAL_MS,
+@@ -159,6 +148,7 @@ import {
+ import {
+   createTeamProvisioningServiceComposition,
+   type RuntimeAdapterRunByTeamEntry,
++  type TeamProvisioningServiceComposition,
+ } from './provisioning/TeamProvisioningServiceComposition';
+ import { TeamProvisioningServiceFacadeDelegates } from './provisioning/TeamProvisioningServiceFacadeDelegates';
+ import {
+@@ -178,10 +168,6 @@ import { type TeamProvisioningVerificationProbePorts } from './provisioning/Team
+ import { createTeamProvisioningWorkspaceTrustPreSpawnBoundary } from './provisioning/TeamProvisioningWorkspaceTrustPreSpawnBoundary';
+ import { OpenCodeTaskLogAttributionStore } from './taskLogs/stream/OpenCodeTaskLogAttributionStore';
+ import { boundLaunchDiagnostics } from './progressPayload';
+-import {
+-  createTeamRuntimeControlCompatibilityApiFromService,
+-  type TeamRuntimeControlCompatibilityServiceHost,
+-} from './runtime-control';
+ import { TeamAttachmentStore } from './TeamAttachmentStore';
+ import { readBootstrapLaunchSnapshot } from './TeamBootstrapStateReader';
+ import { TeamConfigReader } from './TeamConfigReader';
+@@ -464,14 +450,7 @@ export class TeamProvisioningService extends TeamProvisioningServiceFacadeDelega
+     scheduleWatchdog: (input) => this.scheduleOpenCodePromptDeliveryWatchdog(input),
+     nowIso,
+   });
+-  protected readonly openCodePromptDeliveryWatchdogScheduler =
+-    createOpenCodePromptDeliveryWatchdogSchedulerFromService(
+-      this as unknown as TeamProvisioningOpenCodePromptDeliveryWatchdogSchedulerServiceHost,
+-      {
+-        logger,
+-        getErrorMessage,
+-      }
+-    );
++  protected readonly openCodePromptDeliveryWatchdogScheduler!: OpenCodePromptDeliveryWatchdogScheduler;
+   protected readonly persistentRuntimeCleanup = createTeamProvisioningPersistentRuntimeCleanup({
+     readPersistedRuntimeMembers: (teamName) => this.readPersistedRuntimeMembers(teamName),
+     killPersistedPaneMembers: (teamName, members) =>
+@@ -507,14 +486,7 @@ export class TeamProvisioningService extends TeamProvisioningServiceFacadeDelega
+   private readonly launchStateStore = new TeamLaunchStateStore();
+   private readonly defaultLaunchStateStore = this.launchStateStore;
+   private readonly configFacade!: TeamProvisioningConfigFacade;
+-  protected readonly openCodeRuntimeRecoveryFacade: TeamProvisioningOpenCodeRuntimeRecoveryFacade =
+-    createTeamProvisioningOpenCodeRuntimeRecoveryFacadeFromService(
+-      this as unknown as TeamProvisioningOpenCodeRuntimeRecoveryFacadeServiceHost,
+-      {
+-        getTeamsBasePath,
+-        logger,
+-      }
+-    );
++  protected readonly openCodeRuntimeRecoveryFacade!: TeamProvisioningOpenCodeRuntimeRecoveryFacade;
+ 
+   protected readonly liveRuntimeMetadataPorts!: TeamProvisioningRuntimeProjection['liveRuntimeMetadataPorts'];
+   private readonly launchStateWrittenRunIdByTeam = new Map<string, string>();
+@@ -537,6 +509,7 @@ export class TeamProvisioningService extends TeamProvisioningServiceFacadeDelega
+     persistSentMessage: (teamName, message) =>
+       this.persistSentMessage(teamName, message as unknown as InboxMessage),
+     readLaunchStateSnapshot: (teamName) => this.launchStateStore.read(teamName),
++    getLiveTeamAgentRuntimeMetadata: (teamName) => this.getLiveTeamAgentRuntimeMetadata(teamName),
+     appendDirectProcessRuntimeEvent: createAppendDirectProcessRuntimeEventUseCase(
+       createNodeAppendDirectProcessRuntimeEventUseCasePorts({ nowIso })
+     ),
+@@ -619,14 +592,9 @@ export class TeamProvisioningService extends TeamProvisioningServiceFacadeDelega
+         this as unknown as TeamProvisioningOpenCodeLaunchWiringServiceHost<ProvisioningRun>
+       )
+     );
+-  private readonly requestAdmissionBoundary = createTeamProvisioningRequestAdmissionBoundary(
+-    this as unknown as TeamProvisioningRequestAdmissionServiceHost
+-  );
++  private readonly requestAdmissionBoundary!: TeamProvisioningServiceComposition['requestAdmissionBoundary'];
+   protected readonly openCodeRuntimeDeliveryBoundaryHost!: TeamProvisioningOpenCodeRuntimeDeliveryBoundaryHost<ProvisioningRun>;
+-  protected readonly openCodeRuntimeControlApi =
+-    createTeamRuntimeControlCompatibilityApiFromService(
+-      this as unknown as TeamRuntimeControlCompatibilityServiceHost
+-    );
++  protected readonly openCodeRuntimeControlApi!: TeamProvisioningServiceComposition['openCodeRuntimeControlApi'];
+ 
+   private createMemberLifecycleHostPortGroups(): TeamProvisioningServiceMemberLifecycleHostPortGroups {
+     return createTeamProvisioningServiceMemberLifecycleHostPortGroups(
+diff --git a/src/main/services/team/TeamRuntimeTelemetry.ts b/src/main/services/team/TeamRuntimeTelemetry.ts
+--- a/src/main/services/team/TeamRuntimeTelemetry.ts
++++ b/src/main/services/team/TeamRuntimeTelemetry.ts
+@@ -45,6 +45,11 @@ export class RuntimeTelemetryTimeoutError extends Error {
+   }
+ }
+ 
++interface RuntimePidusageTelemetryEnv {
++  readonly [key: string]: string | undefined;
++  readonly CLAUDE_TEAM_RUNTIME_PIDUSAGE_ENABLED?: string;
++}
++
+ export async function withRuntimeTelemetryTimeout<T>(
+   promise: Promise<T>,
+   timeoutMs: number,
+@@ -69,7 +74,7 @@ export async function withRuntimeTelemetryTimeout<T>(
+ }
+ 
+ export function isRuntimePidusageTelemetryEnabled(
+-  env: Partial<Pick<NodeJS.ProcessEnv, 'CLAUDE_TEAM_RUNTIME_PIDUSAGE_ENABLED'>> = process.env
++  env: RuntimePidusageTelemetryEnv = process.env
+ ): boolean {
+   const value = env.CLAUDE_TEAM_RUNTIME_PIDUSAGE_ENABLED?.trim().toLowerCase();
+   return value === '1' || value === 'true' || value === 'yes';
+diff --git a/src/main/services/team/opencode/delivery/RuntimeDeliveryJournal.ts b/src/main/services/team/opencode/delivery/RuntimeDeliveryJournal.ts
+--- a/src/main/services/team/opencode/delivery/RuntimeDeliveryJournal.ts
++++ b/src/main/services/team/opencode/delivery/RuntimeDeliveryJournal.ts
+@@ -1,3 +1,4 @@
++import { canonicalizeRuntimeIdempotencyKey } from '../../runtime-control/domain/RuntimeIdempotencyKey';
+ import { stableHash, stableJsonStringify } from '../bridge/OpenCodeBridgeCommandContract';
+ import { VersionedJsonStore, VersionedJsonStoreError } from '../store/VersionedJsonStore';
+ 
+@@ -65,6 +66,12 @@ export interface RuntimeDeliveryJournalBeginInput {
+   now: string;
+ }
+ 
++export interface RuntimeDeliveryJournalKeyInput {
++  idempotencyKey: string;
++  runId: string;
++  teamName: string;
++}
++
+ export type RuntimeDeliveryJournalBeginResult =
+   | { state: 'new'; record: RuntimeDeliveryJournalRecord }
+   | { state: 'already_committed'; record: RuntimeDeliveryJournalRecord }
+@@ -75,13 +82,16 @@ export class RuntimeDeliveryJournalStore {
+   constructor(private readonly store: VersionedJsonStore<RuntimeDeliveryJournalRecord[]>) {}
+ 
+   async begin(input: RuntimeDeliveryJournalBeginInput): Promise<RuntimeDeliveryJournalBeginResult> {
++    const canonicalInput = canonicalizeRuntimeDeliveryJournalInput(input);
+     let result: RuntimeDeliveryJournalBeginResult | null = null;
+     await this.store.updateLocked((records) => {
+-      const existing = records.find((record) => record.idempotencyKey === input.idempotencyKey);
++      const existing = records.find((record) =>
++        matchesRuntimeDeliveryJournalKey(record, canonicalInput)
++      );
+       if (existing) {
+         const hasCompatiblePayloadHash =
+-          existing.payloadHash === input.payloadHash ||
+-          input.compatiblePayloadHashes?.includes(existing.payloadHash) === true;
++          existing.payloadHash === canonicalInput.payloadHash ||
++          canonicalInput.compatiblePayloadHashes?.includes(existing.payloadHash) === true;
+         if (!hasCompatiblePayloadHash) {
+           result = { state: 'payload_conflict', record: existing };
+           return records;
+@@ -94,32 +104,32 @@ export class RuntimeDeliveryJournalStore {
+ 
+         const resumed = {
+           ...existing,
+-          payloadHash: input.payloadHash,
++          payloadHash: canonicalInput.payloadHash,
+           attempts: existing.attempts + 1,
+           status: existing.status === 'failed_terminal' ? existing.status : 'pending',
+-          updatedAt: input.now,
++          updatedAt: canonicalInput.now,
+         } satisfies RuntimeDeliveryJournalRecord;
+         result = { state: 'resume_pending', record: resumed };
+         return records.map((record) =>
+-          record.idempotencyKey === input.idempotencyKey ? resumed : record
++          matchesRuntimeDeliveryJournalKey(record, canonicalInput) ? resumed : record
+         );
+       }
+ 
+       const created: RuntimeDeliveryJournalRecord = {
+-        idempotencyKey: input.idempotencyKey,
+-        runId: input.runId,
+-        teamName: input.teamName,
+-        fromMemberName: input.fromMemberName,
+-        providerId: input.providerId,
+-        runtimeSessionId: input.runtimeSessionId,
+-        payloadHash: input.payloadHash,
+-        destination: input.destination,
+-        destinationMessageId: input.destinationMessageId,
++        idempotencyKey: canonicalInput.idempotencyKey,
++        runId: canonicalInput.runId,
++        teamName: canonicalInput.teamName,
++        fromMemberName: canonicalInput.fromMemberName,
++        providerId: canonicalInput.providerId,
++        runtimeSessionId: canonicalInput.runtimeSessionId,
++        payloadHash: canonicalInput.payloadHash,
++        destination: canonicalInput.destination,
++        destinationMessageId: canonicalInput.destinationMessageId,
+         committedLocation: null,
+         status: 'pending',
+         attempts: 1,
+-        createdAt: input.now,
+-        updatedAt: input.now,
++        createdAt: canonicalInput.now,
++        updatedAt: canonicalInput.now,
+         committedAt: null,
+         lastError: null,
+       };
+@@ -135,36 +145,45 @@ export class RuntimeDeliveryJournalStore {
+ 
+   async markCommitted(input: {
+     idempotencyKey: string;
++    runId: string;
++    teamName: string;
+     location: RuntimeDeliveryLocation;
+     committedAt: string;
+   }): Promise<void> {
+-    await this.updateExisting(input.idempotencyKey, (record) => ({
++    const canonicalInput = canonicalizeRuntimeDeliveryJournalInput(input);
++    await this.updateExisting(canonicalInput, (record) => ({
+       ...record,
+-      committedLocation: input.location,
++      committedLocation: canonicalInput.location,
+       status: 'committed',
+-      updatedAt: input.committedAt,
+-      committedAt: input.committedAt,
++      updatedAt: canonicalInput.committedAt,
++      committedAt: canonicalInput.committedAt,
+       lastError: null,
+     }));
+   }
+ 
+   async markFailed(input: {
+     idempotencyKey: string;
++    runId: string;
++    teamName: string;
+     status: 'failed_retryable' | 'failed_terminal';
+     error: string;
+     updatedAt: string;
+   }): Promise<void> {
+-    await this.updateExisting(input.idempotencyKey, (record) => ({
++    const canonicalInput = canonicalizeRuntimeDeliveryJournalInput(input);
++    await this.updateExisting(canonicalInput, (record) => ({
+       ...record,
+-      status: input.status,
+-      updatedAt: input.updatedAt,
+-      lastError: input.error,
++      status: canonicalInput.status,
++      updatedAt: canonicalInput.updatedAt,
++      lastError: canonicalInput.error,
+     }));
+   }
+ 
+-  async get(idempotencyKey: string): Promise<RuntimeDeliveryJournalRecord | null> {
++  async get(input: RuntimeDeliveryJournalKeyInput): Promise<RuntimeDeliveryJournalRecord | null> {
++    const canonicalInput = canonicalizeRuntimeDeliveryJournalInput(input);
+     const records = await this.readRequired();
+-    return records.find((record) => record.idempotencyKey === idempotencyKey) ?? null;
++    return (
++      records.find((record) => matchesRuntimeDeliveryJournalKey(record, canonicalInput)) ?? null
++    );
+   }
+ 
+   async listRecoverable(teamName: string): Promise<RuntimeDeliveryJournalRecord[]> {
+@@ -200,13 +219,13 @@ export class RuntimeDeliveryJournalStore {
+   }
+ 
+   private async updateExisting(
+-    idempotencyKey: string,
++    input: RuntimeDeliveryJournalKeyInput,
+     updater: (record: RuntimeDeliveryJournalRecord) => RuntimeDeliveryJournalRecord
+   ): Promise<void> {
+     let found = false;
+     await this.store.updateLocked((records) =>
+       records.map((record) => {
+-        if (record.idempotencyKey !== idempotencyKey) {
++        if (!matchesRuntimeDeliveryJournalKey(record, input)) {
+           return record;
+         }
+         found = true;
+@@ -215,7 +234,9 @@ export class RuntimeDeliveryJournalStore {
+     );
+ 
+     if (!found) {
+-      throw new Error(`Runtime delivery journal record not found: ${idempotencyKey}`);
++      throw new Error(
++        `Runtime delivery journal record not found: ${input.teamName}/${input.runId}/${input.idempotencyKey}`
++      );
+     }
+   }
+ 
+@@ -228,6 +249,17 @@ export class RuntimeDeliveryJournalStore {
+   }
+ }
+ 
++function matchesRuntimeDeliveryJournalKey(
++  record: RuntimeDeliveryJournalRecord,
++  input: RuntimeDeliveryJournalKeyInput
++): boolean {
++  return (
++    record.idempotencyKey === input.idempotencyKey &&
++    record.runId === input.runId &&
++    record.teamName === input.teamName
++  );
++}
++
+ export function createRuntimeDeliveryJournalStore(options: {
+   filePath: string;
+   clock?: () => Date;
+@@ -255,14 +287,27 @@ export function validateRuntimeDeliveryJournalRecords(
+     if (!isRuntimeDeliveryJournalRecord(record)) {
+       throw new Error(`Invalid runtime delivery journal record at index ${index}`);
+     }
+-    if (seen.has(record.idempotencyKey)) {
+-      throw new Error(`Duplicate runtime delivery idempotency key: ${record.idempotencyKey}`);
++    const normalizedRecord = {
++      ...record,
++      idempotencyKey: canonicalizeRuntimeIdempotencyKey(record.idempotencyKey, {
++        errorPrefix: 'Runtime delivery journal record',
++      }),
++    };
++    const key = buildRuntimeDeliveryJournalKey(normalizedRecord);
++    if (seen.has(key)) {
++      throw new Error(
++        `Duplicate runtime delivery idempotency key for run: ${normalizedRecord.teamName}/${normalizedRecord.runId}/${normalizedRecord.idempotencyKey}`
++      );
+     }
+-    seen.add(record.idempotencyKey);
+-    return record;
++    seen.add(key);
++    return normalizedRecord;
+   });
+ }
+ 
++function buildRuntimeDeliveryJournalKey(record: RuntimeDeliveryJournalRecord): string {
++  return `${record.teamName}\u0000${record.runId}\u0000${record.idempotencyKey}`;
++}
++
+ export function hashRuntimeDeliveryEnvelope(envelope: RuntimeDeliveryEnvelope): string {
+   return hashRuntimeDeliveryEnvelopeWithTaskRefs(envelope, envelope.taskRefs ?? []);
+ }
+@@ -299,7 +344,9 @@ function hashRuntimeDeliveryEnvelopeWithTaskRefs(
+ 
+ export function buildRuntimeDestinationMessageId(envelope: RuntimeDeliveryEnvelope): string {
+   return `runtime-delivery-${stableHash({
+-    idempotencyKey: envelope.idempotencyKey,
++    idempotencyKey: canonicalizeRuntimeIdempotencyKey(envelope.idempotencyKey, {
++      errorPrefix: 'Runtime delivery envelope',
++    }),
+     runId: envelope.runId,
+     teamName: envelope.teamName,
+   }).slice(0, 32)}`;
+@@ -331,7 +378,9 @@ export function normalizeRuntimeDeliveryEnvelope(value: unknown): RuntimeDeliver
+ 
+   const taskRefs = normalizeRuntimeDeliveryTaskRefs(value.taskRefs);
+   const envelope: RuntimeDeliveryEnvelope = {
+-    idempotencyKey: requireNonEmptyString(value.idempotencyKey, 'idempotencyKey'),
++    idempotencyKey: canonicalizeRuntimeIdempotencyKey(value.idempotencyKey, {
++      errorPrefix: 'Runtime delivery envelope',
++    }),
+     runId: requireNonEmptyString(value.runId, 'runId'),
+     teamName: requireNonEmptyString(value.teamName, 'teamName'),
+     fromMemberName: requireNonEmptyString(value.fromMemberName, 'fromMemberName'),
+@@ -533,6 +582,17 @@ function requireNonEmptyString(value: unknown, field: string): string {
+   return value;
+ }
+ 
++function canonicalizeRuntimeDeliveryJournalInput<T extends RuntimeDeliveryJournalKeyInput>(
++  input: T
++): Omit<T, 'idempotencyKey'> & RuntimeDeliveryJournalKeyInput {
++  return {
++    ...input,
++    idempotencyKey: canonicalizeRuntimeIdempotencyKey(input.idempotencyKey, {
++      errorPrefix: 'Runtime delivery envelope',
++    }),
++  };
++}
++
+ function requireRuntimeDeliveryIso(value: unknown, field: string): string {
+   const raw = requireNonEmptyString(value, field).trim();
+   const parsed = Date.parse(raw);
+diff --git a/src/main/services/team/opencode/delivery/RuntimeDeliveryService.ts b/src/main/services/team/opencode/delivery/RuntimeDeliveryService.ts
+--- a/src/main/services/team/opencode/delivery/RuntimeDeliveryService.ts
++++ b/src/main/services/team/opencode/delivery/RuntimeDeliveryService.ts
+@@ -124,14 +124,9 @@ export class RuntimeDeliveryService {
+   async deliver(raw: unknown): Promise<RuntimeDeliveryAck> {
+     const envelope = normalizeRuntimeDeliveryEnvelope(raw);
+     const now = this.clock().toISOString();
+-    const currentRunId = await this.runState.getCurrentRunId(envelope.teamName);
+-    if (currentRunId !== envelope.runId) {
+-      return {
+-        ok: false,
+-        delivered: false,
+-        reason: 'stale_run',
+-        idempotencyKey: envelope.idempotencyKey,
+-      };
++    const staleRun = await this.rejectIfRunIsStale(envelope);
++    if (staleRun) {
++      return staleRun;
+     }
+ 
+     const destination = resolveRuntimeDeliveryDestination(envelope);
+@@ -152,6 +147,17 @@ export class RuntimeDeliveryService {
+       now,
+     });
+ 
++    const journalCanBeMarkedTerminal =
++      begin.state === 'new' ||
++      begin.state === 'resume_pending' ||
++      (begin.state === 'payload_conflict' && begin.record.status !== 'committed');
++    const staleRunAfterJournal = await this.rejectIfRunIsStale(envelope, {
++      markJournalRecordTerminal: journalCanBeMarkedTerminal,
++    });
++    if (staleRunAfterJournal) {
++      return staleRunAfterJournal;
++    }
++
+     if (begin.state === 'payload_conflict') {
+       await this.diagnostics.append({
+         type: 'runtime_delivery_conflict',
+@@ -190,6 +196,8 @@ export class RuntimeDeliveryService {
+     if (preExisting.found && preExisting.location) {
+       await this.journal.markCommitted({
+         idempotencyKey: envelope.idempotencyKey,
++        runId: envelope.runId,
++        teamName: envelope.teamName,
+         location: preExisting.location,
+         committedAt: now,
+       });
+@@ -202,6 +210,13 @@ export class RuntimeDeliveryService {
+       };
+     }
+ 
++    const staleRunBeforeWrite = await this.rejectIfRunIsStale(envelope, {
++      markJournalRecordTerminal: true,
++    });
++    if (staleRunBeforeWrite) {
++      return staleRunBeforeWrite;
++    }
++
+     try {
+       const location = await port.write({ envelope, destinationMessageId });
+       const verified = await port.verify({ destination, destinationMessageId, location });
+@@ -214,6 +229,8 @@ export class RuntimeDeliveryService {
+       const committedLocation = verified.location ?? location;
+       await this.journal.markCommitted({
+         idempotencyKey: envelope.idempotencyKey,
++        runId: envelope.runId,
++        teamName: envelope.teamName,
+         location: committedLocation,
+         committedAt: this.clock().toISOString(),
+       });
+@@ -228,8 +245,17 @@ export class RuntimeDeliveryService {
+         location: committedLocation,
+       };
+     } catch (error) {
++      const staleRunAfterDeliveryFailure = await this.rejectIfRunIsStale(envelope, {
++        markJournalRecordTerminal: true,
++      });
++      if (staleRunAfterDeliveryFailure) {
++        return staleRunAfterDeliveryFailure;
++      }
++
+       await this.journal.markFailed({
+         idempotencyKey: envelope.idempotencyKey,
++        runId: envelope.runId,
++        teamName: envelope.teamName,
+         status: 'failed_retryable',
+         error: stringifyError(error),
+         updatedAt: this.clock().toISOString(),
+@@ -252,6 +278,34 @@ export class RuntimeDeliveryService {
+     }
+   }
+ 
++  private async rejectIfRunIsStale(
++    envelope: RuntimeDeliveryEnvelope,
++    options: { markJournalRecordTerminal?: boolean } = {}
++  ): Promise<RuntimeDeliveryAck | null> {
++    const currentRunId = await this.runState.getCurrentRunId(envelope.teamName);
++    if (currentRunId === envelope.runId) {
++      return null;
++    }
++
++    if (options.markJournalRecordTerminal) {
++      await this.journal.markFailed({
++        idempotencyKey: envelope.idempotencyKey,
++        runId: envelope.runId,
++        teamName: envelope.teamName,
++        status: 'failed_terminal',
++        error: 'stale_run',
++        updatedAt: this.clock().toISOString(),
++      });
++    }
++
++    return {
++      ok: false,
++      delivered: false,
++      reason: 'stale_run',
++      idempotencyKey: envelope.idempotencyKey,
++    };
++  }
++
+   private async emitChangeEventBestEffort(
+     port: RuntimeDeliveryDestinationPort,
+     envelope: RuntimeDeliveryEnvelope,
+@@ -313,6 +367,8 @@ export class RuntimeDeliveryReconciler {
+     if (verified.found && verified.location) {
+       await this.journal.markCommitted({
+         idempotencyKey: record.idempotencyKey,
++        runId: record.runId,
++        teamName: record.teamName,
+         location: verified.location,
+         committedAt: this.clock().toISOString(),
+       });
+diff --git a/src/main/services/team/provisioning/TeamProvisioningHasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase.ts b/src/main/services/team/provisioning/TeamProvisioningHasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase.ts
+new file mode 100644
+--- /dev/null
++++ b/src/main/services/team/provisioning/TeamProvisioningHasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase.ts
+@@ -0,0 +1,70 @@
++import { matchesObservedMemberNameForExpected } from './TeamProvisioningMemberIdentity';
++import {
++  hasOpenCodeRuntimeEntryHandle,
++  hasOpenCodeRuntimeHandle,
++  hasOpenCodeRuntimeLivenessMarker,
++} from './TeamProvisioningOpenCodeRuntimeEvidencePolicy';
++
++import type { TeamRuntimeLaunchResult } from '../runtime';
++import type { LiveTeamAgentRuntimeMetadata } from './TeamProvisioningRuntimeMetadataPolicy';
++import type { PersistedTeamLaunchSnapshot } from '@shared/types';
++
++export interface OpenCodeControlledRelaunchRuntimeEvidenceLane {
++  result?: Pick<TeamRuntimeLaunchResult, 'members'> | null;
++}
++
++export interface HasOpenCodeMemberRuntimeEvidenceForControlledRelaunchInput {
++  teamName: string;
++  memberName: string;
++  laneId: string;
++  existingLane: OpenCodeControlledRelaunchRuntimeEvidenceLane | null;
++}
++
++export interface HasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCasePorts {
++  readLaunchStateSnapshot(teamName: string): Promise<PersistedTeamLaunchSnapshot | null>;
++  getLiveTeamAgentRuntimeMetadata(
++    teamName: string
++  ): Promise<ReadonlyMap<string, LiveTeamAgentRuntimeMetadata>>;
++}
++
++export type HasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase = (
++  input: HasOpenCodeMemberRuntimeEvidenceForControlledRelaunchInput
++) => Promise<boolean>;
++
++export function createHasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase(
++  ports: HasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCasePorts
++): HasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase {
++  return async (input) => {
++    const laneResultMember =
++      input.existingLane?.result?.members[input.memberName] ??
++      Object.values(input.existingLane?.result?.members ?? {}).find(
++        (member) => member.memberName?.trim() === input.memberName
++      );
++    if (hasOpenCodeRuntimeHandle(laneResultMember)) {
++      return true;
++    }
++
++    const persistedSnapshot = await ports.readLaunchStateSnapshot(input.teamName).catch(() => null);
++    const persistedMember =
++      persistedSnapshot?.members[input.memberName] ??
++      Object.values(persistedSnapshot?.members ?? {}).find(
++        (member) => member.laneId === input.laneId
++      );
++    if (
++      hasOpenCodeRuntimeHandle(persistedMember) ||
++      hasOpenCodeRuntimeLivenessMarker(persistedMember)
++    ) {
++      return true;
++    }
++
++    const liveRuntimeByMember = await ports
++      .getLiveTeamAgentRuntimeMetadata(input.teamName)
++      .catch(() => new Map<string, LiveTeamAgentRuntimeMetadata>());
++    const liveRuntimeMember =
++      liveRuntimeByMember.get(input.memberName) ??
++      [...liveRuntimeByMember.entries()].find(([candidateName]) =>
++        matchesObservedMemberNameForExpected(candidateName, input.memberName)
++      )?.[1];
++    return hasOpenCodeRuntimeEntryHandle(liveRuntimeMember);
++  };
++}
+diff --git a/src/main/services/team/provisioning/TeamProvisioningLaunchIdentity.ts b/src/main/services/team/provisioning/TeamProvisioningLaunchIdentity.ts
+--- a/src/main/services/team/provisioning/TeamProvisioningLaunchIdentity.ts
++++ b/src/main/services/team/provisioning/TeamProvisioningLaunchIdentity.ts
+@@ -118,6 +118,10 @@ function warnLaunchFactsParseError(params: {
+   );
+ }
+ 
++function hasRuntimeFactsJsonCandidate(raw: string | null | undefined): raw is string {
++  return typeof raw === 'string' && raw.trim().length > 0;
++}
++
+ export function buildRuntimeProviderLaunchFacts(
+   input: BuildRuntimeProviderLaunchFactsInput
+ ): RuntimeProviderLaunchFacts {
+@@ -126,7 +130,7 @@ export function buildRuntimeProviderLaunchFacts(
+   let modelListParsed = false;
+   const warn = input.warn ?? (() => undefined);
+ 
+-  if (typeof input.modelListStdout === 'string') {
++  if (hasRuntimeFactsJsonCandidate(input.modelListStdout)) {
+     try {
+       const parsed = extractJsonObjectFromCli<ProviderModelListCommandResponse>(
+         input.modelListStdout
+@@ -152,7 +156,7 @@ export function buildRuntimeProviderLaunchFacts(
+   let modelCatalog: CliProviderModelCatalog | null = null;
+   let providerStatus: RuntimeProviderLaunchFacts['providerStatus'] = null;
+ 
+-  if (typeof input.runtimeStatusStdout === 'string') {
++  if (hasRuntimeFactsJsonCandidate(input.runtimeStatusStdout)) {
+     try {
+       const parsed = extractJsonObjectFromCli<RuntimeStatusCommandResponse>(
+         input.runtimeStatusStdout
+@@ -195,7 +199,8 @@ export function buildRuntimeProviderLaunchFacts(
+       input.providerId === 'anthropic'
+         ? resolveAnthropicLaunchModel({
+             limitContext: input.limitContext === true,
+-            availableLaunchModels: modelCatalog?.models.map((model) => model.launchModel) ?? modelIds,
++            availableLaunchModels:
++              modelCatalog?.models.map((model) => model.launchModel) ?? modelIds,
+             defaultLaunchModel: defaultModel,
+           })
+         : defaultModel,
+diff --git a/src/main/services/team/provisioning/TeamProvisioningLiveRuntimeMetadataPortsFactory.ts b/src/main/services/team/provisioning/TeamProvisioningLiveRuntimeMetadataPortsFactory.ts
+--- a/src/main/services/team/provisioning/TeamProvisioningLiveRuntimeMetadataPortsFactory.ts
++++ b/src/main/services/team/provisioning/TeamProvisioningLiveRuntimeMetadataPortsFactory.ts
+@@ -80,7 +80,10 @@ export function createTeamProvisioningLiveRuntimeMetadataPorts(
+ 
+       const generationAtStart = buildDeps.getRuntimeSnapshotCacheGeneration(teamName);
+       const existingRequest = liveTeamAgentRuntimeMetadataInFlightByTeam.get(teamName);
+-      if (existingRequest?.runIdAtStart === runId) {
++      if (
++        existingRequest?.runIdAtStart === runId &&
++        existingRequest.generationAtStart === generationAtStart
++      ) {
+         return cloneLiveTeamAgentRuntimeMetadata(await existingRequest.promise);
+       }
+ 
+diff --git a/src/main/services/team/provisioning/TeamProvisioningMemberLifecycle.ts b/src/main/services/team/provisioning/TeamProvisioningMemberLifecycle.ts
+--- a/src/main/services/team/provisioning/TeamProvisioningMemberLifecycle.ts
++++ b/src/main/services/team/provisioning/TeamProvisioningMemberLifecycle.ts
+@@ -41,6 +41,10 @@ import {
+   buildDirectTmuxRestartCommand,
+   isInteractiveShellCommand,
+ } from './TeamProvisioningDirectRestart';
++import {
++  createHasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase,
++  type HasOpenCodeMemberRuntimeEvidenceForControlledRelaunchInput,
++} from './TeamProvisioningHasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase';
+ import {
+   matchesExactTeamMemberName,
+   matchesMemberNameOrBase,
+@@ -54,12 +58,7 @@ import {
+   createPersistOpenCodeMemberRestartSystemMessageUseCase,
+   type OpenCodeMemberRestartSystemMessageInput,
+ } from './TeamProvisioningOpenCodeMemberRestartSystemMessageUseCase';
+-import {
+-  hasOpenCodeRuntimeEntryHandle,
+-  hasOpenCodeRuntimeHandle,
+-  hasOpenCodeRuntimeLivenessMarker,
+-  MEMBER_BOOTSTRAP_STALL_MS,
+-} from './TeamProvisioningOpenCodeRuntimeEvidencePolicy';
++import { MEMBER_BOOTSTRAP_STALL_MS } from './TeamProvisioningOpenCodeRuntimeEvidencePolicy';
+ import {
+   createNodePreparePrimaryOwnedMemberRestartRuntimeUseCase,
+   type PreparePrimaryOwnedMemberRestartRuntimeInput,
+@@ -115,7 +114,6 @@ import type {
+   PersistedTeamLaunchSnapshot,
+   ProviderModelLaunchIdentity,
+   RetryFailedOpenCodeSecondaryLanesResult,
+-  TeamAgentRuntimeEntry,
+   TeamConfig,
+   TeamCreateRequest,
+   TeamProviderBackendId,
+@@ -132,6 +130,10 @@ const NATIVE_APP_MANAGED_BOOTSTRAP_CONTEXT_ENV =
+ const APP_TEAM_RUNTIME_DISALLOWED_TOOLS =
+   'TeamDelete,TodoWrite,TaskCreate,TaskUpdate,mcp__agent-teams__team_launch,mcp__agent-teams__team_stop';
+ 
++type RuntimeAdapterRunEntry = NonNullable<
++  ReturnType<TeamProvisioningMemberLifecycleHost['runtimeAdapterRunByTeam']['get']>
++>;
++
+ function nowIso(): string {
+   return new Date().toISOString();
+ }
+@@ -217,6 +219,11 @@ export class TeamProvisioningMemberLifecycleController {
+       resolveEffectiveConfiguredMember: (configMembers, metaMembers, memberName) =>
+         this.resolveEffectiveConfiguredMember(configMembers, metaMembers, memberName),
+     });
++  private readonly hasOpenCodeMemberRuntimeEvidenceForControlledRelaunchFallback =
++    createHasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase({
++      readLaunchStateSnapshot: (teamName) => this.launchStateStore.read(teamName),
++      getLiveTeamAgentRuntimeMetadata: (teamName) => this.getLiveTeamAgentRuntimeMetadata(teamName),
++    });
+ 
+   constructor(
+     private readonly host: TeamProvisioningMemberLifecycleHost,
+@@ -634,11 +641,13 @@ export class TeamProvisioningMemberLifecycleController {
+       memberSpec,
+       run: input.run,
+     });
++    this.assertRunStillCurrentAndAlive(input.run, input.teamName);
+     const memberMcpPolicy = normalizeTeamMemberMcpPolicy(memberSpec.mcpPolicy);
+     const mcpConfigPath = await this.mcpConfigBuilder.writeConfigFile(cwd, {
+       mcpPolicy: memberMcpPolicy,
+       controlApiBaseUrl: provisioningEnv.env.CLAUDE_TEAM_CONTROL_URL,
+     });
++    this.assertRunStillCurrentAndAlive(input.run, input.teamName);
+     const memberMcpConfigPaths = input.run.memberMcpConfigPaths ?? [];
+     input.run.memberMcpConfigPaths = memberMcpConfigPaths;
+     memberMcpConfigPaths.push(mcpConfigPath);
+@@ -712,6 +721,7 @@ export class TeamProvisioningMemberLifecycleController {
+       args: runtimeArgs,
+     });
+ 
++    this.assertRunStillCurrentAndAlive(input.run, input.teamName);
+     await this.updateDirectTmuxRestartMemberConfig({
+       teamName: input.teamName,
+       memberName: input.memberName,
+@@ -724,7 +734,9 @@ export class TeamProvisioningMemberLifecycleController {
+       providerId,
+       joinedAt: Date.now(),
+       bootstrapExpectedAfter,
++      assertStillCurrent: this.createRunStillCurrentGuard(input.run, input.teamName),
+     });
++    this.assertRunStillCurrentAndAlive(input.run, input.teamName);
+     this.enqueueDirectRestartPrompt({
+       teamName: input.teamName,
+       memberName: input.configuredMember.name,
+@@ -817,11 +829,13 @@ export class TeamProvisioningMemberLifecycleController {
+       memberSpec,
+       run: input.run,
+     });
++    this.assertRunStillCurrentAndAlive(input.run, input.teamName);
+     const memberMcpPolicy = normalizeTeamMemberMcpPolicy(memberSpec.mcpPolicy);
+     const mcpConfigPath = await this.mcpConfigBuilder.writeConfigFile(cwd, {
+       mcpPolicy: memberMcpPolicy,
+       controlApiBaseUrl: provisioningEnv.env.CLAUDE_TEAM_CONTROL_URL,
+     });
++    this.assertRunStillCurrentAndAlive(input.run, input.teamName);
+     const memberMcpConfigPaths = input.run.memberMcpConfigPaths ?? [];
+     input.run.memberMcpConfigPaths = memberMcpConfigPaths;
+     memberMcpConfigPaths.push(mcpConfigPath);
+@@ -915,6 +929,7 @@ export class TeamProvisioningMemberLifecycleController {
+       ...runtimeArgsPlan.settingsArgs,
+     ]);
+ 
++    this.assertRunStillCurrentAndAlive(input.run, input.teamName);
+     const stdoutLog = fs.createWriteStream(runtimePaths.stdoutPath, { flags: 'a', mode: 0o600 });
+     const stderrLog = fs.createWriteStream(runtimePaths.stderrPath, { flags: 'a', mode: 0o600 });
+     const child = spawnCli(claudePath, runtimeArgs, {
+@@ -986,6 +1001,7 @@ export class TeamProvisioningMemberLifecycleController {
+     child.unref();
+ 
+     try {
++      this.assertRunStillCurrentAndAlive(input.run, input.teamName);
+       await this.appendDirectProcessRuntimeEvent({
+         type: 'process_spawned',
+         eventsPath: runtimePaths.eventsPath,
+@@ -1010,6 +1026,7 @@ export class TeamProvisioningMemberLifecycleController {
+         source: runtimeEventSource,
+         detail: 'stdout and stderr attached',
+       });
++      this.assertRunStillCurrentAndAlive(input.run, input.teamName);
+       await this.updateDirectTmuxRestartMemberConfig({
+         teamName: input.teamName,
+         memberName: input.memberName,
+@@ -1033,7 +1050,9 @@ export class TeamProvisioningMemberLifecycleController {
+               bootstrapBriefingHash: nativeBootstrapSpec.briefingHash,
+             }
+           : {}),
++        assertStillCurrent: this.createRunStillCurrentGuard(input.run, input.teamName),
+       });
++      this.assertRunStillCurrentAndAlive(input.run, input.teamName);
+       this.enqueueDirectRestartPrompt({
+         teamName: input.teamName,
+         memberName: input.configuredMember.name,
+@@ -1177,6 +1196,57 @@ export class TeamProvisioningMemberLifecycleController {
+     return 'primary_member_added';
+   }
+ 
++  private isRunStillCurrentAndAlive(run: ProvisioningRun, teamName: string): boolean {
++    return (
++      this.getAliveRunId(teamName) === run.runId &&
++      this.runs.get(run.runId) === run &&
++      this.isCurrentTrackedRun(run) &&
++      !run.processKilled &&
++      !run.cancelRequested
++    );
++  }
++
++  private assertRunStillCurrentAndAlive(run: ProvisioningRun, teamName: string): void {
++    if (!this.isRunStillCurrentAndAlive(run, teamName)) {
++      throw new Error(`Team "${teamName}" is not currently running`);
++    }
++  }
++
++  private createRunStillCurrentGuard(run: ProvisioningRun, teamName: string): () => void {
++    return () => this.assertRunStillCurrentAndAlive(run, teamName);
++  }
++
++  private createRuntimeAdapterRunStillCurrentGuard(
++    teamName: string,
++    runtimeRun: RuntimeAdapterRunEntry
++  ): () => void {
++    const expectedRunId = runtimeRun.runId;
++    const expectedProviderId = runtimeRun.providerId;
++    const expectedCwd = runtimeRun.cwd;
++
++    return () => {
++      const currentRuntimeRun = this.runtimeAdapterRunByTeam.get(teamName);
++      if (currentRuntimeRun !== runtimeRun) {
++        throw new Error(`Team "${teamName}" is not currently running`);
++      }
++      if (
++        currentRuntimeRun.runId !== expectedRunId ||
++        currentRuntimeRun.providerId !== expectedProviderId ||
++        currentRuntimeRun.cwd !== expectedCwd
++      ) {
++        throw new Error(`Team "${teamName}" is not currently running`);
++      }
++    };
++  }
++
++  private async persistLaunchStateSnapshotForCurrentRun(
++    run: ProvisioningRun,
++    phase: PersistedTeamLaunchPhase
++  ): Promise<PersistedTeamLaunchSnapshot | null> {
++    this.assertRunStillCurrentAndAlive(run, run.teamName);
++    return this.persistLaunchStateSnapshot(run, phase);
++  }
++
+   async attachLiveRosterMember(
+     teamName: string,
+     memberName: string,
+@@ -1238,6 +1308,7 @@ export class TeamProvisioningMemberLifecycleController {
+       throw new Error(`Team "${teamName}" configuration is no longer available`);
+     }
+     const metaMembers = await this.membersMetaStore.getMembers(teamName).catch(() => []);
++    this.assertRunStillCurrentAndAlive(run, teamName);
+     const configuredMember = this.resolveEffectiveConfiguredMember(
+       config.members ?? [],
+       metaMembers,
+@@ -1287,6 +1358,7 @@ export class TeamProvisioningMemberLifecycleController {
+       [...liveRuntimeByMember.entries()].find(([candidateName]) =>
+         matchesObservedMemberNameForExpected(candidateName, memberName)
+       )?.[1];
++    this.assertRunStillCurrentAndAlive(run, teamName);
+     if (
+       !replaceExistingRuntime &&
+       liveRuntimeMember?.alive &&
+@@ -1326,6 +1398,7 @@ export class TeamProvisioningMemberLifecycleController {
+         `Member "${memberName}" uses an in-process runtime and cannot be attached here`
+       );
+     }
++    this.assertRunStillCurrentAndAlive(run, teamName);
+     if (replaceExistingRuntime) {
+       await this.stopPrimaryOwnedRosterRuntime({
+         teamName,
+@@ -1334,6 +1407,7 @@ export class TeamProvisioningMemberLifecycleController {
+         liveRuntimeByMember,
+         actionLabel: `Update for teammate "${memberName}"`,
+       });
++      this.assertRunStillCurrentAndAlive(run, teamName);
+       this.setMemberSpawnStatus(run, memberName, 'offline');
+     }
+ 
+@@ -1368,6 +1442,9 @@ export class TeamProvisioningMemberLifecycleController {
+         operation: options?.reason ?? 'member_added',
+       });
+     } catch (error) {
++      if (!this.isRunStillCurrentAndAlive(run, teamName)) {
++        throw error;
++      }
+       this.setMemberSpawnStatus(
+         run,
+         memberName,
+@@ -1399,6 +1476,7 @@ export class TeamProvisioningMemberLifecycleController {
+     const leadProviderId = resolveTeamProviderId(run.request.providerId);
+     const config = await this.readConfigForStrictDecision(teamName);
+     const metaMembers = await this.membersMetaStore.getMembers(teamName).catch(() => []);
++    this.assertRunStillCurrentAndAlive(run, teamName);
+     const configuredMember = this.resolveEffectiveConfiguredMember(
+       config?.members ?? [],
+       metaMembers,
+@@ -1423,13 +1501,15 @@ export class TeamProvisioningMemberLifecycleController {
+     const liveRuntimeByMember = await this.getLiveTeamAgentRuntimeMetadata(teamName).catch(
+       () => new Map<string, LiveTeamAgentRuntimeMetadata>()
+     );
++    this.assertRunStillCurrentAndAlive(run, teamName);
+     await this.stopPrimaryOwnedRosterRuntime({
+       teamName,
+       memberName,
+       persistedRuntimeMembers,
+       liveRuntimeByMember,
+       actionLabel: `Detach for teammate "${memberName}"`,
+     });
++    this.assertRunStillCurrentAndAlive(run, teamName);
+ 
+     this.removeRunAllEffectiveMember(run, memberName);
+     this.invalidateRuntimeSnapshotCaches(teamName);
+@@ -1493,6 +1573,7 @@ export class TeamProvisioningMemberLifecycleController {
+     };
+ 
+     let currentConfiguredMemberState = await readCurrentConfiguredMember();
++    this.assertRunStillCurrentAndAlive(run, teamName);
+     let config = currentConfiguredMemberState.config;
+     let configuredMember = currentConfiguredMemberState.configuredMember;
+     if (!config) {
+@@ -1530,15 +1611,18 @@ export class TeamProvisioningMemberLifecycleController {
+       return candidateName.length > 0 && matchesMemberNameOrBase(candidateName, memberName);
+     });
+ 
++    this.assertRunStillCurrentAndAlive(run, teamName);
+     const restartRuntimePreparation = await this.preparePrimaryOwnedMemberRestartRuntime({
+       teamName,
+       memberName,
+       persistedRuntimeMembers,
++      assertStillCurrent: () => this.assertRunStillCurrentAndAlive(run, teamName),
+       invalidateRuntimeSnapshotCaches: () => this.invalidateRuntimeSnapshotCaches(teamName),
+       loadLiveRuntimeByMember: () => this.getLiveTeamAgentRuntimeMetadata(teamName),
+     });
+     const { directTmuxRestartPaneId, shouldDirectProcessRestart } = restartRuntimePreparation;
+ 
++    this.assertRunStillCurrentAndAlive(run, teamName);
+     this.setMemberSpawnStatus(run, memberName, 'offline');
+ 
+     const latestRunId = this.getAliveRunId(teamName);
+@@ -1554,6 +1638,7 @@ export class TeamProvisioningMemberLifecycleController {
+     }
+ 
+     currentConfiguredMemberState = await readCurrentConfiguredMember();
++    this.assertRunStillCurrentAndAlive(run, teamName);
+     config = currentConfiguredMemberState.config;
+     configuredMember = currentConfiguredMemberState.configuredMember;
+     if (!config) {
+@@ -1608,6 +1693,9 @@ export class TeamProvisioningMemberLifecycleController {
+         });
+         return;
+       } catch (error) {
++        if (!this.isRunStillCurrentAndAlive(run, teamName)) {
++          throw error;
++        }
+         run.pendingMemberRestarts.delete(memberName);
+         this.setMemberSpawnStatus(
+           run,
+@@ -1616,7 +1704,7 @@ export class TeamProvisioningMemberLifecycleController {
+           error instanceof Error ? error.message : String(error)
+         );
+         if (run.isLaunch) {
+-          await this.persistLaunchStateSnapshot(
++          await this.persistLaunchStateSnapshotForCurrentRun(
+             run,
+             run.provisioningComplete ? 'finished' : 'active'
+           );
+@@ -1639,6 +1727,9 @@ export class TeamProvisioningMemberLifecycleController {
+         });
+         return;
+       } catch (error) {
++        if (!this.isRunStillCurrentAndAlive(run, teamName)) {
++          throw error;
++        }
+         run.pendingMemberRestarts.delete(memberName);
+         this.setMemberSpawnStatus(
+           run,
+@@ -1647,7 +1738,7 @@ export class TeamProvisioningMemberLifecycleController {
+           error instanceof Error ? error.message : String(error)
+         );
+         if (run.isLaunch) {
+-          await this.persistLaunchStateSnapshot(
++          await this.persistLaunchStateSnapshotForCurrentRun(
+             run,
+             run.provisioningComplete ? 'finished' : 'active'
+           );
+@@ -1663,6 +1754,7 @@ export class TeamProvisioningMemberLifecycleController {
+         mcpPolicy: configuredMember.mcpPolicy,
+         run,
+       });
++      this.assertRunStillCurrentAndAlive(run, teamName);
+       const restartMessage = buildRestartMemberSpawnMessage(
+         teamName,
+         config?.name?.trim() || teamName,
+@@ -1681,6 +1773,9 @@ export class TeamProvisioningMemberLifecycleController {
+       await this.sendMessageToRun(run, restartMessage);
+     } catch (error) {
+       await this.removeTrackedMemberMcpLaunchConfig(run, restartMcpLaunchConfig).catch(() => {});
++      if (!this.isRunStillCurrentAndAlive(run, teamName)) {
++        throw error;
++      }
+       run.pendingMemberRestarts.delete(memberName);
+       this.setMemberSpawnStatus(
+         run,
+@@ -1689,7 +1784,7 @@ export class TeamProvisioningMemberLifecycleController {
+         error instanceof Error ? error.message : String(error)
+       );
+       if (run.isLaunch) {
+-        await this.persistLaunchStateSnapshot(
++        await this.persistLaunchStateSnapshotForCurrentRun(
+           run,
+           run.provisioningComplete ? 'finished' : 'active'
+         );
+@@ -1706,6 +1801,10 @@ export class TeamProvisioningMemberLifecycleController {
+     if (runtimeRun?.providerId !== 'opencode') {
+       return false;
+     }
++    const assertRuntimeAdapterRunStillCurrent = this.createRuntimeAdapterRunStillCurrentGuard(
++      teamName,
++      runtimeRun
++    );
+ 
+     const adapter = this.getOpenCodeRuntimeAdapter();
+     if (!adapter) {
+@@ -1799,13 +1898,15 @@ export class TeamProvisioningMemberLifecycleController {
+       leadProviderId: 'opencode',
+       members: activeMembers.map((member) => this.buildConfiguredProvisioningMember(member)),
+     });
++    assertRuntimeAdapterRunStillCurrent();
+     const targetRuntimeMember = effectiveMembers.find((member) =>
+       matchesExactTeamMemberName(member.name, targetMember.name)
+     );
+     if (!targetRuntimeMember) {
+       throw new Error(`Member "${memberName}" could not be resolved for OpenCode restart`);
+     }
+ 
++    assertRuntimeAdapterRunStillCurrent();
+     this.invalidateRuntimeSnapshotCaches(teamName);
+     this.persistOpenCodeMemberRestartSystemMessage({
+       teamName,
+@@ -1814,8 +1915,10 @@ export class TeamProvisioningMemberLifecycleController {
+       displayName: config.description?.trim() || config.name,
+       member: targetRuntimeMember,
+       reason: 'manual_restart',
++      assertStillCurrent: assertRuntimeAdapterRunStillCurrent,
+     });
+ 
++    assertRuntimeAdapterRunStillCurrent();
+     await this.runOpenCodeTeamRuntimeAdapterLaunch({
+       request: {
+         teamName,
+@@ -2216,6 +2319,7 @@ export class TeamProvisioningMemberLifecycleController {
+     } catch {
+       metaMembers = [];
+     }
++    this.assertRunStillCurrentAndAlive(run, teamName);
+     const configuredMember = this.resolveEffectiveConfiguredMember(
+       config.members ?? [],
+       metaMembers,
+@@ -2247,6 +2351,7 @@ export class TeamProvisioningMemberLifecycleController {
+     if (!memberSpec) {
+       throw new Error(`Member "${memberName}" could not be resolved for OpenCode lane reattach.`);
+     }
++    this.assertRunStillCurrentAndAlive(run, teamName);
+     const nextLane = this.createMixedSecondaryLaneStateForMember(run, memberSpec);
+     const existingLaneIndex = run.mixedSecondaryLanes.findIndex(
+       (lane) => lane.laneId === nextLane.laneId || lane.member.name.trim() === memberName
+@@ -2266,9 +2371,11 @@ export class TeamProvisioningMemberLifecycleController {
+       laneId: nextLane.laneId,
+       existingLane,
+     });
++    this.assertRunStillCurrentAndAlive(run, teamName);
+ 
+     if (existingLane) {
+       await this.stopSingleMixedSecondaryRuntimeLane(run, existingLane, 'relaunch');
++      this.assertRunStillCurrentAndAlive(run, teamName);
+     }
+ 
+     const laneState = existingLane ?? nextLane;
+@@ -2309,43 +2416,13 @@ export class TeamProvisioningMemberLifecycleController {
+     await this.launchSingleMixedSecondaryLane(run, laneState);
+   }
+ 
+-  private async hasOpenCodeMemberRuntimeEvidenceForControlledRelaunch(params: {
+-    teamName: string;
+-    memberName: string;
+-    laneId: string;
+-    existingLane: MixedSecondaryRuntimeLaneState | null;
+-  }): Promise<boolean> {
+-    const laneResultMember =
+-      params.existingLane?.result?.members[params.memberName] ??
+-      Object.values(params.existingLane?.result?.members ?? {}).find(
+-        (member) => member.memberName?.trim() === params.memberName
+-      );
+-    if (hasOpenCodeRuntimeHandle(laneResultMember)) {
+-      return true;
+-    }
+-
+-    const persistedSnapshot = await this.launchStateStore.read(params.teamName).catch(() => null);
+-    const persistedMember =
+-      persistedSnapshot?.members[params.memberName] ??
+-      Object.values(persistedSnapshot?.members ?? {}).find(
+-        (member) => member.laneId === params.laneId
+-      );
+-    if (
+-      hasOpenCodeRuntimeHandle(persistedMember) ||
+-      hasOpenCodeRuntimeLivenessMarker(persistedMember)
+-    ) {
+-      return true;
+-    }
+-
+-    const liveRuntimeByMember = await this.getLiveTeamAgentRuntimeMetadata(params.teamName).catch(
+-      () => new Map<string, TeamAgentRuntimeEntry>()
++  private async hasOpenCodeMemberRuntimeEvidenceForControlledRelaunch(
++    input: HasOpenCodeMemberRuntimeEvidenceForControlledRelaunchInput
++  ): Promise<boolean> {
++    const seam = this.openCodeRetryUseCases.hasOpenCodeMemberRuntimeEvidenceForControlledRelaunch;
++    return await (seam ?? this.hasOpenCodeMemberRuntimeEvidenceForControlledRelaunchFallback)(
++      input
+     );
+-    const liveRuntimeMember =
+-      liveRuntimeByMember.get(params.memberName) ??
+-      [...liveRuntimeByMember.entries()].find(([candidateName]) =>
+-        matchesObservedMemberNameForExpected(candidateName, params.memberName)
+-      )?.[1];
+-    return hasOpenCodeRuntimeEntryHandle(liveRuntimeMember);
+   }
+ 
+   async detachOpenCodeOwnedMemberLane(teamName: string, memberName: string): Promise<void> {
+@@ -2381,8 +2458,10 @@ export class TeamProvisioningMemberLifecycleController {
+       return;
+     }
+ 
+-    const [lane] = run.mixedSecondaryLanes.splice(laneIndex, 1);
++    const lane = run.mixedSecondaryLanes[laneIndex];
+     await this.stopSingleMixedSecondaryRuntimeLane(run, lane, 'cleanup');
++    this.assertRunStillCurrentAndAlive(run, teamName);
++    run.mixedSecondaryLanes.splice(laneIndex, 1);
+     this.removeRunAllEffectiveMember(run, memberName);
+     this.invalidateRuntimeSnapshotCaches(teamName);
+     this.resetRuntimeToolActivity(run, memberName);
+diff --git a/src/main/services/team/provisioning/TeamProvisioningMemberLifecycleServiceUseCases.ts b/src/main/services/team/provisioning/TeamProvisioningMemberLifecycleServiceUseCases.ts
+--- a/src/main/services/team/provisioning/TeamProvisioningMemberLifecycleServiceUseCases.ts
++++ b/src/main/services/team/provisioning/TeamProvisioningMemberLifecycleServiceUseCases.ts
+@@ -1,3 +1,7 @@
++import {
++  createHasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase,
++  type HasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase,
++} from './TeamProvisioningHasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase';
+ import {
+   createPersistOpenCodeMemberRestartSystemMessageUseCase,
+   type PersistOpenCodeMemberRestartSystemMessageUseCase,
+@@ -21,12 +25,16 @@ import type {
+   TeamProvisioningMemberLifecycleRestartUseCaseSeams,
+ } from './TeamProvisioningMemberLifecycleUseCaseSeams';
+ import type { PreparePrimaryOwnedMemberRestartRuntimeUseCase } from './TeamProvisioningPreparePrimaryOwnedMemberRestartRuntimeUseCase';
++import type { LiveTeamAgentRuntimeMetadata } from './TeamProvisioningRuntimeMetadataPolicy';
+ import type { StopPrimaryOwnedRosterRuntimeUseCase } from './TeamProvisioningStopPrimaryOwnedRosterRuntimeUseCase';
+ import type { PersistedTeamLaunchSnapshot } from '@shared/types';
+ 
+ export interface TeamProvisioningMemberLifecycleServiceUseCasePorts {
+   persistSentMessage(teamName: string, message: Record<string, unknown>): void;
+   readLaunchStateSnapshot(teamName: string): Promise<PersistedTeamLaunchSnapshot | null>;
++  getLiveTeamAgentRuntimeMetadata(
++    teamName: string
++  ): Promise<ReadonlyMap<string, LiveTeamAgentRuntimeMetadata>>;
+   appendDirectProcessRuntimeEvent: AppendDirectProcessRuntimeEventUseCase;
+   stopPrimaryOwnedRosterRuntime: StopPrimaryOwnedRosterRuntimeUseCase;
+   preparePrimaryOwnedMemberRestartRuntime: PreparePrimaryOwnedMemberRestartRuntimeUseCase;
+@@ -39,10 +47,11 @@ export interface TeamProvisioningMemberLifecycleServiceUseCases
+     TeamProvisioningMemberLifecycleRestartUseCaseSeams,
+     Pick<
+       TeamProvisioningMemberLifecycleOpenCodeRetryUseCaseSeams,
+-      'readOpenCodeSecondaryRetryOutcome'
++      'readOpenCodeSecondaryRetryOutcome' | 'hasOpenCodeMemberRuntimeEvidenceForControlledRelaunch'
+     > {
+   persistOpenCodeMemberRestartSystemMessage: PersistOpenCodeMemberRestartSystemMessageUseCase;
+   readOpenCodeSecondaryRetryOutcome: ReadOpenCodeSecondaryRetryOutcomeUseCase;
++  hasOpenCodeMemberRuntimeEvidenceForControlledRelaunch: HasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase;
+   appendDirectProcessRuntimeEvent: AppendDirectProcessRuntimeEventUseCase;
+   updateDirectTmuxRestartMemberConfig: UpdateDirectTmuxRestartMemberConfigUseCase;
+   stopPrimaryOwnedRosterRuntime: StopPrimaryOwnedRosterRuntimeUseCase;
+@@ -63,6 +72,11 @@ export function createTeamProvisioningMemberLifecycleServiceUseCases(
+     readOpenCodeSecondaryRetryOutcome: createReadOpenCodeSecondaryRetryOutcomeUseCase({
+       readLaunchStateSnapshot: ports.readLaunchStateSnapshot,
+     }),
++    hasOpenCodeMemberRuntimeEvidenceForControlledRelaunch:
++      createHasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase({
++        readLaunchStateSnapshot: ports.readLaunchStateSnapshot,
++        getLiveTeamAgentRuntimeMetadata: ports.getLiveTeamAgentRuntimeMetadata,
++      }),
+     appendDirectProcessRuntimeEvent: ports.appendDirectProcessRuntimeEvent,
+     updateDirectTmuxRestartMemberConfig: createNodeUpdateDirectTmuxRestartMemberConfigUseCase(),
+     stopPrimaryOwnedRosterRuntime: ports.stopPrimaryOwnedRosterRuntime,
+diff --git a/src/main/services/team/provisioning/TeamProvisioningMemberLifecycleUseCaseSeams.ts b/src/main/services/team/provisioning/TeamProvisioningMemberLifecycleUseCaseSeams.ts
+--- a/src/main/services/team/provisioning/TeamProvisioningMemberLifecycleUseCaseSeams.ts
++++ b/src/main/services/team/provisioning/TeamProvisioningMemberLifecycleUseCaseSeams.ts
+@@ -1,5 +1,6 @@
+ import type { AppendDirectProcessRuntimeEventUseCase } from './TeamProvisioningAppendDirectProcessRuntimeEventUseCase';
+ import type { OpenCodeSecondaryRetryCandidate } from './TeamProvisioningCollectFailedOpenCodeSecondaryRetryCandidatesUseCase';
++import type { HasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase } from './TeamProvisioningHasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase';
+ import type {
+   DirectProcessMemberRestartInput,
+   LiveRosterAttachReason,
+@@ -61,6 +62,7 @@ export interface TeamProvisioningMemberLifecycleOpenCodeRetryUseCaseSeams {
+     memberName: string,
+     options?: ReattachOpenCodeOwnedMemberLaneOptions
+   ): Promise<void>;
++  hasOpenCodeMemberRuntimeEvidenceForControlledRelaunch?: HasOpenCodeMemberRuntimeEvidenceForControlledRelaunchUseCase;
+   detachOpenCodeOwnedMemberLaneUnlocked?(teamName: string, memberName: string): Promise<void>;
+ }
+ 
+diff --git a/src/main/services/team/provisioning/TeamProvisioningOpenCodeMemberRestartSystemMessageUseCase.ts b/src/main/services/team/provisioning/TeamProvisioningOpenCodeMemberRestartSystemMessageUseCase.ts
+--- a/src/main/services/team/provisioning/TeamProvisioningOpenCodeMemberRestartSystemMessageUseCase.ts
++++ b/src/main/services/team/provisioning/TeamProvisioningOpenCodeMemberRestartSystemMessageUseCase.ts
+@@ -9,6 +9,7 @@ export interface OpenCodeMemberRestartSystemMessageInput {
+   displayName: string;
+   member: TeamCreateRequest['members'][number];
+   reason: 'manual_restart' | 'member_updated';
++  assertStillCurrent?: () => void;
+ }
+ 
+ export interface PersistOpenCodeMemberRestartSystemMessagePorts {
+@@ -36,6 +37,7 @@ export function createPersistOpenCodeMemberRestartSystemMessageUseCase(
+     const reasonSummary =
+       input.reason === 'member_updated' ? 'after member settings update' : 'by user request';
+ 
++    input.assertStillCurrent?.();
+     ports.persistSentMessage(input.teamName, {
+       from: input.leadName,
+       to: input.member.name,
+diff --git a/src/main/services/team/provisioning/TeamProvisioningPrepareCachePolicy.ts b/src/main/services/team/provisioning/TeamProvisioningPrepareCachePolicy.ts
+new file mode 100644
+--- /dev/null
++++ b/src/main/services/team/provisioning/TeamProvisioningPrepareCachePolicy.ts
+@@ -0,0 +1,72 @@
++import { resolveTeamProviderId } from '../../runtime/providerRuntimeEnv';
++
++import { normalizeProvisioningModelCheckRequests } from './TeamProvisioningRuntimeLaunchSelection';
++
++import type { TeamProviderId, TeamProvisioningModelCheckRequest } from '@shared/types';
++
++interface PrepareCacheKeyOptions {
++  forceFresh?: boolean;
++  providerId?: TeamProviderId;
++  providerIds?: readonly TeamProviderId[];
++  modelIds?: readonly string[];
++  modelChecks?: readonly TeamProvisioningModelCheckRequest[];
++  limitContext?: boolean;
++  modelVerificationMode?: string | null;
++}
++
++export function createPrepareForProvisioningInFlightKey(
++  cwd?: string,
++  opts?: PrepareCacheKeyOptions
++): string {
++  const providerIds = normalizePrepareProviderIds(opts);
++  if (providerIds.length === 0) {
++    providerIds.push('anthropic');
++  }
++  const modelIds = normalizePrepareModelIds(opts?.modelIds);
++  const modelChecks = normalizePrepareModelChecks(opts?.modelChecks).map((check) => ({
++    providerId: check.providerId,
++    model: check.model,
++    effort: check.effort ?? null,
++  }));
++
++  return JSON.stringify({
++    cwd: cwd?.trim() || process.cwd(),
++    forceFresh: opts?.forceFresh === true,
++    providerIds,
++    modelIds,
++    modelChecks,
++    limitContext: opts?.limitContext === true,
++    modelVerificationMode: opts?.modelVerificationMode ?? null,
++  });
++}
++
++export function normalizePrepareProviderIds(opts?: PrepareCacheKeyOptions): TeamProviderId[] {
++  return Array.from(
++    new Set(
++      [opts?.providerId, ...(opts?.providerIds ?? [])]
++        .map((providerId) => resolveTeamProviderId(providerId))
++        .filter((providerId): providerId is TeamProviderId => Boolean(providerId))
++    )
++  ).sort((left, right) => left.localeCompare(right));
++}
++
++export function normalizePrepareModelIds(modelIds: readonly string[] | undefined): string[] {
++  return Array.from(
++    new Set((modelIds ?? []).map((modelId) => modelId.trim()).filter(Boolean))
++  ).sort((left, right) => left.localeCompare(right));
++}
++
++export function normalizePrepareModelChecks(
++  checks: readonly TeamProvisioningModelCheckRequest[] | undefined
++): TeamProvisioningModelCheckRequest[] {
++  return normalizeProvisioningModelCheckRequests(checks).sort(
++    (left, right) =>
++      left.providerId.localeCompare(right.providerId) ||
++      left.model.localeCompare(right.model) ||
++      (left.effort ?? '').localeCompare(right.effort ?? '')
++  );
++}
++
++export function createProbeInFlightKey(cacheKey: string, generation: number): string {
++  return JSON.stringify([cacheKey, generation]);
++}
+diff --git a/src/main/services/team/provisioning/TeamProvisioningPrepareCoordinator.ts b/src/main/services/team/provisioning/TeamProvisioningPrepareCoordinator.ts
+--- a/src/main/services/team/provisioning/TeamProvisioningPrepareCoordinator.ts
++++ b/src/main/services/team/provisioning/TeamProvisioningPrepareCoordinator.ts
+@@ -29,6 +29,10 @@ import {
+ } from './TeamProvisioningOpenCodeDiagnosticsPolicy';
+ import { prepareSelectedOpenCodeModelsForProvisioning } from './TeamProvisioningOpenCodeModelPreparation';
+ import { isAuthFailureWarning } from './TeamProvisioningOutputErrorPolicy';
++import {
++  createPrepareForProvisioningInFlightKey as buildPrepareForProvisioningInFlightKey,
++  createProbeInFlightKey,
++} from './TeamProvisioningPrepareCachePolicy';
+ import { isBinaryProbeWarning, isTransientProbeWarning } from './TeamProvisioningProbeWarnings';
+ import {
+   appendPreflightDebugLog,
+@@ -157,6 +161,7 @@ export class TeamProvisioningPrepareCoordinator {
+     string,
+     Promise<TeamProvisioningPrepareResult>
+   >();
++  private readonly probeCacheGenerationByKey = new Map<string, number>();
+ 
+   constructor(private readonly ports: TeamProvisioningPrepareCoordinatorPorts) {}
+ 
+@@ -200,37 +205,7 @@ export class TeamProvisioningPrepareCoordinator {
+     cwd?: string,
+     opts?: PrepareForProvisioningOptions
+   ): string {
+-    const providerIds = Array.from(
+-      new Set(
+-        [opts?.providerId, ...(opts?.providerIds ?? [])]
+-          .map((providerId) => resolveTeamProviderId(providerId))
+-          .filter((providerId): providerId is TeamProviderId => Boolean(providerId))
+-      )
+-    );
+-    const modelIds = Array.from(
+-      new Set((opts?.modelIds ?? []).map((modelId) => modelId.trim()).filter(Boolean))
+-    );
+-    const modelChecks = normalizeProvisioningModelCheckRequests(opts?.modelChecks)
+-      .map((check) => ({
+-        providerId: check.providerId,
+-        model: check.model,
+-        effort: check.effort ?? null,
+-      }))
+-      .sort(
+-        (left, right) =>
+-          left.providerId.localeCompare(right.providerId) ||
+-          left.model.localeCompare(right.model) ||
+-          (left.effort ?? '').localeCompare(right.effort ?? '')
+-      );
+-    return JSON.stringify({
+-      cwd: cwd?.trim() || process.cwd(),
+-      forceFresh: opts?.forceFresh === true,
+-      providerIds,
+-      modelIds,
+-      modelChecks,
+-      limitContext: opts?.limitContext === true,
+-      modelVerificationMode: opts?.modelVerificationMode ?? null,
+-    });
++    return buildPrepareForProvisioningInFlightKey(cwd, opts);
+   }
+ 
+   clonePrepareForProvisioningResult(
+@@ -913,7 +888,13 @@ export class TeamProvisioningPrepareCoordinator {
+   }
+ 
+   clearProbeCache(cwd: string, providerId: TeamProviderId | undefined): void {
+-    this.ports.providerProbeCache.delete(createProbeCacheKey(cwd, providerId));
++    const cacheKey = createProbeCacheKey(cwd, providerId);
++    this.ports.providerProbeCache.delete(cacheKey);
++    if (this.ports.providerProbeCache.hasInFlightForProbeCacheKey(cacheKey)) {
++      this.bumpProbeCacheGeneration(cacheKey);
++      return;
++    }
++    this.pruneProbeCacheGeneration(cacheKey);
+   }
+ 
+   async validatePrepareCwd(cwd: string): Promise<void> {
+@@ -934,50 +915,78 @@ export class TeamProvisioningPrepareCoordinator {
+       };
+     }
+ 
+-    return this.ports.providerProbeCache.getOrCreateInFlight(cacheKey, async () => {
+-      const claudePath = await this.ports.resolveClaudeBinaryPath();
+-      if (!claudePath) return null;
++    const cacheGeneration = this.getProbeCacheGeneration(cacheKey);
++    const inFlightKey = createProbeInFlightKey(cacheKey, cacheGeneration);
++    try {
++      return await this.ports.providerProbeCache.getOrCreateInFlight(
++        inFlightKey,
++        async () => {
++          const claudePath = await this.ports.resolveClaudeBinaryPath();
++          if (!claudePath) return null;
++
++          const {
++            env,
++            authSource,
++            providerArgs = [],
++            warning,
++          } = await this.ports.buildProvisioningEnv(providerId);
++          if (warning) {
++            return {
++              claudePath,
++              authSource,
++              warning,
++            };
++          }
+ 
+-      const {
+-        env,
+-        authSource,
+-        providerArgs = [],
+-        warning,
+-      } = await this.ports.buildProvisioningEnv(providerId);
+-      if (warning) {
+-        return {
+-          claudePath,
+-          authSource,
+-          warning,
+-        };
+-      }
++          const probe = await this.ports.probeClaudeRuntime(
++            claudePath,
++            cwd,
++            env,
++            providerId,
++            providerArgs
++          );
++          const result = {
++            claudePath,
++            authSource,
++            ...(probe.warning ? { warning: probe.warning } : {}),
++          };
++
++          const shouldCache =
++            !probe.warning ||
++            (!isAuthFailureWarning(probe.warning, 'probe') &&
++              !isTransientProbeWarning(probe.warning) &&
++              !isBinaryProbeWarning(probe.warning));
++
++          if (this.getProbeCacheGeneration(cacheKey) !== cacheGeneration) {
++            return result;
++          }
+ 
+-      const probe = await this.ports.probeClaudeRuntime(
+-        claudePath,
+-        cwd,
+-        env,
+-        providerId,
+-        providerArgs
++          if (shouldCache) {
++            this.ports.providerProbeCache.set(cacheKey, result);
++          } else {
++            this.ports.providerProbeCache.delete(cacheKey);
++          }
++
++          return result;
++        },
++        { probeCacheKey: cacheKey }
+       );
+-      const result = {
+-        claudePath,
+-        authSource,
+-        ...(probe.warning ? { warning: probe.warning } : {}),
+-      };
++    } finally {
++      this.pruneProbeCacheGeneration(cacheKey);
++    }
++  }
+ 
+-      const shouldCache =
+-        !probe.warning ||
+-        (!isAuthFailureWarning(probe.warning, 'probe') &&
+-          !isTransientProbeWarning(probe.warning) &&
+-          !isBinaryProbeWarning(probe.warning));
++  private getProbeCacheGeneration(cacheKey: string): number {
++    return this.probeCacheGenerationByKey.get(cacheKey) ?? 0;
++  }
+ 
+-      if (shouldCache) {
+-        this.ports.providerProbeCache.set(cacheKey, result);
+-      } else {
+-        this.ports.providerProbeCache.delete(cacheKey);
+-      }
++  private bumpProbeCacheGeneration(cacheKey: string): void {
++    this.probeCacheGenerationByKey.set(cacheKey, this.getProbeCacheGeneration(cacheKey) + 1);
++  }
+ 
+-      return result;
+-    });
++  private pruneProbeCacheGeneration(cacheKey: string): void {
++    if (!this.ports.providerProbeCache.hasInFlightForProbeCacheKey(cacheKey)) {
++      this.probeCacheGenerationByKey.delete(cacheKey);
++    }
+   }
+ }
+diff --git a/src/main/services/team/provisioning/TeamProvisioningPreparePrimaryOwnedMemberRestartRuntimeUseCase.ts b/src/main/services/team/provisioning/TeamProvisioningPreparePrimaryOwnedMemberRestartRuntimeUseCase.ts
+--- a/src/main/services/team/provisioning/TeamProvisioningPreparePrimaryOwnedMemberRestartRuntimeUseCase.ts
++++ b/src/main/services/team/provisioning/TeamProvisioningPreparePrimaryOwnedMemberRestartRuntimeUseCase.ts
+@@ -28,6 +28,7 @@ export interface PreparePrimaryOwnedMemberRestartRuntimeInput {
+   teamName: string;
+   memberName: string;
+   persistedRuntimeMembers: readonly PrimaryOwnedMemberRestartPersistedRuntimeMember[];
++  assertStillCurrent?(): void;
+   invalidateRuntimeSnapshotCaches(): void;
+   loadLiveRuntimeByMember(): Promise<
+     ReadonlyMap<string, PrimaryOwnedMemberRestartLiveRuntimeMetadata>
+@@ -88,8 +89,10 @@ export function createPreparePrimaryOwnedMemberRestartRuntimeUseCase(
+       );
+     }
+ 
++    input.assertStillCurrent?.();
+     input.invalidateRuntimeSnapshotCaches();
+     const liveRuntimeByMember = await input.loadLiveRuntimeByMember();
++    input.assertStillCurrent?.();
+ 
+     const livePids = new Set<number>();
+     let hasAliveRuntimeWithoutPid = false;
+@@ -133,6 +136,7 @@ export function createPreparePrimaryOwnedMemberRestartRuntimeUseCase(
+         );
+       }
+     }
++    input.assertStillCurrent?.();
+ 
+     const tmuxPaneIdsToVerify: string[] = [];
+     if (!directTmuxRestartPaneId) {
+diff --git a/src/main/services/team/provisioning/TeamProvisioningProviderProbeCache.ts b/src/main/services/team/provisioning/TeamProvisioningProviderProbeCache.ts
+--- a/src/main/services/team/provisioning/TeamProvisioningProviderProbeCache.ts
++++ b/src/main/services/team/provisioning/TeamProvisioningProviderProbeCache.ts
+@@ -21,9 +21,11 @@ export interface ProviderProbeCachePort {
+   set(cacheKey: string, result: ProbeResult): void;
+   delete(cacheKey: string): void;
+   getOrCreateInFlight(
+-    cacheKey: string,
+-    create: () => Promise<ProbeResult | null>
++    inFlightKey: string,
++    create: () => Promise<ProbeResult | null>,
++    options?: { probeCacheKey?: string }
+   ): Promise<ProbeResult | null>;
++  hasInFlightForProbeCacheKey(probeCacheKey: string): boolean;
+ }
+ 
+ export function createInMemoryProviderProbeCachePort({
+@@ -35,6 +37,25 @@ export function createInMemoryProviderProbeCachePort({
+ } = {}): ProviderProbeCachePort {
+   const cachedProbeResults = new Map<string, CachedProbeResult>();
+   const probeInFlightByKey = new Map<string, Promise<ProbeResult | null>>();
++  const inFlightCountByProbeCacheKey = new Map<string, number>();
++
++  const incrementInFlightCount = (probeCacheKey: string | undefined): void => {
++    if (!probeCacheKey) return;
++    inFlightCountByProbeCacheKey.set(
++      probeCacheKey,
++      (inFlightCountByProbeCacheKey.get(probeCacheKey) ?? 0) + 1
++    );
++  };
++
++  const decrementInFlightCount = (probeCacheKey: string | undefined): void => {
++    if (!probeCacheKey) return;
++    const nextCount = (inFlightCountByProbeCacheKey.get(probeCacheKey) ?? 0) - 1;
++    if (nextCount > 0) {
++      inFlightCountByProbeCacheKey.set(probeCacheKey, nextCount);
++      return;
++    }
++    inFlightCountByProbeCacheKey.delete(probeCacheKey);
++  };
+ 
+   return {
+     get(cacheKey) {
+@@ -45,27 +66,33 @@ export function createInMemoryProviderProbeCachePort({
+         cachedProbeResults.delete(cacheKey);
+         return null;
+       }
+-      return cached;
++      return { ...cached };
+     },
+     set(cacheKey, result) {
+       cachedProbeResults.set(cacheKey, { cacheKey, ...result, cachedAtMs: now() });
+     },
+     delete(cacheKey) {
+       cachedProbeResults.delete(cacheKey);
+     },
+-    getOrCreateInFlight(cacheKey, create) {
+-      const existingProbe = probeInFlightByKey.get(cacheKey);
++    getOrCreateInFlight(inFlightKey, create, options) {
++      const existingProbe = probeInFlightByKey.get(inFlightKey);
+       if (existingProbe) {
+         return existingProbe;
+       }
+ 
++      const probeCacheKey = options?.probeCacheKey;
+       const probePromise = create().finally(() => {
+-        if (probeInFlightByKey.get(cacheKey) === probePromise) {
+-          probeInFlightByKey.delete(cacheKey);
++        if (probeInFlightByKey.get(inFlightKey) === probePromise) {
++          probeInFlightByKey.delete(inFlightKey);
++          decrementInFlightCount(probeCacheKey);
+         }
+       });
+-      probeInFlightByKey.set(cacheKey, probePromise);
++      probeInFlightByKey.set(inFlightKey, probePromise);
++      incrementInFlightCount(probeCacheKey);
+       return probePromise;
+     },
++    hasInFlightForProbeCacheKey(probeCacheKey) {
++      return (inFlightCountByProbeCacheKey.get(probeCacheKey) ?? 0) > 0;
++    },
+   };
+ }
+diff --git a/src/main/services/team/provisioning/TeamProvisioningRuntimeSnapshot.ts b/src/main/services/team/provisioning/TeamProvisioningRuntimeSnapshot.ts
+--- a/src/main/services/team/provisioning/TeamProvisioningRuntimeSnapshot.ts
++++ b/src/main/services/team/provisioning/TeamProvisioningRuntimeSnapshot.ts
+@@ -131,6 +131,7 @@ export interface TeamProvisioningRuntimeSnapshotRun {
+   effectiveMembers?: TeamCreateRequest['members'];
+   memberSpawnStatuses?: Map<string, MemberSpawnStatusEntry>;
+   mixedSecondaryLanes?: readonly {
++    laneId?: string;
+     member: TeamCreateRequest['members'][number];
+     result?: { members?: Record<string, TeamRuntimeMemberLaunchEvidence> } | null;
+   }[];
+@@ -171,6 +172,96 @@ function getPersistedLaunchMemberNames(snapshot: PersistedTeamLaunchSnapshot): s
+   return Array.from(new Set([...snapshot.expectedMembers, ...Object.keys(snapshot.members)]));
+ }
+ 
++function shouldUseLaunchMemberRuntimeEvidence(
++  member: PersistedTeamLaunchMemberState | undefined,
++  activeRuntimeRunId: string
++): boolean {
++  if (!member) {
++    return false;
++  }
++  if (activeRuntimeRunId.length === 0) {
++    return true;
++  }
++  return isLaunchMemberStatusRelevantToRuntimeRun(member, activeRuntimeRunId);
++}
++
++function resolveActiveRuntimeRunId(
++  run: { runId?: string } | null | undefined,
++  paramsRunId: string | null | undefined,
++  runtimeAdapterRun: RuntimeAdapterRunSnapshotSource | undefined
++): string {
++  return run?.runId?.trim() || paramsRunId?.trim() || runtimeAdapterRun?.runId?.trim() || '';
++}
++
++function shouldUseRuntimeAdapterRunEvidence(
++  runtimeAdapterRun: RuntimeAdapterRunSnapshotSource | undefined,
++  activeRuntimeRunId: string
++): runtimeAdapterRun is RuntimeAdapterRunSnapshotSource {
++  if (!runtimeAdapterRun) {
++    return false;
++  }
++  const adapterRunId = runtimeAdapterRun.runId.trim();
++  if (activeRuntimeRunId.length === 0) {
++    return true;
++  }
++  return adapterRunId.length > 0 && adapterRunId === activeRuntimeRunId;
++}
++
++function shouldUsePersistedRuntimeMemberRuntimeEvidence(
++  member: PersistedRuntimeMemberLike,
++  activeRuntimeRunId: string
++): boolean {
++  if (activeRuntimeRunId.length === 0) {
++    return true;
++  }
++  const bootstrapRunId = member.bootstrapRunId?.trim() ?? '';
++  return bootstrapRunId.length > 0 && bootstrapRunId === activeRuntimeRunId;
++}
++
++function normalizeRuntimeLaneKind(value: unknown): 'primary' | 'secondary' | undefined {
++  return value === 'primary' || value === 'secondary' ? value : undefined;
++}
++
++function normalizeRuntimeLaneIdentity(
++  value: unknown
++): Pick<TeamAgentRuntimeEntry, 'laneId' | 'laneKind'> {
++  if (!value || typeof value !== 'object' || Array.isArray(value)) {
++    return {};
++  }
++  const record = value as Record<string, unknown>;
++  const laneId = typeof record.laneId === 'string' ? record.laneId.trim() : '';
++  const laneKind = normalizeRuntimeLaneKind(record.laneKind);
++  return {
++    ...(laneId ? { laneId } : {}),
++    ...(laneKind ? { laneKind } : {}),
++  };
++}
++
++function resolveActiveRunLaneIdentity(
++  run: TeamProvisioningRuntimeSnapshotRun | null,
++  memberName: string
++): Pick<TeamAgentRuntimeEntry, 'laneId' | 'laneKind'> {
++  if (!run) {
++    return {};
++  }
++  for (const lane of run.mixedSecondaryLanes ?? []) {
++    const laneMemberName = lane.member.name?.trim() ?? '';
++    if (
++      !laneMemberName ||
++      (!matchesMemberNameOrBase(laneMemberName, memberName) &&
++        !matchesMemberNameOrBase(memberName, laneMemberName))
++    ) {
++      continue;
++    }
++    const laneId = typeof lane.laneId === 'string' ? lane.laneId.trim() : '';
++    return {
++      ...(laneId ? { laneId } : {}),
++      laneKind: 'secondary',
++    };
++  }
++  return normalizeRuntimeLaneIdentity(findEffectiveRunMember(run, memberName));
++}
++
+ function normalizeRuntimePositiveInteger(value: unknown): number | undefined {
+   return typeof value === 'number' && Number.isFinite(value) && value > 0
+     ? Math.trunc(value)
+@@ -605,7 +696,14 @@ export async function buildTeamAgentRuntimeSnapshot(
+ ): Promise<TeamAgentRuntimeSnapshot> {
+   const updatedAt = nowIso();
+   const run = params.runId ? (params.runs.get(params.runId) ?? null) : null;
+-  const currentRuntimeAdapterRun = params.runtimeAdapterRunByTeam.get(params.teamName);
++  const runtimeAdapterRun = params.runtimeAdapterRunByTeam.get(params.teamName);
++  const activeRuntimeRunId = resolveActiveRuntimeRunId(run, params.runId, runtimeAdapterRun);
++  const currentRuntimeAdapterRun = shouldUseRuntimeAdapterRunEvidence(
++    runtimeAdapterRun,
++    activeRuntimeRunId
++  )
++    ? runtimeAdapterRun
++    : undefined;
+   const persistedTeamMeta = await params.teamMetaStore.getMeta(params.teamName).catch(() => null);
+ 
+   let configuredMembers: TeamConfig['members'] = [];
+@@ -625,9 +723,10 @@ export async function buildTeamAgentRuntimeSnapshot(
+     .getMemberSpawnStatuses(params.teamName)
+     .catch(() => null);
+   const liveRuntimeByMember = await params.getLiveTeamAgentRuntimeMetadata(params.teamName);
+-  const activeRuntimeRunId =
+-    run?.runId?.trim() || currentRuntimeAdapterRun?.runId?.trim() || params.runId?.trim() || '';
+   const spawnStatusRunId = spawnStatusSnapshot?.runId?.trim() ?? '';
++  const canUseSpawnStatusEvidence =
++    spawnStatusSnapshot != null &&
++    (activeRuntimeRunId.length === 0 || spawnStatusRunId === activeRuntimeRunId);
+   const canUseLiveSpawnStatusRuntimeTruth =
+     spawnStatusSnapshot?.source === 'live' &&
+     activeRuntimeRunId.length > 0 &&
+@@ -743,6 +842,9 @@ export async function buildTeamAgentRuntimeSnapshot(
+     return fallback;
+   };
+   const getSpawnStatusMember = (memberName: string): MemberSpawnStatusEntry | undefined => {
++    if (!canUseSpawnStatusEvidence) {
++      return undefined;
++    }
+     const statuses = spawnStatusSnapshot?.statuses;
+     if (!statuses) {
+       return undefined;
+@@ -786,6 +888,9 @@ export async function buildTeamAgentRuntimeSnapshot(
+       continue;
+     }
+     const launchMember = launchSnapshot?.members[memberName];
++    if (!shouldUseLaunchMemberRuntimeEvidence(launchMember, activeRuntimeRunId)) {
++      continue;
++    }
+     candidateMembers.set(memberName, {
+       name: memberName,
+       agentType: 'general-purpose',
+@@ -796,6 +901,18 @@ export async function buildTeamAgentRuntimeSnapshot(
+       fastMode: launchMember?.selectedFastMode,
+     });
+   }
++  for (const memberName of Object.keys(currentRuntimeAdapterRun?.members ?? {})) {
++    if (candidateMembers.has(memberName) || isMemberRemovedInMeta(metaMembers, memberName)) {
++      continue;
++    }
++    const adapterEvidence = currentRuntimeAdapterRun?.members?.[memberName];
++    candidateMembers.set(memberName, {
++      name: memberName,
++      agentType: 'general-purpose',
++      providerId: normalizeOptionalTeamProviderId(adapterEvidence?.providerId),
++      model: adapterEvidence?.model,
++    });
++  }
+   for (const member of activeRunMemberByName.values()) {
+     const memberName = typeof member?.name === 'string' ? member.name.trim() : '';
+     if (!memberName || isMemberRemovedInMeta(metaMembers, memberName)) continue;
+@@ -807,7 +924,12 @@ export async function buildTeamAgentRuntimeSnapshot(
+     if (!memberName) continue;
+ 
+     const isLead = isLeadMember({ name: memberName, agentType: member.agentType });
+-    const candidateLaunchMember = launchSnapshot?.members[memberName];
++    const candidateLaunchMember = shouldUseLaunchMemberRuntimeEvidence(
++      launchSnapshot?.members[memberName],
++      activeRuntimeRunId
++    )
++      ? launchSnapshot?.members[memberName]
++      : undefined;
+     const candidateRuntimeAdapterEvidence = currentRuntimeAdapterRun?.members?.[memberName];
+     const leadRuntimeProviderId =
+       normalizeOptionalTeamProviderId(candidateRuntimeAdapterEvidence?.providerId) ??
+@@ -881,9 +1003,20 @@ export async function buildTeamAgentRuntimeSnapshot(
+     }
+ 
+     const persistedRuntimeMember = getPersistedRuntimeMember(memberName);
++    const persistedRuntimeMemberRuntimeEvidence =
++      persistedRuntimeMember &&
++      shouldUsePersistedRuntimeMemberRuntimeEvidence(persistedRuntimeMember, activeRuntimeRunId)
++        ? persistedRuntimeMember
++        : undefined;
+     const liveRuntimeMember = getLiveRuntimeMember(memberName);
+     const spawnStatusMember = getSpawnStatusMember(memberName);
+-    const launchMember = launchSnapshot?.members[memberName];
++    const launchMember = shouldUseLaunchMemberRuntimeEvidence(
++      launchSnapshot?.members[memberName],
++      activeRuntimeRunId
++    )
++      ? launchSnapshot?.members[memberName]
++      : undefined;
++    const activeRunLaneIdentity = resolveActiveRunLaneIdentity(run, memberName);
+     const runtimeAdapterEvidence = currentRuntimeAdapterRun?.members?.[memberName];
+     const activeRunMember = activeRunMemberByName.get(memberName);
+     const activeRunModel = activeRunMember?.model?.trim();
+@@ -903,7 +1036,10 @@ export async function buildTeamAgentRuntimeSnapshot(
+     const canUseLiveRuntimeModel = !!liveRuntimeModel && !liveRuntimeProviderConflictsWithActive;
+     const backendType =
+       liveRuntimeMember?.backendType ??
+-      normalizeTeamAgentRuntimeBackendType(persistedRuntimeMember?.backendType, false);
++      normalizeTeamAgentRuntimeBackendType(
++        persistedRuntimeMemberRuntimeEvidence?.backendType,
++        false
++      );
+     const runtimeModel =
+       (canUseLiveRuntimeModel ? liveRuntimeModel : undefined) ??
+       activeRunModel ??
+@@ -959,10 +1095,12 @@ export async function buildTeamAgentRuntimeSnapshot(
+         ? false
+         : backendType !== 'in-process';
+     const historicalBootstrapConfirmed = hasRuntimeProjectionSnapshotBootstrapConfirmationEvidence({
+-      launch: {
+-        bootstrapConfirmed: launchMember?.bootstrapConfirmed,
+-        launchState: launchMember?.launchState,
+-      },
++      launch: shouldUseLaunchMemberRuntimeEvidence(launchMember, activeRuntimeRunId)
++        ? {
++            bootstrapConfirmed: launchMember?.bootstrapConfirmed,
++            launchState: launchMember?.launchState,
++          }
++        : undefined,
+       runtimeAdapter: {
+         bootstrapConfirmed: runtimeAdapterEvidence?.bootstrapConfirmed,
+         launchState: runtimeAdapterEvidence?.launchState,
+@@ -997,6 +1135,8 @@ export async function buildTeamAgentRuntimeSnapshot(
+       runtimeAdapterEvidence.runtimeAlive === true &&
+       runtimeAdapterEvidence.hardFailure !== true &&
+       hasOpenCodeRuntimeHandle;
++    const confirmedOpenCodeRuntimeBootstrapAlive =
++      confirmedOpenCodeRuntimeAlive || confirmedOpenCodeRuntimeAdapterAlive;
+     const confirmedSpawnRuntimeFallback =
+       !isOpenCodeMember &&
+       spawnStatusConfirmsBootstrap &&
+@@ -1016,8 +1156,13 @@ export async function buildTeamAgentRuntimeSnapshot(
+       liveRuntimeDiagnosticSeverity: liveRuntimeMember?.runtimeDiagnosticSeverity,
+       spawnRuntimeDiagnostic: confirmedSpawnRuntimeDiagnostic,
+       spawnRuntimeDiagnosticSeverity: spawnStatusMember?.runtimeDiagnosticSeverity,
+-      confirmedOpenCodeRuntimeAlive,
+-      confirmedOpenCodeRuntimeAdapterAlive,
++      confirmedRuntimeBootstrapAlive: confirmedOpenCodeRuntimeBootstrapAlive,
++      ...(confirmedOpenCodeRuntimeBootstrapAlive
++        ? {
++            confirmedRuntimeBootstrapDiagnostic:
++              'OpenCode bootstrap confirmed; runtime host/session evidence present.',
++          }
++        : {}),
+       confirmedSpawnRuntimeFallback,
+       keepConfirmedSpawnRuntimeDiagnostic: shouldKeepConfirmedSpawnRuntimeDiagnostic,
+     });
+@@ -1099,8 +1244,8 @@ export async function buildTeamAgentRuntimeSnapshot(
+       backendType,
+       providerId: memberProviderId,
+       providerBackendId: memberProviderBackendId,
+-      laneId: launchMember?.laneId,
+-      laneKind: launchMember?.laneKind,
++      laneId: activeRunLaneIdentity.laneId ?? launchMember?.laneId,
++      laneKind: activeRunLaneIdentity.laneKind ?? launchMember?.laneKind,
+       pid: displayPid,
+       runtimeModel,
+       cwd: runtimeCwd,
+@@ -1183,6 +1328,14 @@ export async function buildLiveTeamAgentRuntimeMetadata(
+     } & RuntimeSnapshotLogging
+ ): Promise<Map<string, LiveTeamAgentRuntimeMetadata>> {
+   const run = params.runId ? (params.runs.get(params.runId) ?? null) : null;
++  const runtimeAdapterRun = params.runtimeAdapterRunByTeam.get(params.teamName);
++  const activeRuntimeRunId = resolveActiveRuntimeRunId(run, params.runId, runtimeAdapterRun);
++  const currentRuntimeAdapterRun = shouldUseRuntimeAdapterRunEvidence(
++    runtimeAdapterRun,
++    activeRuntimeRunId
++  )
++    ? runtimeAdapterRun
++    : undefined;
+ 
+   let configuredMembers: TeamConfig['members'] = [];
+   try {
+@@ -1225,17 +1378,29 @@ export async function buildLiveTeamAgentRuntimeMetadata(
+       findEffectiveRunMemberModel(run, memberName) ??
+       findConfiguredMemberModel(configuredMembers, memberName) ??
+       findMetaMemberModel(metaMembers, memberName);
++    const canUseRuntimeEvidence = shouldUsePersistedRuntimeMemberRuntimeEvidence(
++      member,
++      activeRuntimeRunId
++    );
++    const agentId =
++      typeof member.agentId === 'string' ? member.agentId.trim() || undefined : undefined;
+     upsertMetadata(memberName, {
+-      backendType: normalizeTeamAgentRuntimeBackendType(member.backendType, false),
+       providerId: normalizeOptionalTeamProviderId(member.providerId),
+-      agentId: typeof member.agentId === 'string' ? member.agentId.trim() || undefined : undefined,
+-      tmuxPaneId:
+-        typeof member.tmuxPaneId === 'string' ? member.tmuxPaneId.trim() || undefined : undefined,
+-      ...(normalizeRuntimePositiveInteger(member.runtimePid)
+-        ? { metricsPid: normalizeRuntimePositiveInteger(member.runtimePid) }
+-        : {}),
+-      ...(typeof member.runtimeSessionId === 'string' && member.runtimeSessionId.trim()
+-        ? { runtimeSessionId: member.runtimeSessionId.trim() }
++      ...(agentId ? { agentId } : {}),
++      ...(canUseRuntimeEvidence
++        ? {
++            backendType: normalizeTeamAgentRuntimeBackendType(member.backendType, false),
++            tmuxPaneId:
++              typeof member.tmuxPaneId === 'string'
++                ? member.tmuxPaneId.trim() || undefined
++                : undefined,
++            ...(normalizeRuntimePositiveInteger(member.runtimePid)
++              ? { metricsPid: normalizeRuntimePositiveInteger(member.runtimePid) }
++              : {}),
++            ...(typeof member.runtimeSessionId === 'string' && member.runtimeSessionId.trim()
++              ? { runtimeSessionId: member.runtimeSessionId.trim() }
++              : {}),
++          }
+         : {}),
+       ...(typeof member.cwd === 'string' && member.cwd.trim() ? { cwd: member.cwd.trim() } : {}),
+       ...(runtimeModel ? { model: runtimeModel } : {}),
+@@ -1349,19 +1514,20 @@ export async function buildLiveTeamAgentRuntimeMetadata(
+     });
+   }
+ 
+-  const currentRuntimeAdapterRun = params.runtimeAdapterRunByTeam.get(params.teamName);
+   const persistedLaunchSnapshot: PersistedTeamLaunchSnapshot | null = choosePreferredLaunchSnapshot(
+     await readBootstrapLaunchSnapshot(params.teamName).catch(() => null),
+     await params.launchStateStore.read(params.teamName).catch(() => null)
+   );
+-  const activeRuntimeRunId =
+-    run?.runId?.trim() || currentRuntimeAdapterRun?.runId?.trim() || params.runId?.trim() || '';
+   const persistedMembers: PersistedTeamLaunchMemberState[] = persistedLaunchSnapshot
+     ? Object.values(persistedLaunchSnapshot.members)
+     : [];
+   for (const persistedMember of persistedMembers) {
+     const memberName = persistedMember.name?.trim() ?? '';
+-    if (!memberName || isMemberRemovedInMeta(metaMembers, memberName)) {
++    if (
++      !memberName ||
++      isMemberRemovedInMeta(metaMembers, memberName) ||
++      !shouldUseLaunchMemberRuntimeEvidence(persistedMember, activeRuntimeRunId)
++    ) {
+       continue;
+     }
+     const activeRunMember = findEffectiveRunMember(run, memberName);
+@@ -1371,18 +1537,16 @@ export async function buildLiveTeamAgentRuntimeMetadata(
+       normalizeOptionalTeamProviderId(activeRunMember?.providerId) ??
+       inferTeamProviderIdFromModel(activeRunModel ?? evidenceModel);
+     const effectiveProviderId = activeRunProviderId ?? persistedMember.providerId;
+-    const currentRuntimeAdapterEvidence = currentRuntimeAdapterRun?.members?.[memberName];
+     upsertMetadata(memberName, {
+       backendType:
+         effectiveProviderId === 'opencode'
+           ? 'process'
+           : metadataByMember.get(memberName)?.backendType,
+       providerId: effectiveProviderId,
+       alive: false,
+-      livenessKind: currentRuntimeAdapterEvidence?.livenessKind ?? persistedMember.livenessKind,
+-      pidSource: currentRuntimeAdapterEvidence?.pidSource ?? persistedMember.pidSource,
+-      runtimeDiagnostic:
+-        currentRuntimeAdapterEvidence?.runtimeDiagnostic ?? persistedMember.runtimeDiagnostic,
++      livenessKind: persistedMember.livenessKind,
++      pidSource: persistedMember.pidSource,
++      runtimeDiagnostic: persistedMember.runtimeDiagnostic,
+       runtimeDiagnosticSeverity: persistedMember.runtimeDiagnosticSeverity,
+       runtimeLastSeenAt:
+         persistedMember.runtimeLastSeenAt ??
+@@ -1395,17 +1559,49 @@ export async function buildLiveTeamAgentRuntimeMetadata(
+           : persistedMember.model?.trim()
+             ? { model: persistedMember.model.trim() }
+             : {}),
+-      ...(typeof currentRuntimeAdapterEvidence?.runtimePid === 'number' &&
+-      currentRuntimeAdapterEvidence.runtimePid > 0
+-        ? { metricsPid: currentRuntimeAdapterEvidence.runtimePid }
+-        : typeof persistedMember.runtimePid === 'number' && persistedMember.runtimePid > 0
+-          ? { metricsPid: persistedMember.runtimePid }
++      ...(typeof persistedMember.runtimePid === 'number' && persistedMember.runtimePid > 0
++        ? { metricsPid: persistedMember.runtimePid }
++        : {}),
++      ...(persistedMember.runtimeSessionId
++        ? { runtimeSessionId: persistedMember.runtimeSessionId }
++        : {}),
++    });
++  }
++  for (const [memberName, evidence] of Object.entries(currentRuntimeAdapterRun?.members ?? {})) {
++    const normalizedMemberName = evidence.memberName?.trim() || memberName.trim();
++    if (!normalizedMemberName || isMemberRemovedInMeta(metaMembers, normalizedMemberName)) {
++      continue;
++    }
++    const activeRunMember = findEffectiveRunMember(run, normalizedMemberName);
++    const activeRunModel = activeRunMember?.model?.trim();
++    const evidenceModel = evidence.model?.trim();
++    const activeRunProviderId =
++      normalizeOptionalTeamProviderId(activeRunMember?.providerId) ??
++      normalizeOptionalTeamProviderId(evidence.providerId) ??
++      inferTeamProviderIdFromModel(activeRunModel ?? evidenceModel);
++    upsertMetadata(normalizedMemberName, {
++      alive: false,
++      ...(activeRunProviderId === 'opencode'
++        ? { backendType: 'process' as const }
++        : evidence.backendType
++          ? { backendType: evidence.backendType }
+           : {}),
+-      ...(currentRuntimeAdapterEvidence?.sessionId
+-        ? { runtimeSessionId: currentRuntimeAdapterEvidence.sessionId }
+-        : persistedMember.runtimeSessionId
+-          ? { runtimeSessionId: persistedMember.runtimeSessionId }
++      ...(activeRunProviderId ? { providerId: activeRunProviderId } : {}),
++      ...(evidence.livenessKind ? { livenessKind: evidence.livenessKind } : {}),
++      ...(evidence.pidSource ? { pidSource: evidence.pidSource } : {}),
++      ...(evidence.runtimeDiagnostic ? { runtimeDiagnostic: evidence.runtimeDiagnostic } : {}),
++      ...(evidence.runtimeDiagnosticSeverity
++        ? { runtimeDiagnosticSeverity: evidence.runtimeDiagnosticSeverity }
++        : {}),
++      ...(activeRunModel
++        ? { model: activeRunModel }
++        : evidenceModel
++          ? { model: evidenceModel }
+           : {}),
++      ...(typeof evidence.runtimePid === 'number' && evidence.runtimePid > 0
++        ? { metricsPid: evidence.runtimePid }
++        : {}),
++      ...(evidence.sessionId ? { runtimeSessionId: evidence.sessionId } : {}),
+     });
+   }
+ 
+@@ -1456,7 +1652,12 @@ export async function buildLiveTeamAgentRuntimeMetadata(
+ 
+   for (const [memberName, metadata] of metadataByMember.entries()) {
+     const paneId = metadata.tmuxPaneId?.trim() ?? '';
+-    const launchMember = persistedLaunchSnapshot?.members[memberName];
++    const launchMember = shouldUseLaunchMemberRuntimeEvidence(
++      persistedLaunchSnapshot?.members[memberName],
++      activeRuntimeRunId
++    )
++      ? persistedLaunchSnapshot?.members[memberName]
++      : undefined;
+     const adapterEvidence = currentRuntimeAdapterRun?.members?.[memberName];
+     const adapterStatus: MemberSpawnStatusEntry | undefined = adapterEvidence
+       ? {
+diff --git a/src/main/services/team/provisioning/TeamProvisioningServiceComposition.ts b/src/main/services/team/provisioning/TeamProvisioningServiceComposition.ts
+--- a/src/main/services/team/provisioning/TeamProvisioningServiceComposition.ts
++++ b/src/main/services/team/provisioning/TeamProvisioningServiceComposition.ts
+@@ -23,6 +23,11 @@ import {
+   type OpenCodeVisibleReplyProofServiceHost,
+ } from '../opencode/delivery/OpenCodeVisibleReplyProofService';
+ import { readOpenCodeRuntimeLaneIndex } from '../opencode/store/OpenCodeRuntimeManifestEvidenceReader';
++import {
++  createTeamRuntimeControlCompatibilityApiFromService,
++  type OpenCodeRuntimeControlApi,
++  type TeamRuntimeControlCompatibilityServiceHost,
++} from '../runtime-control';
+ import {
+   clearBootstrapState,
+   readBootstrapLaunchSnapshot,
+@@ -98,7 +103,16 @@ import {
+   type TeamProvisioningMemberMcpLaunchConfigServiceHost,
+ } from './TeamProvisioningMemberMcpLaunchConfig';
+ import { createInitialMemberSpawnStatusEntry } from './TeamProvisioningMemberSpawnStatusPolicy';
++import {
++  createOpenCodePromptDeliveryWatchdogSchedulerFromService,
++  type TeamProvisioningOpenCodePromptDeliveryWatchdogSchedulerServiceHost,
++} from './TeamProvisioningOpenCodePromptDeliveryWatchdogSchedulerFactory';
+ import { type TeamProvisioningOpenCodeRuntimeDeliveryBoundaryHost } from './TeamProvisioningOpenCodeRuntimeDeliveryBoundaryFactory';
++import {
++  createTeamProvisioningOpenCodeRuntimeRecoveryFacadeFromService,
++  type TeamProvisioningOpenCodeRuntimeRecoveryFacade,
++  type TeamProvisioningOpenCodeRuntimeRecoveryFacadeServiceHost,
++} from './TeamProvisioningOpenCodeRuntimeRecoveryFacade';
+ import {
+   isAuthFailureWarning,
+   normalizeApiRetryErrorMessage,
+@@ -133,6 +147,11 @@ import {
+   type TeamProvisioningProviderRuntimeFacadeServiceHost,
+ } from './TeamProvisioningProviderRuntimeFacade';
+ import { tryReadRegularFileUtf8 } from './TeamProvisioningRegularFileRead';
++import {
++  createTeamProvisioningRequestAdmissionBoundary,
++  type TeamProvisioningRequestAdmissionBoundary,
++  type TeamProvisioningRequestAdmissionServiceHost,
++} from './TeamProvisioningRequestAdmission';
+ import { extractCliLogsFromRun } from './TeamProvisioningRetainedLogs';
+ import {
+   type ProvisioningRun,
+@@ -222,7 +241,6 @@ export interface TeamProvisioningServiceCompositionDeps {
+   runs: ReadonlyMap<string, ProvisioningRun>;
+   sendMessageToRunBoundary: TeamProvisioningSendMessageToRunBoundary<ProvisioningRun>;
+   transientProbeProcesses: Set<ReturnType<typeof spawn>>;
+-  openCodePromptDeliveryWatchdogScheduler: OpenCodePromptDeliveryWatchdogScheduler;
+ }
+ 
+ export interface TeamProvisioningServiceComposition {
+@@ -238,6 +256,8 @@ export interface TeamProvisioningServiceComposition {
+   idlePromptInjectionBoundary: TeamProvisioningIdlePromptInjectionBoundary<ProvisioningRun>;
+   providerRuntime: TeamProvisioningProviderRuntimeFacade;
+   providerRuntimeCompatibility: TeamProvisioningProviderRuntimeCompatibility;
++  openCodeRuntimeRecoveryFacade: TeamProvisioningOpenCodeRuntimeRecoveryFacade;
++  openCodePromptDeliveryWatchdogScheduler: OpenCodePromptDeliveryWatchdogScheduler;
+   compatibilityDelegation: TeamProvisioningCompatibilityDelegation<ProvisioningRun>;
+   outputRecoveryFacade: TeamProvisioningOutputRecoveryFacade<ProvisioningRun>;
+   deterministicLaunchFlowBoundary: TeamProvisioningLaunchDeterministicFlowBoundary<MixedSecondaryRuntimeLaneState>;
+@@ -253,6 +273,8 @@ export interface TeamProvisioningServiceComposition {
+   leadInboxRelayFacade: TeamProvisioningLeadInboxRelayCompatibilityFacade<ProvisioningRun>;
+   cleanupRunPorts: TeamProvisioningCleanupPorts<ProvisioningRun>;
+   transientRunState: TeamProvisioningTransientRunState;
++  requestAdmissionBoundary: TeamProvisioningRequestAdmissionBoundary;
++  openCodeRuntimeControlApi: OpenCodeRuntimeControlApi;
+ }
+ 
+ type TeamProvisioningServiceCompositionInstallTarget = {
+@@ -269,6 +291,8 @@ type TeamProvisioningServiceCompositionSource = ServiceCompositionPorts &
+   TeamProvisioningToolApprovalFacadeServiceHost<ProvisioningRun> &
+   TeamProvisioningIdlePromptInjectionServiceHost<ProvisioningRun> &
+   TeamProvisioningProviderRuntimeFacadeServiceHost &
++  TeamProvisioningOpenCodeRuntimeRecoveryFacadeServiceHost &
++  TeamProvisioningOpenCodePromptDeliveryWatchdogSchedulerServiceHost &
+   TeamProvisioningOutputRecoveryFacadeServiceHost<ProvisioningRun> &
+   TeamProvisioningLaunchDeterministicFlowServiceHost<
+     ProvisioningRun,
+@@ -284,7 +308,9 @@ type TeamProvisioningServiceCompositionSource = ServiceCompositionPorts &
+   TeamProvisioningBootstrapEvidenceFacadeServiceHost &
+   TeamProvisioningLeadInboxRelayCompatibilityServiceHost<ProvisioningRun> &
+   TeamProvisioningCleanupRunServiceHost<ProvisioningRun> &
+-  TeamProvisioningTransientRunStateServiceHost;
++  TeamProvisioningTransientRunStateServiceHost &
++  TeamProvisioningRequestAdmissionServiceHost &
++  TeamRuntimeControlCompatibilityServiceHost;
+ 
+ type TeamProvisioningServiceCompositionHost = TeamProvisioningServiceCompositionSource &
+   TeamProvisioningServiceCompositionInstallTarget;
+@@ -384,6 +410,22 @@ export function createTeamProvisioningServiceComposition(
+   const providerRuntimeCompatibility =
+     createTeamProvisioningProviderRuntimeCompatibility(providerRuntime);
+   assignCompositionPart(host, 'providerRuntimeCompatibility', providerRuntimeCompatibility);
++  const openCodeRuntimeRecoveryFacade =
++    createTeamProvisioningOpenCodeRuntimeRecoveryFacadeFromService(host, {
++      getTeamsBasePath,
++      logger,
++    });
++  assignCompositionPart(host, 'openCodeRuntimeRecoveryFacade', openCodeRuntimeRecoveryFacade);
++  const openCodePromptDeliveryWatchdogScheduler =
++    createOpenCodePromptDeliveryWatchdogSchedulerFromService(host, {
++      logger,
++      getErrorMessage,
++    });
++  assignCompositionPart(
++    host,
++    'openCodePromptDeliveryWatchdogScheduler',
++    openCodePromptDeliveryWatchdogScheduler
++  );
+   const compatibilityDelegation: TeamProvisioningCompatibilityDelegation<ProvisioningRun> = {
+     providerRuntimeCompatibility,
+     configFacade,
+@@ -492,7 +534,7 @@ export function createTeamProvisioningServiceComposition(
+         servicePorts.maybeSyncOpenCodeRuntimePermissionsAfterDelivery(input),
+       rememberRuntimePidFromBridge: (input) =>
+         servicePorts.rememberOpenCodeRuntimePidFromBridge(input),
+-      watchdogScheduler: deps.openCodePromptDeliveryWatchdogScheduler,
++      watchdogScheduler: openCodePromptDeliveryWatchdogScheduler,
+       schedulePromptDeliveryWatchdog: (input) =>
+         servicePorts.scheduleOpenCodePromptDeliveryWatchdog(input),
+       canDeliverToTeamRuntime: (teamName) =>
+@@ -577,6 +619,10 @@ export function createTeamProvisioningServiceComposition(
+     })
+   );
+   assignCompositionPart(host, 'transientRunState', transientRunState);
++  const requestAdmissionBoundary = createTeamProvisioningRequestAdmissionBoundary(host);
++  assignCompositionPart(host, 'requestAdmissionBoundary', requestAdmissionBoundary);
++  const openCodeRuntimeControlApi = createTeamRuntimeControlCompatibilityApiFromService(host);
++  assignCompositionPart(host, 'openCodeRuntimeControlApi', openCodeRuntimeControlApi);
+ 
+   return {
+     configFacade,
+@@ -591,6 +637,8 @@ export function createTeamProvisioningServiceComposition(
+     idlePromptInjectionBoundary,
+     providerRuntime,
+     providerRuntimeCompatibility,
++    openCodeRuntimeRecoveryFacade,
++    openCodePromptDeliveryWatchdogScheduler,
+     compatibilityDelegation,
+     outputRecoveryFacade,
+     deterministicLaunchFlowBoundary,
+@@ -606,5 +654,7 @@ export function createTeamProvisioningServiceComposition(
+     leadInboxRelayFacade,
+     cleanupRunPorts,
+     transientRunState,
++    requestAdmissionBoundary,
++    openCodeRuntimeControlApi,
+   };
+ }
+diff --git a/src/main/services/team/provisioning/TeamProvisioningServiceMemberLifecycleHostPortGroups.ts b/src/main/services/team/provisioning/TeamProvisioningServiceMemberLifecycleHostPortGroups.ts
+--- a/src/main/services/team/provisioning/TeamProvisioningServiceMemberLifecycleHostPortGroups.ts
++++ b/src/main/services/team/provisioning/TeamProvisioningServiceMemberLifecycleHostPortGroups.ts
+@@ -11,6 +11,7 @@ export type TeamProvisioningServiceMemberLifecycleHostPortGroups =
+ 
+ type MemberMcpLaunchConfigPorts =
+   TeamProvisioningServiceMemberLifecycleHostPortGroups['memberMcpLaunchConfig'];
++type MessagingPorts = TeamProvisioningServiceMemberLifecycleHostPortGroups['messaging'];
+ type OpenCodeRuntimePorts = TeamProvisioningServiceMemberLifecycleHostPortGroups['openCodeRuntime'];
+ type MixedSecondaryRuntimePorts =
+   TeamProvisioningServiceMemberLifecycleHostPortGroups['mixedSecondaryRuntime'];
+@@ -74,6 +75,7 @@ export interface TeamProvisioningServiceMemberLifecycleHostPortGroupPorts {
+   getLiveTeamAgentRuntimeMetadata: TeamProvisioningServiceMemberLifecycleHostPortGroups['runState']['getLiveTeamAgentRuntimeMetadata'];
+   persistInboxMessage(teamName: string, memberName: string, message: InboxMessage): void;
+   persistSentMessage(teamName: string, message: InboxMessage): void;
++  enqueueDirectRestartPrompt?: NonNullable<MessagingPorts['enqueueDirectRestartPrompt']>;
+   getOpenCodeRuntimeAdapter: TeamProvisioningServiceMemberLifecycleHostPortGroups['openCodeRuntime']['getOpenCodeRuntimeAdapter'];
+   resolveOpenCodeMemberWorkspacesForRuntime: ResolveOpenCodeMemberWorkspacesForRuntime;
+   runOpenCodeTeamRuntimeAdapterLaunch: OpenCodeRuntimePorts['runOpenCodeTeamRuntimeAdapterLaunch'];
+@@ -87,6 +89,18 @@ export interface TeamProvisioningServiceMemberLifecycleHostPortGroupPorts {
+ export function createTeamProvisioningServiceMemberLifecycleHostPortGroups(
+   service: TeamProvisioningServiceMemberLifecycleHostPortGroupPorts
+ ): TeamProvisioningServiceMemberLifecycleHostPortGroups {
++  const messaging: MessagingPorts = {
++    persistInboxMessage: (teamName, memberName, message) =>
++      service.persistInboxMessage(teamName, memberName, message as unknown as InboxMessage),
++    persistSentMessage: (teamName, message) =>
++      service.persistSentMessage(teamName, message as unknown as InboxMessage),
++  };
++  const enqueueDirectRestartPrompt = service.enqueueDirectRestartPrompt;
++  if (enqueueDirectRestartPrompt) {
++    messaging.enqueueDirectRestartPrompt = (input) =>
++      enqueueDirectRestartPrompt.call(service, input);
++  }
++
+   return {
+     sharedState: {
+       runs: service.runs as TeamProvisioningServiceMemberLifecycleHostPortGroups['sharedState']['runs'],
+@@ -166,12 +180,7 @@ export function createTeamProvisioningServiceMemberLifecycleHostPortGroups(
+       getLiveTeamAgentRuntimeMetadata: (teamName) =>
+         service.getLiveTeamAgentRuntimeMetadata(teamName),
+     },
+-    messaging: {
+-      persistInboxMessage: (teamName, memberName, message) =>
+-        service.persistInboxMessage(teamName, memberName, message as unknown as InboxMessage),
+-      persistSentMessage: (teamName, message) =>
+-        service.persistSentMessage(teamName, message as unknown as InboxMessage),
+-    },
++    messaging,
+     openCodeRuntime: {
+       getOpenCodeRuntimeAdapter: () => service.getOpenCodeRuntimeAdapter(),
+       resolveOpenCodeMemberWorkspacesForRuntime: (input) =>
+diff --git a/src/main/services/team/provisioning/TeamProvisioningUpdateDirectTmuxRestartMemberConfigUseCase.ts b/src/main/services/team/provisioning/TeamProvisioningUpdateDirectTmuxRestartMemberConfigUseCase.ts
+--- a/src/main/services/team/provisioning/TeamProvisioningUpdateDirectTmuxRestartMemberConfigUseCase.ts
++++ b/src/main/services/team/provisioning/TeamProvisioningUpdateDirectTmuxRestartMemberConfigUseCase.ts
+@@ -32,6 +32,7 @@ export interface DirectTmuxRestartMemberConfigInput {
+   bootstrapRunId?: string;
+   bootstrapContextHash?: string;
+   bootstrapBriefingHash?: string;
++  assertStillCurrent?: () => void;
+ }
+ 
+ export type UpdateDirectTmuxRestartMemberConfigUseCase = (
+@@ -133,6 +134,7 @@ export function createUpdateDirectTmuxRestartMemberConfigUseCase(
+       members.push(nextMember);
+     }
+     parsed.members = members;
++    input.assertStillCurrent?.();
+     await ports.writeTeamConfigJson(input.teamName, `${JSON.stringify(parsed, null, 2)}\n`);
+     ports.invalidateTeamConfig(input.teamName);
+   };
+diff --git a/src/main/services/team/runtime-control/application/OpenCodeRuntimeControlApi.ts b/src/main/services/team/runtime-control/application/OpenCodeRuntimeControlApi.ts
+--- a/src/main/services/team/runtime-control/application/OpenCodeRuntimeControlApi.ts
++++ b/src/main/services/team/runtime-control/application/OpenCodeRuntimeControlApi.ts
+@@ -5,6 +5,7 @@ import {
+   buildRuntimePermissionAnswerCommandId,
+   buildRuntimeTaskEventCommandId,
+ } from '../domain/RuntimeControlIds';
++import { canonicalizeRuntimeIdempotencyKey } from '../domain/RuntimeIdempotencyKey';
+ 
+ import type { OpenCodeRuntimeControlAck } from '../domain/RuntimeControlAck';
+ import type {
+@@ -93,7 +94,9 @@ export function createOpenCodeRuntimeControlApi(
+         runId,
+         memberName: fromMemberName,
+       });
+-      const idempotencyKey = requireRuntimeDeliveryString(payload.idempotencyKey, 'idempotencyKey');
++      const idempotencyKey = canonicalizeRuntimeIdempotencyKey(payload.idempotencyKey, {
++        errorPrefix: 'Runtime delivery envelope',
++      });
+       const taskRefs = normalizeOpenCodeRuntimeIngressTaskRefs(teamName, payload.taskRefs);
+ 
+       return ports.runtimeControl.deliverMessage({
+@@ -132,7 +135,9 @@ export function createOpenCodeRuntimeControlApi(
+       const memberName = requireRuntimeString(payload.memberName, 'memberName');
+       const taskId = requireRuntimeString(payload.taskId, 'taskId');
+       const event = requireRuntimeString(payload.event, 'event');
+-      const idempotencyKey = requireRuntimeString(payload.idempotencyKey, 'idempotencyKey');
++      const idempotencyKey = canonicalizeRuntimeIdempotencyKey(payload.idempotencyKey, {
++        errorPrefix: 'OpenCode runtime payload',
++      });
+       const runtimeSessionId = optionalRuntimeString(payload.runtimeSessionId);
+       const createdAt = requireRuntimeIso(payload.createdAt, 'createdAt');
+       const laneId = await resolveLaneId(ports, { teamName, runId, memberName });
+diff --git a/src/main/services/team/runtime-control/domain/RuntimeControlIds.ts b/src/main/services/team/runtime-control/domain/RuntimeControlIds.ts
+--- a/src/main/services/team/runtime-control/domain/RuntimeControlIds.ts
++++ b/src/main/services/team/runtime-control/domain/RuntimeControlIds.ts
+@@ -2,6 +2,7 @@ import {
+   isRuntimeControlProviderId,
+   type RuntimeControlProviderId,
+ } from './RuntimeControlProvider';
++import { canonicalizeRuntimeIdempotencyKey } from './RuntimeIdempotencyKey';
+ 
+ declare const runtimeControlCommandIdBrand: unique symbol;
+ declare const runtimeControlEventIdBrand: unique symbol;
+@@ -142,7 +143,11 @@ export function buildRuntimeTaskEventCommandId(
+   return buildRuntimeControlCommandId({
+     ...input,
+     verb: 'task-event',
+-    parts: [input.idempotencyKey],
++    parts: [
++      canonicalizeRuntimeIdempotencyKey(input.idempotencyKey, {
++        errorPrefix: 'Runtime control id',
++      }),
++    ],
+   });
+ }
+ 
+@@ -152,7 +157,11 @@ export function buildRuntimeDeliverMessageCommandId(
+   return buildRuntimeControlCommandId({
+     ...input,
+     verb: 'deliver-message',
+-    parts: [input.idempotencyKey],
++    parts: [
++      canonicalizeRuntimeIdempotencyKey(input.idempotencyKey, {
++        errorPrefix: 'Runtime control id',
++      }),
++    ],
+   });
+ }
+ 
+diff --git a/src/main/services/team/runtime-control/domain/RuntimeIdempotencyKey.ts b/src/main/services/team/runtime-control/domain/RuntimeIdempotencyKey.ts
+new file mode 100644
+--- /dev/null
++++ b/src/main/services/team/runtime-control/domain/RuntimeIdempotencyKey.ts
+@@ -0,0 +1,18 @@
++export function canonicalizeRuntimeIdempotencyKey(
++  value: unknown,
++  options: {
++    fieldName?: string;
++    errorPrefix?: string;
++  } = {}
++): string {
++  const fieldName = options.fieldName ?? 'idempotencyKey';
++  const errorPrefix = options.errorPrefix ?? 'Runtime idempotency key';
++  if (typeof value !== 'string') {
++    throw new Error(`${errorPrefix} missing ${fieldName}`);
++  }
++  const canonical = value.trim();
++  if (!canonical) {
++    throw new Error(`${errorPrefix} missing ${fieldName}`);
++  }
++  return canonical;
++}
+diff --git a/src/main/services/team/runtime-control/index.ts b/src/main/services/team/runtime-control/index.ts
+--- a/src/main/services/team/runtime-control/index.ts
++++ b/src/main/services/team/runtime-control/index.ts
+@@ -104,5 +104,6 @@ export {
+   isRuntimeControlProviderId,
+   RUNTIME_CONTROL_PROVIDER_IDS,
+ } from './domain/RuntimeControlProvider';
++export { canonicalizeRuntimeIdempotencyKey } from './domain/RuntimeIdempotencyKey';
+ export type { RuntimeControlServiceOptions } from './RuntimeControlService';
+ export { RuntimeControlService } from './RuntimeControlService';
+diff --git a/src/main/services/team/runtime-projection/RuntimeProjectionSnapshotLiveness.ts b/src/main/services/team/runtime-projection/RuntimeProjectionSnapshotLiveness.ts
+--- a/src/main/services/team/runtime-projection/RuntimeProjectionSnapshotLiveness.ts
++++ b/src/main/services/team/runtime-projection/RuntimeProjectionSnapshotLiveness.ts
+@@ -12,8 +12,9 @@ export interface RuntimeProjectionSnapshotMemberLivenessInput {
+   liveRuntimeDiagnosticSeverity?: TeamAgentRuntimeDiagnosticSeverity;
+   spawnRuntimeDiagnostic?: string;
+   spawnRuntimeDiagnosticSeverity?: TeamAgentRuntimeDiagnosticSeverity;
+-  confirmedOpenCodeRuntimeAlive?: boolean;
+-  confirmedOpenCodeRuntimeAdapterAlive?: boolean;
++  confirmedRuntimeBootstrapAlive?: boolean;
++  confirmedRuntimeBootstrapDiagnostic?: string;
++  confirmedRuntimeBootstrapDiagnosticSeverity?: TeamAgentRuntimeDiagnosticSeverity;
+   confirmedSpawnRuntimeFallback?: boolean;
+   keepConfirmedSpawnRuntimeDiagnostic?: boolean;
+ }
+@@ -31,42 +32,45 @@ function nonEmptyString(value: string | undefined): string | undefined {
+   return trimmed ? trimmed : undefined;
+ }
+ 
++const DEFAULT_RUNTIME_BOOTSTRAP_DIAGNOSTIC =
++  'bootstrap confirmed; runtime host/session evidence present.';
++
+ export function projectRuntimeSnapshotMemberLivenessFields(
+   input: RuntimeProjectionSnapshotMemberLivenessInput
+ ): RuntimeProjectionSnapshotMemberLivenessFields {
+-  const confirmedOpenCodeRuntimeAlive = input.confirmedOpenCodeRuntimeAlive === true;
+-  const confirmedOpenCodeRuntimeAdapterAlive = input.confirmedOpenCodeRuntimeAdapterAlive === true;
+-  const confirmedOpenCodeBootstrapAlive =
+-    confirmedOpenCodeRuntimeAlive || confirmedOpenCodeRuntimeAdapterAlive;
++  const confirmedRuntimeBootstrapAlive = input.confirmedRuntimeBootstrapAlive === true;
+   const confirmedSpawnRuntimeFallback = input.confirmedSpawnRuntimeFallback === true;
+-  const strongLiveOpenCodeEvidence =
+-    input.liveLivenessKind === 'runtime_process' || input.liveLivenessKind === 'confirmed_bootstrap';
+-  const openCodeBootstrapConfirmed =
+-    confirmedOpenCodeBootstrapAlive && !strongLiveOpenCodeEvidence;
++  const strongLiveRuntimeEvidence =
++    input.liveLivenessKind === 'runtime_process' ||
++    input.liveLivenessKind === 'confirmed_bootstrap';
++  const runtimeBootstrapConfirmed = confirmedRuntimeBootstrapAlive && !strongLiveRuntimeEvidence;
++  const confirmedRuntimeBootstrapDiagnostic = nonEmptyString(
++    input.confirmedRuntimeBootstrapDiagnostic
++  );
+   const spawnRuntimeDiagnostic = nonEmptyString(input.spawnRuntimeDiagnostic);
+   const liveRuntimeDiagnostic = nonEmptyString(input.liveRuntimeDiagnostic);
+ 
+   const alive =
+-    input.liveAlive === true || confirmedOpenCodeBootstrapAlive || confirmedSpawnRuntimeFallback;
+-  const livenessKind = openCodeBootstrapConfirmed
++    input.liveAlive === true || confirmedRuntimeBootstrapAlive || confirmedSpawnRuntimeFallback;
++  const livenessKind = runtimeBootstrapConfirmed
+     ? 'confirmed_bootstrap'
+     : confirmedSpawnRuntimeFallback
+       ? 'confirmed_bootstrap'
+       : input.liveLivenessKind;
+   const pidSource =
+-    (openCodeBootstrapConfirmed || confirmedSpawnRuntimeFallback) &&
++    (runtimeBootstrapConfirmed || confirmedSpawnRuntimeFallback) &&
+     (input.livePidSource === 'persisted_metadata' || input.livePidSource == null)
+       ? 'runtime_bootstrap'
+       : input.livePidSource;
+-  const runtimeDiagnostic = openCodeBootstrapConfirmed
+-    ? 'OpenCode bootstrap confirmed; runtime host/session evidence present.'
++  const runtimeDiagnostic = runtimeBootstrapConfirmed
++    ? (confirmedRuntimeBootstrapDiagnostic ?? DEFAULT_RUNTIME_BOOTSTRAP_DIAGNOSTIC)
+     : confirmedSpawnRuntimeFallback
+       ? input.keepConfirmedSpawnRuntimeDiagnostic === true && spawnRuntimeDiagnostic
+         ? spawnRuntimeDiagnostic
+         : 'bootstrap confirmed'
+       : liveRuntimeDiagnostic;
+-  const runtimeDiagnosticSeverity = openCodeBootstrapConfirmed
+-    ? 'info'
++  const runtimeDiagnosticSeverity = runtimeBootstrapConfirmed
++    ? (input.confirmedRuntimeBootstrapDiagnosticSeverity ?? 'info')
+     : confirmedSpawnRuntimeFallback
+       ? input.keepConfirmedSpawnRuntimeDiagnostic === true
+         ? (input.spawnRuntimeDiagnosticSeverity ?? input.liveRuntimeDiagnosticSeverity ?? 'info')
+diff --git a/src/main/services/team/runtime-projection/RuntimeProjectionSnapshotResource.ts b/src/main/services/team/runtime-projection/RuntimeProjectionSnapshotResource.ts
+--- a/src/main/services/team/runtime-projection/RuntimeProjectionSnapshotResource.ts
++++ b/src/main/services/team/runtime-projection/RuntimeProjectionSnapshotResource.ts
+@@ -41,7 +41,7 @@ export function projectRuntimeSnapshotResourceFields(
+     pid: input.pid,
+     runtimePid: input.runtimePid,
+     pidSource: input.pidSource,
+-    // Persisted and shared OpenCode hosts can expose resource metrics even when liveness is weak.
++    // Persisted and shared runtime hosts can expose resource metrics even when liveness is weak.
+     usage: input.usageStats,
+     history: input.resourceHistory,
+   });
+diff --git a/src/renderer/posthog.ts b/src/renderer/posthog.ts
+--- a/src/renderer/posthog.ts
++++ b/src/renderer/posthog.ts
+@@ -34,10 +34,10 @@ let postHogIdentityNeedsRestore = false;
+ let identitySyncToken = 0;
+ let appSessionStartCaptured = false;
+ 
+-type PostHogIdentityContext = {
++interface PostHogIdentityContext {
+   userId: string;
+   tags: Record<string, string>;
+-};
++}
+ 
+ function getElectronApi(): ElectronAPI | undefined {
+   return (window as Window & { electronAPI?: ElectronAPI }).electronAPI;
+diff --git a/src/renderer/store/slices/teamSlice.ts b/src/renderer/store/slices/teamSlice.ts
+--- a/src/renderer/store/slices/teamSlice.ts
++++ b/src/renderer/store/slices/teamSlice.ts
+@@ -1559,12 +1559,23 @@ function loadAllLaunchParams(): Record<string, TeamLaunchParams> {
+   try {
+     for (let i = 0; i < localStorage.length; i++) {
+       const key = localStorage.key(i);
+-      if (key?.startsWith(LAUNCH_PARAMS_PREFIX)) {
++      if (!key?.startsWith(LAUNCH_PARAMS_PREFIX)) {
++        continue;
++      }
++
++      try {
++        const raw = localStorage.getItem(key);
++        if (!raw) {
++          continue;
++        }
++
+         const teamName = key.slice(LAUNCH_PARAMS_PREFIX.length);
+-        const parsed = JSON.parse(localStorage.getItem(key)!) as TeamLaunchParams;
++        const parsed = JSON.parse(raw) as TeamLaunchParams;
+         if (parsed && typeof parsed === 'object') {
+           result[teamName] = parsed;
+         }
++      } catch {
++        // ignore this entry - best-effort restore
+       }
+     }
+   } catch {
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

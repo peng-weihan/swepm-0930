@@ -1,0 +1,48 @@
+{
+  "instance_id": "777genius__agent-teams-ai-c_1f4c550",
+  "overall_quality": "good",
+  "test_scope": "balanced",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch addresses the stated issue by adding three new bullet points to the Communication protocol section in TeamProvisioningService.ts: (1) agents should not appear silent when receiving cross-team requests, (2) canonical progress trail should be team-visible first, and (3) agents should not default to messaging 'user' for cross-team coordination. However, the gold patch also includes a very large set of unrelated changes: UI components (MemberHoverCard, CurrentTaskIndicator, hover-card.tsx), dependency additions (@radix-ui/react-hover-card), code refactoring (extractCliLogsFromRun, mentionLinkify extraction, dead code removal), and cross-team color support. These extra changes are not required by the tests and don't affect test outcomes.",
+  "base_vs_gold_expectation": "The base code does NOT contain the three phrases checked by the tests ('do NOT appear silent', 'canonical progress trail should be team-visible first', 'Do NOT default to messaging \"user\" for cross-team coordination'). The existing test file at the base commit has assertions for pre-existing cross-team guidance phrases which already pass. The test patch adds 3 new assertions that will fail on the base and pass after the gold patch's prompt text changes are applied. This correctly discriminates base from gold.",
+  "too_narrow_risks": [
+    "Tests only check for 3 substring matches via toContain(). A candidate could insert the phrases in the wrong section of the prompt (e.g., not in the Communication protocol section) and still pass.",
+    "Tests don't verify the ordering of the new guidance relative to existing content, though the issue specifies it should be 'alongside the existing cross-team guidance'.",
+    "The issue asks for guidance about emitting 'a brief plain-text status update visible in its own team's Messages/Activity' — the test only checks for 'do NOT appear silent' and doesn't verify the fuller behavioral description is present."
+  ],
+  "too_broad_risks": [],
+  "implementation_coupling": [
+    "The three test phrases ('do NOT appear silent', 'canonical progress trail should be team-visible first', 'Do NOT default to messaging \"user\" for cross-team coordination') are derived from the issue requirements and are reasonably abstract. Alternative implementations using different phrasing that still conveys the same guidance would fail, but these phrases closely track the issue specification so this coupling is acceptable."
+  ],
+  "environment_risks": [
+    "The test requires pnpm and vitest to be available in the Docker image; pnpm is present at /usr/local/bin/pnpm and the test patch applies cleanly to the base commit.",
+    "The test uses file-system temp directories and vitest mocks; these are standard and unlikely to be flaky."
+  ],
+  "mismatches": [
+    "The gold patch is far larger than required by the issue — it includes UI components, dependency additions, code refactoring, and dead code removal unrelated to the cross-team coordination prompt. The tests correctly only validate the prompt text changes and do not require the extra changes."
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Adds 3 new expect(text).toContain() assertions for the three key cross-team coordination phrases from the issue."
+    },
+    {
+      "file": "/testbed/src/main/services/team/TeamProvisioningService.ts:565-584",
+      "detail": "Base code contains Communication protocol section but lacks the three new guidance bullet points."
+    },
+    {
+      "file": "/audit_tasks/777genius__agent-teams-ai-c_1f4c550/solution/solve.sh",
+      "detail": "Gold patch adds the required prompt text at lines 225-229 of the diff, alongside many unrelated changes."
+    },
+    {
+      "file": "/testbed/test/main/services/team/TeamProvisioningServicePostCompact.test.ts:249-291",
+      "detail": "Existing test 'injectPostCompactReminder sends context-only reminder' already checks for related cross-team phrases; the test patch adds 3 more at line 290."
+    },
+    {
+      "file": "/audit_tasks/777genius__agent-teams-ai-c_1f4c550/instruction.md",
+      "detail": "Issue specifies 3 requirements: (1) emit visible status updates on cross-team requests, (2) team-visible progress trail, (3) don't default to messaging 'user'. All 3 are checked by the test patch."
+    }
+  ],
+  "recommended_action": "keep",
+  "summary": "Valid instance. The issue asks for three specific cross-team coordination guidance additions to the provisioning prompt. The test patch adds three targeted substring assertions that correctly map to those requirements. The gold patch addresses the issue (among many other unrelated changes), the tests discriminate base from gold, and the test scope is balanced — checking all three issue requirements without being overly prescriptive about exact wording. The main caveat is that the gold patch is much larger than needed, but the tests correctly scope to only the prompt changes."
+}

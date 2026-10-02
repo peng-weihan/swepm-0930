@@ -1,0 +1,71 @@
+{
+  "instance_id": "CherryHQ__cherry-studio-13430",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.72,
+  "gold_patch_assessment": "The gold patch is comprehensive and addresses all aspects of the instruction: creates the Prompt entity type with Zod schemas, adds CRUD and ordering API endpoints under /prompts, creates PromptService with SQLite-backed persistence, creates PromptMigrator for legacy quick_phrases migration, adds a new PromptSettings UI page, deletes legacy QuickPhraseService/QuickPhraseSettings/AssistantRegularPromptsSettings, updates i18n files, and adds the prompt SQLite table with migration. It is a well-structured, large-scope change (~30 files, ~3000 lines of patch).",
+  "base_vs_gold_expectation": "The base would clearly fail the tests because 8 of 10 test files are new and import modules (PromptService, PromptMigrator, prompt schemas, PromptSettings component, promptVariableNavigation, quickPhraseInsert) that do not exist in the base. The 2 existing test files (MigrationEngine.test.ts, MigratorResetContract.test.ts) are modified to import PromptMigrator/promptTable which also don't exist in the base. So base rejection is guaranteed.",
+  "too_narrow_risks": [
+    "No test verifies that the legacy QuickPhraseService is actually removed or that /settings/quickphrase route no longer exists - only that the new /settings/prompts route works",
+    "No test checks the SQLite migration file (0020_known_captain_marvel.sql) creates the correct schema",
+    "No test validates that removed prompt-versioning APIs (/prompts/:id/versions, /prompts/:id/rollback) return 404 - the handler test only checks they are undefined on the handlers object, not that requests are actually rejected",
+    "No test validates Prompt ID must be UUID format in the Prompt type/schema itself (only tested at the handler level for path params)",
+    "No test covers the PromptEditModal component independently",
+    "No test validates that assistant-specific regular phrases are NOT migrated into the new prompt table",
+    "The PromptSettings UI test only covers edit, delete, and reorder - no test for the create flow through the UI"
+  ],
+  "too_broad_risks": [
+    "MigrationEngine test asserts exactly deleteFn.toHaveBeenCalledTimes(25) - this is fragile and will break if any other table is added/removed independently of this feature, coupling the test to the total table count in the application",
+    "The PromptMigrator progress test asserts exact batch size behavior (67% for 10/15, 100% for 15/15) which is coupled to a specific batch size of 10"
+  ],
+  "implementation_coupling": [
+    "PromptMigrator metadata test asserts migrator.order === 5.5 - a specific ordering number that could reasonably be different in an alternative implementation",
+    "PromptMigrator progress test asserts batch size of 10 (expects 'Migrated 10/15 prompts' at 67%) - coupled to gold implementation's specific batching constant",
+    "MigratorResetContract test accesses internal state property names (promptCount, skippedCount, preparedPhrases) via `as any` casting - coupled to exact internal field naming",
+    "MigrationEngine test asserts deleteFn.toHaveBeenCalledTimes(25) which depends on the exact number of tables including promptTable - a different implementation might not modify the table-clearing logic",
+    "PromptMigrator execute test for missing title asserts default value 'Untitled' - coupled to the gold patch's specific default title string",
+    "Handler tests import from exact path '../prompts' and check exact handler object shape (promptHandlers['/prompts'].GET etc.) - tightly coupled to the gold patch's file and export structure",
+    "PromptService test imports from exact path '@data/services/PromptService' with exact named exports (PromptService class, promptService singleton)"
+  ],
+  "environment_risks": [
+    "The test relies on pnpm exec vitest with specific --project flags; if node_modules are missing or corrupted in the Docker image, all tests fail regardless of solution quality",
+    "The PromptMigrator SQLite integration test uses setupTestDatabase() which creates a real file-backed DB with production migrations - if the migration files are inconsistent or the DB setup fails, the test fails for environment reasons",
+    "The 3600s verifier timeout is generous but the task requires creating ~30 files across the codebase, which is extremely ambitious for an SWE benchmark agent"
+  ],
+  "mismatches": [
+    "The task.toml categorizes this as 'debugging' but it is actually a large feature implementation (new Prompt entity with full CRUD, migration, UI) - not a debugging task",
+    "The instruction mentions '/prompts/order:batch' endpoint pattern but this colon-based route naming is unusual and could confuse solvers who implement standard REST patterns"
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Line 411: asserts deleteFn.toHaveBeenCalledTimes(25) which is exactly the number of tables after gold patch adds promptTable (24 base + 1 prompt). This is coupled to total table count."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 550-552: PromptMigrator metadata test checks migrator.id='prompt', migrator.name='Prompts', migrator.order=5.5 - the order value is implementation-specific"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 713-717: Progress test checks exact batch size behavior with messages 'Migrated 10/15 prompts' and 'Migrated 15/15 prompts' at 67% and 100%"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 430-443: MigratorResetContract accesses private fields promptCount, skippedCount, preparedPhrases via `as any`"
+    },
+    {
+      "file": "/testbed/src/main/data/migration/v2/core/MigrationEngine.ts",
+      "detail": "Base has 24 table entries in the tables array; gold patch adds promptTable making 25, matching the test assertion"
+    },
+    {
+      "file": "/audit_tasks/CherryHQ__cherry-studio-13430/task.toml",
+      "detail": "Category listed as 'debugging' but this is a feature implementation task"
+    },
+    {
+      "file": "/audit_tasks/CherryHQ__cherry-studio-13430/instruction.md",
+      "detail": "Instruction describes a comprehensive feature: new entity type, CRUD API, migration, UI replacement - very large scope for a benchmark instance"
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The instance is a large-scope feature implementation (not debugging as categorized) that replaces a legacy QuickPhrase system with a new Prompt entity across ~30 files. The gold patch is well-crafted and comprehensive. The 85 test cases across 10 files provide thorough coverage of the new feature. However, several tests are coupled to gold-implementation internals: exact migrator order value (5.5), exact batch size (10), exact internal field names (promptCount, skippedCount, preparedPhrases), and exact default title string ('Untitled'). The MigrationEngine test's assertion of exactly 25 delete calls is fragile and coupled to total table count. On the narrow side, the tests don't verify legacy removal, migration schema correctness, or the create UI flow. An alternative correct implementation with different internal naming, batch sizes, or migrator ordering would fail these tests. The scope is also extremely ambitious for an SWE benchmark - 7200s agent timeout for ~30 files of coordinated changes across shared types, main process services, migration, and renderer UI."
+}

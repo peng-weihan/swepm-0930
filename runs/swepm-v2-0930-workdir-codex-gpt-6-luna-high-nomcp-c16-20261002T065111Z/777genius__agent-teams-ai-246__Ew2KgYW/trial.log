@@ -1,0 +1,35 @@
+Running command: test -x /usr/local/bin/codex-code-mode-host && codex --version
+Command outputs captured
+Running command: mkdir -p "$CODEX_HOME" /opt/swepm-runtime/secrets /logs/agent
+Command outputs captured
+Codex auth: using auth.json from [REDACTED]
+Running command: ln -sf /opt/swepm-runtime/secrets/auth.json "$CODEX_HOME/auth.json"
+
+Command outputs captured
+Running command: if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi; codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-6-luna --json --enable unified_exec -c model_reasoning_effort=high -- 'The project needs to finish the team provisioning/runtime-control refactor and restore several public behaviors that currently fail validation.
+
+The MCP server tool schemas and request forwarding are incomplete. The task-writing tools must accept and preserve structured task references of the form `{ taskId: string, displayId: string, teamName: string }`. `task_create` and task creation from messages should allow optional `descriptionTaskRefs` and `promptTaskRefs` arrays and include them in the created task payload/result. `task_add_comment` should allow an optional `taskRefs` array and persist it on the created comment. `review_request_changes` should also accept optional `taskRefs` and forward them with the review/change request payload. Message attachment schemas should accept an optional `filePath` field in addition to filename, mime type, and size.
+
+MCP runtime/team tools also need to expose newer options. Team launch and team create flows should accept `limitContext: boolean` and forward it to the HTTP API body. Team member definitions accepted by team creation/update tools should allow an optional `mcpPolicy` object with `mode` equal to one of `inheritLead`, `inheritScopes`, `strictAllowlist`, or `appOnly`, optional boolean `scopes` entries for `user`, `project`, and `local`, and optional `serverNames` strings. Work sync/report tools should accept an optional `waitTimeoutMs` and include it in the required report follow-up payload so callers can control how long a teammate waits for a report.
+
+Runtime-control idempotency keys should be normalized consistently. Payloads for OpenCode runtime delivery and task-event commands may contain leading or trailing whitespace in `idempotencyKey`; these should be trimmed before validation and before constructing runtime command IDs, so equivalent keys such as `"abc"` and `"  abc  "` deduplicate to the same command ID. A missing, non-string, or all-whitespace idempotency key should still throw a clear error indicating the idempotency key is missing.
+
+Runtime snapshot liveness projection should no longer be OpenCode-specific. Bootstrap confirmation should be represented generically as runtime bootstrap confirmation, including optional diagnostic text and severity. When bootstrap confirmation is present and there is no stronger live runtime-process evidence, the projected member should be considered alive with `livenessKind` set to `confirmed_bootstrap`, `pidSource` promoted to `runtime_bootstrap` where appropriate, and a default informational diagnostic like “bootstrap confirmed; runtime host/session evidence present.” unless a caller supplied a diagnostic. Existing spawn-runtime fallback behavior should continue to work.
+
+Team provisioning updates can race with newer provisioning runs. When updating direct tmux member config, callers need a way to assert that the operation is still current immediately before writing `team.json`; if the run is stale, the write should be prevented rather than overwriting newer member configuration.
+
+The renderer’s saved launch-parameter restore is too fragile. `loadAllLaunchParams()` currently treats malformed `localStorage` data under one team’s launch-params key as fatal for the whole restore. It should ignore only the bad entry and continue restoring valid launch parameters for other teams.
+
+Finally, package metadata and user-facing documentation should reflect the current repository and feature set: the MCP package repository should point at `https://github.com/777genius/agent-teams-ai.git` with directory `mcp-server`, the README installation text should describe using installed `claude`, `codex`, and `opencode`, and the roadmap section should be renamed to ideas with terminal commands marked as supported.
+' 2>&1 </dev/null | tee /logs/agent/codex.txt
+Command outputs captured
+Running command: mkdir -p /logs/agent
+if [ -d "$CODEX_HOME/sessions" ]; then
+  rm -rf /logs/agent/sessions
+  cp -R "$CODEX_HOME/sessions" /logs/agent/sessions
+fi
+Command outputs captured
+Running command: rm -rf /opt/swepm-runtime/secrets "$CODEX_HOME"
+Command outputs captured
+Wrote Codex trajectory to /data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-workdir-codex-gpt-6-luna-high-nomcp-c16-20261002T065111Z/777genius__agent-teams-ai-246__Ew2KgYW/agent/trajectory.json
+Collecting main service artifacts

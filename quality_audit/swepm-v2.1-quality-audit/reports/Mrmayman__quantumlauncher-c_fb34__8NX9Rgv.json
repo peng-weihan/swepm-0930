@@ -1,0 +1,63 @@
+{
+  "instance_id": "Mrmayman__quantumlauncher-c_fb3452c",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch correctly addresses the stated issue: it replaces the InstanceSelection enum with an Instance struct carrying name (Arc<str>) and kind (InstanceKind), adds Instance::client(), Instance::server(), Instance::new() constructors, preserves get_name()/is_server()/get_pair() accessors, updates path resolution logic, and propagates the change across 71 files in the workspace. The refactoring is comprehensive and semantically correct.",
+  "base_vs_gold_expectation": "The base should be correctly rejected. The test patch references ql_core::Instance (which does not exist in the base code, only ql_core::InstanceSelection) and calls Instance::client(name), so applying the test patch to the unpatched base produces a compilation error. The test patch applies cleanly to the base git-wise, but cargo build -p tests would fail.",
+  "too_narrow_risks": [
+    "Tests are compilation-only: the test crate has zero #[test] functions, so cargo test just compiles and reports 0 tests passed. No runtime behavioral assertions exist.",
+    "Only 3 of 7+ workspace crates are tested: the tests crate depends on ql_core, ql_instances, and ql_mod_manager. The gold patch also modifies quantum_launcher (28 files), ql_packager (3 files), and ql_servers (2 files), none of which are compilation-checked by the test.",
+    "No behavioral verification of path resolution: Instance::client and Instance::server path logic (instances/<NAME>/ vs servers/<NAME>/, .minecraft subdirectory) is not tested at runtime.",
+    "No serde serialization/deserialization tests: InstanceKind's serde behavior (snake_case, #[serde(other)] on Client for backwards compatibility) is not verified.",
+    "No test for get_pair(), get_name(), is_server() returning correct values on client vs server instances.",
+    "A candidate providing correct type signatures but incorrect method implementations (e.g., swapped client/server paths) would pass."
+  ],
+  "too_broad_risks": [
+    "The --locked flag on cargo build could reject solutions that need different dependency resolution, though this is unlikely to be a practical issue for this specific refactoring."
+  ],
+  "implementation_coupling": [
+    "Test patch requires exact type name ql_core::Instance (not ql_core::InstanceInfo or any alternative name).",
+    "Test patch requires Instance::client(name) constructor with exactly that name and signature.",
+    "Test patch requires ql_instances::launch to accept Arc<str> instead of String. This is a gold-patch-specific design choice (using Arc<str> for shared ownership) that excludes valid alternatives using String or &str.",
+    "Test patch requires Arc import and Arc::from(name) call pattern, tightly coupling to the Arc<str> representation choice."
+  ],
+  "environment_risks": [
+    "Rust toolchain 1.89 is required and pre-installed, which is a nightly/recent version. The eval.sh installs it explicitly.",
+    "cargo build/test with --locked requires network access to be unnecessary (all deps in Cargo.lock must be cached). This depends on the Docker image having pre-fetched crate dependencies.",
+    "The tests crate is a binary (main.rs with #[tokio::main]), not a library. cargo test -p tests compiles but runs 0 tests, so the exit code depends solely on compilation success."
+  ],
+  "mismatches": [
+    "task.toml labels category as 'debugging' but the task is clearly a refactoring/API redesign task.",
+    "The test only covers compilation of 3 crates (ql_core, ql_instances, ql_mod_manager) while the gold patch modifies 71 files across 7+ crates including quantum_launcher, ql_packager, and ql_servers.",
+    "The instruction mentions 'All affected code should compile with the renamed/refactored API' but the test does not verify compilation of all affected crates."
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch only modifies tests/src/launch.rs and tests/src/main.rs. Changes are: Instance::client(name) replaces InstanceSelection::new(name, false), ql_core::Instance replaces ql_core::InstanceSelection in ProcessExitResult type, Arc::from(name) replaces name.clone() for launch call."
+    },
+    {
+      "file": "/audit_tasks/Mrmayman__quantumlauncher-c_fb3452c/tests/eval.sh",
+      "detail": "Eval runs 'cargo build -p tests --locked' and 'cargo test --no-fail-fast -p tests'. The tests crate has no #[test] functions, so this is purely a compilation check."
+    },
+    {
+      "file": "/testbed/tests/Cargo.toml",
+      "detail": "Tests crate depends on ql_instances, ql_mod_manager, ql_core only. Does not depend on quantum_launcher, ql_packager, or ql_servers."
+    },
+    {
+      "file": "/testbed/tests/src/main.rs",
+      "detail": "Contains #[tokio::main] async fn main() - this is a binary, not a test library. No #[test] functions exist anywhere in the tests crate."
+    },
+    {
+      "file": "/audit_tasks/Mrmayman__quantumlauncher-c_fb3452c/solution/solve.sh",
+      "detail": "Gold patch modifies 71 files across Cargo.toml, ql_core, ql_instances, ql_mod_manager, ql_packager, ql_servers, and quantum_launcher crates."
+    },
+    {
+      "file": "/audit_tasks/Mrmayman__quantumlauncher-c_fb3452c/task.toml",
+      "detail": "Category is 'debugging' but task is a refactoring task. Timeouts are generous (3600s verifier, 7200s agent)."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch is a valid and comprehensive refactoring of InstanceSelection to Instance across 71 files. However, the test verification is too narrow: it only checks compilation of 3 out of 7+ affected crates (missing quantum_launcher, ql_packager, ql_servers), has zero runtime behavioral tests (#[test] functions), and is tightly coupled to the gold implementation's choice of Arc<str> over String. A candidate that provides correct type signatures but wrong runtime behavior (e.g., swapped client/server paths) would pass. A candidate that makes correct changes but uses String instead of Arc<str> would fail. Tests should be revised to: (1) check compilation of all affected crates, (2) add runtime behavioral tests for path resolution, serde, and accessor methods, and (3) reduce coupling to the Arc<str> design choice."
+}

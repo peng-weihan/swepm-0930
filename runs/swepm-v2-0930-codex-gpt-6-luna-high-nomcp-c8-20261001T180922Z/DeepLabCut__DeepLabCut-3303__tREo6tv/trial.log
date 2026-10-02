@@ -1,0 +1,39 @@
+Running command: test -x /usr/local/bin/codex-code-mode-host && codex --version
+Command outputs captured
+Running command: mkdir -p "$CODEX_HOME" /opt/swepm-runtime/secrets /logs/agent
+Command outputs captured
+Codex auth: using auth.json from [REDACTED]
+Running command: ln -sf /opt/swepm-runtime/secrets/auth.json "$CODEX_HOME/auth.json"
+
+Command outputs captured
+Running command: if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi; codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-6-luna --json --enable unified_exec -c model_reasoning_effort=high -- 'DeepLabCut’s video path collection behavior needs to be made consistent and exposed through a new public API. The existing helpers such as `list_videos_in_folder` and `get_list_of_videos` incorrectly filter explicitly supplied file paths by extension even when no video type filter was requested. This causes valid caller-provided files to be silently dropped, including files without an extension, even though explicit file paths should be trusted by default. Directory scanning should keep the current behavior of only selecting recognized video files.
+
+Add a new `deeplabcut.utils.auxfun_videos.collect_video_paths(...)` helper and export it as `deeplabcut.collect_video_paths(...)`. It should accept a single `str`/`Path` or a list/tuple of `str`/`Path` values, where each item may be either a file or a non-recursively scanned directory. It should return resolved `Path` objects with duplicates removed. Missing paths should raise `FileNotFoundError` with a message indicating the missing path, such as `Could not find: <path>. Check access rights.`
+
+The extension filtering rules should be:
+
+When `extensions=None`, explicitly supplied file paths are returned as-is regardless of suffix, including suffixless files. Directories are still filtered to known supported video extensions from `SUPPORTED_VIDEOS`, so non-video files such as `.txt`, `.h5`, and suffixless files inside a directory are not returned.
+
+When `extensions` is provided, it must filter both explicitly supplied files and files discovered in directories. The value may be a string such as `"mp4"` or `".mp4"`, or a sequence such as `["mp4", "avi"]`. Matching must be case-insensitive and should normalize leading dots. Empty string and `None` should mean the default/no explicit filter case. An empty sequence of extensions should be rejected with `ValueError`.
+
+Directory scans should exclude common DeepLabCut-generated output videos by default, specifically names matching patterns such as `*_labeled.*` and `*_full.*`, so they are not treated as input videos. The caller should be able to disable this by passing `exclude_patterns=[]`.
+
+The function should support `shuffle`; when `shuffle=False`, results should be returned in deterministic sorted order, and when `shuffle=True`, ordering may be randomized. It should handle mixtures of directories, explicit supported video files, explicit unsupported files, and explicit suffixless files according to the rules above.
+
+The older `deeplabcut.pose_estimation_pytorch.apis.utils.list_videos_in_folder(...)` should remain available for backward compatibility but be deprecated in favor of `deeplabcut.collect_video_paths`. Its existing behavior should be preserved as much as possible, including defaulting to supported video extensions. Existing callers that currently accept a `videotype` argument, such as video analysis, tracking dataset creation, tracklet conversion, labeled video creation, detection video creation, and trajectory plotting, should accept `videotype` as `str | Sequence[str] | None` and use the same filtering semantics described above.
+
+Add standardized deprecation utilities under `deeplabcut.utils.deprecation`. There should be a `DLCDeprecationWarning` warning class, a `deprecated(...)` decorator for deprecated callables, and a `renamed_parameter(...)` decorator for deprecated keyword names. The `deprecated` decorator should emit `DLCDeprecationWarning` when the wrapped function is called, preserve the wrapped function’s name, docstring, arguments, and return value, include useful information such as the function name, replacement, `since`, and `removed_in` versions in the warning message, and attach structured metadata on `__deprecated_info__`. Version strings should be parsed as `packaging.version.Version`; invalid versions should raise `ValueError`, and `removed_in` must be greater than `since` when both are supplied.
+
+The `renamed_parameter(old=..., new=..., since=...)` decorator should allow callers to keep using the old keyword name while warning with `DLCDeprecationWarning` and forwarding the value to the new keyword. Calls using only the new keyword should not warn. Calls supplying both the old and new keyword names should raise `TypeError` with a message indicating that both names were received and that only the new name should be used. The decorator should preserve the wrapped function’s name and attach metadata on `__deprecated_params__`, including the old parameter name, new parameter name, target callable, and parsed `since` version.
+' 2>&1 </dev/null | tee /logs/agent/codex.txt
+Command outputs captured
+Running command: mkdir -p /logs/agent
+if [ -d "$CODEX_HOME/sessions" ]; then
+  rm -rf /logs/agent/sessions
+  cp -R "$CODEX_HOME/sessions" /logs/agent/sessions
+fi
+Command outputs captured
+Running command: rm -rf /opt/swepm-runtime/secrets "$CODEX_HOME"
+Command outputs captured
+Wrote Codex trajectory to /data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/DeepLabCut__DeepLabCut-3303__tREo6tv/agent/trajectory.json
+Collecting main service artifacts

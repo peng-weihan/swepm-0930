@@ -1,0 +1,60 @@
+{
+  "instance_id": "Alishahryar1__free-claude-code-883",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.8,
+  "gold_patch_assessment": "The gold patch (3538 lines, 23 files) implements the full refactoring: creates core/anthropic/streaming/ package with emitter.py, ledger.py, lifecycle.py, recovery.py; deletes old files (sse.py, emitted_sse_tracker.py, stream_recovery.py, stream_recovery_session.py); renames classes (SSEBuilder→AnthropicStreamLedger, ContentBlockManager→StreamBlockLedger, ToolCallState→ToolBlockState, StreamRecoverySession→RecoveryController, StreamFailureAction→RecoveryFailureAction); updates all imports across the codebase. It addresses the stated issue comprehensively.",
+  "base_vs_gold_expectation": "The base should fail: (1) test_anthropic_stream_engine_owns_provider_stream_state asserts old files don't exist and new streaming/ files exist—both false in the base; (2) all test imports reference core.anthropic.streaming which doesn't exist in the base; (3) all class references use new names (AnthropicStreamLedger etc.) that don't exist in the base. The gold patch should pass all tests since it implements the exact structure and names the tests check for.",
+  "too_narrow_risks": [
+    "test_anthropic_stream_engine_owns_provider_stream_state requires exact internal filenames (emitter.py, ledger.py, lifecycle.py, recovery.py) in the streaming/ package, but the issue never specifies these names—a valid alternative implementation could organize the streaming package differently",
+    "Mock patches reference exact internal module paths (core.anthropic.streaming.emitter.logger.debug, core.anthropic.streaming.ledger.ENCODER) that are not part of the issue requirements—any alternative internal module layout would fail",
+    "Tests import and assert on implementation-detail names not in the issue: TruncatedProviderStreamError, make_text_recovery_body, has_committed_sse_output, RecoveryController, RecoveryFailureAction, midstream_error_tail, append_text_suffix, ingest_native_event, success_tail, final_stop_reason, etc.",
+    "The new test_stream_ledger.py is a 1:1 mechanical translation of the deleted test_sse_builder.py with additional methods—it tests the exact API shape of AnthropicStreamLedger including methods like append_text_suffix, append_thinking_suffix, append_tool_repair_suffix that are not specified in the issue"
+  ],
+  "too_broad_risks": [
+    "The test suite runs 16 test files covering providers (llamacpp, lmstudio, ollama, wafer, nvidia_nim) whose changes are only import-path updates—these could fail for reasons unrelated to the core refactoring"
+  ],
+  "implementation_coupling": [
+    "test_anthropic_stream_engine_owns_provider_stream_state hardcodes the exact 5 filenames the streaming package must contain (emitter.py, ledger.py, lifecycle.py, recovery.py, __init__.py)—this is purely coupled to the gold patch's internal module decomposition",
+    "test_stream_ledger_default_debug_has_no_serialized_json_content patches core.anthropic.streaming.emitter.logger.debug—requires the emitter module to exist at that exact path",
+    "test_estimate_without_tiktoken patches core.anthropic.streaming.ledger.ENCODER—requires ENCODER to be in the ledger submodule specifically",
+    "Tests import RecoveryController, RecoveryFailureAction, TruncatedProviderStreamError, make_text_recovery_body, has_committed_sse_output, iter_heuristic_tool_use_sse—internal names not specified in the issue",
+    "Tests for midstream_error_tail, append_text_suffix, append_thinking_suffix, ingest_native_event, success_tail, final_stop_reason, has_emitted_tool_block test the exact method API of AnthropicStreamLedger beyond what the issue specifies"
+  ],
+  "environment_risks": [
+    "The gold patch is extremely large (3538 lines) and the test patch modifies 17 files—complex patch application increases the chance of merge conflicts or partial application failures",
+    "Tests rely on uv run pytest which requires the uv tool and correct virtual environment setup in the Docker image"
+  ],
+  "mismatches": [
+    "The issue specifies the public API (AnthropicStreamLedger, StreamBlockLedger, ToolBlockState, format_sse_event, map_stop_reason, ANTHROPIC_SSE_RESPONSE_HEADERS) but the tests additionally require many internal names and exact module decomposition not mentioned in the issue",
+    "The issue says nothing about the internal file structure of the streaming/ package, but tests assert exact filenames (emitter.py, ledger.py, lifecycle.py, recovery.py)"
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 60-102: test_anthropic_stream_engine_owns_provider_stream_state asserts exact filenames (emitter.py, ledger.py, lifecycle.py, recovery.py) must exist in streaming/"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 33-36: test patches core.anthropic.streaming.emitter.logger.debug—coupled to internal module name"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 2057-2058: test patches core.anthropic.streaming.ledger.ENCODER—coupled to internal module name"
+    },
+    {
+      "file": "/audit_tasks/Alishahryar1__free-claude-code-883/instruction.md",
+      "detail": "Issue specifies public API names and import path core.anthropic.streaming but NOT internal module filenames like emitter.py, ledger.py, lifecycle.py, recovery.py"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 2154-2168: Tests import TruncatedProviderStreamError, make_text_recovery_body, has_committed_sse_output—implementation details not in the issue"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 1310-2146: New test_stream_ledger.py tests exact method API (append_text_suffix, ingest_native_event, midstream_error_tail, success_tail, etc.) not mentioned in issue requirements"
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The instance describes a large streaming-layer refactoring. The gold patch is comprehensive and correct for the issue. However, the tests are heavily coupled to the gold patch's specific implementation choices rather than observable behavior. The structural test (test_anthropic_stream_engine_owns_provider_stream_state) requires exact internal module filenames (emitter.py, ledger.py, lifecycle.py, recovery.py) not specified in the issue. Mock patches reference exact internal module paths. Tests import and assert on many implementation-detail names (RecoveryController, TruncatedProviderStreamError, make_text_recovery_body, etc.) beyond what the issue specifies. A valid alternative implementation using the correct public API and package path but different internal module decomposition would fail. Recommend relaxing the structural test to only check the package path and public API exports, and decoupling tests from internal module names."
+}

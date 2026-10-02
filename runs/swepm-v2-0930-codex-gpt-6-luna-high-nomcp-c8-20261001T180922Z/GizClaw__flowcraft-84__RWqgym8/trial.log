@@ -1,0 +1,39 @@
+Running command: test -x /usr/local/bin/codex-code-mode-host && codex --version
+Command outputs captured
+Running command: mkdir -p "$CODEX_HOME" /opt/swepm-runtime/secrets /logs/agent
+Command outputs captured
+Codex auth: using auth.json from [REDACTED]
+Running command: ln -sf /opt/swepm-runtime/secrets/auth.json "$CODEX_HOME/auth.json"
+
+Command outputs captured
+Running command: if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi; codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-6-luna --json --enable unified_exec -c model_reasoning_effort=high -- 'FlowCraft is cutting over to the `sdk/v0.3.0` and `sdkx/v0.3.0` API surface by closing the v0.2.x deprecation window. All deprecated compatibility shims that existed only to support v0.1/v0.2-era APIs should be removed, and the remaining public behavior should reflect the v0.3 runtime and package boundaries.
+
+The SDK should no longer expose the legacy workflow/graph bridge surface. The `sdk/workflow` package and `sdk/graph/adapter` package should be removed, including bridge APIs such as `adapter.FromDefinition` and `adapter.FromCompiled`. The graph runner is now driven directly through `runner.Runner` as an `engine.Engine`, and callers should use the agent/engine/graph runtime rather than workflow strategies.
+
+The graph and engine APIs should reflect the v0.3 channel model. `engine.MainChannel` must no longer be the empty string; it should use the reserved engine-owned channel name `"__main_channel"`. Engine-owned board keys reserve the `__` prefix for internal use. Restoring old checkpoints must remain backward compatible: `engine.RestoreBoard` and board restore logic must migrate snapshots whose `BoardSnapshot.Channels` map stores the legacy main transcript under the empty-string key. After restore, the messages must be available via `Board.Channel(engine.MainChannel)` and the legacy empty-string channel must not remain reachable. If a snapshot contains both the legacy `""` key and the modern `engine.MainChannel` key, the modern key must win and the legacy bucket should be discarded.
+
+The graph deprecated runner and node shims should be removed. This includes the old internal executor abstraction, `graph.ErrInterrupt`, host-bypassing runner options such as `WithEventBus`, `WithStreamCallback`, and `WithCheckpointStore`, the `busOnlyHost` transition shim, and chat-variable constants such as `graph.VarMessages`, `graph.VarQuery`, and `graph.VarAnswer`. `llmnode` should use `Config.MessagesChannel` as a typed channel name instead of the old `MessagesKey` board-var/channel hybrid, and the `QueryFallback` behavior should be gone. `knowledgenode.Config` should support a `QueryKey` JSON field named `query_key`, with the historical `"query"` behavior preserved when it is empty.
+
+The LLM package should remove the deprecated round-helper and capability-shim APIs, including the `RunRound`/`StreamRound`/`RoundResult`/`RoundConfig` family, `CapsMiddleware`, `WithExtraCaps`, `LookupModelCaps`, and the compatibility behavior around `ModelInfo.Caps`. Callers should use the direct streaming/model APIs and the agent/engine runtime.
+
+The knowledge package should remove the legacy v0.1 store, document, chunking, search, reloader, notifier, and tool surfaces, routing new usage through the `Service`-based API. The deprecated `sdkx/knowledge/watcher` package should also be removed; durable watchers should produce `knowledge.ChangeEvent` values for the event reloader directly.
+
+The history package should remove the deprecated SDK-side tool registration and helper surface. History tool implementations should live under `sdkx/tool/history` with the same downstream-facing tool names, `history_expand` and `history_compact`. `sdkx/tool/history.ToolDeps` should be a first-class sdkx type rather than a type alias to `sdk/history`, and `RegisterTools` should register both tools with a `tool.Registry`. The compact tool should continue to support compact/archive operations and should prefer a wired `sdk/history.Coordinator` when available so operations are serialized per conversation.
+
+The kanban tool context helpers should be owned by `sdkx/tool/kanban`. `WithKanban(context.Context, *sdk/kanban.Kanban)` must install a kanban instance into context, and `KanbanFrom(context.Context)` must retrieve values installed by that sdkx helper. Interoperability with deprecated SDK-side kanban context helpers is no longer required.
+
+Retrieval should remove `SearchRequest.ReturnRaw` and `SearchResponse.RawByRetriever`. Script bindings should remove the old stream/run bridge and agent-step binding shims, leaving the run-metadata bridge as the supported surface. The model package should include the role-scoped reverse scan helper `LastByRole`.
+
+Documentation and repository metadata should be updated for the v0.3 cutover. `docs/migrations/v0.3.0.md` should be the single source of truth for removed symbols and migration guidance. GitHub Pages documentation should be usable from `docs/`, including a Jekyll `_config.yml` using `jekyll-theme-cayman` and an `index.md` that links to the v0.3 migration guide. The repository ignore rules should allow all files under `docs/`, including `_config.yml` and `index.md`, to be tracked.
+' 2>&1 </dev/null | tee /logs/agent/codex.txt
+Command outputs captured
+Running command: mkdir -p /logs/agent
+if [ -d "$CODEX_HOME/sessions" ]; then
+  rm -rf /logs/agent/sessions
+  cp -R "$CODEX_HOME/sessions" /logs/agent/sessions
+fi
+Command outputs captured
+Running command: rm -rf /opt/swepm-runtime/secrets "$CODEX_HOME"
+Command outputs captured
+Wrote Codex trajectory to /data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/GizClaw__flowcraft-84__RWqgym8/agent/trajectory.json
+Collecting main service artifacts

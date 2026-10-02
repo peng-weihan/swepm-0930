@@ -1,0 +1,69 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+patching file tests/unit/test_base_fetcher.py
+patching file tests/unit/test_config.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+Hunk #1 succeeded at 72 with fuzz 3.
+patching file tests/unit/test_fetcher_sources.py
+============================= test session starts ==============================
+platform linux -- Python 3.11.16, pytest-9.1.1, pluggy-1.6.0 -- /testbed/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /testbed
+configfile: pyproject.toml
+plugins: cov-7.1.0
+collecting ... collected 69 items
+
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_basic_ip_port PASSED [  1%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_multiple_proxies PASSED [  2%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_ip_port_with_spaces PASSED [  4%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_ip_port_in_html_text PASSED [  5%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_empty_text PASSED [  7%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_no_proxies PASSED [  8%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_ip_with_colon_port PASSED [ 10%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_port_range PASSED [ 11%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_dict_with_proxy_key PASSED [ 13%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_dict_with_addr_key PASSED [ 14%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_dict_with_ip_port_keys PASSED [ 15%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_dict_with_host_port_keys PASSED [ 17%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_dict_with_server_port_keys PASSED [ 18%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_list_of_dicts PASSED [ 20%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_nested_dict PASSED [ 21%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_string_value PASSED [ 23%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_empty_dict PASSED [ 24%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_empty_list PASSED [ 26%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_basic_table PASSED [ 27%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_multiple_rows PASSED [ 28%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_none_tree PASSED [ 30%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_empty_table PASSED [ 31%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_header_row_skipped PASSED [ 33%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_row_with_too_few_cells PASSED [ 34%]
+tests/unit/test_base_fetcher.py::TestYieldUniqueProxies::test_unique_proxies PASSED [ 36%]
+tests/unit/test_base_fetcher.py::TestYieldUniqueProxies::test_duplicates_removed PASSED [ 37%]
+tests/unit/test_base_fetcher.py::TestYieldUniqueProxies::test_empty_list PASSED [ 39%]
+tests/unit/test_base_fetcher.py::TestYieldUniqueProxies::test_preserves_order PASSED [ 40%]
+tests/unit/test_base_fetcher.py::TestYieldUniqueProxies::test_is_generator PASSED [ 42%]
+tests/unit/test_base_fetcher.py::TestBaseFetcherInterface::test_name_attribute PASSED [ 43%]
+tests/unit/test_base_fetcher.py::TestBaseFetcherInterface::test_url_attribute PASSED [ 44%]
+tests/unit/test_base_fetcher.py::TestBaseFetcherInterface::test_fetch_raises_not_implemented PASSED [ 46%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_db_conn_default PASSED [ 47%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_server_host_default PASSED [ 49%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_server_port_default PASSED [ 50%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_table_name_default PASSED [ 52%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_http_url_default PASSED [ 53%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_https_url_default PASSED [ 55%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_verify_timeout_default PASSED [ 56%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_max_fail_count_default PASSED [ 57%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_pool_size_min_default PASSED [ 59%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_timezone_default PASSED [ 60%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_fetchers_is_list FAILED [ 62%]
+
+=================================== FAILURES ===================================
+_______________ TestConfigHandlerDefaults.test_fetchers_is_list ________________
+tests/unit/test_config.py:76: in test_fetchers_is_list
+    assert isinstance(conf.fetchers, list)
+                      ^^^^^^^^^^^^^
+E   AttributeError: 'ConfigHandler' object has no attribute 'fetchers'
+=========================== short test summary info ============================
+FAILED tests/unit/test_config.py::TestConfigHandlerDefaults::test_fetchers_is_list
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+========================= 1 failed, 42 passed in 0.20s =========================
+OMNIGRIL_EXIT_CODE=1

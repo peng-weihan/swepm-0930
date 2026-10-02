@@ -1,0 +1,68 @@
+{
+  "instance_id": "GizClaw__flowcraft-84",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.78,
+  "gold_patch_assessment": "The gold patch is a massive 74-file change (~8K lines in solve.sh) that correctly addresses the stated v0.3.0 deprecation cutover. It removes 24 deprecated files (entire sdk/workflow package, sdk/graph/adapter, sdk/graph/deprecated.go, sdk/llm/deprecated.go, sdk/knowledge/deprecated.go, sdk/history/deprecated.go, sdk/history/tools.go, sdk/kanban/tools.go, sdk/script/bindings/deprecated.go, sdkx/knowledge/watcher), renames APIs (MessagesKey->MessagesChannel, archiveImpl->Archive, Close->Shutdown), changes engine.MainChannel from empty string to '__main_channel' with legacy migration, adds docs/_config.yml, index.md, and updates v0.3.0 migration guide. The changes are coherent and match the issue requirements.",
+  "base_vs_gold_expectation": "The test patch should correctly reject the base and accept the gold patch. On the base: (1) tests referencing MessagesChannel, knowledgenode.DatasetQuery, LastByRole, and other new symbols will fail to compile; (2) the MainChannel legacy migration test will fail because MainChannel='' means the empty-string channel IS the main channel; (3) tests calling the renamed Archive (was archiveImpl) would also fail on the base after deprecated.go is removed. On the gold patch: all renamed/new APIs exist and the tests should pass.",
+  "too_narrow_risks": [
+    "No test validates that the sdk/workflow package was actually removed (13 source files). A solution could keep the workflow package and still pass.",
+    "No test validates that sdk/graph/adapter package was removed. Its test is deleted but no assertion checks the package is gone.",
+    "No test validates removal of sdkx/knowledge/watcher package.",
+    "No test validates removal of sdk/knowledge deprecated types (legacy store, document, chunking, search, reloader, notifier, tool surfaces).",
+    "No test validates removal of sdk/llm deprecated round-helper APIs (RunRound, StreamRound, RoundResult, RoundConfig, CapsMiddleware). Tests only verify LookupModelCaps and Caps auto-promote are gone.",
+    "No test validates removal of sdk/script/bindings/deprecated.go (old stream/run bridge and agent-step binding shims).",
+    "No test validates the documentation deliverables (docs/_config.yml, docs/index.md, docs/migrations/v0.3.0.md, .gitignore changes).",
+    "No test validates SearchRequest.ReturnRaw and SearchResponse.RawByRetriever fields were removed (only tests that referenced them are deleted).",
+    "The tests run only specific listed packages, not ./..., so packages outside the RUNNABLE_TEST_FILES list are never compiled or tested."
+  ],
+  "too_broad_risks": [
+    "The test suite covers 22 test files across 16 packages, which is proportionate to this large refactoring task.",
+    "The errdefs/http_test.go change is purely cosmetic (comment-only) and unnecessary, but harmless."
+  ],
+  "implementation_coupling": [
+    "Tests call unexported functions: recoverArchiveImpl, saveManifestImpl (in sdk/history/archive_test.go). These are internal implementation details, though acceptable for same-package tests.",
+    "Tests call unexported method buildMessages on llmnode.Node (in config_test.go). This couples to the internal method signature.",
+    "Tests reference specific internal types like ctxKey (indirectly, through WithKanban/KanbanFrom) whose implementation changed in the gold patch.",
+    "The Compacted test changes Close() to Shutdown() - this is testing the specific method name rather than behavior, making it tightly coupled to the rename decision."
+  ],
+  "environment_risks": [
+    "Go 1.26.2 is available in the environment while go.mod requires 1.25.0 - compatible, no risk.",
+    "go.work is present and includes sdk/sdkx modules, enabling cross-module resolution for the test packages.",
+    "The eval.sh uses git checkout to restore base files before applying the test patch, which could fail if the working tree has unexpected state, but the base commit matches HEAD so this should be safe.",
+    "The test timeout is 3600s (1 hour) which is generous for Go unit tests - no timing risk.",
+    "No network dependencies - all tests use in-memory or temp-dir fixtures."
+  ],
+  "mismatches": [
+    "The task.toml categorizes this as 'debugging' but it's actually a large-scale deprecation/refactoring task. This doesn't affect test correctness but is a metadata mismatch.",
+    "The issue mentions 'history_expand and history_compact' tool names should be preserved, but no test verifies these specific tool names exist in sdkx/tool/history (only TestRegisterTools_RegistersBothNames is kept, which presumably checks this, but was not modified)."
+  ],
+  "evidence": [
+    {
+      "file": "tests/eval.sh",
+      "detail": "RUNNABLE_TEST_FILES lists 22 specific test files; tests are run only for packages containing these files, not for the full repo (./...). This means package removals go unverified."
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "DELETED_TEST_PATCH_FILES removes 11 test files from deprecated packages, but the eval.sh only deletes the test files - it does not verify the corresponding source files are also gone."
+    },
+    {
+      "file": "solution/solve.sh",
+      "detail": "Gold patch deletes 24 files across sdk/workflow (13 files), sdk/graph/adapter (2), sdk/knowledge (multiple), sdk/llm/deprecated.go, sdk/history (deprecated.go, tools.go), sdk/kanban/tools.go, sdk/script/bindings/deprecated.go, sdkx/knowledge/watcher. None of these deletions are validated by test assertions."
+    },
+    {
+      "file": "tests/eval.sh",
+      "detail": "New tests for MainChannel migration, MessagesChannel, DatasetQuery, LastByRole, Publisher.Emit correctly use symbols that only exist after the gold patch, ensuring the base fails to compile the test suite."
+    },
+    {
+      "file": "instruction.md",
+      "detail": "Issue specifies ~15 distinct removal/refactoring requirements. Tests cover ~7-8 of them through API changes; the remaining ~7 (package removals, doc updates, gitignore) are untested."
+    },
+    {
+      "file": "task.toml",
+      "detail": "Category 'debugging' is incorrect for a deprecation/refactoring task."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch correctly implements the v0.3.0 deprecation cutover across 74 files. Tests will correctly reject the unmodified base (compile errors on new API symbols) and accept the gold patch. However, the test suite is too narrow: it only validates API renames and new behavior in specific packages but does not verify that deprecated packages (sdk/workflow, sdk/graph/adapter, sdkx/knowledge/watcher) and deprecated source files were actually removed. A partial implementation that renames APIs and adds new features without removing the ~24 deprecated files would pass all tests. Documentation deliverables (.gitignore, Jekyll config, migration guide) are also untested. Recommend adding compilation checks (go build ./... should fail if deprecated packages still exist) or explicit file-absence assertions to strengthen coverage."
+}

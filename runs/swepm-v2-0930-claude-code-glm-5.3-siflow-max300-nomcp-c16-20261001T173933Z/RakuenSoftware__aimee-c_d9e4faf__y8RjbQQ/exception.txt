@@ -1,0 +1,24 @@
+Traceback (most recent call last):
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/trial/trial.py", line 415, in run
+    await self._prepare()
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/trial/trial.py", line 453, in _prepare
+    await self._setup_agent_environment()
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/trial/trial.py", line 1542, in _setup_agent_environment
+    await self._start_agent_environment()
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/trial/trial.py", line 1548, in _start_agent_environment
+    await asyncio.wait_for(
+    ...<4 lines>...
+    )
+  File "/home/mlei/.local/share/uv/python/cpython-3.13.8-linux-x86_64-gnu/lib/python3.13/asyncio/tasks.py", line 507, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/environments/docker/docker.py", line 1007, in start
+    await self._run_docker_compose_command(["up", *runtime.up_args])
+  File "/data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/environments/docker/docker.py", line 704, in _run_docker_compose_command
+    raise RuntimeError(
+    ...<5 lines>...
+    )
+RuntimeError: Docker compose command failed for environment RakuenSoftware__aimee-c_d9e4faf. Command: docker compose --project-name rakuensoftware__aimee-c_d9e4faf__y8rjbqq__env --project-directory /data/swepmv2-harbor-runtime/datasets/v2-0930/tasks/RakuenSoftware__aimee-c_d9e4faf/environment -f /data/swepmv2-harbor-runtime/tmp/tmpqr9oxq_x/RakuenSoftware__aimee-c_d9e4faf__y8RjbQQ__env-docker-compose-resources.json -f /data/swepmv2-harbor-runtime/venv/lib/python3.13/site-packages/harbor/environments/docker/docker-compose-prebuilt.yaml -f /data/swepmv2-harbor-runtime/campaigns/v2-0930-max300-nomcp/compose.json -f /data/swepmv2-harbor-runtime/tmp/tmpvqrrwg2g/docker-compose-environment.json -f /data/swepmv2-harbor-runtime/tmp/tmps_51a1_k/docker-compose-mounts.json up --detach --wait. Return code: 1. Stdout:  Network rakuensoftware__aimee-c_d9e4faf__y8rjbqq__env_default Creating 
+ Network rakuensoftware__aimee-c_d9e4faf__y8rjbqq__env_default Error Error response from daemon: all predefined address pools have been fully subnetted
+failed to create network rakuensoftware__aimee-c_d9e4faf__y8rjbqq__env_default: Error response from daemon: all predefined address pools have been fully subnetted
+. Stderr: None. 

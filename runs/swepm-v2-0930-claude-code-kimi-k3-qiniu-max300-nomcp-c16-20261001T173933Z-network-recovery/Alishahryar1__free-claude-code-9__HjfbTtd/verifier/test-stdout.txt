@@ -1,0 +1,705 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch tests/contracts/test_import_boundaries.py...
+Hunk #1 succeeded at 230 (offset 36 lines).
+Checking patch tests/providers/test_cerebras.py...
+error: while searching for:
+
+def test_build_request_body_remaps_max_tokens_preserves_message_name(cerebras_provider):
+    """Cerebras does not strip message ``name``; ``max_tokens`` maps to completion field."""
+    with patch("providers.cerebras.request.build_base_request_body") as mock_convert:
+        mock_convert.return_value = {
+            "model": "llama3.1-8b",
+            "messages": [{"role": "user", "name": "alice", "content": "hi"}],
+
+error: patch failed: tests/providers/test_cerebras.py:108
+error: tests/providers/test_cerebras.py: patch does not apply
+Checking patch tests/providers/test_gemini.py...
+error: while searching for:
+
+from providers.base import ProviderConfig
+from providers.gemini import GEMINI_DEFAULT_BASE, GeminiProvider
+from providers.gemini.request import GEMINI_SKIP_THOUGHT_SIGNATURE_VALIDATOR
+
+
+class MockMessage:
+
+error: patch failed: tests/providers/test_gemini.py:7
+error: tests/providers/test_gemini.py: patch does not apply
+Checking patch tests/providers/test_groq.py...
+error: while searching for:
+
+
+def test_build_request_body_sanitizes_and_remaps_via_mock_converter(groq_provider):
+    with patch("providers.groq.request.build_base_request_body") as mock_convert:
+        mock_convert.return_value = {
+            "model": "llama-3.3-70b-versatile",
+            "messages": [
+
+error: patch failed: tests/providers/test_groq.py:107
+error: tests/providers/test_groq.py: patch does not apply
+Checking patch tests/providers/test_nim_request_clone.py...
+error: while searching for:
+
+from copy import deepcopy
+
+from providers.nvidia_nim.request import clone_body_without_reasoning_budget
+
+
+def test_clone_body_without_reasoning_budget_strips_top_level_and_nested():
+
+error: patch failed: tests/providers/test_nim_request_clone.py:2
+error: tests/providers/test_nim_request_clone.py: patch does not apply
+Checking patch tests/providers/test_nvidia_nim.py...
+error: while searching for:
+from config.nim import NimSettings
+from providers.defaults import NVIDIA_NIM_DEFAULT_BASE
+from providers.nvidia_nim import NvidiaNimProvider
+from providers.nvidia_nim.request import NIM_TOOL_ARGUMENT_ALIASES_KEY
+
+
+# Mock data classes
+
+error: patch failed: tests/providers/test_nvidia_nim.py:8
+error: tests/providers/test_nvidia_nim.py: patch does not apply
+Checking patch tests/providers/test_nvidia_nim_request.py...
+error: while searching for:
+"""Tests for providers/nvidia_nim/request.py."""
+
+from copy import deepcopy
+from types import SimpleNamespace
+
+error: patch failed: tests/providers/test_nvidia_nim_request.py:1
+error: tests/providers/test_nvidia_nim_request.py: patch does not apply
+Checking patch tests/providers/test_open_router.py...
+error: while searching for:
+
+import pytest
+
+from core.anthropic.stream_contracts import (
+    assert_anthropic_stream_contract,
+    parse_sse_text,
+    text_content,
+    thinking_content,
+)
+from providers.base import ProviderConfig
+from providers.open_router import OpenRouterProvider
+from providers.open_router.request import OPENROUTER_DEFAULT_MAX_TOKENS
+
+
+class MockMessage:
+
+error: patch failed: tests/providers/test_open_router.py:6
+error: tests/providers/test_open_router.py: patch does not apply
+patching file tests/contracts/test_import_boundaries.py
+Hunk #1 succeeded at 230 (offset 36 lines).
+patching file tests/providers/test_cerebras.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_gemini.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_groq.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_nim_request_clone.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_nvidia_nim.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_nvidia_nim_request.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/providers/test_open_router.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+============================= test session starts ==============================
+platform linux -- Python 3.14.0, pytest-9.1.0, pluggy-1.6.0 -- /testbed/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /testbed
+configfile: pyproject.toml
+plugins: asyncio-1.4.0, anyio-4.12.1, cov-7.1.0, xdist-3.8.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+created: 192/192 workers
+[gw13] node down: Not properly terminated
+
+replacing crashed worker gw13
+[gw54] node down: Not properly terminated
+
+replacing crashed worker gw54
+[gw50] node down: Not properly terminated
+
+replacing crashed worker gw50
+[gw28] node down: Not properly terminated
+
+replacing crashed worker gw28
+[gw63] node down: Not properly terminated
+
+replacing crashed worker gw63
+[gw10] node down: Not properly terminated
+
+replacing crashed worker gw10
+[gw35] node down: Not properly terminated
+
+replacing crashed worker gw35
+[gw57] node down: Not properly terminated
+
+replacing crashed worker gw57
+[gw25] node down: Not properly terminated
+
+replacing crashed worker gw25
+[gw53] node down: Not properly terminated
+
+replacing crashed worker gw53
+[gw49] node down: Not properly terminated
+
+replacing crashed worker gw49
+[gw31] node down: Not properly terminated
+
+replacing crashed worker gw31
+[gw51] node down: Not properly terminated
+
+replacing crashed worker gw51
+[gw0] node down: Not properly terminated
+
+replacing crashed worker gw0
+[gw73] node down: Not properly terminated
+
+replacing crashed worker gw73
+[gw72] node down: Not properly terminated
+
+replacing crashed worker gw72
+[gw47] node down: Not properly terminated
+
+replacing crashed worker gw47
+[gw55] node down: Not properly terminated
+
+replacing crashed worker gw55
+[gw67] node down: Not properly terminated
+
+replacing crashed worker gw67
+[gw46] node down: Not properly terminated
+
+replacing crashed worker gw46
+[gw79] node down: Not properly terminated
+
+replacing crashed worker gw79
+[gw68] node down: Not properly terminated
+
+replacing crashed worker gw68
+[gw38] node down: Not properly terminated
+
+replacing crashed worker gw38
+[gw29] node down: Not properly terminated
+
+replacing crashed worker gw29
+[gw12] node down: Not properly terminated
+
+replacing crashed worker gw12
+[gw82] node down: Not properly terminated
+
+replacing crashed worker gw82
+[gw81] node down: Not properly terminated
+
+replacing crashed worker gw81
+[gw27] node down: Not properly terminated
+
+replacing crashed worker gw27
+[gw69] node down: Not properly terminated
+
+replacing crashed worker gw69
+[gw86] node down: Not properly terminated
+
+replacing crashed worker gw86
+[gw88] node down: Not properly terminated
+
+replacing crashed worker gw88
+[gw91] node down: Not properly terminated
+
+replacing crashed worker gw91
+[gw59] node down: Not properly terminated
+
+replacing crashed worker gw59
+[gw30] node down: Not properly terminated
+
+replacing crashed worker gw30
+[gw9] node down: Not properly terminated
+
+replacing crashed worker gw9
+[gw95] node down: Not properly terminated
+
+replacing crashed worker gw95
+[gw94] node down: Not properly terminated
+
+replacing crashed worker gw94
+[gw21] node down: Not properly terminated
+
+replacing crashed worker gw21
+[gw89] node down: Not properly terminated
+
+replacing crashed worker gw89
+[gw77] node down: Not properly terminated
+
+replacing crashed worker gw77
+[gw66] node down: Not properly terminated
+
+replacing crashed worker gw66
+[gw99] node down: Not properly terminated
+
+replacing crashed worker gw99
+[gw100] node down: Not properly terminated
+
+replacing crashed worker gw100
+[gw103] node down: Not properly terminated
+
+replacing crashed worker gw103
+[gw102] node down: Not properly terminated
+
+replacing crashed worker gw102
+[gw101] node down: Not properly terminated
+
+replacing crashed worker gw101
+[gw105] node down: Not properly terminated
+
+replacing crashed worker gw105
+[gw106] node down: Not properly terminated
+
+replacing crashed worker gw106
+[gw44] node down: Not properly terminated
+
+replacing crashed worker gw44
+[gw37] node down: Not properly terminated
+
+replacing crashed worker gw37
+[gw110] node down: Not properly terminated
+
+replacing crashed worker gw110
+[gw36] node down: Not properly terminated
+
+replacing crashed worker gw36
+[gw26] node down: Not properly terminated
+
+replacing crashed worker gw26
+[gw8] node down: Not properly terminated
+
+replacing crashed worker gw8
+[gw85] node down: Not properly terminated
+
+replacing crashed worker gw85
+[gw7] node down: Not properly terminated
+
+replacing crashed worker gw7
+[gw61] node down: Not properly terminated
+
+replacing crashed worker gw61
+[gw114] node down: Not properly terminated
+
+replacing crashed worker gw114
+[gw119] node down: Not properly terminated
+
+replacing crashed worker gw119
+[gw116] node down: Not properly terminated
+
+replacing crashed worker gw116
+[gw120] node down: Not properly terminated
+
+replacing crashed worker gw120
+[gw115] node down: Not properly terminated
+
+replacing crashed worker gw115
+[gw118] node down: Not properly terminated
+
+replacing crashed worker gw118
+[gw124] node down: Not properly terminated
+
+replacing crashed worker gw124
+[gw43] node down: Not properly terminated
+
+replacing crashed worker gw43
+[gw11] node down: Not properly terminated
+
+replacing crashed worker gw11
+[gw107] node down: Not properly terminated
+
+replacing crashed worker gw107
+[gw129] node down: Not properly terminated
+
+replacing crashed worker gw129
+[gw98] node down: Not properly terminated
+
+replacing crashed worker gw98
+[gw96] node down: Not properly terminated
+
+replacing crashed worker gw96
+[gw87] node down: Not properly terminated
+
+replacing crashed worker gw87
+[gw131] node down: Not properly terminated
+
+replacing crashed worker gw131
+[gw62] node down: Not properly terminated
+
+replacing crashed worker gw62
+[gw6] node down: Not properly terminated
+
+replacing crashed worker gw6
+[gw18] node down: Not properly terminated
+
+replacing crashed worker gw18
+[gw83] node down: Not properly terminated
+
+replacing crashed worker gw83
+[gw133] node down: Not properly terminated
+
+replacing crashed worker gw133
+[gw137] node down: Not properly terminated
+
+replacing crashed worker gw137
+[gw136] node down: Not properly terminated
+
+replacing crashed worker gw136
+[gw135] node down: Not properly terminated
+
+replacing crashed worker gw135
+[gw134] node down: Not properly terminated
+
+replacing crashed worker gw134
+[gw139] node down: Not properly terminated
+
+replacing crashed worker gw139
+[gw93] node down: Not properly terminated
+
+replacing crashed worker gw93
+[gw140] node down: Not properly terminated
+
+replacing crashed worker gw140
+[gw142] node down: Not properly terminated
+
+replacing crashed worker gw142
+[gw145] node down: Not properly terminated
+
+replacing crashed worker gw145
+[gw141] node down: Not properly terminated
+
+replacing crashed worker gw141
+[gw147] node down: Not properly terminated
+
+replacing crashed worker gw147
+[gw148] node down: Not properly terminated
+
+replacing crashed worker gw148
+[gw146] node down: Not properly terminated
+
+replacing crashed worker gw146
+[gw80] node down: Not properly terminated
+
+replacing crashed worker gw80
+[gw127] node down: Not properly terminated
+
+replacing crashed worker gw127
+[gw97] node down: Not properly terminated
+
+replacing crashed worker gw97
+[gw150] node down: Not properly terminated
+
+replacing crashed worker gw150
+[gw126] node down: Not properly terminated
+
+replacing crashed worker gw126
+[gw156] node down: Not properly terminated
+
+replacing crashed worker gw156
+[gw157] node down: Not properly terminated
+
+replacing crashed worker gw157
+[gw159] node down: Not properly terminated
+
+replacing crashed worker gw159
+[gw78] node down: Not properly terminated
+
+replacing crashed worker gw78
+[gw52] node down: Not properly terminated
+
+replacing crashed worker gw52
+[gw162] node down: Not properly terminated
+
+replacing crashed worker gw162
+[gw158] node down: Not properly terminated
+
+replacing crashed worker gw158
+[gw161] node down: Not properly terminated
+
+replacing crashed worker gw161
+[gw24] node down: Not properly terminated
+
+replacing crashed worker gw24
+[gw111] node down: Not properly terminated
+
+replacing crashed worker gw111
+[gw1] node down: Not properly terminated
+
+replacing crashed worker gw1
+[gw163] node down: Not properly terminated
+
+replacing crashed worker gw163
+[gw164] node down: Not properly terminated
+
+replacing crashed worker gw164
+[gw165] node down: Not properly terminated
+
+replacing crashed worker gw165
+[gw122] node down: Not properly terminated
+
+replacing crashed worker gw122
+[gw172] node down: Not properly terminated
+
+replacing crashed worker gw172
+[gw168] node down: Not properly terminated
+
+replacing crashed worker gw168
+[gw169] node down: Not properly terminated
+
+replacing crashed worker gw169
+[gw22] node down: Not properly terminated
+
+replacing crashed worker gw22
+[gw171] node down: Not properly terminated
+
+replacing crashed worker gw171
+[gw175] node down: Not properly terminated
+
+replacing crashed worker gw175
+[gw174] node down: Not properly terminated
+
+replacing crashed worker gw174
+[gw176] node down: Not properly terminated
+
+replacing crashed worker gw176
+[gw170] node down: Not properly terminated
+
+replacing crashed worker gw170
+[gw178] node down: Not properly terminated
+
+replacing crashed worker gw178
+[gw177] node down: Not properly terminated
+
+replacing crashed worker gw177
+[gw181] node down: Not properly terminated
+
+replacing crashed worker gw181
+[gw184] node down: Not properly terminated
+
+replacing crashed worker gw184
+[gw182] node down: Not properly terminated
+
+replacing crashed worker gw182
+[gw130] node down: Not properly terminated
+
+replacing crashed worker gw130
+[gw33] node down: Not properly terminated
+
+replacing crashed worker gw33
+[gw154] node down: Not properly terminated
+
+replacing crashed worker gw154
+[gw183] node down: Not properly terminated
+
+replacing crashed worker gw183
+[gw186] node down: Not properly terminated
+
+replacing crashed worker gw186
+[gw188] node down: Not properly terminated
+
+replacing crashed worker gw188
+[gw187] node down: Not properly terminated
+
+replacing crashed worker gw187
+[gw143] node down: Not properly terminated
+
+replacing crashed worker gw143
+[gw125] node down: Not properly terminated
+
+replacing crashed worker gw125
+[gw190] node down: Not properly terminated
+
+replacing crashed worker gw190
+[gw189] node down: Not properly terminated
+
+replacing crashed worker gw189
+[gw191] node down: Not properly terminated
+
+replacing crashed worker gw191
+[gw196] node down: Not properly terminated
+
+replacing crashed worker gw196
+[gw193] node down: Not properly terminated
+
+replacing crashed worker gw193
+[gw199] node down: Not properly terminated
+
+replacing crashed worker gw199
+[gw200] node down: Not properly terminated
+
+replacing crashed worker gw200
+[gw198] node down: Not properly terminated
+
+replacing crashed worker gw198
+[gw201] node down: Not properly terminated
+
+replacing crashed worker gw201
+[gw194] node down: Not properly terminated
+
+replacing crashed worker gw194
+[gw203] node down: Not properly terminated
+
+replacing crashed worker gw203
+[gw202] node down: Not properly terminated
+
+replacing crashed worker gw202
+[gw195] node down: Not properly terminated
+
+replacing crashed worker gw195
+[gw204] node down: Not properly terminated
+
+replacing crashed worker gw204
+[gw205] node down: Not properly terminated
+
+replacing crashed worker gw205
+[gw206] node down: Not properly terminated
+
+replacing crashed worker gw206
+[gw40] node down: Not properly terminated
+
+replacing crashed worker gw40
+[gw210] node down: Not properly terminated
+
+replacing crashed worker gw210
+[gw211] node down: Not properly terminated
+
+replacing crashed worker gw211
+[gw212] node down: Not properly terminated
+
+replacing crashed worker gw212
+[gw180] node down: Not properly terminated
+
+replacing crashed worker gw180
+[gw58] node down: Not properly terminated
+
+replacing crashed worker gw58
+[gw160] node down: Not properly terminated
+
+replacing crashed worker gw160
+[gw213] node down: Not properly terminated
+
+replacing crashed worker gw213
+[gw215] node down: Not properly terminated
+
+replacing crashed worker gw215
+[gw70] node down: Not properly terminated
+
+replacing crashed worker gw70
+[gw217] node down: Not properly terminated
+
+replacing crashed worker gw217
+[gw149] node down: Not properly terminated
+
+replacing crashed worker gw149
+[gw219] node down: Not properly terminated
+
+replacing crashed worker gw219
+[gw221] node down: Not properly terminated
+
+replacing crashed worker gw221
+[gw132] node down: Not properly terminated
+
+replacing crashed worker gw132
+[gw220] node down: Not properly terminated
+
+replacing crashed worker gw220
+[gw227] node down: Not properly terminated
+
+replacing crashed worker gw227
+[gw222] node down: Not properly terminated
+
+replacing crashed worker gw222
+[gw226] node down: Not properly terminated
+
+replacing crashed worker gw226
+[gw225] node down: Not properly terminated
+
+replacing crashed worker gw225
+[gw224] node down: Not properly terminated
+
+replacing crashed worker gw224
+[gw223] node down: Not properly terminated
+
+replacing crashed worker gw223
+collecting: 192/363 workers
+
+scheduling tests via LoadScheduling
+INTERNALERROR> Traceback (most recent call last):
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/execnet/gateway_base.py", line 1190, in _send
+INTERNALERROR>     message.to_io(self._io)
+INTERNALERROR>     ~~~~~~~~~~~~~^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/execnet/gateway_base.py", line 577, in to_io
+INTERNALERROR>     io.write(header + self.data)
+INTERNALERROR>     ~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/execnet/gateway_base.py", line 543, in write
+INTERNALERROR>     self._write(data)
+INTERNALERROR>     ~~~~~~~~~~~^^^^^^
+INTERNALERROR> ValueError: write to closed file
+INTERNALERROR> 
+INTERNALERROR> The above exception was the direct cause of the following exception:
+INTERNALERROR> 
+INTERNALERROR> Traceback (most recent call last):
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/_pytest/main.py", line 330, in wrap_session
+INTERNALERROR>     session.exitstatus = doit(config, session) or 0
+INTERNALERROR>                          ~~~~^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/_pytest/main.py", line 384, in _main
+INTERNALERROR>     config.hook.pytest_runtestloop(session=session)
+INTERNALERROR>     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/pluggy/_hooks.py", line 512, in __call__
+INTERNALERROR>     return self._hookexec(self.name, self._hookimpls.copy(), kwargs, firstresult)
+INTERNALERROR>            ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/pluggy/_manager.py", line 120, in _hookexec
+INTERNALERROR>     return self._inner_hookexec(hook_name, methods, kwargs, firstresult)
+INTERNALERROR>            ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 167, in _multicall
+INTERNALERROR>     raise exception
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+INTERNALERROR>     teardown.throw(exception)
+INTERNALERROR>     ~~~~~~~~~~~~~~^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/_pytest/logging.py", line 816, in pytest_runtestloop
+INTERNALERROR>     return (yield)  # Run all the tests.
+INTERNALERROR>             ^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 139, in _multicall
+INTERNALERROR>     teardown.throw(exception)
+INTERNALERROR>     ~~~~~~~~~~~~~~^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/_pytest/terminal.py", line 708, in pytest_runtestloop
+INTERNALERROR>     result = yield
+INTERNALERROR>              ^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/pluggy/_callers.py", line 121, in _multicall
+INTERNALERROR>     res = hook_impl.function(*args)
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/xdist/dsession.py", line 138, in pytest_runtestloop
+INTERNALERROR>     self.loop_once()
+INTERNALERROR>     ~~~~~~~~~~~~~~^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/xdist/dsession.py", line 163, in loop_once
+INTERNALERROR>     call(**kwargs)
+INTERNALERROR>     ~~~~^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/xdist/dsession.py", line 306, in worker_collectionfinish
+INTERNALERROR>     self.sched.schedule()
+INTERNALERROR>     ~~~~~~~~~~~~~~~~~~~^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/xdist/scheduler/load.py", line 281, in schedule
+INTERNALERROR>     self._send_tests(next(nodes), 1)
+INTERNALERROR>     ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/xdist/scheduler/load.py", line 307, in _send_tests
+INTERNALERROR>     node.send_runtest_some(tests_per_node)
+INTERNALERROR>     ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/xdist/workermanage.py", line 367, in send_runtest_some
+INTERNALERROR>     self.sendcommand("runtests", indices=indices)
+INTERNALERROR>     ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/xdist/workermanage.py", line 386, in sendcommand
+INTERNALERROR>     self.channel.send((name, kwargs))
+INTERNALERROR>     ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/execnet/gateway_base.py", line 912, in send
+INTERNALERROR>     self.gateway._send(Message.CHANNEL_DATA, self.id, dumps_internal(item))
+INTERNALERROR>     ~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+INTERNALERROR>   File "/testbed/.venv/lib/python3.14/site-packages/execnet/gateway_base.py", line 1195, in _send
+INTERNALERROR>     raise OSError("cannot send (already closed?)") from e
+INTERNALERROR> OSError: cannot send (already closed?)
+
+======================== 5 errors in 607.01s (0:10:07) =========================
+OMNIGRIL_EXIT_CODE=3

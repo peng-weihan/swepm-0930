@@ -1,0 +1,68 @@
+{
+  "instance_id": "lucianodato__libspecbleach-128",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.8,
+  "gold_patch_assessment": "The gold patch is a large, multi-faceted feature implementation that adds Harmonic-Percussive Source Separation (HPSS) filtering to both 1D and 2D denoisers. It creates new files (hpss_filter.c/h), modifies public API headers to add hpss_quality_mode parameter, changes NOISE_PROFILE_OFFSET limits from ±6dB to ±12dB, adds spectral_circular_buffer_clear, adds get_stft_hop_size, modifies spectral_smoother for instant-attack/smooth-release behavior, modifies transient_detector with parentheses, updates latency calculations, increases DELAY_BUFFER_FRAMES from 32 to 64, adds onset alpha ducking, and adds .codecov.yml patch coverage config. The patch addresses the stated issue of implementing HPSS with quality modes and related utilities.",
+  "base_vs_gold_expectation": "The test patch CANNOT compile without the gold patch. It #includes 'shared/denoiser_logic/processing/hpss_filter.h' (only created by gold patch) in 4 test files, references HpssQualityMode enum values, references .hpss_quality_mode struct field, calls spectral_circular_buffer_clear (only added by gold patch), calls get_stft_hop_size (only added by gold patch), and the CMakeLists.txt entry for test_hpss_filter is in the gold patch not the test patch. The base will fail at compilation, not at test assertion, which correctly rejects unmodified base. However, it also means any partial implementation that doesn't match the gold patch's exact API surface will fail to compile rather than fail tests meaningfully.",
+  "too_narrow_risks": [
+    "Tests only verify mask_h + mask_p sums to 1.0 for constant spectrum input; no verification of separation quality for realistic harmonic vs percussive signals",
+    "Onset detection test checks avg_p > 0.5 which is a very loose threshold; a trivially biased implementation could pass",
+    "No tests verify the dual-path gain recombination formula (G_final = W_H * G_H + W_P * G_P) at the denoiser integration level",
+    "No tests verify the spectral_smoother instant-attack/smooth-release behavioral change",
+    "No tests verify the onset alpha ducking function behavior with various onset ratios",
+    "Audio regression test skips if reference files don't exist (they don't in the test data), so that test is effectively a no-op",
+    "No tests verify DELAY_BUFFER_FRAMES increase from 32 to 64 doesn't cause issues",
+    "No tests for the spatial smoothing passes logic added in the 1D denoiser path"
+  ],
+  "too_broad_risks": [
+    "test_specbleach_processor_core changes expected noise_profile_offset_linear values from 0.5012->0.2512 and 1.9953->3.9811, which is a side-effect of changing NOISE_PROFILE_OFFSET limits from ±6dB to ±12dB — an unrelated change bundled with the HPSS feature that forces candidates to also change offset limits",
+    "The test patch changes the invalid layer retrieve test constant from 99 to 999 in test_spectral_circular_buffer.c, which is cosmetic and unrelated to HPSS",
+    "The test_audio_file_regression changes add .hpss_quality_mode = HPSS_QUALITY_LOW to canonical parameters, which would change reference outputs and is tightly coupled to the gold implementation rather than being a behavioral test"
+  ],
+  "implementation_coupling": [
+    "Tests directly #include the private header 'shared/denoiser_logic/processing/hpss_filter.h' and use its exact enum type HpssQualityMode and specific enum values (HPSS_QUALITY_OFF/LOW/MEDIUM/HIGH), coupling to the gold patch's exact API design",
+    "Latency assertions use hardcoded frame counts (4, 8, 16) that match the gold patch's HPSS_TIME_WINDOW_LOW/MEDIUM/HIGH constants; any alternative window sizing would fail",
+    "The test_hpss_filter.c is only registered in CMakeLists.txt by the gold patch, so it can only exist if the gold patch is applied exactly",
+    "Tests for 'lat3 > lat2 > lat1 > lat0' in both 1D and 2D denoisers assume the specific latency ordering from the gold patch's quality mode -> window size mapping",
+    "The spectral_circular_buffer_clear test is tightly coupled to the exact function signature added by the gold patch"
+  ],
+  "environment_risks": [
+    "Build requires cmake, a C compiler, and pkg-config with sndfile — these should be in the Docker image but aren't verified",
+    "ctest -R regex must match all 7 test targets; if any test name doesn't match due to CMake configuration issues, it silently passes with 0 tests run",
+    "The test_audio_file_regression test effectively becomes a no-op because reference wav files (Speech_denoised.wav, Speech_adenoised.wav) don't exist in test_data, meaning it just skips silently"
+  ],
+  "mismatches": [
+    "The instruction.md describes this as a feature implementation PR with many sub-commits, but task.toml categorizes it as 'debugging' which is incorrect — this is a feature addition, not a bug fix",
+    "The test patch adds test_hpss_filter.c as new file content, but the CMakeLists.txt line to register it as a test target is in the gold patch, creating a dependency that means the test file exists but is only built with the gold patch",
+    "The gold patch includes unrelated changes (parentheses formatting in spectral_smoother.c and transient_detector.c, codecov.yml config) that are style/CI concerns, not HPSS feature work"
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test files include 'shared/denoiser_logic/processing/hpss_filter.h' which only exists after gold patch — compilation fails without gold patch"
+    },
+    {
+      "file": "/testbed/src/shared/denoiser_logic/processing/hpss_filter.c",
+      "detail": "File does not exist in base — entirely new file created by gold patch"
+    },
+    {
+      "file": "/testbed/tests/test_data/",
+      "detail": "Only Speech.wav exists; Speech_denoised.wav and Speech_adenoised.wav are missing, so audio regression tests skip"
+    },
+    {
+      "file": "/testbed/CMakeLists.txt",
+      "detail": "Line 247: no test_hpss_filter entry in base CMakeLists.txt — only added by gold patch"
+    },
+    {
+      "file": "/testbed/src/shared/configurations.h",
+      "detail": "NOISE_PROFILE_OFFSET_MIN_DB is -6.0F and MAX is 6.0F in base; gold patch changes to ±12.0F; test patch expects the new values"
+    },
+    {
+      "file": "/audit_tasks/lucianodato__libspecbleach-128/task.toml",
+      "detail": "category = 'debugging' but this is clearly a feature implementation PR"
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "This is a large feature-addition instance (HPSS filter implementation) miscategorized as 'debugging'. The gold patch correctly implements the stated feature. The test patch is structurally coupled to the gold patch — it cannot even compile without it, since it imports headers and uses types that only exist after the gold patch is applied. This means the base is correctly rejected (build failure), but partial or alternative implementations will also fail at compile time rather than at meaningful test assertions. Several tests check gold-patch-specific constants (latency frame counts, quality mode enums) rather than observable behavior. The noise profile offset limit change (±6dB to ±12dB) is bundled as a side-effect, and its test expectations are updated in the test patch, penalizing candidates who correctly implement HPSS but don't also change the offset limits. The audio regression test is a no-op due to missing reference files. Tests should be revised to be less coupled to implementation details and to separate the HPSS feature tests from unrelated configuration changes."
+}

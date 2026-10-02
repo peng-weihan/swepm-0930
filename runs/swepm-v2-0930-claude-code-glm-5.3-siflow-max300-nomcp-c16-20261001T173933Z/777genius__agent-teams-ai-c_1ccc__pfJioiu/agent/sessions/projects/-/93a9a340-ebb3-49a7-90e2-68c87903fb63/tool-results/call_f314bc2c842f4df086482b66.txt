@@ -1,0 +1,252 @@
+/testbed/src/main/services/team/ChangeExtractorService.ts-108-      totalLinesRemoved,
+testbed/src/main/services/team/ChangeExtractorService.ts-109-      totalFiles: files.length,
+testbed/src/main/services/team/ChangeExtractorService.ts-110-      computedAt: new Date().toISOString(),
+/testbed/src/main/services/team/ChangeExtractorService.ts-111-    };
+/testbed/src/main/services/team/ChangeExtractorService.ts-112-
+/testbed/src/main/services/team/ChangeExtractorService.ts-113-    this.cache.set(cacheKey, {
+testbed/src/main/services/team/ChangeExtractorService.ts-114-      data: result,
+testbed/src/main/services/team/ChangeExtractorService.ts-115-      mtime: latestMtime,
+testbed/src/main/services/team/ChangeExtractorService.ts-116-      expiresAt: Date.now() + this.cacheTtl,
+/testbed/src/main/services/team/ChangeExtractorService.ts-117-    });
+/testbed/src/main/services/team/ChangeExtractorService.ts-118-
+/testbed/src/main/services/team/ChangeExtractorService.ts-119-    return result;
+/testbed/src/main/services/team/ChangeExtractorService.ts-120-  }
+/testbed/src/main/services/team/ChangeExtractorService.ts-121-
+testbed/src/main/services/team/ChangeExtractorService.ts-122-  /** Получить изменения для конкретной задачи (Phase 3: per-task scoping) */
+testbed/src/main/services/team/ChangeExtractorService.ts:123:  async getTaskChanges(
+testbed/src/main/services/team/ChangeExtractorService.ts-124-    teamName: string,
+testbed/src/main/services/team/ChangeExtractorService.ts-125-    taskId: string,
+testbed/src/main/services/team/ChangeExtractorService.ts-126-    options?: {
+testbed/src/main/services/team/ChangeExtractorService.ts-127-      owner?: string;
+testbed/src/main/services/team/ChangeExtractorService.ts-128-      status?: string;
+testbed/src/main/services/team/ChangeExtractorService.ts-129-      intervals?: { startedAt: string; completedAt?: string }[];
+testbed/src/main/services/team/ChangeExtractorService.ts-130-      since?: string;
+testbed/src/main/services/team/ChangeExtractorService.ts-131-      summaryOnly?: boolean;
+/testbed/src/main/services/team/ChangeExtractorService.ts-132-    }
+testbed/src/main/services/team/ChangeExtractorService.ts-133-  ): Promise<TaskChangeSetV2> {
+/testbed/src/main/services/team/ChangeExtractorService.ts-134-    const includeDetails = options?.summaryOnly !== true;
+testbed/src/main/services/team/ChangeExtractorService.ts-135-    const cacheKey = `task:${teamName}:${taskId}`;
+testbed/src/main/services/team/ChangeExtractorService.ts-136-    const cached = includeDetails ? this.taskChangeCache.get(cacheKey) : undefined;
+/testbed/src/main/services/team/ChangeExtractorService.ts-137-    if (cached && cached.expiresAt > Date.now()) {
+/testbed/src/main/services/team/ChangeExtractorService.ts-138-      return cached.data;
+--
+testbed/src/shared/types/api.ts-573-  getRuns: (
+testbed/src/shared/types/api.ts-574-    scheduleId: string,
+testbed/src/shared/types/api.ts-575-    opts?: { limit?: number; offset?: number }
+/testbed/src/shared/types/api.ts-576-  ) => Promise<ScheduleRun[]>;
+testbed/src/shared/types/api.ts-577-  getRunLogs: (scheduleId: string, runId: string) => Promise<{ stdout: string; stderr: string }>;
+testbed/src/shared/types/api.ts-578-  onScheduleChange: (callback: (event: unknown, data: ScheduleChangeEvent) => void) => () => void;
+/testbed/src/shared/types/api.ts-579-}
+/testbed/src/shared/types/api.ts-580-
+/testbed/src/shared/types/api.ts-581-// =============================================================================
+/testbed/src/shared/types/api.ts-582-// Review API
+/testbed/src/shared/types/api.ts-583-// =============================================================================
+/testbed/src/shared/types/api.ts-584-
+/testbed/src/shared/types/api.ts-585-export interface ReviewAPI {
+/testbed/src/shared/types/api.ts-586-  // Phase 1
+testbed/src/shared/types/api.ts-587-  getAgentChanges: (teamName: string, memberName: string) => Promise<AgentChangeSet>;
+testbed/src/shared/types/api.ts:588:  getTaskChanges: (
+testbed/src/shared/types/api.ts-589-    teamName: string,
+testbed/src/shared/types/api.ts-590-    taskId: string,
+testbed/src/shared/types/api.ts-591-    options?: {
+testbed/src/shared/types/api.ts-592-      owner?: string;
+testbed/src/shared/types/api.ts-593-      status?: string;
+/testbed/src/shared/types/api.ts-594-      /** Persisted work intervals (preferred for reliable owner-log attribution). */
+testbed/src/shared/types/api.ts-595-      intervals?: { startedAt: string; completedAt?: string }[];
+testbed/src/shared/types/api.ts-596-      /** Back-compat: single since timestamp (deprecated). */
+testbed/src/shared/types/api.ts-597-      since?: string;
+/testbed/src/shared/types/api.ts-598-      /** Lightweight response for summary UIs; skips snippets/timeline details. */
+testbed/src/shared/types/api.ts-599-      summaryOnly?: boolean;
+/testbed/src/shared/types/api.ts-600-    }
+/testbed/src/shared/types/api.ts-601-  ) => Promise<TaskChangeSetV2>;
+testbed/src/shared/types/api.ts-602-  getChangeStats: (teamName: string, memberName: string) => Promise<ChangeStats>;
+testbed/src/shared/types/api.ts-603-  getFileContent: (
+--
+testbed/src/main/ipc/review.ts-166-              : undefined,
+testbed/src/main/ipc/review.ts-167-          intervals: Array.isArray((options as Record<string, unknown>).intervals)
+/testbed/src/main/ipc/review.ts-168-            ? (((options as Record<string, unknown>).intervals as unknown[]).filter(
+testbed/src/main/ipc/review.ts-169-                (i): i is { startedAt: string; completedAt?: string } =>
+/testbed/src/main/ipc/review.ts-170-                  Boolean(i) &&
+/testbed/src/main/ipc/review.ts-171-                  typeof i === 'object' &&
+/testbed/src/main/ipc/review.ts-172-                  typeof (i as Record<string, unknown>).startedAt === 'string' &&
+/testbed/src/main/ipc/review.ts-173-                  ((i as Record<string, unknown>).completedAt === undefined ||
+/testbed/src/main/ipc/review.ts-174-                    typeof (i as Record<string, unknown>).completedAt === 'string')
+testbed/src/main/ipc/review.ts-175-              ) as { startedAt: string; completedAt?: string }[])
+testbed/src/main/ipc/review.ts-176-            : undefined,
+testbed/src/main/ipc/review.ts-177-          summaryOnly: (options as Record<string, unknown>).summaryOnly === true,
+/testbed/src/main/ipc/review.ts-178-        }
+testbed/src/main/ipc/review.ts-179-      : undefined;
+/testbed/src/main/ipc/review.ts-180-
+testbed/src/main/ipc/review.ts:181:  return wrapReviewHandler('getTaskChanges', () =>
+testbed/src/main/ipc/review.ts:182:    getChangeExtractor().getTaskChanges(teamName, taskId, opts)
+/testbed/src/main/ipc/review.ts-183-  );
+/testbed/src/main/ipc/review.ts-184-}
+/testbed/src/main/ipc/review.ts-185-
+/testbed/src/main/ipc/review.ts-186-async function handleGetChangeStats(
+testbed/src/main/ipc/review.ts-187-  _event: IpcMainInvokeEvent,
+testbed/src/main/ipc/review.ts-188-  teamName: string,
+testbed/src/main/ipc/review.ts-189-  memberName: string
+testbed/src/main/ipc/review.ts-190-): Promise<IpcResult<ChangeStats>> {
+/testbed/src/main/ipc/review.ts-191-  return wrapReviewHandler('getChangeStats', () =>
+/testbed/src/main/ipc/review.ts-192-    getChangeExtractor().getChangeStats(teamName, memberName)
+/testbed/src/main/ipc/review.ts-193-  );
+/testbed/src/main/ipc/review.ts-194-}
+/testbed/src/main/ipc/review.ts-195-
+/testbed/src/main/ipc/review.ts-196-// --- Phase 2 Handlers ---
+/testbed/src/main/ipc/review.ts-197-
+--
+/testbed/src/preload/constants/ipcChannels.ts-417-
+/testbed/src/preload/constants/ipcChannels.ts-418-/** PTY data output (main -> renderer) */
+testbed/src/preload/constants/ipcChannels.ts-419-export const TERMINAL_DATA = 'terminal:data';
+/testbed/src/preload/constants/ipcChannels.ts-420-
+/testbed/src/preload/constants/ipcChannels.ts-421-/** PTY process exit (main -> renderer) */
+testbed/src/preload/constants/ipcChannels.ts-422-export const TERMINAL_EXIT = 'terminal:exit';
+/testbed/src/preload/constants/ipcChannels.ts-423-
+/testbed/src/preload/constants/ipcChannels.ts-424-// =============================================================================
+/testbed/src/preload/constants/ipcChannels.ts-425-// Review API Channels
+/testbed/src/preload/constants/ipcChannels.ts-426-// =============================================================================
+/testbed/src/preload/constants/ipcChannels.ts-427-
+/testbed/src/preload/constants/ipcChannels.ts-428-/** Получить все изменения агента */
+testbed/src/preload/constants/ipcChannels.ts-429-export const REVIEW_GET_AGENT_CHANGES = 'review:getAgentChanges';
+/testbed/src/preload/constants/ipcChannels.ts-430-
+/testbed/src/preload/constants/ipcChannels.ts-431-/** Получить изменения задачи */
+testbed/src/preload/constants/ipcChannels.ts:432:export const REVIEW_GET_TASK_CHANGES = 'review:getTaskChanges';
+/testbed/src/preload/constants/ipcChannels.ts-433-
+/testbed/src/preload/constants/ipcChannels.ts-434-/** Получить краткую статистику изменений */
+testbed/src/preload/constants/ipcChannels.ts-435-export const REVIEW_GET_CHANGE_STATS = 'review:getChangeStats';
+/testbed/src/preload/constants/ipcChannels.ts-436-
+/testbed/src/preload/constants/ipcChannels.ts-437-// Phase 2 — Review actions
+/testbed/src/preload/constants/ipcChannels.ts-438-
+/testbed/src/preload/constants/ipcChannels.ts-439-/** Проверить конфликт файла (изменён ли на диске) */
+testbed/src/preload/constants/ipcChannels.ts-440-export const REVIEW_CHECK_CONFLICT = 'review:checkConflict';
+/testbed/src/preload/constants/ipcChannels.ts-441-
+/testbed/src/preload/constants/ipcChannels.ts-442-/** Откатить выбранные hunks */
+testbed/src/preload/constants/ipcChannels.ts-443-export const REVIEW_REJECT_HUNKS = 'review:rejectHunks';
+/testbed/src/preload/constants/ipcChannels.ts-444-
+/testbed/src/preload/constants/ipcChannels.ts-445-/** Откатить весь файл к оригиналу */
+testbed/src/preload/constants/ipcChannels.ts-446-export const REVIEW_REJECT_FILE = 'review:rejectFile';
+/testbed/src/preload/constants/ipcChannels.ts-447-
+--
+testbed/src/preload/index.ts-1083-          description?: string;
+testbed/src/preload/index.ts-1084-          color?: string;
+testbed/src/preload/index.ts-1085-          leadName?: string;
+testbed/src/preload/index.ts-1086-          leadColor?: string;
+/testbed/src/preload/index.ts-1087-        }[]
+/testbed/src/preload/index.ts-1088-      >(CROSS_TEAM_LIST_TARGETS, excludeTeam);
+/testbed/src/preload/index.ts-1089-    },
+testbed/src/preload/index.ts-1090-    getOutbox: async (teamName: string) => {
+/testbed/src/preload/index.ts-1091-      return invokeIpcWithResult<CrossTeamMessage[]>(CROSS_TEAM_GET_OUTBOX, teamName);
+/testbed/src/preload/index.ts-1092-    },
+/testbed/src/preload/index.ts-1093-  },
+testbed/src/preload/index.ts-1094-  review: {
+testbed/src/preload/index.ts-1095-    getAgentChanges: async (teamName: string, memberName: string) => {
+/testbed/src/preload/index.ts-1096-      return invokeIpcWithResult<AgentChangeSet>(REVIEW_GET_AGENT_CHANGES, teamName, memberName);
+/testbed/src/preload/index.ts-1097-    },
+testbed/src/preload/index.ts:1098:    getTaskChanges: async (
+testbed/src/preload/index.ts-1099-      teamName: string,
+testbed/src/preload/index.ts-1100-      taskId: string,
+testbed/src/preload/index.ts-1101-      options?: {
+testbed/src/preload/index.ts-1102-        owner?: string;
+testbed/src/preload/index.ts-1103-        status?: string;
+testbed/src/preload/index.ts-1104-        intervals?: { startedAt: string; completedAt?: string }[];
+testbed/src/preload/index.ts-1105-        since?: string;
+testbed/src/preload/index.ts-1106-        summaryOnly?: boolean;
+/testbed/src/preload/index.ts-1107-      }
+/testbed/src/preload/index.ts-1108-    ) => {
+/testbed/src/preload/index.ts-1109-      return invokeIpcWithResult<TaskChangeSetV2>(
+/testbed/src/preload/index.ts-1110-        REVIEW_GET_TASK_CHANGES,
+/testbed/src/preload/index.ts-1111-        teamName,
+/testbed/src/preload/index.ts-1112-        taskId,
+/testbed/src/preload/index.ts-1113-        options
+--
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-269-      set({
+testbed/src/renderer/store/slices/changeReviewSlice.ts-270-        activeChangeSet: data,
+testbed/src/renderer/store/slices/changeReviewSlice.ts-271-        changeSetLoading: false,
+testbed/src/renderer/store/slices/changeReviewSlice.ts-272-        selectedReviewFilePath: data.files[0]?.filePath ?? null,
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-273-      });
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-274-    } catch (error) {
+testbed/src/renderer/store/slices/changeReviewSlice.ts-275-      const message = error instanceof Error ? error.message : 'Failed to fetch agent changes';
+testbed/src/renderer/store/slices/changeReviewSlice.ts-276-      logger.error('fetchAgentChanges error:', message);
+testbed/src/renderer/store/slices/changeReviewSlice.ts-277-      set({ changeSetError: message, changeSetLoading: false });
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-278-    }
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-279-  },
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-280-
+testbed/src/renderer/store/slices/changeReviewSlice.ts-281-  fetchTaskChanges: async (teamName: string, taskId: string) => {
+testbed/src/renderer/store/slices/changeReviewSlice.ts-282-    set({ changeSetLoading: true, changeSetError: null });
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-283-    try {
+testbed/src/renderer/store/slices/changeReviewSlice.ts:284:      const data = await api.review.getTaskChanges(teamName, taskId);
+testbed/src/renderer/store/slices/changeReviewSlice.ts-285-      const cacheKey = `${teamName}:${taskId}`;
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-286-      set((s) => ({
+testbed/src/renderer/store/slices/changeReviewSlice.ts-287-        activeChangeSet: data,
+testbed/src/renderer/store/slices/changeReviewSlice.ts-288-        changeSetLoading: false,
+testbed/src/renderer/store/slices/changeReviewSlice.ts-289-        selectedReviewFilePath: data.files[0]?.filePath ?? null,
+testbed/src/renderer/store/slices/changeReviewSlice.ts-290-        taskHasChanges: { ...s.taskHasChanges, [cacheKey]: data.files.length > 0 },
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-291-      }));
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-292-    } catch (error) {
+testbed/src/renderer/store/slices/changeReviewSlice.ts-293-      const message = error instanceof Error ? error.message : 'Failed to fetch task changes';
+testbed/src/renderer/store/slices/changeReviewSlice.ts-294-      logger.error('fetchTaskChanges error:', message);
+testbed/src/renderer/store/slices/changeReviewSlice.ts-295-      set({ changeSetError: message, changeSetLoading: false });
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-296-    }
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-297-  },
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-298-
+testbed/src/renderer/store/slices/changeReviewSlice.ts-299-  selectReviewFile: (filePath: string | null) => {
+--
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-634-      // because line counts may be corrected by lazy-loaded content resolution
+testbed/src/renderer/store/slices/changeReviewSlice.ts-635-      const fingerprint = (cs: { totalFiles: number; files: { filePath: string }[] }): string =>
+testbed/src/renderer/store/slices/changeReviewSlice.ts-636-        `${cs.totalFiles}:${cs.files.map((f) => f.filePath).join(',')}`;
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-637-
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-638-      if (memberName && current) {
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-639-        const fresh = await api.review.getAgentChanges(teamName, memberName);
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-640-        if (fingerprint(fresh) !== fingerprint(current)) {
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-641-          set({
+testbed/src/renderer/store/slices/changeReviewSlice.ts-642-            activeChangeSet: fresh,
+testbed/src/renderer/store/slices/changeReviewSlice.ts-643-            applying: false,
+testbed/src/renderer/store/slices/changeReviewSlice.ts-644-            applyError: 'Changes have been updated since you started reviewing. Please re-review.',
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-645-          });
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-646-          return;
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-647-        }
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-648-      } else if (taskId && current) {
+testbed/src/renderer/store/slices/changeReviewSlice.ts:649:        const fresh = await api.review.getTaskChanges(teamName, taskId);
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-650-        if (fingerprint(fresh) !== fingerprint(current)) {
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-651-          set({
+testbed/src/renderer/store/slices/changeReviewSlice.ts-652-            activeChangeSet: fresh,
+testbed/src/renderer/store/slices/changeReviewSlice.ts-653-            applying: false,
+testbed/src/renderer/store/slices/changeReviewSlice.ts-654-            applyError: 'Changes have been updated since you started reviewing. Please re-review.',
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-655-          });
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-656-          return;
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-657-        }
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-658-      }
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-659-
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-660-      // Build FileReviewDecision[] from hunkDecisions/fileDecisions
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-661-      const { hunkDecisions, fileDecisions, fileChunkCounts, activeChangeSet, fileContents } =
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-662-        get();
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-663-      if (!activeChangeSet) {
+testbed/src/renderer/store/slices/changeReviewSlice.ts-664-        set({ applying: false });
+--
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-978-    }
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-979-  },
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-980-
+testbed/src/renderer/store/slices/changeReviewSlice.ts-981-  checkTaskHasChanges: async (teamName: string, taskId: string) => {
+testbed/src/renderer/store/slices/changeReviewSlice.ts-982-    const cacheKey = `${teamName}:${taskId}`;
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-983-    // Positive results are final — no need to recheck
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-984-    if (get().taskHasChanges[cacheKey] === true) return;
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-985-    // Prevent duplicate in-flight requests
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-986-    if (taskChangesCheckInFlight.has(cacheKey)) return;
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-987-    // Negative results cached with TTL — avoid API spam for tasks that truly have no changes
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-988-    const negativeTs = taskChangesNegativeCache.get(cacheKey);
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-989-    if (negativeTs && Date.now() - negativeTs < NEGATIVE_CACHE_TTL) return;
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-990-
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-991-    taskChangesCheckInFlight.add(cacheKey);
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-992-    try {
+testbed/src/renderer/store/slices/changeReviewSlice.ts:993:      const data = await api.review.getTaskChanges(teamName, taskId);
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-994-      if (data.files.length > 0) {
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-995-        set((s) => ({
+testbed/src/renderer/store/slices/changeReviewSlice.ts-996-          taskHasChanges: { ...s.taskHasChanges, [cacheKey]: true },
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-997-        }));
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-998-        taskChangesNegativeCache.delete(cacheKey);
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-999-      } else {
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-1000-        taskChangesNegativeCache.set(cacheKey, Date.now());
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-1001-      }
+/testbed/src/renderer/store/slices/changeReviewSlice.ts-1002-    } catch {
+
+[Showing results with pagination = limit: 250]

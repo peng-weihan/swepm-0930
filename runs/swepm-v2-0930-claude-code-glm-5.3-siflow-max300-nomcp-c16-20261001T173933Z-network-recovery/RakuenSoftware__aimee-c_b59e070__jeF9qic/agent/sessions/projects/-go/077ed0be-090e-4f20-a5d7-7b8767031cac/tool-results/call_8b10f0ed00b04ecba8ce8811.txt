@@ -1,0 +1,163 @@
+/testbed/server-go/internal/engine/roundtable_chairman.go:23:// chairmanResponseNote is a bounded, single-line excerpt of what the chairman
+/testbed/server-go/internal/engine/roundtable_chairman.go:28:func chairmanResponseNote(response string) string {
+/testbed/server-go/internal/engine/roundtable_chairman.go:41:// runPanelChairman is an optional, single post-synthesis review. The configured
+/testbed/server-go/internal/engine/roundtable_chairman.go:48:func (r *NativeRunner) runPanelChairman(ctx context.Context, req StepRequest, panel roundtablecfg.Panel, analysis panelAnalysis, feedback wfe.ReviewFeedback, cost float64, costUnknown bool, artifactStage string) (wfe.ReviewFeedback, int, float64, bool, string, bool) {
+/testbed/server-go/internal/engine/roundtable_chairman.go:60:[Omitted long matching line]
+/testbed/server-go/internal/engine/roundtable_chairman.go:61:	request := DelegateRequest{Role: roundtableDelegateRole, Persona: "chairman", Delegate: panel.Chairman, Prompt: prompt, Workdir: req.WorkItem.Worktree, Tools: true, MaxTurnsCap: roundtableDelegateMaxTurnsCap, DurableSlot: panelChairmanDurableSlot(req), ArtifactStage: artifactStage, ArtifactHash: reviewed.Hash, ProvidedTarget: true}
+/testbed/server-go/internal/engine/roundtable_chairman.go:68:	final, parseErr := parsePanelResponse(result.Response, nil)
+/testbed/server-go/internal/engine/roundtable_chairman.go:70:		parseErr = panelVerdictError(final)
+/testbed/server-go/internal/engine/roundtable_chairman.go:78:		repair.Prompt = panelResponseRepairPrompt(req.WorkItem.ID, reviewed.Hash, artifactStage, result.Response)
+/testbed/server-go/internal/engine/roundtable_chairman.go:79:		repair.DurableSlot = panelChairmanDurableSlot(req) + ":repair:1"
+/testbed/server-go/internal/engine/roundtable_chairman.go:86:		final, parseErr = parsePanelResponse(repaired.Response, nil)
+/testbed/server-go/internal/engine/roundtable_chairman.go:88:			parseErr = panelVerdictError(final)
+/testbed/server-go/internal/engine/roundtable_chairman.go:92:				"chairman returned no structured verdict after repair: " + parseErr.Error() + chairmanResponseNote(repaired.Response), false
+/testbed/server-go/internal/engine/roundtable_chairman.go:98:	stage, stageOK := normalizeRoundtableStage(final.ArtifactStage)
+/testbed/server-go/internal/engine/roundtable_chairman.go:106:	// panelVerdictError above already rejected a verdict that contradicts its
+/testbed/server-go/internal/engine/roundtable_chairman.go:108:	switch panelVerdict(final) {
+/testbed/server-go/internal/engine/roundtable_chairman.go:119:		stabilizeFeedbackIDs(&approved)
+/testbed/server-go/internal/engine/roundtable_chairman.go:143:		stabilizeFeedbackIDs(&out)
+/testbed/server-go/internal/engine/roundtable_chairman.go:153:		stabilizeFeedbackIDs(&out)
+/testbed/server-go/internal/engine/roundtable_chairman.go:160:func stabilizeFeedbackIDs(feedback *wfe.ReviewFeedback) {
+/testbed/server-go/internal/engine/roundtable_chairman.go:164:	issues := makeDiscussionIssues(feedback.Findings)
+/testbed/server-go/internal/engine/roundtable_chairman.go:170:func panelChairmanDurableSlot(req StepRequest) string {
+/testbed/server-go/internal/engine/roundtable_chairman_test.go:35:	feedback, approvals, _, _, errText, _ := runner.runPanelChairman(context.Background(), chairmanRequest(), roundtablecfg.Panel{ChairmanEnabled: true, Chairman: "codex"}, analysis, analysis.Feedback, 0, false, "plan")
+/testbed/server-go/internal/engine/roundtable_chairman_test.go:55:	if _, approvals, _, _, errText, _ := runner.runPanelChairman(context.Background(), req, roundtablecfg.Panel{ChairmanEnabled: true, Chairman: "codex"}, analysis, analysis.Feedback, 0, false, "frozen_diff"); errText != "" || approvals != len(analysis.Reports) {
+/testbed/server-go/internal/engine/roundtable_chairman_test.go:66:	feedback, approvals, _, _, errText, _ := runner.runPanelChairman(context.Background(), chairmanRequest(), roundtablecfg.Panel{ChairmanEnabled: true, Chairman: "codex"}, analysis, analysis.Feedback, 0, false, "plan")
+/testbed/server-go/internal/engine/roundtable_chairman_test.go:78:	feedback, approvals, _, _, errText, _ := runner.runPanelChairman(context.Background(), chairmanRequest(), roundtablecfg.Panel{ChairmanEnabled: true, Chairman: "codex"}, analysis, analysis.Feedback, 0, false, "plan")
+/testbed/server-go/internal/engine/roundtable_chairman_test.go:96:		if _, _, _, _, errText, _ := runner.runPanelChairman(context.Background(), chairmanRequest(), roundtablecfg.Panel{ChairmanEnabled: true, Chairman: "codex"}, analysis, analysis.Feedback, 0, false, "plan"); errText == "" {
+/testbed/server-go/internal/engine/roundtable_chairman_test.go:109:	if _, _, _, _, errText, _ := runner.runPanelChairman(context.Background(), req, roundtablecfg.Panel{ChairmanEnabled: true, Chairman: "codex"}, analysis, analysis.Feedback, 0, false, "plan"); !strings.Contains(errText, "mismatched run or artifact identity") {
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:16:	prompt := buildDiscussionPrompt("run\x01\"\\", "hash\x02", 1, nil, nil)
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:44:func discussionAnalysis(severity string) panelAnalysis {
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:45:	return panelAnalysis{
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:47:		Reports: []panelSeatReport{
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:48:			{Seat: panelSeat{persona: "architecture", participant: "participant-a", ordinal: 0}, Response: panelResponse{ArtifactStage: "plan", Verdict: "changes"}},
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:49:			{Seat: panelSeat{persona: "reviewer", participant: "participant-b", ordinal: 1}, Response: panelResponse{ArtifactStage: "plan", Verdict: "changes"}},
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:57:	issueID := makeDiscussionIssues(analysis.Feedback.Findings)[0].ID
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:62:	feedback, _, _, _, _, errText := runner.runPanelDiscussion(context.Background(), StepRequest{WorkItem: db1.WorkItem{ID: "wi"}, Node: wfe.Node{ID: "gate"}}, roundtablecfg.Panel{Discussion: true, MinSuccessful: 2}, analysis, "plan")
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:81:	issueID := makeDiscussionIssues(analysis.Feedback.Findings)[0].ID
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:86:	feedback, _, _, _, _, errText := runner.runPanelDiscussion(context.Background(), StepRequest{WorkItem: db1.WorkItem{ID: "wi"}, Node: wfe.Node{ID: "gate"}}, roundtablecfg.Panel{Discussion: true, MinSuccessful: 2}, analysis, "plan")
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:95:	issueID := makeDiscussionIssues(analysis.Feedback.Findings)[0].ID
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:100:	_, _, _, _, _, errText := runner.runPanelDiscussion(context.Background(), StepRequest{WorkItem: db1.WorkItem{ID: "wi"}, Node: wfe.Node{ID: "gate"}}, roundtablecfg.Panel{Discussion: true, MinSuccessful: 2}, analysis, "plan")
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:108:	issueID := makeDiscussionIssues(analysis.Feedback.Findings)[0].ID
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:113:	_, _, _, _, _, errText := runner.runPanelDiscussion(context.Background(), StepRequest{WorkItem: db1.WorkItem{ID: "wi"}, Node: wfe.Node{ID: "gate"}}, roundtablecfg.Panel{Discussion: true, MinSuccessful: 2}, analysis, "plan")
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:121:	issueID := makeDiscussionIssues(analysis.Feedback.Findings)[0].ID
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:130:	feedback, _, _, _, _, errText := runner.runPanelDiscussion(context.Background(), StepRequest{WorkItem: db1.WorkItem{ID: "wi"}, Node: wfe.Node{ID: "gate"}}, roundtablecfg.Panel{Discussion: true, MinSuccessful: 2}, analysis, "plan")
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:138:	issueID := makeDiscussionIssues(analysis.Feedback.Findings)[0].ID
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:147:	feedback, _, _, _, _, errText := runner.runPanelDiscussion(context.Background(), StepRequest{WorkItem: db1.WorkItem{ID: "wi"}, Node: wfe.Node{ID: "gate"}}, roundtablecfg.Panel{Discussion: true, MinSuccessful: 2}, analysis, "plan")
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:155:	analysis.Reports = append(analysis.Reports, panelSeatReport{
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:156:		Seat:     panelSeat{persona: "qa", participant: "participant-c", ordinal: 2},
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:159:	issueID := makeDiscussionIssues(analysis.Feedback.Findings)[0].ID
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:171:	feedback, _, _, _, failed, errText := runner.runPanelDiscussion(context.Background(), StepRequest{WorkItem: db1.WorkItem{ID: "wi"}, Node: wfe.Node{ID: "gate"}}, roundtablecfg.Panel{Discussion: true, MinSuccessful: 2}, analysis, "plan")
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:182:	issueID := makeDiscussionIssues(analysis.Feedback.Findings)[0].ID
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:187:	_, _, _, _, _, errText := runner.runPanelDiscussion(context.Background(), StepRequest{WorkItem: db1.WorkItem{ID: "wi"}, Node: wfe.Node{ID: "gate"}}, roundtablecfg.Panel{Discussion: true, MinSuccessful: 2}, analysis, "plan")
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:195:	issueID := makeDiscussionIssues(analysis.Feedback.Findings)[0].ID
+/testbed/server-go/internal/engine/roundtable_discussion_test.go:200:	feedback, approvals, _, _, _, errText := runner.runPanelDiscussion(context.Background(), StepRequest{WorkItem: db1.WorkItem{ID: "wi"}, Node: wfe.Node{ID: "gate"}}, roundtablecfg.Panel{Discussion: true, MinSuccessful: 2}, analysis, "plan")
+/testbed/server-go/internal/engine/roundtable_discussion.go:42:// runPanelDiscussion has exactly one mandatory cycle. It extends only while a
+/testbed/server-go/internal/engine/roundtable_discussion.go:47:func (r *NativeRunner) runPanelDiscussion(ctx context.Context, req StepRequest, panel roundtablecfg.Panel, analysis panelAnalysis, artifactStage string) (wfe.ReviewFeedback, int, float64, bool, int, string) {
+/testbed/server-go/internal/engine/roundtable_discussion.go:49:	issues := makeDiscussionIssues(feedback.Findings)
+/testbed/server-go/internal/engine/roundtable_discussion.go:85:		prompt := buildDiscussionPrompt(req.WorkItem.ID, analysis.Feedback.ArtifactHash, cycle, reports, active)
+/testbed/server-go/internal/engine/roundtable_discussion.go:87:		cycleReq.CostLimitUSD = remainingCostLimit(req.CostLimitUSD, phaseCost)
+/testbed/server-go/internal/engine/roundtable_discussion.go:91:		votes, successful, cost, cycleCostUnknown := r.runDiscussionCycle(ctx, cycleReq, analysis.Reports, active, prompt, analysis.Feedback.ArtifactHash, artifactStage, cycle)
+/testbed/server-go/internal/engine/roundtable_discussion.go:142:func makeDiscussionIssues(findings []wfe.Finding) []discussionIssue {
+/testbed/server-go/internal/engine/roundtable_discussion.go:151:func buildDiscussionPrompt(runID, artifactHash string, cycle int, reports []discussionTranscriptReport, issues []discussionIssue) string {
+/testbed/server-go/internal/engine/roundtable_discussion.go:161:func (r *NativeRunner) runDiscussionCycle(ctx context.Context, req StepRequest, reports []panelSeatReport, issues []discussionIssue, prompt, artifactHash, artifactStage string, cycle int) (map[string][2]int, int, float64, bool) {
+/testbed/server-go/internal/engine/roundtable_discussion.go:170:		requests[i] = DelegateRequest{Role: roundtableDelegateRole, Persona: report.Seat.persona, Participant: report.Seat.participant, Prompt: prompt, Workdir: req.WorkItem.Worktree, Tools: true, MaxTurnsCap: roundtableDelegateMaxTurnsCap, DurableSlot: panelDiscussionDurableSlot(req, cycle, report.Seat.ordinal), ArtifactStage: artifactStage, ArtifactHash: artifactHash, ProvidedTarget: true}
+/testbed/server-go/internal/engine/roundtable_discussion.go:233:func panelDiscussionDurableSlot(req StepRequest, cycle, ordinal int) string {
+/testbed/server-go/internal/engine/native_runner.go:950:type panelFinding struct {
+/testbed/server-go/internal/engine/native_runner.go:957:type panelAlignment struct {
+/testbed/server-go/internal/engine/native_runner.go:965:	OriginalRequestAlignment panelAlignment `json:"original_request_alignment"`
+/testbed/server-go/internal/engine/native_runner.go:967:	Findings                 []panelFinding `json:"findings"`
+/testbed/server-go/internal/engine/native_runner.go:969:type panelSeat struct {
+/testbed/server-go/internal/engine/native_runner.go:974:type panelSeatReport struct {
+/testbed/server-go/internal/engine/native_runner.go:975:	Seat     panelSeat
+/testbed/server-go/internal/engine/native_runner.go:979:// chairmanDeadline gives the chairman its own budget, measured from the step
+/testbed/server-go/internal/engine/native_runner.go:985:func chairmanDeadline(step context.Context, deadlineMS int) (context.Context, context.CancelFunc) {
+/testbed/server-go/internal/engine/native_runner.go:992:type panelAnalysis struct {
+/testbed/server-go/internal/engine/native_runner.go:999:	Reports     []panelSeatReport
+/testbed/server-go/internal/engine/native_runner.go:1016:			lenses = append(lenses, panelSeat{persona: persona})
+/testbed/server-go/internal/engine/native_runner.go:1034:	seats := make([]panelSeat, 0, len(panel.Seats))
+/testbed/server-go/internal/engine/native_runner.go:1036:		seats = append(seats, panelSeat{persona: seat.Persona, selector: seat.Selector})
+/testbed/server-go/internal/engine/native_runner.go:1063:	stage, ok := normalizeRoundtableStage(reviewed.Type)
+/testbed/server-go/internal/engine/native_runner.go:1070:[Omitted long matching line]
+/testbed/server-go/internal/engine/native_runner.go:1081:	analysis := r.runPanelAnalysis(roundtableCtx, req, seats, basePrompt, reviewed.Hash, stage, 1)
+/testbed/server-go/internal/engine/native_runner.go:1116:		req.CostLimitUSD = remainingCostLimit(stepCostLimit, totalCost)
+/testbed/server-go/internal/engine/native_runner.go:1118:		feedback, approvals, totalCost, totalCostUnknown, discussionFailed, discussionErr = r.runPanelDiscussion(roundtableCtx, req, panel, analysis, stage)
+/testbed/server-go/internal/engine/native_runner.go:1132:		chairmanCtx, chairmanCancel := chairmanDeadline(ctx, panel.DeadlineMS)
+/testbed/server-go/internal/engine/native_runner.go:1135:		req.CostLimitUSD = remainingCostLimit(stepCostLimit, totalCost)
+/testbed/server-go/internal/engine/native_runner.go:1143:		feedback, approvals, totalCost, totalCostUnknown, chairmanErr, requestBlocked = r.runPanelChairman(roundtableCtx, req, panel, analysis, feedback, totalCost, totalCostUnknown, stage)
+/testbed/server-go/internal/engine/native_runner.go:1173:	if approvals >= quorum && blockingFindingCount(feedback.Findings) == 0 {
+/testbed/server-go/internal/engine/native_runner.go:1195:func roundtableStageGuidance(stage string) string {
+/testbed/server-go/internal/engine/native_runner.go:1207:func normalizeRoundtableStage(raw string) (string, bool) {
+/testbed/server-go/internal/engine/native_runner.go:1217:func (r *NativeRunner) runPanelAnalysis(ctx context.Context, req StepRequest, seats []panelSeat, prompt, artifactHash, artifactStage string, panelRound int) panelAnalysis {
+/testbed/server-go/internal/engine/native_runner.go:1219:		seat        panelSeat
+/testbed/server-go/internal/engine/native_runner.go:1234:		requests[i] = DelegateRequest{Role: roundtableDelegateRole, Persona: seat.persona, Delegate: seat.selector, Prompt: prompt, Workdir: req.WorkItem.Worktree, Tools: true, MaxTurnsCap: roundtableDelegateMaxTurnsCap, DurableSlot: panelSeatDurableSlot(req, panelRound, seat.ordinal), ArtifactStage: artifactStage, ArtifactHash: artifactHash, ProvidedTarget: true}
+/testbed/server-go/internal/engine/native_runner.go:1240:		parsed, err := parsePanelResponse(call.Response, call.Err)
+/testbed/server-go/internal/engine/native_runner.go:1247:		if call.Err == nil && strings.TrimSpace(call.Participant) != "" && (err != nil || panelVerdictError(parsed) != nil) {
+/testbed/server-go/internal/engine/native_runner.go:1257:			req.CostLimitUSD = remainingCostLimit(req.CostLimitUSD, spent)
+/testbed/server-go/internal/engine/native_runner.go:1271:				Prompt:      panelResponseRepairPrompt(req.WorkItem.ID, artifactHash, artifactStage, outcomes[outcomeIndex].raw),
+/testbed/server-go/internal/engine/native_runner.go:1278:				DurableSlot:    panelSeatDurableSlot(req, panelRound, seat.ordinal) + ":repair:1",
+/testbed/server-go/internal/engine/native_runner.go:1286:			parsed, err := parsePanelResponse(call.Response, call.Err)
+/testbed/server-go/internal/engine/native_runner.go:1295:	reports := make([]panelSeatReport, 0, len(seats))
+/testbed/server-go/internal/engine/native_runner.go:1306:			reason := panelFailureCategory(o.err, o.transport)
+/testbed/server-go/internal/engine/native_runner.go:1322:		echoStage, echoOK := normalizeRoundtableStage(o.result.ArtifactStage)
+/testbed/server-go/internal/engine/native_runner.go:1338:		if verdictErr := panelVerdictError(o.result); verdictErr != nil {
+/testbed/server-go/internal/engine/native_runner.go:1344:		reports = append(reports, panelSeatReport{Seat: o.seat, Response: o.result})
+/testbed/server-go/internal/engine/native_runner.go:1363:		if panelVerdict(o.result) == "approve" {
+/testbed/server-go/internal/engine/native_runner.go:1381:	return panelAnalysis{Feedback: feedback, Approvals: approvals, Voters: voters, CostUSD: cost, CostUnknown: costUnknown, Unreachable: strings.Join(seatFailures, "; "), Reports: reports, Failures: failures, ReplayLost: replayLost}
+/testbed/server-go/internal/engine/native_runner.go:1384:func panelFailureCategory(err error, transport bool) string {
+/testbed/server-go/internal/engine/native_runner.go:1403:// blockingFindingCount counts only the severities that must stop an artifact.
+/testbed/server-go/internal/engine/native_runner.go:1406:func blockingFindingCount(findings []wfe.Finding) int {
+/testbed/server-go/internal/engine/native_runner.go:1418:func remainingCostLimit(limit, spent float64) float64 {
+/testbed/server-go/internal/engine/native_runner.go:1429:// panelVerdictError reports why a parsed seat response is not a usable verdict.
+/testbed/server-go/internal/engine/native_runner.go:1432:// panelVerdict is the one normalization of a seat or chairman verdict. Both
+/testbed/server-go/internal/engine/native_runner.go:1435:func panelVerdict(parsed panelResponse) string {
+/testbed/server-go/internal/engine/native_runner.go:1439:func panelVerdictError(parsed panelResponse) error {
+/testbed/server-go/internal/engine/native_runner.go:1440:	switch panelVerdict(parsed) {
+/testbed/server-go/internal/engine/native_runner.go:1475:func parsePanelResponse(response string, delegateErr error) (panelResponse, error) {
+/testbed/server-go/internal/engine/native_runner.go:1497:func panelResponseRepairPrompt(runID, artifactHash, artifactStage, previousResponse string) string {
+/testbed/server-go/internal/engine/native_runner.go:1510:// runPanelRound remains the focused test seam for independent analysis.
+/testbed/server-go/internal/engine/native_runner.go:1511:func (r *NativeRunner) runPanelRound(ctx context.Context, req StepRequest, seats []panelSeat, prompt, artifactHash, artifactStage string, panelRound int) (wfe.ReviewFeedback, int, int, float64, string) {
+/testbed/server-go/internal/engine/native_runner.go:1512:	result := r.runPanelAnalysis(ctx, req, seats, prompt, artifactHash, artifactStage, panelRound)
+/testbed/server-go/internal/engine/native_runner.go:1516:func panelSeatDurableSlot(req StepRequest, panelRound, ordinal int) string {
+/testbed/server-go/internal/engine/native_runner.go:1827:func panelSeats(node wfe.Node) []panelSeat {
+/testbed/server-go/internal/engine/native_runner.go:1835:	var out []panelSeat
+/testbed/server-go/internal/engine/native_runner.go:1838:		out = append(out, panelSeat{persona: p, selector: selector})
+/testbed/server-go/internal/engine/native_runner.go:1842:		out = append(out, panelSeat{persona: p, selector: selector})
+/testbed/server-go/internal/engine/roundtable_service.go:25:	stage, ok := normalizeRoundtableStage(request.ArtifactStage)
+/testbed/server-go/internal/engine/roundtable_service.go:92:func roundtableResult(feedback *wfe.ReviewFeedback, approved, converged bool, analysis panelAnalysis, total int, cost float64) *roundtablecfg.RunResult {
+/testbed/server-go/internal/engine/native_runner_test.go:228:type chairmanDeadlineAgents struct{}
+/testbed/server-go/internal/engine/native_runner_test.go:281:func (chairmanDeadlineAgents) Delegate(ctx context.Context, request DelegateRequest) (DelegateResult, error) {
+/testbed/server-go/internal/engine/native_runner_test.go:354:func (a chairmanDeadlineAgents) DelegateGroup(ctx context.Context, requests []DelegateRequest) []DelegateGroupResult {
+/testbed/server-go/internal/engine/native_runner_test.go:447:			feedback, approvals, voters, _, unreachable := runner.runPanelRound(context.Background(), StepRequest{}, []panelSeat{{persona: "qa"}}, "review", "hash", "plan", 1)
+/testbed/server-go/internal/engine/native_runner_test.go:460:		feedback, approvals, voters, _, unreachable := runner.runPanelRound(context.Background(), StepRequest{}, []panelSeat{{persona: "qa"}}, "review", "hash", "plan", 1)
+/testbed/server-go/internal/engine/native_runner_test.go:489:	feedback, approvals, voters, _, unreachable := runner.runPanelRound(context.Background(), StepRequest{}, []panelSeat{{persona: "qa"}, {persona: "security"}}, "review", "hash", "plan", 1)
+/testbed/server-go/internal/engine/native_runner_test.go:630:			agents:    chairmanDeadlineAgents{},
+/testbed/server-go/internal/engine/native_runner_test.go:728:		if normalized, ok := normalizeRoundtableStage(stage); !ok || normalized != stage || !strings.Contains(roundtableStageGuidance(normalized), marker) {
+/testbed/server-go/internal/engine/native_runner_test.go:735:	prompt := panelResponseRepairPrompt("run", "hash", "frozen_diff", "invalid")
+/testbed/server-go/internal/engine/native_runner_test.go:755:			if got := panelFailureCategory(tc.err, tc.transport); got != tc.want {
+/testbed/server-go/internal/engine/native_runner_test.go:756:				t.Fatalf("panelFailureCategory()=%q, want %q", got, tc.want)
+/testbed/server-go/internal/engine/native_runner_test.go:998:	seats := []panelSeat{
+/testbed/server-go/internal/engine/native_runner_test.go:1003:	feedback, approvals, voters, _, unreachable := runner.runPanelRound(context.Background(), req, seats, "review", "hash", "plan", 1)
+/testbed/server-go/internal/engine/native_runner_test.go:1013:		wantSlots[panelSeatDurableSlot(req, 1, ordinal)] = true
+/testbed/server-go/internal/engine/native_runner_test.go:1037:	feedback, approvals, voters, cost, unreachable := runner.runPanelRound(context.Background(), req, []panelSeat{{persona: "architect", ordinal: 0}}, "review", "hash", "plan", 1)
+/testbed/server-go/internal/engine/native_runner_test.go:1063:	if got, other := panelSeatDurableSlot(left, 1, 0), panelSeatDurableSlot(right, 1, 0); got == other {
+/testbed/server-go/internal/engine/native_runner_test.go:1072:	seats := []panelSeat{{persona: "security", selector: "codex", ordinal: 0}}
+/testbed/server-go/internal/engine/native_runner_test.go:1074:		feedback, approvals, voters, _, unreachable := runner.runPanelRound(context.Background(), req, seats, "same review", "hash", "plan", round)
+/testbed/server-go/internal/engine/native_runner_test.go:1127:	analysis := runner.runPanelAnalysis(context.Background(), req,
+/testbed/server-go/internal/engine/native_runner_test.go:1128:		[]panelSeat{{persona: "qa", selector: "$random", ordinal: 0}, {persona: "security", selector: "codex", ordinal: 1}}, "review", "hash", "plan", 1)
+/testbed/server-go/internal/engine/native_runner_test.go:1151:	seats := []panelSeat{
+/testbed/server-go/internal/engine/native_runner_test.go:1155:	feedback, approvals, voters, _, unreachable := runner.runPanelRound(context.Background(), req, seats, "review", "hash", "plan", 1)
+/testbed/server-go/internal/engine/native_runner_test.go:1164:	seats := []panelSeat{
+/testbed/server-go/internal/engine/native_runner_test.go:1168:	_, approvals, voters, _, unreachable := runner.runPanelRound(context.Background(), req, seats, "review", "hash", "plan", 1)
+/testbed/server-go/internal/engine/native_runner_test.go:1177:	seats := []panelSeat{
+/testbed/server-go/internal/engine/native_runner_test.go:1184:	_, approvals, voters, _, unreachable := runner.runPanelRound(context.Background(), req, seats, "review", "hash", "plan", 1)
+/testbed/server-go/internal/engine/native_runner_test.go:1196:	seats := []panelSeat{
+/testbed/server-go/internal/engine/native_runner_test.go:1200:	feedback, approvals, voters, _, unreachable := runner.runPanelRound(context.Background(), req, seats, "review", "hash", "plan", 1)
+/testbed/server-go/internal/engine/native_runner_test.go:1373:			if got := blockingFindingCount(tc.findings); got != tc.want {
+/testbed/server-go/internal/engine/native_runner_test.go:1374:				t.Fatalf("blockingFindingCount=%d want %d", got, tc.want)
+/testbed/server-go/internal/engine/native_runner_test.go:1818:	ctx, done := chairmanDeadline(step, deadlineMS)
+/testbed/server-go/internal/engine/native_runner_test.go:1834:		ctx, done := chairmanDeadline(step, deadlineMS)
+/testbed/server-go/internal/engine/native_runner_test.go:1846:		ctx, done := chairmanDeadline(step, 0)
+/testbed/server-go/internal/engine/native_runner_test.go:1947:	if panelVerdictError(blocked) == nil {
+/testbed/server-go/internal/engine/native_runner_test.go:1950:	blocked.Findings = []panelFinding{{Severity: "foundational", Summary: "the request depends on a declaration that does not exist"}}
+/testbed/server-go/internal/engine/native_runner_test.go:1951:	if err := panelVerdictError(blocked); err != nil {

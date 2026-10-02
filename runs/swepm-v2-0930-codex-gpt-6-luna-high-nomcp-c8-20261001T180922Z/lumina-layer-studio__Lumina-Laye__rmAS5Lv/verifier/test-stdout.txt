@@ -1,0 +1,649 @@
+SPECBUILD_RESOLVED_PYTHON=/opt/venv/bin/python
+Checking patch tests/test_color_mode_propagation_properties.py...
+Checking patch tests/test_color_mode_propagation_unit.py...
+Applied patch tests/test_color_mode_propagation_properties.py cleanly.
+Applied patch tests/test_color_mode_propagation_unit.py cleanly.
+============================= test session starts ==============================
+platform linux -- Python 3.11.16, pytest-9.1.1, pluggy-1.6.0 -- /opt/venv/bin/python
+cachedir: .pytest_cache
+hypothesis profile 'default'
+rootdir: /testbed
+plugins: hypothesis-6.167.1, anyio-4.14.2
+collecting ... collected 24 items
+
+tests/test_color_mode_propagation_properties.py::test_lut_metadata_round_trip PASSED [  4%]
+tests/test_color_mode_propagation_properties.py::test_keyed_json_round_trip_preserves_color_mode PASSED [  8%]
+tests/test_color_mode_propagation_properties.py::test_stored_color_mode_takes_priority PASSED [ 12%]
+tests/test_color_mode_propagation_properties.py::test_palette_names_distinguish_color_mode_variants PASSED [ 16%]
+tests/test_color_mode_propagation_properties.py::test_infer_default_metadata_color_mode_priority PASSED [ 20%]
+tests/test_color_mode_propagation_properties.py::test_detect_lut_color_mode_uses_stored_color_mode FAILED [ 25%]
+
+=================================== FAILURES ===================================
+______________ test_detect_lut_color_mode_uses_stored_color_mode _______________
+tests/test_color_mode_propagation_properties.py:394: in test_detect_lut_color_mode_uses_stored_color_mode
+    metadata=_non_none_color_mode_metadata_st(),
+               ^^^
+tests/test_color_mode_propagation_properties.py:425: in test_detect_lut_color_mode_uses_stored_color_mode
+    assert result == metadata.color_mode, (
+E   AssertionError: detect_lut_color_mode returned 'Merged', expected stored color_mode 'BW (Black & White)'
+E   assert 'Merged' == 'BW (Black & White)'
+E     
+E     - BW (Black & White)
+E     + Merged
+E   Failing test case: test_detect_lut_color_mode_uses_stored_color_mode(
+E       # The test always failed when commented parts were varied together.
+E       metadata=LUTMetadata(palette=[PaletteEntry(color='White', material='PLA Basic', hex_color=None)], max_color_layers=1, layer_height_mm=0.04, line_width_mm=0.3, base_layers=1, base_channel_idx=0, layer_order='Top2Bottom', color_mode='BW (Black & White)'),  # or any other generated value
+E       n_entries=4,  # or any other generated value
+E   )
+----------------------------- Captured stdout call -----------------------------
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=7, max_mat=3
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=7, max_mat=2
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 18 colors, layer_count=7, max_mat=4
+[AUTO_DETECT] Non-standard JSON LUT size (18 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 18 colors, layer_count=7, max_mat=3
+[AUTO_DETECT] Non-standard JSON LUT size (18 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=2, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=2, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=1, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=1, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 7 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (7 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=9, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=9, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=3, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=10, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 9 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (9 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 11 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (11 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 7 colors, layer_count=6, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (7 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=6, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 7 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (7 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 11 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (11 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=10, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 20 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (20 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 6 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (6 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=6, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=6, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 19 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (19 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=4, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=4, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=1, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 18 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (18 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 19 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (19 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 9 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (9 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 19 colors, layer_count=8, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (19 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=8, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 15 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (15 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=6, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 14 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (14 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 19 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (19 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 20 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (20 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 12 colors, layer_count=9, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (12 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=9, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 19 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (19 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 7 colors, layer_count=6, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (7 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=6, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=7, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=7, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 12 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (12 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 7 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (7 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 20 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (20 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=6, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=6, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=5, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 7 colors, layer_count=6, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (7 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=6, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=6, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=1, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=4, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=4, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 12 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (12 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 12 colors, layer_count=4, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (12 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=4, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 11 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (11 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 7 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (7 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 7 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (7 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 20 colors, layer_count=3, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (20 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=3, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 14 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (14 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=9, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=8, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 20 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (20 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 7 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (7 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 19 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (19 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 18 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (18 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 7 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (7 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=6, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=6, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 20 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (20 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 15 colors, layer_count=6, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (15 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=6, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 6 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (6 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=5, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=8, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 11 colors, layer_count=3, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (11 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=3, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 15 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (15 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=5, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=5, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 19 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (19 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 9 colors, layer_count=6, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (9 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=6, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=8, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 11 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (11 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=9, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=6, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 14 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (14 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 11 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (11 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 15 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (15 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 7 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (7 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 5 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (5 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 12 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (12 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 20 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (20 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 6 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (6 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 19 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (19 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 9 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (9 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 18 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (18 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 11 colors, layer_count=1, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (11 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=9, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 12 colors, layer_count=10, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (12 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 5 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (5 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 15 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (15 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 6 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (6 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 6 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (6 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 14 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (14 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=6, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 9 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (9 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 11 colors, layer_count=4, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (11 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 14 colors, layer_count=5, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (14 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 15 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (15 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=10, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 15 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (15 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 11 colors, layer_count=3, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (11 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=3, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 14 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (14 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 7 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (7 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=10, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=8, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=8, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 6 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (6 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=3, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 18 colors, layer_count=7, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (18 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 15 colors, layer_count=1, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (15 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 12 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (12 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 18 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (18 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 20 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (20 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=8, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 12 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (12 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 12 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (12 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 12 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (12 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 11 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (11 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 6 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (6 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 15 colors, layer_count=3, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (15 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=5, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 11 colors, layer_count=9, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (11 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=8, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 9 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (9 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 12 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (12 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 7 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (7 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 18 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (18 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 15 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (15 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 11 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (11 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 7 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (7 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 19 colors, layer_count=7, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (19 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 18 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (18 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 9 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (9 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 5 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (5 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=10, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 18 colors, layer_count=6, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (18 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=6, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 19 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (19 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=4, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 19 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (19 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 20 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (20 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=2, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 5 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (5 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=8, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 8 colors, layer_count=3, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (8 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 14 colors, layer_count=6, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (14 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 10 colors, layer_count=5, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (10 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 13 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (13 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 11 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (11 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 6 colors, layer_count=1, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (6 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 6 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (6 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 16 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (16 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 12 colors, layer_count=8, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (12 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 17 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (17 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 12 colors, layer_count=5, max_mat=1
+[AUTO_DETECT] Non-standard JSON LUT size (12 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 15 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (15 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 12 colors, layer_count=9, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (12 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 14 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (14 colors), detected as Merged
+[AUTO_DETECT] JSON LUT: 4 colors, layer_count=1, max_mat=0
+[AUTO_DETECT] Non-standard JSON LUT size (4 colors), detected as Merged
+=========================== short test summary info ============================
+FAILED tests/test_color_mode_propagation_properties.py::test_detect_lut_color_mode_uses_stored_color_mode
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+========================= 1 failed, 5 passed in 14.83s =========================
+OMNIGRIL_EXIT_CODE=1

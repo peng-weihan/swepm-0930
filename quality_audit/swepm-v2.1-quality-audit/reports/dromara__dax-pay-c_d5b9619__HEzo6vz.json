@@ -1,0 +1,52 @@
+{
+  "instance_id": "dromara__dax-pay-c_d5b9619",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.92,
+  "gold_patch_assessment": "The gold patch creates a comprehensive PermCodes.java interface with nested interfaces for all 7 domains (Channel, Merchant, Payment, IAM, System, Develop, Device) containing ~40 menu code constants, 11 action constants, and 4 name constants. It also creates a migration script (migrate-perm-codes.mjs) and updates 92 controller files to replace string literals with PermCodes constant references. The patch is massive (~6000 lines) and addresses all stated requirements.",
+  "base_vs_gold_expectation": "Base correctly fails: the test patch adds 'import cn.daxpay.open.platform.core.code.PermCodes' and uses 'PermCodes.Action.VIEW' in an annotation, but PermCodes.java does not exist in the base commit, causing a compilation error. Gold correctly passes: PermCodes.java is created with Action.VIEW = \"view\", making the test compile and the assertion assertEquals(\"payment:merchant:view\", ...) succeed since the resolved value is unchanged.",
+  "too_narrow_risks": [
+    "Test only verifies PermCodes.Action.VIEW exists and equals \"view\" — a candidate creating just 'interface PermCodes { interface Action { String VIEW = \"view\"; } }' would pass",
+    "None of the ~40 menu code constants are tested (e.g., Channel.Merchant.MENU, System.Protocol.MENU, Payment.Order.MENU)",
+    "None of the other 10 action constants are tested (MANAGE, PUBLISH, UPDATE, STATUS, SIGN, KICKOUT, RESET_PASSWORD, ASSIGN_ROLE, RESEND, TEST)",
+    "No name constants tested (Channel.Merchant.VIEW_NAME_CN, VIEW_NAME_EN, MANAGE_NAME_CN, MANAGE_NAME_EN)",
+    "Zero controller migration is verified — the issue explicitly requires updating controllers across platform and channel modules (92 files in gold patch), but the test checks none",
+    "No verification of the nested interface domain structure (7 domains required)",
+    "Only tests one full code resolution path; doesn't verify constants are usable as annotation attributes beyond the single example"
+  ],
+  "too_broad_risks": [],
+  "implementation_coupling": [
+    "The test expects the exact path 'PermCodes.Action.VIEW' which is dictated by the issue specification, so this coupling to the API naming is appropriate and not a gold-implementation artifact"
+  ],
+  "environment_risks": [
+    "Maven build with '-am' flag compiles all upstream modules in a large multi-module Java project — transient build failures or missing cached dependencies could cause false negatives",
+    "The build requires Java 21 (-Djava.version=21); Docker image must have this configured correctly"
+  ],
+  "mismatches": [
+    "task.toml labels category as 'debugging' but the issue is clearly a refactoring/feature-addition task (creating centralized constants and migrating usages)"
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch only changes one annotation from string literal to PermCodes.Action.VIEW and adds the PermCodes import — verifies only one constant out of ~55 defined in the gold patch"
+    },
+    {
+      "file": "/testbed/daxpay-platform/daxpay-platform-core/src/test/java/cn/daxpay/open/platform/core/util/PermCodeUtilTest.java",
+      "detail": "Existing test has 2 test methods: resolveFullCode_shouldJoinMenuCodeAndActionCode and resolveFullCode_withoutMenuCode_shouldReturnActionCodeOnly. Both test PermCodeUtil.resolveFullCode, not the existence of PermCodes constants."
+    },
+    {
+      "file": "/audit_tasks/dromara__dax-pay-c_d5b9619/tests/eval.sh",
+      "detail": "Test runner: mvn -Djava.version=21 -pl daxpay-platform/daxpay-platform-core -am -Dtest=PermCodeUtilTest test — only runs tests in daxpay-platform-core, none of the 92 controller modules"
+    },
+    {
+      "file": "/audit_tasks/dromara__dax-pay-c_d5b9619/solution/solve.sh",
+      "detail": "Gold patch modifies 94 files (1 migration script, 1 new PermCodes.java, 92 controllers) but the test only validates a trivial subset"
+    },
+    {
+      "file": "/audit_tasks/dromara__dax-pay-c_d5b9619/task.toml",
+      "detail": "category = 'debugging' is incorrect for this refactoring/feature task"
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The test is severely too narrow for this large refactoring task. The gold patch creates a 321-line PermCodes interface with ~55 constants across 7 domain namespaces and migrates 92 controller files, but the test only verifies that PermCodes.Action.VIEW exists and equals \"view\". A trivial 3-line PermCodes class with just that one constant would pass. The test should be expanded to verify: (1) representative constants from each domain (menu codes, action codes, name constants), (2) at least a sample of controller migrations, and (3) the compile-time constant property for annotation attributes. The category metadata is also wrong (labeled 'debugging' instead of 'refactoring')."
+}

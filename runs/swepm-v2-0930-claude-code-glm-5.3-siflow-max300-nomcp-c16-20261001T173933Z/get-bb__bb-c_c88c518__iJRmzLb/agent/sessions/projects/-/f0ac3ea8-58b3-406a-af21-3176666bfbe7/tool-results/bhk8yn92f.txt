@@ -1,0 +1,560 @@
+?? .venv/
+UNRESOLVABLE in /testbed/apps/app/src/lib/host-display.ts : Host } from "@bb/domain";
+import type { IconName
+UNRESOLVABLE in /testbed/apps/app/src/lib/environment-workspace-display.ts : EnvironmentWorkspaceDisplayKind } from "@bb/domain";
+import type { IconName
+UNRESOLVABLE in /testbed/apps/app/src/views/ProjectArchivedThreadsView.tsx : useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import type { ThreadListEntry } from "@bb/domain";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/views/project-settings/ProjectSourceRow.tsx : isLocalPathProjectSource, LocalPathProjectSource, ProjectSource, } from "@bb/domain";
+import { Icon, GitHubIcon } from "@/components/icons/GitHubIcon";
+import { PersistentHostIconName } from "@/lib/host-display";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/views/thread-detail/ThreadDetailView.test.tsx : Suspense, type ReactNode } from "react";
+import {
+  act, cleanup, fireEvent, render, screen, waitFor, } from "@testing-library/react";
+import {
+  MemoryRouter, Route, Routes, useNavigate, NavigateFunction, } from "react-router-dom";
+import type { QueryClient } from "@tanstack/react-query";
+import type {
+  Environment, Host, ThreadListEntry, ThreadWithRuntime, } from "@bb/domain";
+import type { ThreadTimelineResponse } from "@bb/server-contract";
+import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+import { SidebarProvider
+UNRESOLVABLE in /testbed/apps/app/src/views/thread-detail/ThreadTimelinePane.tsx : useCallback, useEffect, useState, type ReactNode } from "react";
+import type { ActiveThinking, ThreadRuntimeDisplayStatus } from "@bb/domain";
+import type { TimelineRow, TimelineTurnRow } from "@bb/server-contract";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/views/thread-detail/ThreadDetailHeader.tsx : ReactNode } from "react";
+import { useIsSecondaryPanelOpen } from "@/lib/thread-secondary-panel";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx : useCallback, useMemo, useState } from "react";
+import type { IconName
+UNRESOLVABLE in /testbed/apps/app/src/views/thread-detail/ThreadDetailView.tsx : useCallback, useEffect, useMemo, useState } from "react";
+import { useAtomValue } from "jotai";
+import { useParams } from "react-router-dom";
+import type {
+  ThreadTimelineLocalFileLink, TimelineTitleActionResolver, } from "@/components/thread/timeline";
+import type {
+  ThreadListEntry, ThreadWithRuntime, WorkspaceFileStatus, } from "@bb/domain";
+import { toast } from "sonner";
+import {
+  useActiveSecondaryPanel, useThreadSecondaryPanelUrlSync, } from "@/lib/thread-secondary-panel";
+import { useRequestEnvironmentAction } from "../../hooks/mutations/environment-mutations";
+import {
+  useMarkThreadRead, useUpdateThread, } from "../../hooks/mutations/thread-state-mutations";
+import { useSendThreadMessage } from "../../hooks/mutations/thread-runtime-mutations";
+import { useUpdateEnvironment } from "../../hooks/mutations/environment-mutations";
+import {
+  useEnvironment, useEnvironmentFilePreview, useEnvironmentWorkStatus, } from "../../hooks/queries/environment-queries";
+import {
+  getLatestPendingInteraction, useThread, useThreadPendingInteractions, useThreads, } from "../../hooks/queries/thread-queries";
+import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
+import { ThreadEnvironmentPromotionDialog } from "@/components/dialogs/ThreadEnvironmentPromotionDialog";
+import { PageShell
+UNRESOLVABLE in /testbed/apps/app/src/views/thread-detail/ThreadDetailSecondaryContent.tsx : ComponentProps, ReactNode, useEffect, useRef } from "react";
+import { Panel, PanelGroup } from "react-resizable-panels";
+import { ResponsiveDrawerShell
+UNRESOLVABLE in /testbed/apps/app/src/views/MainView.tsx : Navigate } from "react-router-dom";
+import { useProjects } from "../hooks/queries/project-queries";
+import {
+  useConnectionAwareQueryState, ConnectionAwareQueryStatus, } from "../hooks/queries/connection-aware-query-state";
+import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/views/InternalReplayListView.tsx : useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { DetailCard, ReplayRunSpeed } from "@bb/server-contract";
+import { PageShell
+UNRESOLVABLE in /testbed/apps/app/src/views/AuthCallbackView.tsx : useSearchParams } from "react-router-dom";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/views/AppSettingsView.tsx : useEffect, useRef, useState } from "react";
+import { useAtomValue } from "jotai";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { timeAgo } from "@bb/core-ui";
+import type { CloudAuthProviderId } from "@bb/agent-providers";
+import { Button, CloudAuthSettingsSection } from "@/components/settings/CloudAuthSettingsSection";
+import { CONNECTED_DOT_CLASS } from "@/components/settings/constants";
+import {
+  SettingsRow
+UNRESOLVABLE in /testbed/apps/app/src/views/ProjectMainView.tsx : useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { isGitHubRepoProjectSource } from "@bb/domain";
+import { NewThreadPromptBox } from "@/components/promptbox/NewThreadPromptBox";
+import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
+import { OptionPicker } from "@/components/pickers/OptionPicker";
+import { PageShell
+UNRESOLVABLE in /testbed/apps/app/src/views/ProjectSettingsView.tsx : useCallback, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
+import { useAtomValue } from "jotai";
+import { useDebounceValue } from "usehooks-ts";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  findLocalPathProjectSourceForHost, isGitHubRepoProjectSource, isLocalPathProjectSource, LocalPathProjectSource, ProjectSource, } from "@bb/domain";
+import { Button, ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
+import { ProjectConnectGithubDialog } from "@/components/dialogs/ProjectConnectGithubDialog";
+import {
+  ProjectSourceDeleteDialog, ProjectSourceDeleteDialogTarget, } from "@/components/dialogs/ProjectSourceDeleteDialog";
+import { SettingsRowList
+UNRESOLVABLE in /testbed/apps/app/src/components/promptbox/ThreadEnvironmentSummary.tsx : HostStatusBadge } from "@/components/HostStatusIndicator";
+import { OptionDisplay } from "@/components/pickers/OptionPicker";
+import { copyToClipboardWithToast } from "@/lib/clipboard";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/promptbox/FollowUpPromptBox.tsx : useEffect, useRef, useState, ComponentProps, ReactNode, } from "react";
+import { type ThreadRuntimeDisplayStatus } from "@bb/domain";
+import {
+  PromptBoxInternal, AttachmentsConfig, HistoryConfig, MentionsConfig, PromptBoxHandle, } from "@/components/promptbox/PromptBoxInternal";
+import { usePromptVoice } from "@/components/promptbox/usePromptVoice";
+import { PermissionModePicker } from "@/components/pickers/PermissionModePicker";
+import {
+  ExecutionControls, ExecutionControlsProps, ExecutionPermissionConfig, } from "@/components/promptbox/ExecutionControls";
+import { useBottomAnchoredScroll
+UNRESOLVABLE in /testbed/apps/app/src/components/promptbox/mentions/MentionMenu.tsx : useEffect, useMemo, useRef } from "react";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/promptbox/AttachmentPreview.tsx : useEffect } from "react";
+import { getWrappedImageIndex
+UNRESOLVABLE in /testbed/apps/app/src/components/promptbox/PromptBoxInternal.tsx : atom, useAtom } from "jotai";
+import { RESET, atomWithStorage } from "jotai/utils";
+import {
+  useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, ChangeEvent, FormEvent, KeyboardEvent, ReactNode, Ref, } from "react";
+import type {
+  MentionMenuState, PromptMentionSuggestion, } from "@/components/promptbox/mentions/types";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx : type ReactNode } from "react";
+import { NavLink } from "react-router-dom";
+import type {
+  ThreadRuntimeDisplayStatus, ThreadTimelinePendingTodoItem, ThreadTimelinePendingTodoItemStatus, ThreadTimelinePendingTodos, WorkspaceFileStatus, } from "@bb/domain";
+import {
+  BranchPicker, getMergeBaseBranchCandidates, } from "@/components/pickers/BranchPicker";
+import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
+import {
+  renderChangeSummary, toChangeTally, WorkspaceChangedFilesSection, } from "@/components/workspace/workspace-change-summary";
+import { cn } from "@/lib/utils";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx : ThreadQueuedMessage } from "@bb/domain";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/git-diff/GitDiffCard.tsx : CSSProperties, memo, useEffect, useMemo, useRef, useState, } from "react";
+import type { FileContents } from "@pierre/diffs";
+import { FileDiff as DiffView } from "@pierre/diffs/react";
+import { useIntersectionObserver } from "usehooks-ts";
+import { CopyButton
+UNRESOLVABLE in /testbed/apps/app/src/components/pickers/OptionPicker.tsx : ComponentType, ReactNode } from "react";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/pickers/ProviderModelPicker.tsx : useCallback, useMemo, useState } from "react";
+import { Button, cn } from "@/lib/utils";
+import { useAvailableModels } from "@/hooks/queries/system-queries";
+import { useIsCompactViewport
+UNRESOLVABLE in /testbed/apps/app/src/components/pickers/EnvironmentPicker.tsx : useAtomValue } from "jotai";
+import { useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import type { Host, ProjectSource, SandboxBackendInfo } from "@bb/domain";
+import { Icon, findLocalPathProjectSourceForHost, isGitHubRepoProjectSource, } from "@bb/domain";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/pickers/HostPicker.tsx : Host } from "@bb/domain";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/pickers/BranchPicker.tsx : useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/project/ProjectActionsMenu.tsx : findLocalPathProjectSourceForHost } from "@bb/domain";
+import type { ProjectResponse } from "@bb/server-contract";
+import type { ReactNode } from "react";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/secondary-panel/ManagerThreadStorageBrowser.tsx : useEffect, useMemo, useRef, CSSProperties, type ReactNode } from "react";
+import { FileTree } from "@pierre/trees/react";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/secondary-panel/FilePreview.tsx : CSSProperties, useEffect, useMemo, useRef } from "react";
+import { File as PierreFile } from "@pierre/diffs/react";
+import type { SelectedLineRange, SupportedLanguages } from "@pierre/diffs";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/secondary-panel/ManagerThreadStorageBrowser.stories.tsx : useState, type ReactNode } from "react";
+import type { WorkspaceFile } from "@bb/server-contract";
+import { DetailCard
+UNRESOLVABLE in /testbed/apps/app/src/components/secondary-panel/GitDiffCard.stories.tsx : useCallback, useMemo, useState, ReactNode, } from "react";
+import type { FileContents } from "@pierre/diffs";
+import { toast } from "sonner";
+import {
+  GIT_DIFF_VIEW_BASE_OPTIONS, GitDiffCard, } from "../git-diff/GitDiffCard";
+import {
+  GitDiffToolbar, GitDiffDisplayMode, GitDiffSelectionOption, } from "./GitDiffToolbar";
+import {
+  parseGitDiffFiles, summarizeGitDiff, ParsedGitDiffFile, } from "../git-diff/git-diff-parsing";
+import { usePreferredTheme } from "@/hooks/useTheme";
+import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+
+export default {
+  title: "secondary-panel/Diff", };
+
+// Mirror the secondary panel: bordered, white background, toolbar at top, // cards in a scrolling region underneath. Keeps the visual context honest.
+function PanelStage({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex w-full max-w-[760px] min-w-0 flex-col overflow-hidden rounded-md border border-border/70 bg-background pt-3">
+      {children}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Realistic file fixtures. Each fixture is a fake-but-plausible TypeScript
+// source file (~100-200 lines) used as the OLD side of the diff; edits
+// transform it into the NEW side, and `buildAlignedDiff` synthesizes the
+// matching unified diff so the library's own line-arrays line up with our
+// hunk metadata once contents load. That's what unlocks expand-context
+// buttons in every gap between hunks.
+// ---------------------------------------------------------------------------
+
+const PROJECT_ROW_TSX = `import {
+  type CSSProperties, memo, useMemo, } from "react";
+import { Icon, useThreadList } from "@/hooks/queries/thread-queries";
+import type { Project } from "@bb/domain";
+import { ThreadRow } from "./ThreadRow";
+
+export interface ProjectRowProps {
+  project: Project;
+  isCollapsed: boolean;
+  onToggleCollapsed: () => void;
+}
+
+const PROJECT_ROW_STYLE: CSSProperties = {
+  contain: "layout paint", };
+
+interface ProjectThreadGroup {
+  managerId: string | null;
+  threadIds: readonly string[];
+}
+
+function buildProjectThreadGroups(
+  threadIds: readonly string[], parentByThreadId: Record<string, string | null>, ): ProjectThreadGroup[] {
+  const groups: ProjectThreadGroup[] = [];
+  const indexByManagerId = new Map<string | null, number>();
+  for (const threadId of threadIds) {
+    const managerId = parentByThreadId[threadId] ?? null;
+    const existing = indexByManagerId.get(managerId);
+    if (existing !== undefined) {
+      groups[existing] = {
+        ...groups[existing]!, threadIds: [...groups[existing]!.threadIds, threadId], };
+      continue;
+    }
+    indexByManagerId.set(managerId, groups.length);
+    groups.push({ managerId, threadIds: [threadId] });
+  }
+  return groups;
+}
+
+function ProjectRowComponent({
+  project, isCollapsed, onToggleCollapsed, }: ProjectRowProps) {
+  const threadListState = useThreadList({ projectId: project.id });
+  const projectThreads = useMemo(
+    () => threadListState.data?.threads ?? [], [threadListState.data?.threads], );
+  return (
+    <SidebarMenuItem className="group/project" style={PROJECT_ROW_STYLE}>
+      <SidebarMenuButton
+        type="button"
+        onClick={onToggleCollapsed}
+        className="font-medium text-sidebar-foreground"
+        aria-expanded={!isCollapsed}
+        aria-label={\`\${isCollapsed ? "Expand" : "Collapse"} \${project.name}\`}
+      >
+        <Icon name="ChevronRight"
+          className={
+            isCollapsed
+              ? "size-3.5 shrink-0 transition-transform"
+              : "size-3.5 shrink-0 rotate-90 transition-transform"
+          }
+        />
+        <span className="truncate">{project.name}</span>
+      </SidebarMenuButton>
+      {!isCollapsed ? (
+        threadListState.status === "loading" ? (
+          <div className="group-data-[collapsible=icon]:hidden">
+            <SidebarMenuSkeleton />
+          </div>
+        ) : projectThreads.length > 0 ? (
+          <div className="space-y-0.5 group-data-[collapsible=icon]:hidden">
+            {projectThreads.map((thread) => (
+              <ThreadRow key={thread.id} thread={thread} />
+            ))}
+          </div>
+        ) : (
+          <p className="px-2 py-1.5 text-xs text-muted-foreground">
+            No threads in this project yet.
+          </p>
+        )
+      ) : null}
+    </SidebarMenuItem>
+  );
+}
+
+export const ProjectRow = memo(ProjectRowComponent);
+ProjectRow.displayName = "ProjectRow";
+`;
+
+const THREAD_ROW_TSX = `import { memo, useMemo } from "react";
+import {
+  Pill
+UNRESOLVABLE in /testbed/apps/app/src/components/secondary-panel/ThreadMetadataContent.tsx : useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { ManagerThreadStorageBrowser } from "./ManagerThreadStorageBrowser";
+import type { ManagerStorageBrowserController } from "./useManagerStorageBrowser";
+import { Link } from "react-router-dom";
+import { copyToClipboardWithToast } from "@/lib/clipboard";
+import type {
+  Environment, Host, Thread, ThreadListEntry, WorkspaceStatus, } from "@bb/domain";
+import { formatEnvironmentDisplay } from "@bb/core-ui";
+import { cn } from "@/lib/utils";
+import { HostStatusBadge } from "@/components/HostStatusIndicator";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/secondary-panel/ThreadSecondaryPanel.tsx : ReactNode, useMemo } from "react";
+import { useAtomValue } from "jotai";
+import { Icon, Panel, PanelResizeHandle } from "react-resizable-panels";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/dialogs/ThreadArchiveDialog.tsx : Thread } from "@bb/domain";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/dialogs/HireManagerDialog.tsx : useCallback, useEffect, useId, useMemo, useState, FormEvent, } from "react";
+import type { AvailableModel, Host, ReasoningLevel, Thread } from "@bb/domain";
+import type { ProjectResponse, SystemProviderInfo } from "@bb/server-contract";
+import { findLocalPathProjectSourceForHost } from "@bb/domain";
+import type { HireProjectManagerRequest } from "@/hooks/mutations/project-mutations";
+import { DetailCard
+UNRESOLVABLE in /testbed/apps/app/src/components/dialogs/ThreadGitActionDialog.tsx : useMemo, useState, type FormEvent } from "react";
+import { assertNever } from "@bb/core-ui";
+import type { ThreadType, WorkspaceStatus } from "@bb/domain";
+import { DetailCard, ThreadGitStatusDisplay } from "@/components/workspace/workspace-status";
+import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
+import { FormError
+UNRESOLVABLE in /testbed/apps/app/src/components/dialogs/ProjectConnectGithubDialog.tsx : GithubRepoInfo } from "@bb/server-contract";
+import { Dialog
+UNRESOLVABLE in /testbed/apps/app/src/components/dialogs/ProjectPathDialog.tsx : useEffect, useId, useState, type FormEvent } from "react";
+import {
+  deriveProjectNameFromPath, getProjectPathValidationMessage, normalizeProjectPathInput, } from "@bb/domain";
+import type { HostPlatform } from "@bb/host-daemon-contract";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/dialogs/ThreadEnvironmentPromotionDialog.tsx : useState, type FormEvent } from "react";
+import { assertNever } from "@bb/core-ui";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/dialogs/ThreadDeleteDialog.tsx : Thread } from "@bb/domain";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/dialogs/ThreadRenameDialog.tsx : ThreadType } from "@bb/domain";
+import { useId, useState, type FormEvent } from "react";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/dialogs/HostRenameDialog.tsx : useId, useState, type FormEvent } from "react";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/dialogs/ProjectRenameDialog.tsx : useId, useState, type FormEvent } from "react";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/settings/CloudAuthSettingsSection.tsx : CloudAuthProviderId } from "@bb/agent-providers";
+import type { CloudAuthConnection } from "@bb/server-contract";
+import { StatusPill
+UNRESOLVABLE in /testbed/apps/app/src/components/settings/SandboxEnvVarsSection.tsx : useEffect, useMemo, useRef, useState } from "react";
+import type { SandboxEnvVar } from "@bb/server-contract";
+import { sandboxEnvVarNameSchema } from "@bb/server-contract";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/workspace/workspace-change-summary.tsx : ReactNode } from "react";
+import type {
+  WorkspaceChangeStats, WorkspaceFileStatus, WorkspaceStatus, } from "@bb/domain";
+import { formatDiffStatsText } from "@bb/thread-view";
+import { DiffStatsTally
+UNRESOLVABLE in /testbed/apps/app/src/components/thread/timeline/TimelineTitleView.tsx : Fragment, useEffect, useState } from "react";
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
+import {
+  assertNever, durationToCompactString, formatDiffStatsText, formatTimelineDecorationText, TimelineTitle, TimelineTitleAction, TimelineTitleDecoration, TimelineTitleLink, TimelineTitleSegment, TimelineTitleTone, } from "@bb/thread-view";
+import { cn } from "@/lib/utils";
+import { DiffStatsTally
+UNRESOLVABLE in /testbed/apps/app/src/components/thread/timeline/StreamingRows.stories.tsx : useEffect, useState, type ReactNode } from "react";
+import type { TimelineRow } from "@bb/server-contract";
+import {
+  ThreadTimelineRows, TimelineWorkingIndicator, } from "@/components/thread/timeline";
+import {
+  ConversationTimeline
+UNRESOLVABLE in /testbed/apps/app/src/components/thread/timeline/ThreadTimelineRows.tsx : createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, } from "react";
+import type { ReactNode } from "react";
+import type { ThreadRuntimeDisplayStatus } from "@bb/domain";
+import type { TimelineRow, TimelineTurnRow } from "@bb/server-contract";
+import {
+  assertNever, buildTimelineActivityIntentTitles, buildTimelineRowTitle, buildTimelineViewRows, createTimelineViewRowsCache, findActiveLatestBundleId, findTimelineFrontierRow, hasTimelineExplorationIntent, BuildTimelineRowTitleOptions, BuildTimelineViewRowsOptions, ThreadTimelineViewRow, TimelineActivityIntentTitle, TimelineTitle, TimelineViewTurnRow, TimelineViewWorkRow, } from "@bb/thread-view";
+import { cn } from "@/lib/utils";
+import { isRunningThreadRuntimeDisplayStatus } from "./thread-runtime-status.js";
+import type {
+  ThreadTimelineLocalFileLinkHandler, ThreadTimelineTheme, UserAttachmentImageSrcResolver, } from "./types.js";
+import { ConversationMessageContent } from "./ConversationMessageContent.js";
+import { ExpandableTimelineRow } from "./ExpandableTimelineRow.js";
+import {
+  TimelineStaticRowHeader, TimelineRowHorizontalPadding, } from "./TimelineRowHeader.js";
+import {
+  TimelineTitleView, TimelineTitleActionResolver, TimelineTitleLinkResolver, } from "./TimelineTitleView.js";
+import { WorkRowBody } from "./TimelineRowDetails.js";
+import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
+import { Button } from "../../ui/button.js";
+import { AutoHeightContainer } from "../../ui/height-transition.js";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/thread/timeline/ConversationMessageContent.tsx : useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import type {
+  TimelineConversationAttachments, TimelineConversationRow, TimelineConversationUserRequest, } from "@bb/server-contract";
+import { fileNameFromPath } from "@bb/thread-view";
+import { ImageLightbox, getWrappedImageIndex } from "../../ui/image-lightbox.js";
+import { CopyButton } from "../../ui/copy-button.js";
+import { cn } from "@/lib/utils";
+import { buildProjectAttachmentContentUrl } from "@/lib/file-content-urls";
+import { MarkdownPreview } from "../../ui/markdown-preview.js";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/thread/ThreadUnarchiveButton.tsx : ThreadType } from "@bb/domain";
+import { Button
+UNRESOLVABLE in /testbed/apps/app/src/components/thread/WorkspaceChangesList.tsx : WorkspaceStatus } from "@bb/domain";
+import { EmptyState
+UNRESOLVABLE in /testbed/apps/app/src/components/thread/ThreadActionsMenu.tsx : Thread } from "@bb/domain";
+import type { ReactNode } from "react";
+import { ContextMenu
+UNRESOLVABLE in /testbed/apps/app/src/components/thread/pending-interactions/ThreadPendingInteractionBanner.tsx : useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  assertNever, buildPendingInteractionApprovalResolution, formatPendingInteractionSubjectDetailLines, } from "@bb/core-ui";
+import { extractShellCommandFromString } from "@bb/thread-view";
+import {
+  type PendingInteraction, PendingInteractionApprovalDecision, PendingInteractionResolution, } from "@bb/domain";
+import {
+  Button
+UNRESOLVABLE in /testbed/apps/app/src/components/thread/ThreadWorkspaceOpenButton.tsx : useCallback, useState } from "react";
+import type {
+  WorkspaceOpenTarget, WorkspaceOpenTargetId, } from "@bb/host-daemon-contract";
+import vscodeIcon from "@/assets/workspace-open-target-icons/vscode.png";
+import cursorIcon from "@/assets/workspace-open-target-icons/cursor.png";
+import sublimeTextIcon from "@/assets/workspace-open-target-icons/sublime-text.png";
+import zedIcon from "@/assets/workspace-open-target-icons/zed.png";
+import windsurfIcon from "@/assets/workspace-open-target-icons/windsurf.png";
+import antigravityIcon from "@/assets/workspace-open-target-icons/antigravity.png";
+import finderIcon from "@/assets/workspace-open-target-icons/finder.png";
+import terminalIcon from "@/assets/workspace-open-target-icons/terminal.png";
+import iterm2Icon from "@/assets/workspace-open-target-icons/iterm2.png";
+import ghosttyIcon from "@/assets/workspace-open-target-icons/ghostty.png";
+import xcodeIcon from "@/assets/workspace-open-target-icons/xcode.png";
+import { SplitButton
+UNRESOLVABLE in /testbed/apps/app/src/components/layout/AppLayout.tsx : Fragment, CSSProperties, Ref, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useIsMutating } from "@tanstack/react-query";
+import { useAtom } from "jotai";
+import { atomWithStorage } from "jotai/utils";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import type { Thread } from "@bb/domain";
+import type { ProjectResponse } from "@bb/server-contract";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/layout/AppPageHeader.tsx : ReactNode } from "react";
+import { SidebarTrigger
+UNRESOLVABLE in /testbed/apps/app/src/components/ui/context-menu.tsx : cn } from "@/lib/utils";
+import { COARSE_POINTER_CHECK_SLOT_CLASS } from "./coarse-pointer-sizing.js";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/ui/dropdown-menu.tsx : cn } from "@/lib/utils";
+import { COARSE_POINTER_CHECK_SLOT_CLASS } from "./coarse-pointer-sizing.js";
+import {
+  type ResponsiveOverlayContextValue, } from "./responsive-overlay.js";
+import { getOverlayTriggerClassName } from "./overlay-trigger.js";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/ui/split-button.tsx : Fragment, type ReactNode } from "react";
+import { cn } from "@/lib/utils";
+import { buttonVariants } from "./button.js";
+import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "./coarse-pointer-sizing.js";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/ui/image-lightbox.tsx : useEffect } from "react";
+import { Button } from "./button.js";
+import { Dialog, DialogTitle } from "./dialog.js";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/ui/scroll-to-bottom-button.tsx : cn } from "@/lib/utils";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/ui/dialog.tsx : Slot } from "@radix-ui/react-slot";
+
+import { cn } from "@/lib/utils";
+import {
+  DrawerDescription as DrawerDescriptionPrimitive, DrawerTitle as DrawerTitlePrimitive, } from "./drawer.js";
+import {
+  type ResponsiveOverlayContextValue, } from "./responsive-overlay.js";
+import { getOverlayTriggerClassName } from "./overlay-trigger.js";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/ui/sidebar.tsx : Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+
+import { useIsCompactViewport } from "./hooks/use-compact-viewport.js";
+import { cn } from "@/lib/utils";
+import { Button } from "./button.js";
+import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "./coarse-pointer-sizing.js";
+import { Input } from "./input.js";
+import { Separator } from "./separator.js";
+import { Skeleton } from "./skeleton.js";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/ui/copy-button.tsx : useEffect, useState } from "react";
+import { cn } from "@/lib/utils";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/ui/detail-card.stories.tsx : Host } from "@bb/domain";
+import { Button } from "./button";
+import { DetailCard, DetailRow } from "./detail-card";
+import { Input } from "./input";
+import { LocalhostBadge } from "./localhost-badge";
+import { HostStatusBadge } from "../HostStatusIndicator";
+import { BranchPicker } from "../pickers/BranchPicker";
+import { HostPicker } from "../pickers/HostPicker";
+import { OptionPicker } from "../pickers/OptionPicker";
+import {
+  WorkspaceChangesList, WorkspaceChangedFile, } from "../thread/WorkspaceChangesList";
+import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/ui/button.stories.tsx : type ButtonProps } from "./button";
+import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/ui/file-path-link.tsx : cn } from "@/lib/utils";
+import { TruncateStart } from "./truncate-start.js";
+import { Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/sidebar/ProjectRow.stories.tsx : useCallback, useState, type ReactNode } from "react";
+import type { ThreadListEntry } from "@bb/domain";
+import type { ProjectResponse } from "@bb/server-contract";
+import {
+  BRANCH_NAMES, HOST_IDS, PROJECT_IDS, makeProject as makeSharedProject, makeThreadListEntry, } from "../../../.ladle/story-fixtures";
+import {
+  SidebarMenu
+UNRESOLVABLE in /testbed/apps/app/src/components/sidebar/ThreadRow.tsx : memo, useState } from "react";
+import type { ThreadListEntry } from "@bb/domain";
+import {
+  Icon, NavLink } from "react-router-dom";
+import {
+  ThreadActionsContextMenu, ThreadActionsMenu, } from "@/components/thread/ThreadActionsMenu";
+import {
+  COARSE_POINTER_DOT_SIZE_CLASS
+UNRESOLVABLE in /testbed/apps/app/src/components/sidebar/ThreadRow.stories.tsx : ReactNode } from "react";
+import type { ThreadListEntry } from "@bb/domain";
+import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
+import { SidebarMenu
+UNRESOLVABLE in /testbed/apps/app/src/components/sidebar/ProjectRow.test.tsx : Suspense, type ReactNode } from "react";
+import {
+  act, cleanup, render, screen, waitFor, } from "@testing-library/react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { Provider as JotaiProvider } from "jotai";
+import type { ThreadListEntry } from "@bb/domain";
+import type { ProjectResponse } from "@bb/server-contract";
+import { SidebarStickyStack
+UNRESOLVABLE in /testbed/apps/app/src/components/sidebar/ProjectRow.tsx : useMemo } from "react";
+import type { ThreadListEntry } from "@bb/domain";
+import type { ProjectResponse } from "@bb/server-contract";
+import { NavLink } from "react-router-dom";
+import { EmptyState, ProjectActionsContextMenu, ProjectActionsMenu, } from "@/components/project/ProjectActionsMenu";
+import { SidebarMenuItem
+UNRESOLVABLE in /testbed/apps/app/src/components/sidebar/AppSidebar.tsx : useCallback, useRef } from "react";
+import { cn } from "@/lib/utils";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  Icon
+UNRESOLVABLE in /testbed/apps/app/src/components/sidebar/ProjectList.tsx : memo, useCallback, useMemo } from "react";
+import { useAtom } from "jotai";
+import {
+  useQueries, QueryFunctionContext, UseQueryResult, } from "@tanstack/react-query";
+import {
+  findLocalPathProjectSourceForHost, ThreadListEntry, } from "@bb/domain";
+import type { ProjectSourceWorkspaceStatusResponse } from "@bb/server-contract";
+import { useLocation } from "react-router-dom";
+import {
+  getConnectionAwareQueryState, useConnectionAwareQueryState, useServerConnectionGracePeriodElapsed, ConnectionAwareQueryStatus, } from "@/hooks/queries/connection-aware-query-state";
+import { useProjects } from "@/hooks/queries/project-queries";
+import {
+  isLocalPathMissing, useLocalPathExistence, } from "@/hooks/queries/host-path-queries";
+import {
+  projectSourceWorkspaceStatusQueryKey, threadListQueryKey, ThreadListQueryKey, } from "@/hooks/queries/query-keys";
+import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { useServerConnectionState } from "@/hooks/useServerConnectionState";
+import type { WebSocketConnectionState } from "@/lib/ws";
+import * as api from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { Button
+Files rewritten: 84

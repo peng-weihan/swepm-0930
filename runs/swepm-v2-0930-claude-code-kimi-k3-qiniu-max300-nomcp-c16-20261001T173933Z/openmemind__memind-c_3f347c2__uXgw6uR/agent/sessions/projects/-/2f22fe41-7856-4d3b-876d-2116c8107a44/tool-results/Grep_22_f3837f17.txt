@@ -1,0 +1,252 @@
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-10- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-11- * See the License for the specific language governing permissions and
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-12- * limitations under the License.
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-13- */
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-14-package com.openmemind.ai.memory.autoconfigure;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-15-
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java:16:import com.openmemind.ai.memory.core.builder.MemoryBuildOptions;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-17-import com.openmemind.ai.memory.core.extraction.context.CommitDetectorConfig;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-18-import com.openmemind.ai.memory.core.extraction.insight.scheduler.InsightBuildConfig;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-19-import com.openmemind.ai.memory.core.extraction.rawdata.chunk.ConversationChunkingConfig;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-20-import com.openmemind.ai.memory.core.extraction.rawdata.chunk.ConversationChunkingConfig.ConversationSegmentStrategy;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-21-import java.time.Duration;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-22-import org.springframework.boot.context.properties.ConfigurationProperties;
+--
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-28-@ConfigurationProperties(prefix = "memind.extraction")
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-29-public class MemoryExtractionProperties {
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-30-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-31-    private Duration timeout = Duration.ofMinutes(10);
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-32-    private Chunking chunking = new Chunking();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-33-    private Boundary boundary = new Boundary();
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java:34:    private InsightBuild insightBuild = new InsightBuild();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-35-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-36-    public Duration getTimeout() {
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-37-        return timeout;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-38-    }
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-39-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-40-    public void setTimeout(Duration timeout) {
+--
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-55-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-56-    public void setBoundary(Boundary boundary) {
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-57-        this.boundary = boundary;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-58-    }
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-59-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-60-    public InsightBuild getInsightBuild() {
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java:61:        return insightBuild;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-62-    }
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-63-
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java:64:    public void setInsightBuild(InsightBuild insightBuild) {
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java:65:        this.insightBuild = insightBuild;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-66-    }
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-67-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-68-    public static class Chunking {
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-69-        private static final ConversationChunkingConfig DEFAULTS =
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java:70:                MemoryBuildOptions.defaults().conversationChunking();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-71-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-72-        private ConversationSegmentStrategy strategy = DEFAULTS.strategy();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-73-        private int messagesPerChunk = DEFAULTS.messagesPerChunk();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-74-        private int minMessagesPerSegment = DEFAULTS.minMessagesPerSegment();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-75-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-76-        public ConversationSegmentStrategy getStrategy() {
+--
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-129-            this.minMessagesForLlm = v;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-130-        }
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-131-    }
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-132-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-133-    public static class InsightBuild {
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-134-        private static final InsightBuildConfig DEFAULTS =
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java:135:                MemoryBuildOptions.defaults().insightBuild();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-136-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-137-        private int groupingThreshold = DEFAULTS.groupingThreshold();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-138-        private int buildThreshold = DEFAULTS.buildThreshold();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-139-        private int concurrency = DEFAULTS.concurrency();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-140-        private int maxRetries = DEFAULTS.maxRetries();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryExtractionProperties.java-141-
+--
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-14-package com.openmemind.ai.memory.autoconfigure;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-15-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-16-import com.openmemind.ai.memory.autoconfigure.extraction.MemoryExtractionAutoConfiguration;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-17-import com.openmemind.ai.memory.autoconfigure.retrieval.MemoryRetrievalAutoConfiguration;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-18-import com.openmemind.ai.memory.core.Memory;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-19-import com.openmemind.ai.memory.core.buffer.MemoryBuffer;
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java:20:import com.openmemind.ai.memory.core.builder.MemoryBuildOptions;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-21-import com.openmemind.ai.memory.core.llm.ChatClientRegistry;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-22-import com.openmemind.ai.memory.core.llm.ChatClientSlot;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-23-import com.openmemind.ai.memory.core.prompt.InMemoryPromptRegistry;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-24-import com.openmemind.ai.memory.core.prompt.PromptRegistry;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-25-import com.openmemind.ai.memory.core.stats.DefaultToolStatsService;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-26-import com.openmemind.ai.memory.core.stats.ToolStatsService;
+--
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-71-    public Memory memind(
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-72-            ChatClientRegistry chatClientRegistry,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-73-            MemoryStore store,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-74-            MemoryBuffer buffer,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-75-            MemoryVector vector,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-76-            ObjectProvider<MemoryTextSearch> textSearchProvider,
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java:77:            ObjectProvider<MemoryBuildOptions> buildOptionsProvider,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-78-            PromptRegistry promptRegistry) {
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-79-        var builder =
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-80-                Memory.builder()
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-81-                        .chatClient(chatClientRegistry.defaultClient())
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-82-                        .store(store)
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-83-                        .buffer(buffer)
+--
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-93-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-94-        MemoryTextSearch textSearch = textSearchProvider.getIfAvailable();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-95-        if (textSearch != null) {
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-96-            builder.textSearch(textSearch);
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-97-        }
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-98-
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java:99:        MemoryBuildOptions buildOptions = buildOptionsProvider.getIfAvailable();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-100-        if (buildOptions != null) {
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-101-            builder.options(buildOptions);
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-102-        }
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-103-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-104-        return builder.build();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfiguration.java-105-    }
+--
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-14-package com.openmemind.ai.memory.autoconfigure.extraction;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-15-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-16-import com.openmemind.ai.memory.autoconfigure.MemoryExtractionProperties;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-17-import com.openmemind.ai.memory.core.buffer.InMemoryRecentConversationBuffer;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-18-import com.openmemind.ai.memory.core.buffer.MemoryBuffer;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-19-import com.openmemind.ai.memory.core.buffer.RecentConversationBuffer;
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:20:import com.openmemind.ai.memory.core.builder.MemoryBuildOptions;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-21-import com.openmemind.ai.memory.core.data.enums.MemoryCategory;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-22-import com.openmemind.ai.memory.core.extraction.MemoryExtractionPipeline;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-23-import com.openmemind.ai.memory.core.extraction.MemoryExtractor;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-24-import com.openmemind.ai.memory.core.extraction.context.CommitDetectorConfig;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-25-import com.openmemind.ai.memory.core.extraction.context.ContextCommitDetector;
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-26-import com.openmemind.ai.memory.core.extraction.context.LlmContextCommitDetector;
+--
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-92-        })
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-93-@EnableConfigurationProperties(MemoryExtractionProperties.class)
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-94-public class MemoryExtractionAutoConfiguration {
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-95-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-96-    @Bean
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-97-    @ConditionalOnMissingBean
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:98:    public ConversationChunkingConfig conversationChunkingConfig(MemoryExtractionProperties props) {
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-99-        var c = props.getChunking();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-100-        return new ConversationChunkingConfig(
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-101-                c.getMessagesPerChunk(), c.getStrategy(), c.getMinMessagesPerSegment());
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-102-    }
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-103-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-104-    @Bean
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-105-    @ConditionalOnMissingBean
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:106:    public InsightBuildConfig insightBuildConfig(MemoryExtractionProperties props) {
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-107-        var b = props.getInsightBuild();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-108-        return new InsightBuildConfig(
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-109-                b.getGroupingThreshold(), b.getBuildThreshold(),
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-110-                b.getConcurrency(), b.getMaxRetries());
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-111-    }
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-112-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-113-    @Bean
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-114-    @ConditionalOnMissingBean
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:115:    public CommitDetectorConfig boundaryDetectorConfig(MemoryExtractionProperties props) {
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-116-        var b = props.getBoundary();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-117-        return new CommitDetectorConfig(
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-118-                b.getMaxMessages(), b.getMaxTokens(), b.getMinMessagesForLlm());
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-119-    }
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-120-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-121-    @Bean
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-122-    @ConditionalOnMissingBean
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:123:    public MemoryBuildOptions memoryBuildOptions(
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:124:            ConversationChunkingConfig conversationChunkingConfig,
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:125:            InsightBuildConfig insightBuildConfig,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-126-            CommitDetectorConfig commitDetectorConfig) {
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:127:        return MemoryBuildOptions.builder()
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:128:                .conversationChunking(conversationChunkingConfig)
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:129:                .insightBuild(insightBuildConfig)
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:130:                .boundaryDetector(commitDetectorConfig)
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-131-                .build();
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-132-    }
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-133-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-134-    @Bean
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-135-    @ConditionalOnMissingBean
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-136-    @ConditionalOnBean(ChatClientRegistry.class)
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:137:    public ContextCommitDetector boundaryDetector(
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-138-            CommitDetectorConfig commitDetectorConfig,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-139-            ChatClientRegistry chatClientRegistry,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-140-            PromptRegistry promptRegistry) {
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-141-        return new LlmContextCommitDetector(
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-142-                commitDetectorConfig,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-143-                chatClientRegistry.resolve(ChatClientSlot.CONTEXT_COMMIT_DETECTOR),
+--
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-331-        InsightGenerator.class,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-332-        InsightGroupClassifier.class,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-333-        InsightGroupRouter.class,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-334-        InsightTreeReorganizer.class,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-335-        MemoryVector.class
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-336-    })
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:337:    public InsightBuildScheduler insightBuildScheduler(
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-338-            MemoryStore store,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-339-            MemoryBuffer buffer,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-340-            InsightGenerator generator,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-341-            InsightGroupClassifier groupClassifier,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-342-            InsightGroupRouter groupRouter,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-343-            InsightTreeReorganizer treeReorganizer,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-344-            MemoryVector vector,
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:345:            InsightBuildConfig insightBuildConfig,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-346-            ObjectProvider<MemoryObserver> observerProvider) {
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-347-        return new InsightBuildScheduler(
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-348-                buffer.insightBuffer(),
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-349-                store,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-350-                generator,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-351-                groupClassifier,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-352-                groupRouter,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-353-                treeReorganizer,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-354-                vector,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-355-                IdUtils.snowflake(),
+testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java:356:                insightBuildConfig,
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-357-                observerProvider.getIfAvailable());
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-358-    }
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-359-
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-360-    @Bean
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-361-    @ConditionalOnMissingBean
+/testbed/memind-spring-boot-starter/src/main/java/com/openmemind/ai/memory/autoconfigure/extraction/MemoryExtractionAutoConfiguration.java-362-    @ConditionalOnBean(InsightBuildScheduler.class)
+--
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-20-import com.openmemind.ai.memory.core.buffer.ConversationBuffer;
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-21-import com.openmemind.ai.memory.core.buffer.InMemoryConversationBuffer;
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-22-import com.openmemind.ai.memory.core.buffer.InMemoryInsightBuffer;
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-23-import com.openmemind.ai.memory.core.buffer.InMemoryRecentConversationBuffer;
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-24-import com.openmemind.ai.memory.core.buffer.InsightBuffer;
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-25-import com.openmemind.ai.memory.core.buffer.MemoryBuffer;
+testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java:26:import com.openmemind.ai.memory.core.builder.MemoryBuildOptions;
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-27-import com.openmemind.ai.memory.core.data.MemoryId;
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-28-import com.openmemind.ai.memory.core.extraction.MemoryExtractor;
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-29-import com.openmemind.ai.memory.core.extraction.context.ContextCommitDetector;
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-30-import com.openmemind.ai.memory.core.extraction.context.LlmContextCommitDetector;
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-31-import com.openmemind.ai.memory.core.extraction.insight.generator.InsightGenerator;
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-32-import com.openmemind.ai.memory.core.extraction.insight.group.InsightGroupClassifier;
+--
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-133-                            assertThat(context).hasSingleBean(PromptRegistry.class);
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-134-
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-135-                            PromptRegistry promptRegistry = context.getBean(PromptRegistry.class);
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-136-                            DefaultMemory memory = (DefaultMemory) context.getBean(Memory.class);
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-137-                            MemoryExtractor extractor =
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-138-                                    readField(memory, "extractor", MemoryExtractor.class);
+testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java:139:                            LlmContextCommitDetector boundaryDetector =
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-140-                                    readField(
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-141-                                            extractor,
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-142-                                            "contextCommitDetector",
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-143-                                            LlmContextCommitDetector.class);
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-144-
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-145-                            assertThat(
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-146-                                            readField(
+testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java:147:                                                    boundaryDetector,
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-148-                                                    "promptRegistry",
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-149-                                                    PromptRegistry.class))
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-150-                                    .isSameAs(promptRegistry);
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-151-                        });
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-152-    }
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-153-
+--
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-402-        MemoryTextSearch memoryTextSearch() {
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-403-            return (memoryId, query, topK, target) ->
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-404-                    reactor.core.publisher.Mono.just(java.util.List.of());
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-405-        }
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-406-
+/testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java-407-        @Bean
+testbed/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java:408:        MemoryBuildOptions memoryBuildOptions() {
+
+[Showing results with pagination = limit: 250]

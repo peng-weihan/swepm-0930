@@ -1,0 +1,150 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch tests/test_audio_file_regression.c...
+error: while searching for:
+// Canonical parameters used in generate_reference_files.sh
+static const SpectralBleachDenoiserParameters CANONICAL_DENOISER_PARAMS = {
+    .residual_listen = false,
+    .learn_noise = 1,          // Learn all modes
+    .noise_reduction_mode = 3, // Use maximum profile
+    .reduction_amount = 20.0f,
+    .smoothing_factor = 0.0f,
+    .whitening_factor = 50.0f,
+
+error: patch failed: tests/test_audio_file_regression.c:26
+error: tests/test_audio_file_regression.c: patch does not apply
+Checking patch tests/test_audio_regression.c...
+error: while searching for:
+
+  SpectralBleachDenoiserParameters parameters =
+      (SpectralBleachDenoiserParameters){
+          .learn_noise = 1,          // Learn all modes
+          .noise_reduction_mode = 1, // Use average when processing
+          .reduction_amount = 20.0f,
+          .smoothing_factor = 0.0f,
+          .masking_depth = 0.5f,
+
+error: patch failed: tests/test_audio_regression.c:70
+error: tests/test_audio_regression.c: patch does not apply
+Checking patch tests/test_integration.c...
+error: while searching for:
+// Include the public API
+#include "specbleach_2d_denoiser.h"
+
+#include "specbleach_denoiser.h"
+
+// Function prototypes
+
+error: patch failed: tests/test_integration.c:14
+error: tests/test_integration.c: patch does not apply
+Checking patch tests/test_noise_floor_manager.c...
+error: while searching for:
+  printf("Testing Noise Floor Manager apply...\n");
+
+  uint32_t fft_size = 1024;
+  uint32_t real_size = fft_size / 2 + 1;
+  NoiseFloorManager* nfm = noise_floor_manager_initialize(fft_size, 44100, 256);
+
+  float* gain_spectrum = (float*)calloc(fft_size, sizeof(float));
+  float* noise_profile = (float*)calloc(real_size, sizeof(float));
+
+  for (uint32_t k = 0; k < fft_size; k++)
+    gain_spectrum[k] = 0.5f;
+  for (uint32_t k = 0; k < real_size; k++)
+    noise_profile[k] = 1.0f;
+
+  // Coverage: NULL inputs
+  noise_floor_manager_apply(NULL, real_size, fft_size, gain_spectrum,
+                            noise_profile, 0.1f, 0.5f);
+  noise_floor_manager_apply(nfm, real_size, fft_size, NULL, noise_profile, 0.1f,
+                            0.5f);
+  noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum, NULL, 0.1f,
+                            0.5f);
+
+  // Test with large reduction amount
+  noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum,
+                            noise_profile, 2.0f, 0.5f);
+  TEST_FLOAT_CLOSE(gain_spectrum[0], 1.0f, 0.001f); // Should be capped at 1.0
+
+  // Test standard application
+  for (uint32_t k = 0; k < fft_size; k++)
+    gain_spectrum[k] = 0.1f;
+  noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum,
+                            noise_profile, 0.1f, 0.5f);
+
+  free(gain_spectrum);
+  free(noise_profile);
+
+error: patch failed: tests/test_noise_floor_manager.c:35
+error: tests/test_noise_floor_manager.c: patch does not apply
+Checking patch tests/test_noise_profile.c...
+error: while searching for:
+  // Test invalid mode handling
+  TEST_ASSERT(is_noise_estimation_available(np, 0) == false,
+              "Mode 0 should be invalid");
+  TEST_ASSERT(is_noise_estimation_available(np, 4) == false,
+              "Mode 4 should be invalid");
+  TEST_ASSERT(get_noise_profile(np, 0) == NULL, "Mode 0 should return NULL");
+  TEST_ASSERT(get_noise_profile(np, 4) == NULL, "Mode 4 should return NULL");
+  TEST_ASSERT(get_noise_profile_blocks_averaged(np, 0) == 0,
+              "Mode 0 should return 0 blocks");
+
+  // Initially no profiles should be available
+  for (int mode = 1; mode <= 3; mode++) {
+    TEST_ASSERT(is_noise_estimation_available(np, mode) == false,
+                "Profile should not be available initially");
+    TEST_ASSERT(get_noise_profile_blocks_averaged(np, mode) == 0,
+                "Should have 0 blocks averaged initially");
+  }
+
+
+error: patch failed: tests/test_noise_profile.c:44
+error: tests/test_noise_profile.c: patch does not apply
+Checking patch tests/test_specbleach_2d_denoiser.c...
+error: while searching for:
+
+#include "specbleach_2d_denoiser.h"
+
+#define TEST_ASSERT(condition, message)                                        \
+  do {                                                                         \
+    if (!(condition)) {                                                        \
+
+error: patch failed: tests/test_specbleach_2d_denoiser.c:8
+error: tests/test_specbleach_2d_denoiser.c: patch does not apply
+Checking patch tests/test_specbleach_denoiser.c...
+error: while searching for:
+
+#include "specbleach_denoiser.h"
+
+#define TEST_ASSERT(condition, message)                                        \
+  do {                                                                         \
+    if (!(condition)) {                                                        \
+
+error: patch failed: tests/test_specbleach_denoiser.c:9
+error: tests/test_specbleach_denoiser.c: patch does not apply
+patching file tests/test_audio_file_regression.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_audio_regression.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_integration.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_noise_floor_manager.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_noise_profile.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_specbleach_2d_denoiser.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_specbleach_denoiser.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+Directory already configured.
+
+Just run your build command (e.g. ninja) and Meson will regenerate as necessary.
+If ninja fails, run "ninja reconfigure" or "meson --reconfigure"
+to force Meson to regenerate.
+
+If build failures persist, run "meson setup --wipe" to rebuild from scratch
+using the same options as passed when configuring the build.
+To change option values, run "meson configure" instead.
+ninja: Entering directory `/testbed/build'
+ninja: no work to do.
+No tests defined.
+OMNIGRIL_EXIT_CODE=0

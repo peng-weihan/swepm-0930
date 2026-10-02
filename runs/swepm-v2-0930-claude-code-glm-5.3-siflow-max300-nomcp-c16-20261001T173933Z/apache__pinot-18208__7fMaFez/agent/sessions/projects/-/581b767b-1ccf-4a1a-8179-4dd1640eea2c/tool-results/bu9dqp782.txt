@@ -1,0 +1,1108 @@
+diff --git a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/FunctionEvaluator.java b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/FunctionEvaluator.java
+index 62ab59da2b..226070e9fa 100644
+--- a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/FunctionEvaluator.java
++++ b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/FunctionEvaluator.java
+@@ -23,8 +23,11 @@ import org.apache.pinot.spi.data.readers.GenericRow;
+ 
+ 
+ /**
+- * Interface for evaluators of transform function expressions of schema field specs
++ * Interface for evaluators of transform function expressions of schema field specs.
++ *
++ * @deprecated use {@link org.apache.pinot.spi.function.FunctionEvaluator} instead.
+  */
++@Deprecated
+ public interface FunctionEvaluator {
+ 
+   /**
+diff --git a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/FunctionEvaluatorFactory.java b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/FunctionEvaluatorFactory.java
+index f35961c3bf..39806879d3 100644
+--- a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/FunctionEvaluatorFactory.java
++++ b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/FunctionEvaluatorFactory.java
+@@ -19,16 +19,17 @@
+ package org.apache.pinot.segment.local.function;
+ 
+ import javax.annotation.Nullable;
+-import org.apache.pinot.segment.local.utils.SchemaUtils;
+ import org.apache.pinot.spi.data.FieldSpec;
+-import org.apache.pinot.spi.data.TimeFieldSpec;
+-import org.apache.pinot.spi.data.TimeGranularitySpec;
++import org.apache.pinot.spi.function.FunctionEvaluator;
+ 
+ 
+ /**
+  * Factory class to create an {@link FunctionEvaluator} for the field spec based on the
+  * {@link FieldSpec#getTransformFunction()}
++ *
++ * @deprecated use {@link org.apache.pinot.common.evaluator.FunctionEvaluatorFactory} instead.
+  */
++@Deprecated
+ public class FunctionEvaluatorFactory {
+   private FunctionEvaluatorFactory() {
+   }
+@@ -47,75 +48,17 @@ public class FunctionEvaluatorFactory {
+    */
+   @Nullable
+   public static FunctionEvaluator getExpressionEvaluator(FieldSpec fieldSpec) {
+-    FunctionEvaluator functionEvaluator = null;
+-
+-    String columnName = fieldSpec.getName();
+-    // TODO: once we have published a release w/ IngestionConfig#TransformConfigs, stop reading transform function
+-    //  from schema in next
+-    //  release
+-    String transformExpression = fieldSpec.getTransformFunction();
+-    if (transformExpression != null && !transformExpression.isEmpty()) {
+-
+-      // if transform function expression present, use it to generate function evaluator
+-      try {
+-        functionEvaluator = getExpressionEvaluator(transformExpression);
+-      } catch (Exception e) {
+-        throw new IllegalStateException(
+-            "Caught exception while constructing expression evaluator for transform expression: " + transformExpression
+-                + " of column: " + columnName + ", exception: " + e.getMessage(), e);
+-      }
+-    } else if (fieldSpec.getFieldType() == FieldSpec.FieldType.TIME) {
+-
+-      // Time conversions should be done using DateTimeFieldSpec and transformFunctions
+-      // But we need below lines for converting TimeFieldSpec's incoming to outgoing
+-      TimeFieldSpec timeFieldSpec = (TimeFieldSpec) fieldSpec;
+-      TimeGranularitySpec incomingGranularitySpec = timeFieldSpec.getIncomingGranularitySpec();
+-      TimeGranularitySpec outgoingGranularitySpec = timeFieldSpec.getOutgoingGranularitySpec();
+-      if (!incomingGranularitySpec.equals(outgoingGranularitySpec)) {
+-        if (!incomingGranularitySpec.getName().equals(outgoingGranularitySpec.getName())) {
+-          functionEvaluator = new TimeSpecFunctionEvaluator(incomingGranularitySpec, outgoingGranularitySpec);
+-        } else {
+-          throw new IllegalStateException(
+-              "Invalid timeSpec - Incoming and outgoing field specs are different, but name " + incomingGranularitySpec
+-                  .getName() + " is same");
+-        }
+-      }
+-    } else if (columnName.endsWith(SchemaUtils.MAP_KEY_COLUMN_SUFFIX)) {
+-
+-      // for backward compatible handling of Map type (currently only in Avro)
+-      String sourceMapName = columnName.substring(0, columnName.length() - SchemaUtils.MAP_KEY_COLUMN_SUFFIX.length());
+-      String defaultMapKeysTransformExpression = getDefaultMapKeysTransformExpression(sourceMapName);
+-      functionEvaluator = getExpressionEvaluator(defaultMapKeysTransformExpression);
+-    } else if (columnName.endsWith(SchemaUtils.MAP_VALUE_COLUMN_SUFFIX)) {
+-      // for backward compatible handling of Map type in avro (currently only in Avro)
+-      String sourceMapName =
+-          columnName.substring(0, columnName.length() - SchemaUtils.MAP_VALUE_COLUMN_SUFFIX.length());
+-      String defaultMapValuesTransformExpression = getDefaultMapValuesTransformExpression(sourceMapName);
+-      functionEvaluator = getExpressionEvaluator(defaultMapValuesTransformExpression);
+-    }
+-    return functionEvaluator;
++    return org.apache.pinot.common.evaluator.FunctionEvaluatorFactory.getExpressionEvaluator(fieldSpec);
+   }
+ 
+   public static FunctionEvaluator getExpressionEvaluator(String transformExpression) {
+-    if (isGroovyExpression(transformExpression)) {
+-      return new GroovyFunctionEvaluator(transformExpression);
+-    } else {
+-      return new InbuiltFunctionEvaluator(transformExpression);
+-    }
++    return org.apache.pinot.common.evaluator.FunctionEvaluatorFactory.getExpressionEvaluator(transformExpression);
+   }
+ 
+   /**
+    * @return true if the given transform function is a groovy expression, otherwise returns false
+    */
+   public static boolean isGroovyExpression(String transformExpression) {
+-    return transformExpression.startsWith(GroovyFunctionEvaluator.getGroovyExpressionPrefix());
+-  }
+-
+-  private static String getDefaultMapKeysTransformExpression(String mapColumnName) {
+-    return String.format("Groovy({%s.sort()*.key}, %s)", mapColumnName, mapColumnName);
+-  }
+-
+-  private static String getDefaultMapValuesTransformExpression(String mapColumnName) {
+-    return String.format("Groovy({%s.sort()*.value}, %s)", mapColumnName, mapColumnName);
++    return org.apache.pinot.common.evaluator.FunctionEvaluatorFactory.isGroovyExpression(transformExpression);
+   }
+ }
+diff --git a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/GroovyFunctionEvaluator.java b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/GroovyFunctionEvaluator.java
+index 4469cb6578..a573a33502 100644
+--- a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/GroovyFunctionEvaluator.java
++++ b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/GroovyFunctionEvaluator.java
+@@ -19,22 +19,8 @@
+ package org.apache.pinot.segment.local.function;
+ 
+ import com.fasterxml.jackson.core.JsonProcessingException;
+-import com.google.common.base.Preconditions;
+-import com.google.common.base.Splitter;
+-import groovy.lang.Binding;
+-import groovy.lang.GroovyShell;
+-import groovy.lang.Script;
+-import java.util.Collections;
+ import java.util.List;
+-import java.util.regex.Matcher;
+-import java.util.regex.Pattern;
+ import org.apache.pinot.spi.data.readers.GenericRow;
+-import org.codehaus.groovy.ast.expr.MethodCallExpression;
+-import org.codehaus.groovy.control.CompilerConfiguration;
+-import org.codehaus.groovy.control.customizers.ImportCustomizer;
+-import org.codehaus.groovy.control.customizers.SecureASTCustomizer;
+-import org.slf4j.Logger;
+-import org.slf4j.LoggerFactory;
+ 
+ 
+ /**
+@@ -50,191 +36,55 @@ import org.slf4j.LoggerFactory;
+  *       "transformFunction": "Groovy({firstName+' '+lastName}, firstName, lastName)"
+  *     }
+  *  ]
++ *
++ * @deprecated use {@link org.apache.pinot.common.evaluator.GroovyFunctionEvaluator} instead.
+  */
+-public class GroovyFunctionEvaluator implements FunctionEvaluator {
+-  private static final Logger LOGGER = LoggerFactory.getLogger(GroovyFunctionEvaluator.class);
+-
+-  private static final String GROOVY_EXPRESSION_PREFIX = "Groovy";
+-  private static final String GROOVY_FUNCTION_REGEX = "Groovy\\(\\{(?<script>.+)}(,(?<arguments>.+))?\\)";
+-  private static final Pattern GROOVY_FUNCTION_PATTERN =
+-      Pattern.compile(GROOVY_FUNCTION_REGEX, Pattern.CASE_INSENSITIVE);
+-  private static final String ARGUMENTS_GROUP_NAME = "arguments";
+-  private static final String SCRIPT_GROUP_NAME = "script";
+-  private static final String ARGUMENTS_SEPARATOR = ",";
+-  private static GroovyStaticAnalyzerConfig _groovyStaticAnalyzerConfig;
+-
+-  private final List<String> _arguments;
+-  private final int _numArguments;
+-  private final Binding _binding;
+-  private final Script _script;
+-  private final String _expression;
+-  private static CompilerConfiguration _compilerConfiguration = new CompilerConfiguration();
++@Deprecated
++public class GroovyFunctionEvaluator extends org.apache.pinot.common.evaluator.GroovyFunctionEvaluator
++    implements FunctionEvaluator {
+ 
+   public GroovyFunctionEvaluator(String closure) {
+-    _expression = closure;
+-    Matcher matcher = GROOVY_FUNCTION_PATTERN.matcher(closure);
+-    Preconditions.checkState(matcher.matches(), "Invalid transform expression: %s", closure);
+-    String arguments = matcher.group(ARGUMENTS_GROUP_NAME);
+-    if (arguments != null) {
+-      _arguments = Splitter.on(ARGUMENTS_SEPARATOR).trimResults().splitToList(arguments);
+-    } else {
+-      _arguments = Collections.emptyList();
+-    }
+-    _numArguments = _arguments.size();
+-    _binding = new Binding();
+-    String scriptText = matcher.group(SCRIPT_GROUP_NAME);
+-    try {
+-      _script = createSafeShell(_binding).parse(scriptText);
+-    } catch (Exception e) {
+-      throw new IllegalStateException("Failed to compile groovy script: " + closure + ", exception: " + e.getMessage(),
+-          e);
+-    }
++    super(closure);
+   }
+ 
+   public static String getGroovyExpressionPrefix() {
+-    return GROOVY_EXPRESSION_PREFIX;
++    return org.apache.pinot.common.evaluator.GroovyFunctionEvaluator.getGroovyExpressionPrefix();
+   }
+ 
+-  /**
+-   * This method is used to parse the Groovy script and check if the script is valid.
+-   * @param script Groovy script to be parsed.
+-   */
+   public static void parseGroovyScript(String script) {
+-    Matcher matcher = GROOVY_FUNCTION_PATTERN.matcher(script);
+-    Preconditions.checkState(matcher.matches(), "Invalid transform expression: %s", script);
+-    String scriptText = matcher.group(SCRIPT_GROUP_NAME);
+-    new GroovyShell(new Binding(), _compilerConfiguration).parse(scriptText);
++    org.apache.pinot.common.evaluator.GroovyFunctionEvaluator.parseGroovyScript(script);
+   }
+ 
+-  /**
+-   * This will create a Groovy Shell that is configured with static syntax analysis. This static syntax analysis
+-   * will that any script which is run is restricted to a specific list of allowed operations, thus making it harder
+-   * to execute malicious code.
+-   *
+-   * @param binding Binding instance to be used by Groovy Shell.
+-   * @return GroovyShell instance with static syntax analysis.
+-   */
+-  private GroovyShell createSafeShell(Binding binding) {
+-    return new GroovyShell(binding, _compilerConfiguration);
++  public static void configureGroovySecurity(String groovyASTConfig)
++      throws Exception {
++    org.apache.pinot.common.evaluator.GroovyFunctionEvaluator.configureGroovySecurity(groovyASTConfig);
+   }
+ 
+-  @Override
+-  public List<String> getArguments() {
+-    return _arguments;
++  public static void setGroovyStaticAnalyzerConfig(GroovyStaticAnalyzerConfig groovyStaticAnalyzerConfig)
++      throws JsonProcessingException {
++    org.apache.pinot.common.evaluator.GroovyFunctionEvaluator.setGroovyStaticAnalyzerConfig(
++        groovyStaticAnalyzerConfig);
+   }
+ 
+-  @Override
+-  public Object evaluate(GenericRow genericRow) {
+-    boolean hasNullArgument = false;
+-    for (String argument : _arguments) {
+-      Object value = genericRow.getValue(argument);
+-      if (value == null) {
+-        hasNullArgument = true;
+-      }
+-      _binding.setVariable(argument, value);
+-    }
+-    try {
+-      return _script.run();
+-    } catch (Exception e) {
+-      if (hasNullArgument) {
+-        return null;
+-      } else {
+-        throw e;
+-      }
+-    }
++  public static void setGroovyStaticAnalyzerConfig(
++      org.apache.pinot.common.evaluator.GroovyStaticAnalyzerConfig groovyStaticAnalyzerConfig)
++      throws JsonProcessingException {
++    org.apache.pinot.common.evaluator.GroovyFunctionEvaluator.setGroovyStaticAnalyzerConfig(
++        groovyStaticAnalyzerConfig);
+   }
+ 
+   @Override
+-  public Object evaluate(Object[] values) {
+-    boolean hasNullArgument = false;
+-    for (int i = 0; i < _numArguments; i++) {
+-      Object value = values[i];
+-      if (value == null) {
+-        hasNullArgument = true;
+-      }
+-      _binding.setVariable(_arguments.get(i), value);
+-    }
+-    try {
+-      return _script.run();
+-    } catch (Exception e) {
+-      if (hasNullArgument) {
+-        return null;
+-      } else {
+-        throw e;
+-      }
+-    }
++  public List<String> getArguments() {
++    return super.getArguments();
+   }
+ 
+   @Override
+-  public String toString() {
+-    return _expression;
+-  }
+-
+-  public static void configureGroovySecurity(String groovyASTConfig)
+-      throws Exception {
+-    try {
+-      if (groovyASTConfig != null) {
+-        setGroovyStaticAnalyzerConfig(GroovyStaticAnalyzerConfig.fromJson(groovyASTConfig));
+-      } else {
+-        LOGGER.info("No Groovy Security Configuration found, Groovy static analysis is disabled");
+-      }
+-    } catch (Exception ex) {
+-      throw new Exception("Failed to configure Groovy Security", ex);
+-    }
+-  }
+-
+-  /**
+-   * Initialize or update the configuration for the Groovy Static Analyzer.
+-   * Update compiler configuration to include the new configuration.
+-   * @param groovyStaticAnalyzerConfig GroovyStaticAnalyzerConfig instance to be used for static syntax analysis.
+-   */
+-  public static void setGroovyStaticAnalyzerConfig(GroovyStaticAnalyzerConfig groovyStaticAnalyzerConfig)
+-      throws JsonProcessingException {
+-    synchronized (GroovyFunctionEvaluator.class) {
+-      _groovyStaticAnalyzerConfig = groovyStaticAnalyzerConfig;
+-      if (groovyStaticAnalyzerConfig != null) {
+-        _compilerConfiguration = createSecureGroovyConfig();
+-        LOGGER.info("Setting Groovy Static Analyzer Config: {}", groovyStaticAnalyzerConfig.toJson());
+-      } else {
+-        _compilerConfiguration = new CompilerConfiguration();
+-        LOGGER.info("Disabling Groovy Static Analysis");
+-      }
+-    }
++  public Object evaluate(GenericRow genericRow) {
++    return super.evaluate(genericRow);
+   }
+ 
+-  private static CompilerConfiguration createSecureGroovyConfig() {
+-    GroovyStaticAnalyzerConfig groovyConfig = _groovyStaticAnalyzerConfig;
+-    ImportCustomizer imports = new ImportCustomizer().addStaticStars("java.lang.Math");
+-    SecureASTCustomizer secure = new SecureASTCustomizer();
+-
+-    secure.addExpressionCheckers(expression -> {
+-      if (expression instanceof MethodCallExpression) {
+-        MethodCallExpression method = (MethodCallExpression) expression;
+-        return !groovyConfig.getDisallowedMethodNames().contains(method.getMethodAsString());
+-      } else {
+-        return true;
+-      }
+-    });
+-
+-    secure.setConstantTypesClassesWhiteList(GroovyStaticAnalyzerConfig.getDefaultAllowedTypes());
+-    secure.setImportsWhitelist(groovyConfig.getAllowedImports());
+-    secure.setStaticImportsWhitelist(groovyConfig.getAllowedImports());
+-    secure.setReceiversWhiteList(groovyConfig.getAllowedReceivers());
+-
+-    // Block all * imports
+-    secure.setStaticStarImportsWhitelist(groovyConfig.getAllowedImports());
+-    secure.setStarImportsWhitelist(groovyConfig.getAllowedImports());
+-
+-    // Allow all expression and token types
+-    secure.setExpressionsBlacklist(List.of());
+-    secure.setTokensBlacklist(List.of());
+-
+-    secure.setMethodDefinitionAllowed(groovyConfig.isMethodDefinitionAllowed());
+-    secure.setIndirectImportCheckEnabled(true);
+-    secure.setClosuresAllowed(true);
+-    secure.setPackageAllowed(false);
+-
+-    CompilerConfiguration compilerConfiguration = new CompilerConfiguration();
+-    return compilerConfiguration.addCompilationCustomizers(imports, secure);
++  @Override
++  public Object evaluate(Object[] values) {
++    return super.evaluate(values);
+   }
+ }
+diff --git a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/GroovyStaticAnalyzerConfig.java b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/GroovyStaticAnalyzerConfig.java
+index c817c25b03..3ddb97d321 100644
+--- a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/GroovyStaticAnalyzerConfig.java
++++ b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/GroovyStaticAnalyzerConfig.java
+@@ -20,20 +20,15 @@ package org.apache.pinot.segment.local.function;
+ 
+ import com.fasterxml.jackson.annotation.JsonProperty;
+ import com.fasterxml.jackson.core.JsonProcessingException;
+-import com.google.common.base.Preconditions;
+-import java.math.BigDecimal;
+-import java.math.BigInteger;
+ import java.util.List;
+-import org.apache.commons.lang3.StringUtils;
+-import org.apache.pinot.spi.utils.JsonUtils;
+ 
+ 
+-public class GroovyStaticAnalyzerConfig {
+-  private final List<String> _allowedReceivers;
+-  private final List<String> _allowedImports;
+-  private final List<String> _allowedStaticImports;
+-  private final List<String> _disallowedMethodNames;
+-  private final boolean _methodDefinitionAllowed;
++/**
++ * @deprecated use {@link org.apache.pinot.common.evaluator.GroovyStaticAnalyzerConfig} instead.
++ */
++@Deprecated
++public class GroovyStaticAnalyzerConfig
++    extends org.apache.pinot.common.evaluator.GroovyStaticAnalyzerConfig {
+ 
+   public GroovyStaticAnalyzerConfig(
+       @JsonProperty("allowedReceivers")
+@@ -46,93 +41,22 @@ public class GroovyStaticAnalyzerConfig {
+       List<String> disallowedMethodNames,
+       @JsonProperty("methodDefinitionAllowed")
+       boolean methodDefinitionAllowed) {
+-    _allowedImports = allowedImports;
+-    _allowedReceivers = allowedReceivers;
+-    _allowedStaticImports = allowedStaticImports;
+-    _disallowedMethodNames = disallowedMethodNames;
+-    _methodDefinitionAllowed = methodDefinitionAllowed;
+-  }
+-
+-  @JsonProperty("allowedReceivers")
+-  public List<String> getAllowedReceivers() {
+-    return _allowedReceivers;
+-  }
+-
+-  @JsonProperty("allowedImports")
+-  public List<String> getAllowedImports() {
+-    return _allowedImports;
+-  }
+-
+-  @JsonProperty("allowedStaticImports")
+-  public List<String> getAllowedStaticImports() {
+-    return _allowedStaticImports;
+-  }
+-
+-  @JsonProperty("disallowedMethodNames")
+-  public List<String> getDisallowedMethodNames() {
+-    return _disallowedMethodNames;
+-  }
+-
+-  @JsonProperty("methodDefinitionAllowed")
+-  public boolean isMethodDefinitionAllowed() {
+-    return _methodDefinitionAllowed;
+-  }
+-
+-  public String toJson() throws JsonProcessingException {
+-    return JsonUtils.objectToString(this);
++    super(allowedReceivers, allowedImports, allowedStaticImports, disallowedMethodNames, methodDefinitionAllowed);
+   }
+ 
+   public static GroovyStaticAnalyzerConfig fromJson(String configJson) throws JsonProcessingException {
+-    Preconditions.checkState(StringUtils.isNotBlank(configJson), "Empty groovySecurityConfiguration JSON string");
+-
+-    return JsonUtils.stringToObject(configJson, GroovyStaticAnalyzerConfig.class);
+-  }
+-
+-  public static List<Class> getDefaultAllowedTypes() {
+-    return List.of(
+-        Integer.class,
+-        Float.class,
+-        Long.class,
+-        Double.class,
+-        String.class,
+-        Object.class,
+-        Byte.class,
+-        BigDecimal.class,
+-        BigInteger.class,
+-        Integer.TYPE,
+-        Long.TYPE,
+-        Float.TYPE,
+-        Double.TYPE,
+-        Byte.TYPE
+-    );
+-  }
+-
+-  public static List<String> getDefaultAllowedReceivers() {
+-    return List.of(
+-        String.class.getName(),
+-        Math.class.getName(),
+-        java.util.List.class.getName(),
+-        Object.class.getName(),
+-        java.util.Map.class.getName()
+-    );
++    org.apache.pinot.common.evaluator.GroovyStaticAnalyzerConfig config =
++        org.apache.pinot.common.evaluator.GroovyStaticAnalyzerConfig.fromJson(configJson);
++    return fromCanonicalConfig(config);
+   }
+ 
+-  public static List<String> getDefaultAllowedImports() {
+-    return List.of(
+-        Math.class.getName(),
+-        java.util.List.class.getName(),
+-        String.class.getName(),
+-        java.util.Map.class.getName()
+-    );
++  public static GroovyStaticAnalyzerConfig createDefault() {
++    return fromCanonicalConfig(org.apache.pinot.common.evaluator.GroovyStaticAnalyzerConfig.createDefault());
+   }
+ 
+-  public static GroovyStaticAnalyzerConfig createDefault() {
+-    return new GroovyStaticAnalyzerConfig(
+-        GroovyStaticAnalyzerConfig.getDefaultAllowedReceivers(),
+-        GroovyStaticAnalyzerConfig.getDefaultAllowedImports(),
+-        GroovyStaticAnalyzerConfig.getDefaultAllowedImports(),
+-        List.of("execute", "invoke"),
+-        false
+-    );
++  private static GroovyStaticAnalyzerConfig fromCanonicalConfig(
++      org.apache.pinot.common.evaluator.GroovyStaticAnalyzerConfig config) {
++    return new GroovyStaticAnalyzerConfig(config.getAllowedReceivers(), config.getAllowedImports(),
++        config.getAllowedStaticImports(), config.getDisallowedMethodNames(), config.isMethodDefinitionAllowed());
+   }
+ }
+diff --git a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/InbuiltFunctionEvaluator.java b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/InbuiltFunctionEvaluator.java
+index 86ff0254b5..dde01b5f58 100644
+--- a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/InbuiltFunctionEvaluator.java
++++ b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/InbuiltFunctionEvaluator.java
+@@ -18,17 +18,7 @@
+  */
+ package org.apache.pinot.segment.local.function;
+ 
+-import com.google.common.base.Preconditions;
+-import java.util.ArrayList;
+-import java.util.Arrays;
+ import java.util.List;
+-import org.apache.commons.lang3.StringUtils;
+-import org.apache.pinot.common.function.FunctionInfo;
+-import org.apache.pinot.common.function.FunctionInvoker;
+-import org.apache.pinot.common.function.FunctionRegistry;
+-import org.apache.pinot.common.request.context.ExpressionContext;
+-import org.apache.pinot.common.request.context.FunctionContext;
+-import org.apache.pinot.common.request.context.RequestContextUtils;
+ import org.apache.pinot.spi.data.readers.GenericRow;
+ 
+ 
+@@ -41,352 +31,29 @@ import org.apache.pinot.spi.data.readers.GenericRow;
+  *   <li>ColumnNode - fetches the value of the column from the input GenericRow</li>
+  *   <li>ConstantNode - returns the literal value</li>
+  * </ul>
++ *
++ * @deprecated use {@link org.apache.pinot.common.evaluator.InbuiltFunctionEvaluator} instead.
+  */
+-public class InbuiltFunctionEvaluator implements FunctionEvaluator {
+-  // Root of the execution tree
+-  private final ExecutableNode _rootNode;
+-  private final List<String> _arguments;
+-  private final String _functionExpression;
++@Deprecated
++public class InbuiltFunctionEvaluator extends org.apache.pinot.common.evaluator.InbuiltFunctionEvaluator
++    implements FunctionEvaluator {
+ 
+   public InbuiltFunctionEvaluator(String functionExpression) {
+-    _functionExpression = functionExpression;
+-    _arguments = new ArrayList<>();
+-    _rootNode = planExecution(RequestContextUtils.getExpression(functionExpression));
+-  }
+-
+-  private ExecutableNode planExecution(ExpressionContext expression) {
+-    switch (expression.getType()) {
+-      case LITERAL:
+-        return new ConstantExecutionNode(expression.getLiteral().getValue());
+-      case IDENTIFIER:
+-        String columnName = expression.getIdentifier();
+-        ColumnExecutionNode columnExecutionNode = new ColumnExecutionNode(columnName, _arguments.size());
+-        _arguments.add(columnName);
+-        return columnExecutionNode;
+-      case FUNCTION:
+-        FunctionContext function = expression.getFunction();
+-        List<ExpressionContext> arguments = function.getArguments();
+-        int numArguments = arguments.size();
+-        ExecutableNode[] childNodes = new ExecutableNode[numArguments];
+-        for (int i = 0; i < numArguments; i++) {
+-          childNodes[i] = planExecution(arguments.get(i));
+-        }
+-        String functionName = function.getFunctionName();
+-        String canonicalName = FunctionRegistry.canonicalize(functionName);
+-        switch (canonicalName) {
+-          case "and":
+-            return new AndExecutionNode(childNodes);
+-          case "or":
+-            return new OrExecutionNode(childNodes);
+-          case "not":
+-            Preconditions.checkState(numArguments == 1, "NOT function expects 1 argument, got: %s", numArguments);
+-            return new NotExecutionNode(childNodes[0]);
+-          case "arrayvalueconstructor":
+-            Object[] values = new Object[numArguments];
+-            int i = 0;
+-            for (ExpressionContext literal : arguments) {
+-              values[i++] = literal.getLiteral().getValue();
+-            }
+-            return new ArrayConstantExecutionNode(values);
+-          default:
+-            FunctionInfo functionInfo = FunctionRegistry.lookupFunctionInfo(canonicalName, numArguments);
+-            if (functionInfo == null) {
+-              if (FunctionRegistry.contains(canonicalName)) {
+-                throw new IllegalStateException(
+-                    String.format("Unsupported function: %s with %d arguments", functionName, numArguments));
+-              } else {
+-                throw new IllegalStateException(String.format("Unsupported function: %s", functionName));
+-              }
+-            }
+-            return new FunctionExecutionNode(functionInfo, childNodes);
+-        }
+-      default:
+-        throw new IllegalStateException();
+-    }
++    super(functionExpression);
+   }
+ 
+   @Override
+   public List<String> getArguments() {
+-    return _arguments;
++    return super.getArguments();
+   }
+ 
+   @Override
+   public Object evaluate(GenericRow row) {
+-    return _rootNode.execute(row);
++    return super.evaluate(row);
+   }
+ 
+   @Override
+   public Object evaluate(Object[] values) {
+-    return _rootNode.execute(values);
+-  }
+-
+-  @Override
+-  public String toString() {
+-    return _functionExpression;
+-  }
+-
+-  private interface ExecutableNode {
+-
+-    Object execute(GenericRow row);
+-
+-    Object execute(Object[] values);
+-  }
+-
+-  private static class NotExecutionNode implements ExecutableNode {
+-    private final ExecutableNode _argumentNode;
+-
+-    NotExecutionNode(ExecutableNode argumentNode) {
+-      _argumentNode = argumentNode;
+-    }
+-
+-    @Override
+-    public Object execute(GenericRow row) {
+-      Boolean res = (Boolean) _argumentNode.execute(row);
+-      if (res == null) {
+-        return null;
+-      } else {
+-        return !res;
+-      }
+-    }
+-
+-    @Override
+-    public Object execute(Object[] values) {
+-      Boolean res = (Boolean) _argumentNode.execute(values);
+-      if (res == null) {
+-        return null;
+-      } else {
+-        return !res;
+-      }
+-    }
+-  }
+-
+-  private static class OrExecutionNode implements ExecutableNode {
+-    private final ExecutableNode[] _argumentNodes;
+-
+-    OrExecutionNode(ExecutableNode[] argumentNodes) {
+-      _argumentNodes = argumentNodes;
+-    }
+-
+-    @Override
+-    public Object execute(GenericRow row) {
+-      boolean hasNull = false;
+-
+-      for (ExecutableNode executableNode : _argumentNodes) {
+-        Boolean res = (Boolean) executableNode.execute(row);
+-        if (res == null) {
+-          hasNull = true;
+-          continue;
+-        }
+-        if (res) {
+-          return true;
+-        }
+-      }
+-
+-      return hasNull ? null : false;
+-    }
+-
+-    @Override
+-    public Object execute(Object[] values) {
+-      boolean hasNull = false;
+-
+-      for (ExecutableNode executableNode : _argumentNodes) {
+-        Boolean res = (Boolean) executableNode.execute(values);
+-        if (res == null) {
+-          hasNull = true;
+-          continue;
+-        }
+-        if (res) {
+-          return true;
+-        }
+-      }
+-
+-      return hasNull ? null : false;
+-    }
+-  }
+-
+-  private static class AndExecutionNode implements ExecutableNode {
+-    private final ExecutableNode[] _argumentNodes;
+-
+-    AndExecutionNode(ExecutableNode[] argumentNodes) {
+-      _argumentNodes = argumentNodes;
+-    }
+-
+-    @Override
+-    public Object execute(GenericRow row) {
+-      boolean hasNull = false;
+-
+-      for (ExecutableNode executableNode : _argumentNodes) {
+-        Boolean res = (Boolean) executableNode.execute(row);
+-        if (res == null) {
+-          hasNull = true;
+-          continue;
+-        }
+-        if (!res) {
+-          return false;
+-        }
+-      }
+-
+-      return hasNull ? null : true;
+-    }
+-
+-    @Override
+-    public Object execute(Object[] values) {
+-      boolean hasNull = false;
+-
+-      for (ExecutableNode executableNode : _argumentNodes) {
+-        Boolean res = (Boolean) executableNode.execute(values);
+-        if (res == null) {
+-          hasNull = true;
+-          continue;
+-        }
+-        if (!res) {
+-          return false;
+-        }
+-      }
+-
+-      return hasNull ? null : true;
+-    }
+-  }
+-
+-  private static class FunctionExecutionNode implements ExecutableNode {
+-    final FunctionInvoker _functionInvoker;
+-    final FunctionInfo _functionInfo;
+-    final ExecutableNode[] _argumentNodes;
+-    final Object[] _arguments;
+-
+-    FunctionExecutionNode(FunctionInfo functionInfo, ExecutableNode[] argumentNodes) {
+-      _functionInvoker = new FunctionInvoker(functionInfo);
+-      _functionInfo = functionInfo;
+-      _argumentNodes = argumentNodes;
+-      _arguments = new Object[_argumentNodes.length];
+-    }
+-
+-    @Override
+-    public Object execute(GenericRow row) {
+-      try {
+-        int numArguments = _argumentNodes.length;
+-        for (int i = 0; i < numArguments; i++) {
+-          _arguments[i] = _argumentNodes[i].execute(row);
+-        }
+-        if (!_functionInfo.hasNullableParameters()) {
+-          // Preserve null values during ingestion transformation if function is an inbuilt
+-          // scalar function that cannot handle nulls, and invoked with null parameter(s).
+-          for (Object argument : _arguments) {
+-            if (argument == null) {
+-              return null;
+-            }
+-          }
+-        }
+-        if (_functionInvoker.getMethod().isVarArgs()) {
+-          return _functionInvoker.invoke(new Object[]{_arguments});
+-        }
+-        _functionInvoker.convertTypes(_arguments);
+-        return _functionInvoker.invoke(_arguments);
+-      } catch (Exception e) {
+-        throw new RuntimeException("Caught exception while executing function: " + this + ": " + e.getMessage(), e);
+-      }
+-    }
+-
+-    @Override
+-    public Object execute(Object[] values) {
+-      try {
+-        int numArguments = _argumentNodes.length;
+-        for (int i = 0; i < numArguments; i++) {
+-          _arguments[i] = _argumentNodes[i].execute(values);
+-        }
+-        if (!_functionInfo.hasNullableParameters()) {
+-          // Preserve null values during ingestion transformation if function is an inbuilt
+-          // scalar function that cannot handle nulls, and invoked with null parameter(s).
+-          for (Object argument : _arguments) {
+-            if (argument == null) {
+-              return null;
+-            }
+-          }
+-        }
+-        if (_functionInvoker.getMethod().isVarArgs()) {
+-          return _functionInvoker.invoke(new Object[]{_arguments});
+-        }
+-        _functionInvoker.convertTypes(_arguments);
+-        return _functionInvoker.invoke(_arguments);
+-      } catch (Exception e) {
+-        throw new RuntimeException("Caught exception while executing function: " + this + ": " + e.getMessage(), e);
+-      }
+-    }
+-
+-    @Override
+-    public String toString() {
+-      return _functionInvoker.getMethod().getName() + '(' + StringUtils.join(_argumentNodes, ',') + ')';
+-    }
+-  }
+-
+-  private static class ConstantExecutionNode implements ExecutableNode {
+-    final Object _value;
+-
+-    ConstantExecutionNode(Object value) {
+-      _value = value;
+-    }
+-
+-    @Override
+-    public Object execute(GenericRow row) {
+-      return _value;
+-    }
+-
+-    @Override
+-    public Object execute(Object[] values) {
+-      return _value;
+-    }
+-
+-    @Override
+-    public String toString() {
+-      return String.format("'%s'", _value);
+-    }
+-  }
+-
+-  private static class ArrayConstantExecutionNode implements ExecutableNode {
+-    final Object[] _value;
+-
+-    ArrayConstantExecutionNode(Object[] value) {
+-      _value = value;
+-    }
+-
+-    @Override
+-    public Object[] execute(GenericRow row) {
+-      return _value;
+-    }
+-
+-    @Override
+-    public Object[] execute(Object[] values) {
+-      return _value;
+-    }
+-
+-    @Override
+-    public String toString() {
+-      return String.format("'%s'", Arrays.toString(_value));
+-    }
+-  }
+-
+-  private static class ColumnExecutionNode implements ExecutableNode {
+-    final String _column;
+-    final int _id;
+-
+-    ColumnExecutionNode(String column, int id) {
+-      _column = column;
+-      _id = id;
+-    }
+-
+-    @Override
+-    public Object execute(GenericRow row) {
+-      return row.getValue(_column);
+-    }
+-
+-    @Override
+-    public Object execute(Object[] values) {
+-      return values[_id];
+-    }
+-
+-    @Override
+-    public String toString() {
+-      return _column;
+-    }
++    return super.evaluate(values);
+   }
+ }
+diff --git a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/TimeSpecFunctionEvaluator.java b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/TimeSpecFunctionEvaluator.java
+index 3089864840..9f2fc20970 100644
+--- a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/TimeSpecFunctionEvaluator.java
++++ b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/function/TimeSpecFunctionEvaluator.java
+@@ -18,62 +18,38 @@
+  */
+ package org.apache.pinot.segment.local.function;
+ 
+-import com.google.common.base.Preconditions;
+-import java.util.Collections;
+ import java.util.List;
+ import org.apache.pinot.spi.data.TimeFieldSpec;
+ import org.apache.pinot.spi.data.TimeGranularitySpec;
+ import org.apache.pinot.spi.data.readers.GenericRow;
+-import org.apache.pinot.spi.utils.TimeConverter;
+-import org.apache.pinot.spi.utils.TimeUtils;
+ 
+ 
+ /**
+  * An implementation of {@link FunctionEvaluator} for converting the time value based on the {@link TimeFieldSpec}.
++ *
++ * @deprecated use {@link org.apache.pinot.common.evaluator.TimeSpecFunctionEvaluator} instead.
+  */
+-public class TimeSpecFunctionEvaluator implements FunctionEvaluator {
+-  private final String _incomingTimeColumn;
+-  private final String _outgoingTimeColumn;
+-  private final TimeConverter _incomingTimeConverter;
+-  private final TimeConverter _outgoingTimeConverter;
+-  private boolean _isValidated = false;
++@Deprecated
++public class TimeSpecFunctionEvaluator extends org.apache.pinot.common.evaluator.TimeSpecFunctionEvaluator
++    implements FunctionEvaluator {
+ 
+   public TimeSpecFunctionEvaluator(TimeGranularitySpec incomingGranularitySpec,
+       TimeGranularitySpec outgoingGranularitySpec) {
+-    Preconditions.checkState(!incomingGranularitySpec.equals(outgoingGranularitySpec));
+-    _incomingTimeColumn = incomingGranularitySpec.getName();
+-    _outgoingTimeColumn = outgoingGranularitySpec.getName();
+-    Preconditions.checkState(!_incomingTimeColumn.equals(_outgoingTimeColumn));
+-    _incomingTimeConverter = new TimeConverter(incomingGranularitySpec);
+-    _outgoingTimeConverter = new TimeConverter(outgoingGranularitySpec);
++    super(incomingGranularitySpec, outgoingGranularitySpec);
+   }
+ 
+   @Override
+   public List<String> getArguments() {
+-    return Collections.singletonList(_incomingTimeColumn);
++    return super.getArguments();
+   }
+ 
+-  /**
+-   * Performs time transformation
+-   */
+   @Override
+   public Object evaluate(GenericRow genericRow) {
+-    return evaluate(genericRow.getValue(_incomingTimeColumn));
++    return super.evaluate(genericRow);
+   }
+ 
+   @Override
+   public Object evaluate(Object[] values) {
+-    return evaluate(values[0]);
+-  }
+-
+-  private Object evaluate(Object incomingTimeValue) {
+-    if (!_isValidated) {
+-      if (_incomingTimeColumn == null || !TimeUtils
+-          .timeValueInValidRange(_incomingTimeConverter.toMillisSinceEpoch(incomingTimeValue))) {
+-        throw new IllegalStateException("No valid time value found in incoming time column: " + _incomingTimeColumn);
+-      }
+-      _isValidated = true;
+-    }
+-    return _outgoingTimeConverter.fromMillisSinceEpoch(_incomingTimeConverter.toMillisSinceEpoch(incomingTimeValue));
++    return super.evaluate(values);
+   }
+ }
+diff --git a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/ExpressionTransformer.java b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/ExpressionTransformer.java
+index 78cf8521a7..3e15403924 100644
+--- a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/ExpressionTransformer.java
++++ b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/ExpressionTransformer.java
+@@ -28,9 +28,8 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ import javax.annotation.Nullable;
++import org.apache.pinot.common.evaluator.FunctionEvaluatorFactory;
+ import org.apache.pinot.common.utils.ThrottledLogger;
+-import org.apache.pinot.segment.local.function.FunctionEvaluator;
+-import org.apache.pinot.segment.local.function.FunctionEvaluatorFactory;
+ import org.apache.pinot.segment.local.utils.SchemaUtils;
+ import org.apache.pinot.spi.config.table.TableConfig;
+ import org.apache.pinot.spi.config.table.ingestion.IngestionConfig;
+@@ -38,6 +37,7 @@ import org.apache.pinot.spi.config.table.ingestion.TransformConfig;
+ import org.apache.pinot.spi.data.FieldSpec;
+ import org.apache.pinot.spi.data.Schema;
+ import org.apache.pinot.spi.data.readers.GenericRow;
++import org.apache.pinot.spi.function.FunctionEvaluator;
+ import org.apache.pinot.spi.recordtransformer.RecordTransformer;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+diff --git a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/FilterTransformer.java b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/FilterTransformer.java
+index ebf1cd72ca..f79d1a7b3b 100644
+--- a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/FilterTransformer.java
++++ b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/FilterTransformer.java
+@@ -20,12 +20,12 @@ package org.apache.pinot.segment.local.recordtransformer;
+ 
+ import java.util.ArrayList;
+ import java.util.List;
++import org.apache.pinot.common.evaluator.FunctionEvaluatorFactory;
+ import org.apache.pinot.common.utils.ThrottledLogger;
+-import org.apache.pinot.segment.local.function.FunctionEvaluator;
+-import org.apache.pinot.segment.local.function.FunctionEvaluatorFactory;
+ import org.apache.pinot.spi.config.table.TableConfig;
+ import org.apache.pinot.spi.config.table.ingestion.IngestionConfig;
+ import org.apache.pinot.spi.data.readers.GenericRow;
++import org.apache.pinot.spi.function.FunctionEvaluator;
+ import org.apache.pinot.spi.recordtransformer.RecordTransformer;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+diff --git a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/enricher/function/CustomFunctionEnricher.java b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/enricher/function/CustomFunctionEnricher.java
+index 2e769e8582..047528505e 100644
+--- a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/enricher/function/CustomFunctionEnricher.java
++++ b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/enricher/function/CustomFunctionEnricher.java
+@@ -25,9 +25,9 @@ import java.util.ArrayList;
+ import java.util.LinkedHashMap;
+ import java.util.List;
+ import java.util.Map;
+-import org.apache.pinot.segment.local.function.FunctionEvaluator;
+-import org.apache.pinot.segment.local.function.FunctionEvaluatorFactory;
++import org.apache.pinot.common.evaluator.FunctionEvaluatorFactory;
+ import org.apache.pinot.spi.data.readers.GenericRow;
++import org.apache.pinot.spi.function.FunctionEvaluator;
+ import org.apache.pinot.spi.recordtransformer.enricher.RecordEnricher;
+ import org.apache.pinot.spi.utils.JsonUtils;
+ 
+diff --git a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/enricher/function/CustomFunctionEnricherFactory.java b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/enricher/function/CustomFunctionEnricherFactory.java
+index 54659a702f..73e33e83c6 100644
+--- a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/enricher/function/CustomFunctionEnricherFactory.java
++++ b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/recordtransformer/enricher/function/CustomFunctionEnricherFactory.java
+@@ -21,7 +21,7 @@ package org.apache.pinot.segment.local.recordtransformer.enricher.function;
+ import com.fasterxml.jackson.databind.JsonNode;
+ import com.google.auto.service.AutoService;
+ import java.io.IOException;
+-import org.apache.pinot.segment.local.function.FunctionEvaluatorFactory;
++import org.apache.pinot.common.evaluator.FunctionEvaluatorFactory;
+ import org.apache.pinot.spi.recordtransformer.enricher.RecordEnricher;
+ import org.apache.pinot.spi.recordtransformer.enricher.RecordEnricherFactory;
+ import org.apache.pinot.spi.recordtransformer.enricher.RecordEnricherValidationConfig;
+diff --git a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/segment/index/loader/defaultcolumn/BaseDefaultColumnHandler.java b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/segment/index/loader/defaultcolumn/BaseDefaultColumnHandler.java
+index 4e86cae850..46a99dd7aa 100644
+--- a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/segment/index/loader/defaultcolumn/BaseDefaultColumnHandler.java
++++ b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/segment/index/loader/defaultcolumn/BaseDefaultColumnHandler.java
+@@ -31,10 +31,9 @@ import java.util.Iterator;
+ import java.util.List;
+ import java.util.Map;
+ import org.apache.commons.configuration2.PropertiesConfiguration;
++import org.apache.pinot.common.evaluator.FunctionEvaluatorFactory;
+ import org.apache.pinot.common.function.FunctionUtils;
+ import org.apache.pinot.common.utils.PinotDataType;
+-import org.apache.pinot.segment.local.function.FunctionEvaluator;
+-import org.apache.pinot.segment.local.function.FunctionEvaluatorFactory;
+ import org.apache.pinot.segment.local.segment.creator.impl.BaseSegmentCreator;
+ import org.apache.pinot.segment.local.segment.creator.impl.SegmentDictionaryCreator;
+ import org.apache.pinot.segment.local.segment.creator.impl.fwd.MultiValueUnsortedForwardIndexCreator;
+@@ -81,6 +80,7 @@ import org.apache.pinot.spi.config.table.ingestion.TransformConfig;
+ import org.apache.pinot.spi.data.FieldSpec;
+ import org.apache.pinot.spi.data.FieldSpec.DataType;
+ import org.apache.pinot.spi.data.Schema;
++import org.apache.pinot.spi.function.FunctionEvaluator;
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+diff --git a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/utils/SchemaUtils.java b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/utils/SchemaUtils.java
+index e05a24dc99..b1df94fe70 100644
+--- a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/utils/SchemaUtils.java
++++ b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/utils/SchemaUtils.java
+@@ -26,8 +26,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ import org.apache.commons.lang3.StringUtils;
+-import org.apache.pinot.segment.local.function.FunctionEvaluator;
+-import org.apache.pinot.segment.local.function.FunctionEvaluatorFactory;
++import org.apache.pinot.common.evaluator.FunctionEvaluatorFactory;
+ import org.apache.pinot.spi.config.table.TableConfig;
+ import org.apache.pinot.spi.data.DateTimeFieldSpec;
+ import org.apache.pinot.spi.data.DateTimeFormatSpec;
+@@ -36,6 +35,7 @@ import org.apache.pinot.spi.data.FieldSpec;
+ import org.apache.pinot.spi.data.Schema;
+ import org.apache.pinot.spi.data.TimeFieldSpec;
+ import org.apache.pinot.spi.data.TimeGranularitySpec;
++import org.apache.pinot.spi.function.FunctionEvaluator;
+ import org.apache.pinot.spi.utils.TimeUtils;
+ 
+ 
+diff --git a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/utils/TableConfigUtils.java b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/utils/TableConfigUtils.java
+index acefec3e8a..0a874cba3a 100644
+--- a/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/utils/TableConfigUtils.java
++++ b/pinot-segment-local/src/main/java/org/apache/pinot/segment/local/utils/TableConfigUtils.java
+@@ -40,6 +40,7 @@ import javax.annotation.Nullable;
+ import org.apache.commons.collections4.CollectionUtils;
+ import org.apache.commons.collections4.MapUtils;
+ import org.apache.commons.lang3.StringUtils;
++import org.apache.pinot.common.evaluator.FunctionEvaluatorFactory;
+ import org.apache.pinot.common.request.context.ExpressionContext;
+ import org.apache.pinot.common.request.context.FunctionContext;
+ import org.apache.pinot.common.request.context.RequestContextUtils;
+@@ -47,8 +48,6 @@ import org.apache.pinot.common.tier.TierFactory;
+ import org.apache.pinot.common.utils.config.TagNameUtils;
+ import org.apache.pinot.segment.local.aggregator.ValueAggregator;
+ import org.apache.pinot.segment.local.aggregator.ValueAggregatorFactory;
+-import org.apache.pinot.segment.local.function.FunctionEvaluator;
+-import org.apache.pinot.segment.local.function.FunctionEvaluatorFactory;
+ import org.apache.pinot.segment.local.recordtransformer.SchemaConformingTransformer;
+ import org.apache.pinot.segment.spi.AggregationFunctionType;
+ import org.apache.pinot.segment.spi.index.DictionaryIndexConfig;
+@@ -96,6 +95,7 @@ import org.apache.pinot.spi.data.DateTimeFieldSpec;
+ import org.apache.pinot.spi.data.FieldSpec;
+ import org.apache.pinot.spi.data.FieldSpec.DataType;
+ import org.apache.pinot.spi.data.Schema;
++import org.apache.pinot.spi.function.FunctionEvaluator;
+ import org.apache.pinot.spi.ingestion.batch.BatchConfig;
+ import org.apache.pinot.spi.recordtransformer.enricher.RecordEnricherRegistry;
+ import org.apache.pinot.spi.recordtransformer.enricher.RecordEnricherValidationConfig;

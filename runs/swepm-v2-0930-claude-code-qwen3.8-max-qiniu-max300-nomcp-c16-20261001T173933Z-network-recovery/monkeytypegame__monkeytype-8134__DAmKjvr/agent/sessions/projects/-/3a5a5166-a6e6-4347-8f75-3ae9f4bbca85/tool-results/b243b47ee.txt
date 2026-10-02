@@ -1,0 +1,2024 @@
+ backend/.gitignore                                 |      5 -
+ backend/.oxlintrc.json                             |     16 -
+ backend/.vscode/settings.json                      |      3 -
+ backend/__migration__/testActivity.ts              |    258 -
+ .../__migration__/testActivity.spec.ts             |     75 -
+ .../__integration__/dal/admin-uids.spec.ts         |     30 -
+ .../__tests__/__integration__/dal/ape-keys.spec.ts |    107 -
+ .../__integration__/dal/blocklist.spec.ts          |    363 -
+ .../__tests__/__integration__/dal/config.spec.ts   |     42 -
+ .../__integration__/dal/connections.spec.ts        |    493 -
+ .../dal/leaderboards.isolated.spec.ts              |    544 -
+ .../__tests__/__integration__/dal/preset.spec.ts   |    482 -
+ .../__tests__/__integration__/dal/public.spec.ts   |     26 -
+ .../__tests__/__integration__/dal/result.spec.ts   |    190 -
+ backend/__tests__/__integration__/dal/user.spec.ts |   2217 -
+ backend/__tests__/__integration__/global-setup.ts  |     51 -
+ backend/__tests__/__integration__/redis.ts         |     11 -
+ .../services/weekly-xp-leaderboard.spec.ts         |    271 -
+ .../__integration__/setup-integration-tests.ts     |     45 -
+ .../utils/daily-leaderboards.spec.ts               |    404 -
+ backend/__tests__/__testData__/auth.ts             |     94 -
+ backend/__tests__/__testData__/connections.ts      |     24 -
+ backend/__tests__/__testData__/controller-test.ts  |     22 -
+ backend/__tests__/__testData__/monkey-error.ts     |     21 -
+ backend/__tests__/__testData__/rate-limit.ts       |     30 -
+ backend/__tests__/__testData__/users.ts            |     45 -
+ backend/__tests__/api/controllers/admin.spec.ts    |    580 -
+ backend/__tests__/api/controllers/ape-key.spec.ts  |    373 -
+ backend/__tests__/api/controllers/config.spec.ts   |    133 -
+ .../api/controllers/configuration.spec.ts          |    183 -
+ .../__tests__/api/controllers/connections.spec.ts  |    397 -
+ backend/__tests__/api/controllers/dev.spec.ts      |     56 -
+ .../__tests__/api/controllers/leaderboard.spec.ts  |   1491 -
+ backend/__tests__/api/controllers/preset.spec.ts   |    500 -
+ backend/__tests__/api/controllers/psa.spec.ts      |     81 -
+ backend/__tests__/api/controllers/public.spec.ts   |    144 -
+ backend/__tests__/api/controllers/quotes.spec.ts   |    896 -
+ backend/__tests__/api/controllers/result.spec.ts   |    892 -
+ backend/__tests__/api/controllers/user.spec.ts     |   4062 -
+ backend/__tests__/api/controllers/webhooks.spec.ts |     81 -
+ backend/__tests__/init/configurations.spec.ts      |     53 -
+ backend/__tests__/middlewares/auth.spec.ts         |    578 -
+ .../__tests__/middlewares/configuration.spec.ts    |    201 -
+ backend/__tests__/middlewares/permission.spec.ts   |    341 -
+ backend/__tests__/setup-common-mocks.ts            |     42 -
+ backend/__tests__/setup-tests.ts                   |     40 -
+ backend/__tests__/tsconfig.json                    |     12 -
+ backend/__tests__/utils/misc.spec.ts               |    461 -
+ backend/__tests__/utils/monkey-mail.spec.ts        |     21 -
+ backend/__tests__/utils/pb.spec.ts                 |    213 -
+ backend/__tests__/utils/result.spec.ts             |    220 -
+ backend/__tests__/utils/validation.spec.ts         |     55 -
+ backend/__tests__/vitest.d.ts                      |     35 -
+ backend/__tests__/workers/later-worker.spec.ts     |     33 -
+ backend/docker/compose.db-only.yml                 |     24 -
+ backend/docker/compose.yml                         |     49 -
+ backend/email-templates/reset-password.html        |    137 -
+ backend/email-templates/verification.html          |    137 -
+ backend/example.env                                |     25 -
+ backend/package.json                               |     97 -
+ backend/private/index.html                         |     61 -
+ backend/private/script.js                          |    305 -
+ backend/private/style.css                          |    204 -
+ backend/redis-scripts/add-result-increment.lua     |     19 -
+ backend/redis-scripts/add-result.lua               |     38 -
+ backend/redis-scripts/get-rank.lua                 |     51 -
+ backend/redis-scripts/get-results.lua              |     84 -
+ backend/redis-scripts/purge-results.lua            |     23 -
+ backend/redocly.yaml                               |     46 -
+ backend/scripts/openapi.ts                         |    309 -
+ backend/scripts/tsconfig.json                      |      7 -
+ backend/src/anticheat/index.ts                     |     31 -
+ backend/src/api/controllers/admin.ts               |    148 -
+ backend/src/api/controllers/ape-key.ts             |     95 -
+ backend/src/api/controllers/config.ts              |     34 -
+ backend/src/api/controllers/configuration.ts       |     39 -
+ backend/src/api/controllers/connections.ts         |     85 -
+ backend/src/api/controllers/dev.ts                 |    433 -
+ backend/src/api/controllers/leaderboard.ts         |    294 -
+ backend/src/api/controllers/preset.ts              |     57 -
+ backend/src/api/controllers/psa.ts                 |     16 -
+ backend/src/api/controllers/public.ts              |     23 -
+ backend/src/api/controllers/quote.ts               |    165 -
+ backend/src/api/controllers/result.ts              |    849 -
+ backend/src/api/controllers/user.ts                |   1317 -
+ backend/src/api/controllers/webhooks.ts            |     22 -
+ backend/src/api/routes/admin.ts                    |     30 -
+ backend/src/api/routes/ape-keys.ts                 |     20 -
+ backend/src/api/routes/configs.ts                  |     18 -
+ backend/src/api/routes/configuration.ts            |     20 -
+ backend/src/api/routes/connections.ts              |     25 -
+ backend/src/api/routes/dev.ts                      |     19 -
+ backend/src/api/routes/docs.ts                     |     34 -
+ backend/src/api/routes/index.ts                    |    195 -
+ backend/src/api/routes/leaderboards.ts             |     32 -
+ backend/src/api/routes/presets.ts                  |     20 -
+ backend/src/api/routes/psas.ts                     |     13 -
+ backend/src/api/routes/public.ts                   |     14 -
+ backend/src/api/routes/quotes.ts                   |     33 -
+ backend/src/api/routes/results.ts                  |     26 -
+ backend/src/api/routes/swagger.ts                  |     39 -
+ backend/src/api/routes/users.ts                    |    143 -
+ backend/src/api/routes/webhooks.ts                 |     12 -
+ backend/src/api/ts-rest-adapter.ts                 |     78 -
+ backend/src/api/types.ts                           |     27 -
+ backend/src/app.ts                                 |     44 -
+ backend/src/constants/base-configuration.ts        |    619 -
+ backend/src/constants/monkey-status-codes.ts       |     80 -
+ backend/src/credentials/.gitkeep                   |      0
+ backend/src/dal/admin-uids.ts                      |     14 -
+ backend/src/dal/ape-keys.ts                        |    108 -
+ backend/src/dal/blocklist.ts                       |    126 -
+ backend/src/dal/config.ts                          |     60 -
+ backend/src/dal/connections.ts                     |    349 -
+ backend/src/dal/leaderboards.ts                    |    422 -
+ backend/src/dal/logs.ts                            |     64 -
+ backend/src/dal/new-quotes.ts                      |    235 -
+ backend/src/dal/preset.ts                          |     93 -
+ backend/src/dal/psa.ts                             |      9 -
+ backend/src/dal/public.ts                          |     69 -
+ backend/src/dal/quote-ratings.ts                   |     54 -
+ backend/src/dal/report.ts                          |     71 -
+ backend/src/dal/result.ts                          |    145 -
+ backend/src/dal/user.ts                            |   1381 -
+ backend/src/init/configuration.ts                  |    170 -
+ backend/src/init/db.ts                             |     80 -
+ backend/src/init/email-client.ts                   |    168 -
+ backend/src/init/firebase-admin.ts                 |     47 -
+ backend/src/init/redis.ts                          |    130 -
+ backend/src/jobs/delete-old-logs.ts                |     28 -
+ backend/src/jobs/index.ts                          |     11 -
+ backend/src/jobs/log-collection-sizes.ts           |     27 -
+ backend/src/jobs/log-queue-sizes.ts                |     31 -
+ backend/src/jobs/update-leaderboards.ts            |     69 -
+ backend/src/middlewares/auth.ts                    |    363 -
+ backend/src/middlewares/compatibilityCheck.ts      |     20 -
+ backend/src/middlewares/configuration.ts           |     91 -
+ backend/src/middlewares/context.ts                 |     41 -
+ backend/src/middlewares/error.ts                   |    138 -
+ backend/src/middlewares/permission.ts              |    201 -
+ backend/src/middlewares/rate-limit.ts              |    212 -
+ backend/src/middlewares/utility.ts                 |     70 -
+ backend/src/queues/email-queue.ts                  |     68 -
+ backend/src/queues/george-queue.ts                 |    124 -
+ backend/src/queues/index.ts                        |      5 -
+ backend/src/queues/later-queue.ts                  |    121 -
+ backend/src/queues/monkey-queue.ts                 |     62 -
+ backend/src/server.ts                              |     99 -
+ backend/src/services/weekly-xp-leaderboard.ts      |    288 -
+ backend/src/utils/auth.ts                          |    110 -
+ backend/src/utils/captcha.ts                       |     36 -
+ backend/src/utils/daily-leaderboards.ts            |    291 -
+ backend/src/utils/discord.ts                       |     65 -
+ backend/src/utils/error.ts                         |     78 -
+ backend/src/utils/etag.ts                          |     25 -
+ backend/src/utils/logger.ts                        |     91 -
+ backend/src/utils/misc.ts                          |    248 -
+ backend/src/utils/monkey-mail.ts                   |     15 -
+ backend/src/utils/monkey-response.ts               |     17 -
+ backend/src/utils/pb.ts                            |    210 -
+ backend/src/utils/prometheus.ts                    |    346 -
+ backend/src/utils/result.ts                        |    135 -
+ backend/src/utils/ttl-cache.ts                     |     27 -
+ backend/src/utils/validation.ts                    |     47 -
+ backend/src/version.ts                             |     38 -
+ backend/src/workers/email-worker.ts                |     46 -
+ backend/src/workers/index.ts                       |      4 -
+ backend/src/workers/later-worker.ts                |    224 -
+ backend/tsconfig.json                              |     20 -
+ backend/vitest.config.ts                           |     54 -
+ frontend/.firebaserc_example                       |      5 -
+ frontend/.oxlintrc.json                            |     66 -
+ frontend/.vscode/settings.json                     |      3 -
+ frontend/__tests__/__harness__/mock-dom.ts         |     73 -
+ frontend/__tests__/__harness__/mock-env-config.ts  |      7 -
+ frontend/__tests__/__harness__/mock-firebase.ts    |      5 -
+ frontend/__tests__/__harness__/mock-static.ts      |     22 -
+ frontend/__tests__/__harness__/setup-jsx.ts        |      2 -
+ frontend/__tests__/commandline/util.spec.ts        |    426 -
+ .../components/common/AnimatedModal.spec.tsx       |     87 -
+ .../components/common/AsyncContent.spec.tsx        |    390 -
+ .../__tests__/components/common/Button.spec.tsx    |    273 -
+ .../components/common/anime/Anime.spec.tsx         |    390 -
+ .../components/common/anime/AnimeShow.spec.tsx     |    157 -
+ .../components/common/anime/AnimeSwitch.spec.tsx   |    205 -
+ frontend/__tests__/components/core/Theme.spec.tsx  |    139 -
+ .../components/layout/footer/ScrollToTop.spec.tsx  |    105 -
+ .../components/pages/account/utils.spec.ts         |     74 -
+ .../components/pages/test/keymapConverter.spec.ts  |   1127 -
+ .../__tests__/components/ui/form/Checkbox.spec.tsx |     92 -
+ .../components/ui/form/FieldIndicator.spec.tsx     |     89 -
+ .../components/ui/form/InputField.spec.tsx         |    103 -
+ .../components/ui/form/LabeledField.spec.tsx       |     57 -
+ .../components/ui/form/SubmitButton.spec.tsx       |     73 -
+ .../__tests__/components/ui/form/utils.spec.ts     |    136 -
+ .../components/ui/table/DataTable.spec.tsx         |    160 -
+ .../controllers/preset-controller.spec.ts          |    171 -
+ frontend/__tests__/controllers/url-handler.spec.ts |    299 -
+ .../elements/test-activity-calendar.spec.ts        |   1271 -
+ frontend/__tests__/global-setup.ts                 |      3 -
+ frontend/__tests__/hooks/createEvent.spec.ts       |     81 -
+ .../hooks/createSignalWithSetters.spec.ts          |    102 -
+ .../__tests__/input/helpers/fail-or-finish.spec.ts |    436 -
+ frontend/__tests__/input/helpers/util.spec.ts      |    106 -
+ .../__tests__/input/helpers/validation.spec.ts     |    335 -
+ frontend/__tests__/root/config-metadata.spec.ts    |    394 -
+ frontend/__tests__/root/config.spec.ts             |    471 -
+ frontend/__tests__/stores/notifications.spec.ts    |    324 -
+ frontend/__tests__/test/british-english.spec.ts    |     72 -
+ frontend/__tests__/test/events/data.spec.ts        |    565 -
+ frontend/__tests__/test/events/helpers.spec.ts     |    382 -
+ frontend/__tests__/test/events/stats.spec.ts       |   1867 -
+ frontend/__tests__/test/funbox.spec.ts             |     25 -
+ .../test/funbox/funbox-validation.spec.ts          |     74 -
+ frontend/__tests__/test/layout-emulator.spec.ts    |     86 -
+ frontend/__tests__/test/lazy-mode.spec.ts          |     42 -
+ frontend/__tests__/test/test-words.spec.ts         |     64 -
+ frontend/__tests__/tsconfig.json                   |     19 -
+ frontend/__tests__/utils/colors.spec.ts            |    165 -
+ frontend/__tests__/utils/config.spec.ts            |    252 -
+ frontend/__tests__/utils/date-and-time.spec.ts     |     88 -
+ frontend/__tests__/utils/dom.jsdom-spec.ts         |    278 -
+ frontend/__tests__/utils/format.spec.ts            |    280 -
+ frontend/__tests__/utils/generate.spec.ts          |     44 -
+ frontend/__tests__/utils/ip-addresses.spec.ts      |    107 -
+ frontend/__tests__/utils/key-converter.spec.ts     |     46 -
+ .../utils/local-storage-with-schema.spec.ts        |    304 -
+ frontend/__tests__/utils/misc.spec.ts              |    453 -
+ frontend/__tests__/utils/numbers.spec.ts           |     79 -
+ frontend/__tests__/utils/sanitize.spec.ts          |    384 -
+ frontend/__tests__/utils/strings.spec.ts           |    962 -
+ frontend/__tests__/utils/tag-builder.spec.ts       |     52 -
+ frontend/__tests__/utils/zod.spec.ts               |     61 -
+ frontend/__tests__/vitest.d.ts                     |     27 -
+ frontend/docker/compose.dev.yml                    |     24 -
+ frontend/eslint.config.js                          |     28 -
+ frontend/firebase.json                             |    102 -
+ frontend/scripts/check-assets.ts                   |    514 -
+ frontend/scripts/fill-colors.js                    |     59 -
+ frontend/scripts/fix-quote-lengths.cjs             |     29 -
+ frontend/scripts/get-short-quotes.ts               |     39 -
+ frontend/scripts/import-tree.ts                    |    389 -
+ frontend/scripts/short-quotes.json                 |    145 -
+ frontend/src/404.html                              |    181 -
+ frontend/src/email-handler.html                    |    459 -
+ frontend/src/html/head.html                        |    131 -
+ frontend/src/html/pages/loading.html               |     12 -
+ frontend/src/html/pages/test-result.html           |    319 -
+ frontend/src/html/pages/test.html                  |    103 -
+ frontend/src/html/popups.html                      |    157 -
+ frontend/src/html/warnings.html                    |    182 -
+ frontend/src/index.html                            |     99 -
+ frontend/src/privacy-policy.html                   |    512 -
+ frontend/src/security-policy.html                  |    178 -
+ frontend/src/styles/ads.scss                       |    102 -
+ frontend/src/styles/animations.scss                |    175 -
+ frontend/src/styles/buttons.scss                   |    179 -
+ frontend/src/styles/caret.scss                     |     85 -
+ frontend/src/styles/commandline.scss               |    147 -
+ frontend/src/styles/core.scss                      |    409 -
+ frontend/src/styles/fontawesome-5.scss             |     61 -
+ frontend/src/styles/fontawesome-6.scss             |     77 -
+ frontend/src/styles/fonts.scss                     |     33 -
+ frontend/src/styles/index.scss                     |     26 -
+ frontend/src/styles/inputs.scss                    |    360 -
+ frontend/src/styles/loading.scss                   |     40 -
+ frontend/src/styles/media-queries-blue.scss        |     36 -
+ frontend/src/styles/media-queries-brown.scss       |     23 -
+ frontend/src/styles/media-queries-gray.scss        |      5 -
+ frontend/src/styles/media-queries-green.scss       |     38 -
+ frontend/src/styles/media-queries-orange.scss      |     18 -
+ frontend/src/styles/media-queries-purple.scss      |     85 -
+ frontend/src/styles/media-queries-yellow.scss      |     32 -
+ frontend/src/styles/media-queries.scss             |     71 -
+ frontend/src/styles/media.scss                     |     15 -
+ frontend/src/styles/monkey.scss                    |     37 -
+ frontend/src/styles/popups.scss                    |    304 -
+ frontend/src/styles/scroll.scss                    |     29 -
+ frontend/src/styles/standalone.scss                |     96 -
+ frontend/src/styles/tailwind.css                   |    123 -
+ frontend/src/styles/test-activity.scss             |    205 -
+ frontend/src/styles/test.scss                      |   1498 -
+ frontend/src/styles/vendor.scss                    |      6 -
+ frontend/src/terms-of-service.html                 |    379 -
+ frontend/src/ts/anim.ts                            |     43 -
+ frontend/src/ts/ape/adapters/ts-rest-adapter.ts    |    112 -
+ frontend/src/ts/ape/config.ts                      |     21 -
+ frontend/src/ts/ape/index.ts                       |     17 -
+ frontend/src/ts/ape/server-configuration.ts        |     27 -
+ frontend/src/ts/ape/user.ts                        |     54 -
+ frontend/src/ts/auth.tsx                           |    625 -
+ frontend/src/ts/collections/ape-keys.ts            |    200 -
+ frontend/src/ts/collections/connections.ts         |    253 -
+ frontend/src/ts/collections/custom-themes.ts       |    175 -
+ frontend/src/ts/collections/inbox.ts               |    187 -
+ frontend/src/ts/collections/presets.ts             |    207 -
+ .../src/ts/collections/result-filter-presets.ts    |    130 -
+ frontend/src/ts/collections/results.ts             |    714 -
+ frontend/src/ts/collections/tags.ts                |    573 -
+ .../ts/collections/utils/flushDebounceStrategy.ts  |     31 -
+ frontend/src/ts/collections/utils/misc.ts          |     18 -
+ .../src/ts/commandline/commandline-metadata.ts     |    770 -
+ frontend/src/ts/commandline/commandline.ts         |   1048 -
+ frontend/src/ts/commandline/lists.ts               |    517 -
+ .../lists/add-or-remove-theme-to-favorites.ts      |     49 -
+ .../src/ts/commandline/lists/background-filter.ts  |     81 -
+ frontend/src/ts/commandline/lists/bail-out.ts      |     64 -
+ .../src/ts/commandline/lists/custom-background.ts  |     99 -
+ .../src/ts/commandline/lists/custom-themes-list.ts |     50 -
+ frontend/src/ts/commandline/lists/font-family.ts   |    123 -
+ frontend/src/ts/commandline/lists/funbox.ts        |     58 -
+ .../src/ts/commandline/lists/load-challenge.ts     |     34 -
+ frontend/src/ts/commandline/lists/min-burst.ts     |     59 -
+ frontend/src/ts/commandline/lists/navigation.ts    |     87 -
+ frontend/src/ts/commandline/lists/presets.ts       |     51 -
+ .../src/ts/commandline/lists/quote-favorites.ts    |     73 -
+ frontend/src/ts/commandline/lists/result-screen.ts |    171 -
+ frontend/src/ts/commandline/lists/tags.ts          |     88 -
+ frontend/src/ts/commandline/lists/themes.ts        |     96 -
+ frontend/src/ts/commandline/types.ts               |     71 -
+ frontend/src/ts/commandline/util.ts                |    244 -
+ .../src/ts/components/common/Advertisement.tsx     |     36 -
+ .../src/ts/components/common/AnimatedModal.tsx     |    346 -
+ frontend/src/ts/components/common/AsyncContent.tsx |    248 -
+ frontend/src/ts/components/common/AutoShrink.tsx   |     61 -
+ frontend/src/ts/components/common/Balloon.tsx      |     55 -
+ frontend/src/ts/components/common/Bar.tsx          |     46 -
+ frontend/src/ts/components/common/Button.tsx       |    135 -
+ frontend/src/ts/components/common/ChartJs.tsx      |     99 -
+ .../src/ts/components/common/DiscordAvatar.tsx     |     84 -
+ frontend/src/ts/components/common/Fa.tsx           |     33 -
+ frontend/src/ts/components/common/Headers.tsx      |     47 -
+ frontend/src/ts/components/common/Kbd.tsx          |     18 -
+ .../src/ts/components/common/LoadingCircle.tsx     |     48 -
+ .../ts/components/common/NotificationBubble.tsx    |     28 -
+ frontend/src/ts/components/common/Page.tsx         |     16 -
+ frontend/src/ts/components/common/Separator.tsx    |     46 -
+ frontend/src/ts/components/common/Setting.tsx      |    134 -
+ frontend/src/ts/components/common/Slider.tsx       |     44 -
+ frontend/src/ts/components/common/User.tsx         |    184 -
+ frontend/src/ts/components/common/UserBadge.tsx    |     69 -
+ frontend/src/ts/components/common/UserFlags.tsx    |     41 -
+ frontend/src/ts/components/common/anime/Anime.tsx  |    368 -
+ .../src/ts/components/common/anime/AnimeGroup.tsx  |    379 -
+ .../src/ts/components/common/anime/AnimeMatch.tsx  |     55 -
+ .../ts/components/common/anime/AnimePresence.tsx   |    312 -
+ .../src/ts/components/common/anime/AnimeShow.tsx   |    100 -
+ .../src/ts/components/common/anime/AnimeSwitch.tsx |     57 -
+ frontend/src/ts/components/common/anime/index.ts   |     13 -
+ frontend/src/ts/components/core/FavIcon.tsx        |     36 -
+ frontend/src/ts/components/core/Theme.tsx          |     92 -
+ frontend/src/ts/components/dev/DevTools.tsx        |     49 -
+ frontend/src/ts/components/dev/SignalsDevtools.tsx |    328 -
+ .../src/ts/components/dev/TanstackDevtools.tsx     |     25 -
+ .../ts/components/hotkeys/CommandlineHotkey.tsx    |     17 -
+ .../ts/components/hotkeys/QuickRestartHotkey.tsx   |     15 -
+ .../src/ts/components/layout/footer/Footer.tsx     |    110 -
+ .../src/ts/components/layout/footer/Keytips.tsx    |     29 -
+ .../ts/components/layout/footer/ScrollToTop.tsx    |     48 -
+ .../ts/components/layout/footer/ThemeIndicator.tsx |     56 -
+ .../ts/components/layout/footer/VersionButton.tsx  |     61 -
+ .../ts/components/layout/header/AccountMenu.tsx    |     89 -
+ .../ts/components/layout/header/AccountXpBar.tsx   |    385 -
+ .../src/ts/components/layout/header/Header.tsx     |     22 -
+ frontend/src/ts/components/layout/header/Logo.tsx  |     67 -
+ frontend/src/ts/components/layout/header/Nav.tsx   |    259 -
+ .../src/ts/components/layout/overlays/Banners.tsx  |    136 -
+ .../ts/components/layout/overlays/FpsCounter.tsx   |     66 -
+ .../ts/components/layout/overlays/LoaderBar.tsx    |     29 -
+ .../layout/overlays/MediaQueryDebugger.tsx         |     45 -
+ .../components/layout/overlays/Notifications.tsx   |    146 -
+ .../src/ts/components/layout/overlays/Overlays.tsx |     76 -
+ frontend/src/ts/components/modals/AddTagModal.tsx  |     33 -
+ frontend/src/ts/components/modals/ContactModal.tsx |     85 -
+ frontend/src/ts/components/modals/CookiesModal.tsx |    212 -
+ .../ts/components/modals/CustomGeneratorModal.tsx  |    233 -
+ .../components/modals/CustomTestDurationModal.tsx  |    157 -
+ .../src/ts/components/modals/CustomTextModal.tsx   |    734 -
+ .../ts/components/modals/CustomWordAmountModal.tsx |     83 -
+ .../src/ts/components/modals/DevOptionsModal.tsx   |    326 -
+ .../src/ts/components/modals/EditProfileModal.tsx  |    266 -
+ .../ts/components/modals/EventLogViewerModal.tsx   |   1509 -
+ .../components/modals/LastSignedOutResultModal.tsx |    210 -
+ .../ts/components/modals/MobileTestConfigModal.tsx |    214 -
+ frontend/src/ts/components/modals/Modals.tsx       |     47 -
+ .../src/ts/components/modals/QuoteApproveModal.tsx |    239 -
+ .../src/ts/components/modals/QuoteRateModal.tsx    |    210 -
+ .../src/ts/components/modals/QuoteReportModal.tsx  |    199 -
+ .../src/ts/components/modals/QuoteSearchModal.tsx  |    577 -
+ .../src/ts/components/modals/QuoteSubmitModal.tsx  |    178 -
+ .../ts/components/modals/RegisterCaptchaModal.tsx  |     57 -
+ .../ts/components/modals/SaveCustomTextModal.tsx   |    111 -
+ .../src/ts/components/modals/SavedTextsModal.tsx   |    196 -
+ .../src/ts/components/modals/ShareTestSettings.tsx |    273 -
+ frontend/src/ts/components/modals/SimpleModal.tsx  |    404 -
+ .../ts/components/modals/StreakHourOffsetModal.tsx |    174 -
+ frontend/src/ts/components/modals/SupportModal.tsx |     77 -
+ .../ts/components/modals/VersionHistoryModal.tsx   |     76 -
+ .../src/ts/components/modals/WordFilterModal.tsx   |    437 -
+ .../account-settings/AddPasswordAuthModal.tsx      |     59 -
+ .../account-settings/ReauthConfirmModals.tsx       |    205 -
+ .../account-settings/RemoveAuthMethodModal.tsx     |     58 -
+ .../modals/account-settings/UnlinkDiscordModal.tsx |     38 -
+ .../modals/account-settings/UpdateEmailModal.tsx   |     84 -
+ .../modals/account-settings/UpdateNameModal.tsx    |     81 -
+ .../account-settings/UpdatePasswordModal.tsx       |     85 -
+ .../modals/account-settings/ViewApeKeyModal.tsx    |     58 -
+ .../ts/components/modals/preset/AddPresetModal.tsx |    151 -
+ .../components/modals/preset/EditPresetModal.tsx   |    177 -
+ .../ts/components/modals/preset/FullOrPartial.tsx  |     38 -
+ .../components/modals/preset/preset-modal-utils.ts |     68 -
+ frontend/src/ts/components/mount.tsx               |     72 -
+ frontend/src/ts/components/pages/404Page.tsx       |     32 -
+ frontend/src/ts/components/pages/AboutPage.tsx     |    426 -
+ .../pages/account-settings/AccountSettingsPage.tsx |     57 -
+ .../pages/account-settings/AccountTab.tsx          |    180 -
+ .../pages/account-settings/ApeKeysTab.tsx          |    209 -
+ .../pages/account-settings/AuthenticationTab.tsx   |    118 -
+ .../pages/account-settings/BlockedUsersTab.tsx     |     91 -
+ .../pages/account-settings/DangerZoneTab.tsx       |     54 -
+ .../ts/components/pages/account-settings/utils.tsx |     30 -
+ .../ts/components/pages/account/AccountPage.tsx    |    144 -
+ .../src/ts/components/pages/account/Charts.tsx     |    141 -
+ .../pages/account/DailyActivityChart.tsx           |    183 -
+ .../src/ts/components/pages/account/Filters.tsx    |    465 -
+ .../ts/components/pages/account/HistogramChart.tsx |    109 -
+ .../ts/components/pages/account/HistoryChart.tsx   |    407 -
+ .../components/pages/account/MiniResultChart.tsx   |    155 -
+ .../src/ts/components/pages/account/MyProfile.tsx  |     16 -
+ frontend/src/ts/components/pages/account/Table.tsx |    302 -
+ .../src/ts/components/pages/account/TestStats.tsx  |    184 -
+ .../ts/components/pages/account/VerifyNotice.tsx   |     36 -
+ frontend/src/ts/components/pages/account/utils.ts  |     43 -
+ .../components/pages/connections/FriendsList.tsx   |    356 -
+ .../components/pages/connections/FriendsPage.tsx   |     14 -
+ .../pages/connections/PendingRequests.tsx          |     96 -
+ .../pages/leaderboard/LeaderboardPage.tsx          |    311 -
+ .../ts/components/pages/leaderboard/Navigation.tsx |     98 -
+ .../ts/components/pages/leaderboard/NextUpdate.tsx |     55 -
+ .../ts/components/pages/leaderboard/Sidebar.tsx    |    262 -
+ .../src/ts/components/pages/leaderboard/Table.tsx  |    428 -
+ .../src/ts/components/pages/leaderboard/Title.tsx  |    114 -
+ .../ts/components/pages/leaderboard/UserRank.tsx   |    124 -
+ frontend/src/ts/components/pages/login/Login.tsx   |    161 -
+ .../src/ts/components/pages/login/LoginPage.tsx    |     39 -
+ .../src/ts/components/pages/login/Register.tsx     |    256 -
+ .../components/pages/profile/ActivityCalendar.tsx  |    132 -
+ .../ts/components/pages/profile/ProfilePage.tsx    |     38 -
+ .../components/pages/profile/ProfileSearchPage.tsx |    110 -
+ .../ts/components/pages/profile/UserDetails.tsx    |    542 -
+ .../ts/components/pages/profile/UserProfile.tsx    |    184 -
+ .../src/ts/components/pages/settings/QuickNav.tsx  |     92 -
+ .../pages/settings/SearchableAutoSetting.tsx       |    137 -
+ .../pages/settings/SearchableSetting.tsx           |     47 -
+ .../ts/components/pages/settings/SettingsPage.tsx  |    335 -
+ .../components/pages/settings/SettingsSearch.tsx   |     44 -
+ .../settings/custom-setting/AnimationFpsLimit.tsx  |     87 -
+ .../settings/custom-setting/AutoSwitchTheme.tsx    |     78 -
+ .../settings/custom-setting/CustomBackground.tsx   |    198 -
+ .../custom-setting/CustomBackgroundFilters.tsx     |    132 -
+ .../settings/custom-setting/CustomLayoutfluid.tsx  |     47 -
+ .../settings/custom-setting/CustomPolyglot.tsx     |     58 -
+ .../pages/settings/custom-setting/FontFamily.tsx   |    202 -
+ .../pages/settings/custom-setting/Funbox.tsx       |     85 -
+ .../pages/settings/custom-setting/ImportExport.tsx |     95 -
+ .../pages/settings/custom-setting/KeymapLayout.tsx |     41 -
+ .../pages/settings/custom-setting/KeymapSize.tsx   |     33 -
+ .../pages/settings/custom-setting/Language.tsx     |     44 -
+ .../pages/settings/custom-setting/Layout.tsx       |     33 -
+ .../pages/settings/custom-setting/MaxLineWidth.tsx |     81 -
+ .../pages/settings/custom-setting/MinAcc.tsx       |    107 -
+ .../pages/settings/custom-setting/MinBurst.tsx     |    116 -
+ .../pages/settings/custom-setting/MinSpeed.tsx     |    105 -
+ .../pages/settings/custom-setting/PaceCaret.tsx    |    115 -
+ .../pages/settings/custom-setting/Presets.tsx      |     80 -
+ .../pages/settings/custom-setting/SoundVolume.tsx  |     42 -
+ .../pages/settings/custom-setting/Tags.tsx         |    127 -
+ .../pages/settings/custom-setting/Theme.tsx        |    619 -
+ frontend/src/ts/components/pages/test/Keymap.tsx   |    294 -
+ .../src/ts/components/pages/test/TestConfig.tsx    |    371 -
+ .../ts/components/pages/test/keymapConverter.ts    |    100 -
+ .../src/ts/components/pages/test/keymapLayouts.ts  |    520 -
+ .../pages/test/modes-notice/AverageNotice.tsx      |     43 -
+ .../components/pages/test/modes-notice/Notice.tsx  |     56 -
+ .../pages/test/modes-notice/PbNotice.tsx           |     54 -
+ .../pages/test/modes-notice/TestModesNotice.tsx    |    383 -
+ frontend/src/ts/components/popups/Popups.tsx       |      7 -
+ .../ts/components/popups/alerts/AlertsPopup.tsx    |     61 -
+ .../ts/components/popups/alerts/AlertsSection.tsx  |     13 -
+ frontend/src/ts/components/popups/alerts/Inbox.tsx |    167 -
+ .../popups/alerts/NotificationHistory.tsx          |    104 -
+ frontend/src/ts/components/popups/alerts/Psas.tsx  |     44 -
+ frontend/src/ts/components/ui/SlimSelect.tsx       |    498 -
+ frontend/src/ts/components/ui/form/Checkbox.tsx    |     54 -
+ .../src/ts/components/ui/form/FieldIndicator.tsx   |     60 -
+ frontend/src/ts/components/ui/form/InputField.tsx  |    153 -
+ .../src/ts/components/ui/form/LabeledField.tsx     |     27 -
+ .../src/ts/components/ui/form/SubmitButton.tsx     |     49 -
+ .../src/ts/components/ui/form/TextareaField.tsx    |     46 -
+ frontend/src/ts/components/ui/form/utils.ts        |     59 -
+ frontend/src/ts/components/ui/table/DataTable.tsx  |    388 -
+ frontend/src/ts/components/ui/table/Table.tsx      |     88 -
+ frontend/src/ts/config/funbox-validation.ts        |     89 -
+ frontend/src/ts/config/lifecycle.ts                |    123 -
+ frontend/src/ts/config/metadata.tsx                |   1348 -
+ frontend/src/ts/config/persistence.ts              |     66 -
+ frontend/src/ts/config/remote.ts                   |     50 -
+ frontend/src/ts/config/setters.ts                  |    208 -
+ frontend/src/ts/config/store.ts                    |     29 -
+ frontend/src/ts/config/testing.ts                  |     18 -
+ frontend/src/ts/config/utils.ts                    |    251 -
+ frontend/src/ts/config/validation.ts               |     40 -
+ frontend/src/ts/constants/british-english.ts       |    681 -
+ frontend/src/ts/constants/default-config.ts        |    112 -
+ .../src/ts/constants/default-result-filters.ts     |     69 -
+ frontend/src/ts/constants/default-snapshot.ts      |    116 -
+ .../src/ts/constants/firebase-config-example.ts    |     14 -
+ frontend/src/ts/constants/fonts.ts                 |    153 -
+ frontend/src/ts/constants/ignored-keys.ts          |     10 -
+ frontend/src/ts/constants/keys.ts                  |    229 -
+ frontend/src/ts/constants/languages.ts             |    407 -
+ frontend/src/ts/constants/layouts.ts               |      3 -
+ frontend/src/ts/constants/modifier-keys.ts         |     18 -
+ frontend/src/ts/constants/sounds.ts                |     85 -
+ frontend/src/ts/constants/themes.ts                |   2336 -
+ frontend/src/ts/constants/typo-list.ts             |    138 -
+ frontend/src/ts/controllers/ad-controller.ts       |    323 -
+ .../src/ts/controllers/analytics-controller.ts     |     49 -
+ frontend/src/ts/controllers/badge-controller.ts    |    244 -
+ frontend/src/ts/controllers/captcha-controller.ts  |     54 -
+ .../src/ts/controllers/challenge-controller.ts     |    389 -
+ frontend/src/ts/controllers/chart-controller.ts    |    529 -
+ frontend/src/ts/controllers/eg-ad-controller.ts    |     69 -
+ frontend/src/ts/controllers/page-controller.ts     |    475 -
+ frontend/src/ts/controllers/preset-controller.ts   |     51 -
+ frontend/src/ts/controllers/pw-ad-controller.ts    |    264 -
+ frontend/src/ts/controllers/quotes-controller.ts   |    257 -
+ frontend/src/ts/controllers/route-controller.ts    |    283 -
+ frontend/src/ts/controllers/sound-controller.ts    |    433 -
+ frontend/src/ts/controllers/theme-controller.ts    |    455 -
+ frontend/src/ts/controllers/url-handler.tsx        |    357 -
+ .../src/ts/controllers/user-flag-controller.ts     |     89 -
+ frontend/src/ts/cookies.ts                         |     46 -
+ frontend/src/ts/db.ts                              |    453 -
+ frontend/src/ts/dev/signal-tracker.ts              |    164 -
+ frontend/src/ts/elements/caret.ts                  |    562 -
+ frontend/src/ts/elements/character-counter.ts      |     66 -
+ frontend/src/ts/elements/composition-display.ts    |     15 -
+ frontend/src/ts/elements/input-indicator.ts        |     94 -
+ frontend/src/ts/elements/input-validation.ts       |    299 -
+ frontend/src/ts/elements/merch-banner.tsx          |     31 -
+ frontend/src/ts/elements/monkey-power.ts           |    254 -
+ frontend/src/ts/elements/no-css.ts                 |     95 -
+ frontend/src/ts/elements/psa.tsx                   |    211 -
+ frontend/src/ts/elements/result-batches.ts         |    128 -
+ frontend/src/ts/elements/result-word-highlight.ts  |    573 -
+ frontend/src/ts/elements/test-activity-calendar.ts |    256 -
+ frontend/src/ts/elements/test-activity.ts          |    115 -
+ frontend/src/ts/elements/test-init-failed.ts       |     33 -
+ frontend/src/ts/event-handlers/global.ts           |     78 -
+ frontend/src/ts/event-handlers/test.ts             |     65 -
+ frontend/src/ts/events/auth.ts                     |     11 -
+ frontend/src/ts/events/config.ts                   |     18 -
+ frontend/src/ts/events/connection.ts               |     12 -
+ frontend/src/ts/events/google-sign-up.ts           |      9 -
+ frontend/src/ts/events/keymap.ts                   |     17 -
+ frontend/src/ts/events/navigation.ts               |     17 -
+ frontend/src/ts/events/test.ts                     |      5 -
+ frontend/src/ts/events/timer.ts                    |      9 -
+ frontend/src/ts/events/tts.ts                      |      3 -
+ frontend/src/ts/firebase.ts                        |    256 -
+ frontend/src/ts/hooks/createDebouncedSignal.ts     |     20 -
+ frontend/src/ts/hooks/createEvent.ts               |     56 -
+ frontend/src/ts/hooks/createSignalWithSetters.ts   |     67 -
+ frontend/src/ts/hooks/effects.ts                   |     39 -
+ frontend/src/ts/hooks/useLocalStorage.ts           |     82 -
+ frontend/src/ts/hooks/useLocalStorageStore.ts      |     81 -
+ frontend/src/ts/hooks/useRef.ts                    |     14 -
+ frontend/src/ts/hooks/useRefWithUtils.ts           |     15 -
+ frontend/src/ts/hooks/useSavedIndicator.tsx        |     48 -
+ frontend/src/ts/hooks/useVisibilityAnimation.ts    |     50 -
+ frontend/src/ts/index.ts                           |    101 -
+ frontend/src/ts/input/handlers/before-delete.ts    |     72 -
+ .../src/ts/input/handlers/before-insert-text.ts    |    121 -
+ frontend/src/ts/input/handlers/delete.ts           |     82 -
+ frontend/src/ts/input/handlers/insert-text.ts      |    321 -
+ frontend/src/ts/input/handlers/keydown.ts          |    184 -
+ frontend/src/ts/input/handlers/keyup.ts            |     32 -
+ frontend/src/ts/input/helpers/fail-or-finish.ts    |    111 -
+ frontend/src/ts/input/helpers/input-type.ts        |     22 -
+ frontend/src/ts/input/helpers/util.ts              |     57 -
+ frontend/src/ts/input/helpers/validation.ts        |     80 -
+ frontend/src/ts/input/helpers/word-navigation.ts   |    113 -
+ frontend/src/ts/input/hotkeys/commandline.ts       |     12 -
+ frontend/src/ts/input/hotkeys/index.ts             |      3 -
+ frontend/src/ts/input/hotkeys/konami.ts            |     19 -
+ frontend/src/ts/input/hotkeys/quickrestart.ts      |     46 -
+ frontend/src/ts/input/hotkeys/utils.ts             |     78 -
+ frontend/src/ts/input/input-element.ts             |     50 -
+ frontend/src/ts/input/listeners/composition.ts     |     77 -
+ frontend/src/ts/input/listeners/index.ts           |      4 -
+ frontend/src/ts/input/listeners/input.ts           |    156 -
+ frontend/src/ts/input/listeners/key.ts             |     25 -
+ frontend/src/ts/input/listeners/misc.ts            |     37 -
+ frontend/src/ts/input/state.ts                     |     53 -
+ frontend/src/ts/legacy-states/composition.ts       |     20 -
+ frontend/src/ts/legacy-states/connection.ts        |     56 -
+ frontend/src/ts/legacy-states/glarses-mode.ts      |     13 -
+ frontend/src/ts/legacy-states/page-transition.ts   |      9 -
+ .../src/ts/legacy-states/remember-lazy-mode.ts     |     30 -
+ frontend/src/ts/legacy-states/slow-timer.ts        |     15 -
+ frontend/src/ts/legacy-states/time.ts              |     13 -
+ frontend/src/ts/modals/edit-result-tags.ts         |    149 -
+ frontend/src/ts/modals/forgot-password.ts          |    100 -
+ frontend/src/ts/modals/google-sign-up.ts           |    196 -
+ frontend/src/ts/modals/pb-tables.ts                |    107 -
+ frontend/src/ts/modals/practise-words.ts           |     82 -
+ frontend/src/ts/modals/user-report.ts              |    157 -
+ frontend/src/ts/pages/loading.ts                   |     56 -
+ frontend/src/ts/pages/page.ts                      |    166 -
+ frontend/src/ts/pages/test.ts                      |     30 -
+ frontend/src/ts/popups/video-ad-popup.ts           |     90 -
+ frontend/src/ts/queries/friends.ts                 |     29 -
+ frontend/src/ts/queries/index.ts                   |     12 -
+ frontend/src/ts/queries/leaderboards.ts            |    144 -
+ frontend/src/ts/queries/prefetch.ts                |     29 -
+ frontend/src/ts/queries/profile.ts                 |     40 -
+ frontend/src/ts/queries/public.ts                  |    211 -
+ frontend/src/ts/queries/server-configuration.ts    |     28 -
+ frontend/src/ts/queries/utils/keys.ts              |      6 -
+ frontend/src/ts/ready.ts                           |     58 -
+ frontend/src/ts/sentry.ts                          |    138 -
+ frontend/src/ts/singletons/format.ts               |      3 -
+ frontend/src/ts/states/account-settings.ts         |     73 -
+ frontend/src/ts/states/banners.ts                  |     43 -
+ frontend/src/ts/states/breakpoints.ts              |     53 -
+ frontend/src/ts/states/core.ts                     |     60 -
+ frontend/src/ts/states/edit-preset-modal.ts        |     19 -
+ frontend/src/ts/states/header.ts                   |     18 -
+ frontend/src/ts/states/hotkeys.ts                  |     62 -
+ frontend/src/ts/states/leaderboard-selection.ts    |    162 -
+ frontend/src/ts/states/loader-bar.ts               |     13 -
+ frontend/src/ts/states/login.ts                    |      9 -
+ frontend/src/ts/states/modals.ts                   |    154 -
+ frontend/src/ts/states/modifiers.ts                |     86 -
+ frontend/src/ts/states/notifications.ts            |    200 -
+ frontend/src/ts/states/psas.ts                     |     16 -
+ frontend/src/ts/states/quote-rate.ts               |     76 -
+ frontend/src/ts/states/quote-report.ts             |     19 -
+ frontend/src/ts/states/result-filters.ts           |     44 -
+ frontend/src/ts/states/settings-search.ts          |     60 -
+ frontend/src/ts/states/simple-modal.ts             |    142 -
+ frontend/src/ts/states/snapshot.ts                 |     34 -
+ frontend/src/ts/states/test.ts                     |    158 -
+ frontend/src/ts/states/theme.ts                    |     27 -
+ frontend/src/ts/test/break-joining.ts              |     55 -
+ frontend/src/ts/test/british-english.ts            |     62 -
+ frontend/src/ts/test/caps-warning.ts               |     17 -
+ frontend/src/ts/test/caret.ts                      |     59 -
+ frontend/src/ts/test/custom-text.ts                |    243 -
+ frontend/src/ts/test/english-punctuation.ts        |     76 -
+ frontend/src/ts/test/events/data.ts                |    407 -
+ frontend/src/ts/test/events/helpers.ts             |    223 -
+ frontend/src/ts/test/events/live-cache.ts          |     56 -
+ frontend/src/ts/test/events/stats.ts               |    945 -
+ frontend/src/ts/test/events/types.ts               |    151 -
+ frontend/src/ts/test/focus.ts                      |     92 -
+ frontend/src/ts/test/funbox/active.ts              |     19 -
+ frontend/src/ts/test/funbox/funbox-functions.ts    |    741 -
+ frontend/src/ts/test/funbox/funbox-memory.ts       |     35 -
+ frontend/src/ts/test/funbox/funbox.ts              |    244 -
+ .../src/ts/test/funbox/layoutfluid-funbox-timer.ts |     36 -
+ frontend/src/ts/test/funbox/list.ts                |    133 -
+ frontend/src/ts/test/funbox/memory-funbox-timer.ts |     50 -
+ frontend/src/ts/test/layout-emulator.ts            |    242 -
+ frontend/src/ts/test/lazy-mode.ts                  |    118 -
+ frontend/src/ts/test/live-acc.ts                   |     87 -
+ frontend/src/ts/test/live-burst.ts                 |     85 -
+ frontend/src/ts/test/live-speed.ts                 |     87 -
+ frontend/src/ts/test/monkey.ts                     |    159 -
+ frontend/src/ts/test/out-of-focus.ts               |     31 -
+ frontend/src/ts/test/pace-caret.ts                 |    262 -
+ frontend/src/ts/test/pb-crown.ts                   |     45 -
+ frontend/src/ts/test/poetry.ts                     |     72 -
+ frontend/src/ts/test/practise-words.ts             |    194 -
+ frontend/src/ts/test/replay-ui.ts                  |    373 -
+ frontend/src/ts/test/result.ts                     |   1403 -
+ frontend/src/ts/test/shift-tracker.ts              |     27 -
+ frontend/src/ts/test/test-logic.ts                 |   1397 -
+ frontend/src/ts/test/test-screenshot.ts            |    359 -
+ frontend/src/ts/test/test-state.ts                 |     91 -
+ frontend/src/ts/test/test-timer.ts                 |    427 -
+ frontend/src/ts/test/test-ui.ts                    |   2070 -
+ frontend/src/ts/test/test-words.ts                 |     91 -
+ frontend/src/ts/test/timer-progress.ts             |    260 -
+ frontend/src/ts/test/today-tracker.ts              |     51 -
+ frontend/src/ts/test/tts.ts                        |     49 -
+ frontend/src/ts/test/weak-spot.ts                  |     74 -
+ frontend/src/ts/test/wikipedia.ts                  |    127 -
+ frontend/src/ts/test/words-generator.ts            |   1018 -
+ frontend/src/ts/test/wordset.ts                    |     63 -
+ frontend/src/ts/types/font-awesome.d.ts            |   1640 -
+ frontend/src/ts/types/quotes.ts                    |     11 -
+ frontend/src/ts/types/tanstack-table.d.ts          |     46 -
+ frontend/src/ts/types/validation.d.ts              |     34 -
+ frontend/src/ts/types/virtual-env-config.d.ts      |     12 -
+ frontend/src/ts/types/virtual-language-hashes.d.ts |      5 -
+ frontend/src/ts/ui.ts                              |    141 -
+ frontend/src/ts/utils/animated-modal.ts            |    489 -
+ frontend/src/ts/utils/arrays.ts                    |    146 -
+ frontend/src/ts/utils/async-modules.ts             |      0
+ frontend/src/ts/utils/cn.ts                        |      6 -
+ frontend/src/ts/utils/colors.ts                    |    313 -
+ frontend/src/ts/utils/date-and-time.ts             |    277 -
+ frontend/src/ts/utils/ddr.ts                       |     61 -
+ frontend/src/ts/utils/debounced-animation-frame.ts |     33 -
+ frontend/src/ts/utils/debug.ts                     |     71 -
+ frontend/src/ts/utils/discord-avatar.ts            |     67 -
+ frontend/src/ts/utils/dom.ts                       |   1157 -
+ frontend/src/ts/utils/env.ts                       |      5 -
+ frontend/src/ts/utils/error.ts                     |     35 -
+ frontend/src/ts/utils/file-storage.ts              |     83 -
+ frontend/src/ts/utils/format.ts                    |    122 -
+ frontend/src/ts/utils/generate.ts                  |    197 -
+ frontend/src/ts/utils/ip-addresses.ts              |    140 -
+ frontend/src/ts/utils/json-data.ts                 |    244 -
+ frontend/src/ts/utils/key-converter.ts             |     92 -
+ frontend/src/ts/utils/levels.ts                    |     71 -
+ frontend/src/ts/utils/local-storage-with-schema.ts |    124 -
+ frontend/src/ts/utils/logger.ts                    |     67 -
+ frontend/src/ts/utils/misc.ts                      |    743 -
+ frontend/src/ts/utils/numbers.ts                   |    159 -
+ frontend/src/ts/utils/profiler-mode.ts             |     23 -
+ frontend/src/ts/utils/quick-restart.ts             |     34 -
+ frontend/src/ts/utils/remote-validation.ts         |     80 -
+ frontend/src/ts/utils/sanitize.ts                  |     99 -
+ frontend/src/ts/utils/search-service.ts            |    186 -
+ frontend/src/ts/utils/skeleton.ts                  |     42 -
+ frontend/src/ts/utils/snapshot-init-error.ts       |      8 -
+ frontend/src/ts/utils/sorted-table.ts              |    160 -
+ frontend/src/ts/utils/strings.ts                   |    473 -
+ frontend/src/ts/utils/tag-builder.ts               |     29 -
+ frontend/src/ts/utils/types.ts                     |     15 -
+ frontend/src/ts/utils/typing-speed-units.ts        |     51 -
+ frontend/src/ts/utils/version.ts                   |     52 -
+ frontend/src/ts/utils/word-gen-error.ts            |      6 -
+ frontend/src/ts/utils/zod.ts                       |     68 -
+ frontend/static/.well-known/security.txt           |      5 -
+ frontend/static/challenges/beepboop.txt            |      1 -
+ frontend/static/challenges/bees.txt                |      1 -
+ frontend/static/challenges/crosstalk.txt           |   2447 -
+ frontend/static/challenges/episode4.txt            |      1 -
+ frontend/static/challenges/episode5.txt            |    839 -
+ frontend/static/challenges/episode6.txt            |    674 -
+ frontend/static/challenges/jolly.txt               |      1 -
+ frontend/static/challenges/littlechef.txt          |   4658 -
+ frontend/static/challenges/navyseal.txt            |      1 -
+ frontend/static/challenges/pokemon.txt             |      1 -
+ frontend/static/challenges/rapgod.txt              |    149 -
+ frontend/static/challenges/shrek.txt               |      1 -
+ frontend/static/challenges/sourcecode.txt          |  27570 -
+ frontend/static/contributors.json                  |   1198 -
+ frontend/static/funbox/asl.css                     |      8 -
+ frontend/static/funbox/backwards.css               |     11 -
+ frontend/static/funbox/choo_choo.css               |     23 -
+ frontend/static/funbox/crt.css                     |    139 -
+ frontend/static/funbox/earthquake.css              |     47 -
+ frontend/static/funbox/mirror.css                  |      3 -
+ frontend/static/funbox/nausea.css                  |     49 -
+ frontend/static/funbox/read_ahead.css              |      5 -
+ frontend/static/funbox/read_ahead_easy.css         |      4 -
+ frontend/static/funbox/read_ahead_hard.css         |      9 -
+ frontend/static/funbox/round_round_baby.css        |     27 -
+ frontend/static/funbox/simon_says.css              |      3 -
+ frontend/static/funbox/space_balls.css             |     26 -
+ frontend/static/funbox/tts.css                     |      3 -
+ frontend/static/funbox/upside_down.css             |      3 -
+ frontend/static/images/caret/banana.png            |    Bin 2639 -> 0 bytes
+ frontend/static/images/caret/carrot.png            |    Bin 2227 -> 0 bytes
+ frontend/static/images/caret/monkey.png            |    Bin 8020 -> 0 bytes
+ frontend/static/images/fav.png                     |    Bin 1309 -> 0 bytes
+ .../images/favicon/android-chrome-192x192.png      |    Bin 4265 -> 0 bytes
+ .../images/favicon/android-chrome-512x512.png      |    Bin 5216 -> 0 bytes
+ .../static/images/favicon/apple-touch-icon.png     |    Bin 3860 -> 0 bytes
+ frontend/static/images/favicon/browserconfig.xml   |     12 -
+ frontend/static/images/favicon/favicon-16x16.png   |    Bin 464 -> 0 bytes
+ frontend/static/images/favicon/favicon-32x32.png   |    Bin 853 -> 0 bytes
+ frontend/static/images/favicon/favicon.ico         |    Bin 15086 -> 0 bytes
+ frontend/static/images/favicon/favicon.svg         |     10 -
+ frontend/static/images/favicon/mstile-150x150.png  |    Bin 3343 -> 0 bytes
+ frontend/static/images/favicon/mstile-310x150.png  |    Bin 3834 -> 0 bytes
+ frontend/static/images/favicon/mstile-310x310.png  |    Bin 7491 -> 0 bytes
+ frontend/static/images/favicon/mstile-70x70.png    |    Bin 2081 -> 0 bytes
+ .../static/images/favicon/safari-pinned-tab.svg    |      1 -
+ frontend/static/images/githubbanner2.png           |    Bin 20146 -> 0 bytes
+ frontend/static/images/icons/general_icon_x512.png |    Bin 13724 -> 0 bytes
+ .../static/images/icons/maskable_icon_x512.png     |    Bin 7101 -> 0 bytes
+ frontend/static/images/merch2.png                  |    Bin 18348 -> 0 bytes
+ frontend/static/images/merch3.png                  |    Bin 88394 -> 0 bytes
+ frontend/static/images/merch4.png                  |    Bin 90460 -> 0 bytes
+ frontend/static/images/monkey/m1.png               |    Bin 13469 -> 0 bytes
+ frontend/static/images/monkey/m1_fast.png          |    Bin 16906 -> 0 bytes
+ frontend/static/images/monkey/m2.png               |    Bin 13483 -> 0 bytes
+ frontend/static/images/monkey/m2_fast.png          |    Bin 16838 -> 0 bytes
+ frontend/static/images/monkey/m3.png               |    Bin 13750 -> 0 bytes
+ frontend/static/images/monkey/m3_fast.png          |    Bin 16790 -> 0 bytes
+ frontend/static/images/monkey/m4.png               |    Bin 13330 -> 0 bytes
+ frontend/static/images/monkey/m4_fast.png          |    Bin 16828 -> 0 bytes
+ frontend/static/images/monkeymeme.jpg              |    Bin 5981 -> 0 bytes
+ frontend/static/images/mt-icon-512.png             |    Bin 5216 -> 0 bytes
+ frontend/static/images/mtfulllogo.png              |    Bin 14973 -> 0 bytes
+ frontend/static/images/mtsocial.png                |    Bin 26401 -> 0 bytes
+ frontend/static/images/plushiebanner.png           |    Bin 83813 -> 0 bytes
+ .../static/images/themes/chaos_theory/caret.webp   |    Bin 808 -> 0 bytes
+ frontend/static/languages/afrikaans.json           |    185 -
+ frontend/static/languages/afrikaans_10k.json       |   8169 -
+ frontend/static/languages/afrikaans_1k.json        |   1006 -
+ frontend/static/languages/albanian.json            |    200 -
+ frontend/static/languages/albanian_1k.json         |    901 -
+ frontend/static/languages/amharic.json             |    279 -
+ frontend/static/languages/amharic_1k.json          |   1007 -
+ frontend/static/languages/amharic_5k.json          |   5006 -
+ frontend/static/languages/arabic.json              |    207 -
+ frontend/static/languages/arabic_10k.json          |   9289 -
+ frontend/static/languages/arabic_egypt.json        |    218 -
+ frontend/static/languages/arabic_egypt_1k.json     |   1149 -
+ frontend/static/languages/arabic_morocco.json      |    238 -
+ frontend/static/languages/armenian.json            |    207 -
+ frontend/static/languages/armenian_1k.json         |   1007 -
+ frontend/static/languages/armenian_western.json    |    206 -
+ frontend/static/languages/armenian_western_1k.json |   1006 -
+ frontend/static/languages/azerbaijani.json         |    205 -
+ frontend/static/languages/azerbaijani_1k.json      |    995 -
+ frontend/static/languages/bangla.json              |    207 -
+ frontend/static/languages/bangla_10k.json          |   9742 -
+ frontend/static/languages/bangla_letters.json      |     70 -
+ frontend/static/languages/bashkir.json             |    214 -
+ frontend/static/languages/belarusian.json          |    207 -
+ frontend/static/languages/belarusian_100k.json     | 106387 ---
+ frontend/static/languages/belarusian_10k.json      |  10731 -
+ frontend/static/languages/belarusian_1k.json       |   1004 -
+ frontend/static/languages/belarusian_25k.json      |  24139 -
+ frontend/static/languages/belarusian_50k.json      |  52823 --
+ frontend/static/languages/belarusian_5k.json       |   5050 -
+ frontend/static/languages/belarusian_lacinka.json  |    206 -
+ .../static/languages/belarusian_lacinka_1k.json    |   1003 -
+ frontend/static/languages/bemba.json               |    209 -
+ frontend/static/languages/bemba_10k.json           |  10009 -
+ frontend/static/languages/bemba_1k.json            |   1009 -
+ frontend/static/languages/bosnian.json             |    195 -
+ frontend/static/languages/bosnian_4k.json          |   3821 -
+ frontend/static/languages/bulgarian.json           |    223 -
+ frontend/static/languages/bulgarian_1k.json        |   1181 -
+ frontend/static/languages/bulgarian_latin.json     |    222 -
+ frontend/static/languages/bulgarian_latin_1k.json  |   1178 -
+ frontend/static/languages/catalan.json             |    205 -
+ frontend/static/languages/catalan_1k.json          |   1005 -
+ frontend/static/languages/chinese_simplified.json  |    207 -
+ .../static/languages/chinese_simplified_10k.json   |  10007 -
+ .../static/languages/chinese_simplified_1k.json    |   1007 -
+ .../static/languages/chinese_simplified_50k.json   |  50007 --
+ .../static/languages/chinese_simplified_5k.json    |   5007 -
+ frontend/static/languages/chinese_traditional.json |    207 -
+ .../static/languages/chinese_traditional_10k.json  |   9983 -
+ .../static/languages/chinese_traditional_1k.json   |   1009 -
+ .../static/languages/chinese_traditional_50k.json  |  49934 --
+ .../static/languages/chinese_traditional_5k.json   |   5000 -
+ frontend/static/languages/code_6502_assembly.json  |     62 -
+ frontend/static/languages/code_abap.json           |    206 -
+ frontend/static/languages/code_abap_1k.json        |   1116 -
+ frontend/static/languages/code_arduino.json        |    110 -
+ frontend/static/languages/code_assembly.json       |     87 -
+ frontend/static/languages/code_bash.json           |    282 -
+ frontend/static/languages/code_brainfck.json       |    200 -
+ frontend/static/languages/code_c++.json            |    117 -
+ frontend/static/languages/code_c.json              |    206 -
+ frontend/static/languages/code_clojure.json        |    218 -
+ frontend/static/languages/code_cobol.json          |    111 -
+ frontend/static/languages/code_common_lisp.json    |    985 -
+ frontend/static/languages/code_csharp.json         |    136 -
+ frontend/static/languages/code_css.json            |     78 -
+ frontend/static/languages/code_cuda.json           |    243 -
+ frontend/static/languages/code_dart.json           |     79 -
+ frontend/static/languages/code_elixir.json         |    559 -
+ frontend/static/languages/code_erlang.json         |    251 -
+ frontend/static/languages/code_fortran.json        |    206 -
+ frontend/static/languages/code_fsharp.json         |    107 -
+ frontend/static/languages/code_gdscript.json       |    108 -
+ frontend/static/languages/code_gdscript_2.json     |    107 -
+ frontend/static/languages/code_gleam.json          |    447 -
+ frontend/static/languages/code_go.json             |     69 -
+ frontend/static/languages/code_haskell.json        |    214 -
+ frontend/static/languages/code_html.json           |    238 -
+ frontend/static/languages/code_java.json           |     95 -
+ frontend/static/languages/code_javascript.json     |    132 -
+ frontend/static/languages/code_javascript_1k.json  |   1007 -
+ .../static/languages/code_javascript_react.json    |    208 -
+ frontend/static/languages/code_jule.json           |     65 -
+ frontend/static/languages/code_julia.json          |    109 -
+ frontend/static/languages/code_kotlin.json         |     90 -
+ frontend/static/languages/code_latex.json          |    206 -
+ frontend/static/languages/code_lua.json            |     65 -
+ frontend/static/languages/code_luau.json           |     79 -
+ frontend/static/languages/code_matlab.json         |     69 -
+ frontend/static/languages/code_nim.json            |    105 -
+ frontend/static/languages/code_nix.json            |    131 -
+ frontend/static/languages/code_ocaml.json          |    501 -
+ frontend/static/languages/code_odin.json           |    135 -
+ frontend/static/languages/code_ook.json            |     16 -
+ frontend/static/languages/code_opencl.json         |    227 -
+ frontend/static/languages/code_pascal.json         |    157 -
+ frontend/static/languages/code_perl.json           |    240 -
+ frontend/static/languages/code_php.json            |    302 -
+ frontend/static/languages/code_powershell.json     |    112 -
+ frontend/static/languages/code_python.json         |    180 -
+ frontend/static/languages/code_python_1k.json      |   1102 -
+ frontend/static/languages/code_python_2k.json      |   2066 -
+ frontend/static/languages/code_python_5k.json      |   5241 -
+ frontend/static/languages/code_r.json              |     27 -
+ frontend/static/languages/code_r_2k.json           |   2276 -
+ frontend/static/languages/code_rockstar.json       |    109 -
+ frontend/static/languages/code_ruby.json           |    124 -
+ frontend/static/languages/code_rust.json           |    198 -
+ frontend/static/languages/code_scala.json          |    102 -
+ frontend/static/languages/code_sql.json            |    180 -
+ frontend/static/languages/code_swift.json          |     75 -
+ frontend/static/languages/code_systemverilog.json  |    228 -
+ frontend/static/languages/code_typescript.json     |    204 -
+ frontend/static/languages/code_typst.json          |     49 -
+ frontend/static/languages/code_v.json              |     73 -
+ frontend/static/languages/code_vhdl.json           |    151 -
+ frontend/static/languages/code_vim.json            |    173 -
+ frontend/static/languages/code_vimscript.json      |     91 -
+ frontend/static/languages/code_visual_basic.json   |    186 -
+ frontend/static/languages/code_yoptascript.json    |    245 -
+ frontend/static/languages/code_zig.json            |    152 -
+ frontend/static/languages/croatian.json            |    217 -
+ frontend/static/languages/croatian_1k.json         |   1114 -
+ frontend/static/languages/czech.json               |    205 -
+ frontend/static/languages/czech_10k.json           |   9635 -
+ frontend/static/languages/czech_1k.json            |    905 -
+ frontend/static/languages/danish.json              |    202 -
+ frontend/static/languages/danish_10k.json          |   9632 -
+ frontend/static/languages/danish_1k.json           |    962 -
+ frontend/static/languages/docker_file.json         |     25 -
+ frontend/static/languages/dutch.json               |    206 -
+ frontend/static/languages/dutch_10k.json           |  10005 -
+ frontend/static/languages/dutch_1k.json            |   1007 -
+ frontend/static/languages/english.json             |    207 -
+ frontend/static/languages/english_10k.json         |   9951 -
+ frontend/static/languages/english_1k.json          |   1007 -
+ frontend/static/languages/english_25k.json         |  24148 -
+ frontend/static/languages/english_450k.json        | 450036 ------------
+ frontend/static/languages/english_5k.json          |   5007 -
+ .../languages/english_commonly_misspelled.json     |   1737 -
+ .../static/languages/english_contractions.json     |    191 -
+ .../static/languages/english_doubleletter.json     |    211 -
+ frontend/static/languages/english_legal.json       |   1107 -
+ frontend/static/languages/english_medical.json     |    589 -
+ frontend/static/languages/english_old.json         |    205 -
+ .../static/languages/english_shakespearean.json    |    199 -
+ frontend/static/languages/esperanto.json           |    206 -
+ frontend/static/languages/esperanto_10k.json       |  10006 -
+ frontend/static/languages/esperanto_1k.json        |   1006 -
+ frontend/static/languages/esperanto_25k.json       |  25004 -
+ frontend/static/languages/esperanto_36k.json       |  36348 -
+ frontend/static/languages/esperanto_h_sistemo.json |    207 -
+ .../static/languages/esperanto_h_sistemo_10k.json  |   9976 -
+ .../static/languages/esperanto_h_sistemo_1k.json   |   1006 -
+ .../static/languages/esperanto_h_sistemo_25k.json  |  24929 -
+ .../static/languages/esperanto_h_sistemo_36k.json  |  36138 -
+ frontend/static/languages/esperanto_x_sistemo.json |    206 -
+ .../static/languages/esperanto_x_sistemo_10k.json  |   9999 -
+ .../static/languages/esperanto_x_sistemo_1k.json   |   1006 -
+ .../static/languages/esperanto_x_sistemo_25k.json  |  24976 -
+ .../static/languages/esperanto_x_sistemo_36k.json  |  36302 -
+ frontend/static/languages/estonian.json            |    206 -
+ frontend/static/languages/estonian_10k.json        |  10006 -
+ frontend/static/languages/estonian_1k.json         |   1006 -
+ frontend/static/languages/estonian_5k.json         |   5006 -
+ frontend/static/languages/euskera.json             |    206 -
+ frontend/static/languages/filipino.json            |    206 -
+ frontend/static/languages/filipino_1k.json         |   1006 -
+ frontend/static/languages/finnish.json             |    210 -
+ frontend/static/languages/finnish_10k.json         |   9912 -
+ frontend/static/languages/finnish_1k.json          |   1006 -
+ frontend/static/languages/french.json              |    180 -
+ frontend/static/languages/french_10k.json          |  10257 -
+ frontend/static/languages/french_1k.json           |   1400 -
+ frontend/static/languages/french_2k.json           |   2047 -
+ frontend/static/languages/french_600k.json         | 633948 -----------------
+ frontend/static/languages/french_bitoduc.json      |    144 -
+ frontend/static/languages/frisian.json             |    206 -
+ frontend/static/languages/frisian_1k.json          |    915 -
+ frontend/static/languages/friulian.json            |    206 -
+ frontend/static/languages/galician.json            |    207 -
+ frontend/static/languages/georgian.json            |    206 -
+ frontend/static/languages/german.json              |    211 -
+ frontend/static/languages/german_10k.json          |  10006 -
+ frontend/static/languages/german_1k.json           |   1000 -
+ frontend/static/languages/german_250k.json         | 239255 -------
+ frontend/static/languages/git.json                 |     58 -
+ frontend/static/languages/greek.json               |    215 -
+ frontend/static/languages/greek_10k.json           |   9942 -
+ frontend/static/languages/greek_1k.json            |    999 -
+ frontend/static/languages/greek_25k.json           |  24842 -
+ frontend/static/languages/greek_5k.json            |   4969 -
+ frontend/static/languages/greek_koine.json         |    205 -
+ frontend/static/languages/greeklish.json           |    216 -
+ frontend/static/languages/greeklish_10k.json       |   9815 -
+ frontend/static/languages/greeklish_1k.json        |    997 -
+ frontend/static/languages/greeklish_25k.json       |  24280 -
+ frontend/static/languages/greeklish_5k.json        |   4933 -
+ frontend/static/languages/gujarati.json            |    223 -
+ frontend/static/languages/gujarati_1k.json         |   1013 -
+ frontend/static/languages/hausa.json               |    206 -
+ frontend/static/languages/hausa_1k.json            |    835 -
+ frontend/static/languages/hawaiian.json            |    208 -
+ frontend/static/languages/hawaiian_1k.json         |   1008 -
+ frontend/static/languages/hebrew.json              |    207 -
+ frontend/static/languages/hebrew_10k.json          |  10008 -
+ frontend/static/languages/hebrew_1k.json           |   1008 -
+ frontend/static/languages/hebrew_5k.json           |   5008 -
+ frontend/static/languages/hindi.json               |    208 -
+ frontend/static/languages/hindi_1k.json            |   1007 -
+ frontend/static/languages/hinglish.json            |    217 -
+ frontend/static/languages/hungarian.json           |    207 -
+ frontend/static/languages/hungarian_1k.json        |   1007 -
+ frontend/static/languages/hungarian_2k.json        |   2458 -
+ frontend/static/languages/icelandic.json           |    220 -
+ frontend/static/languages/icelandic_1k.json        |   1005 -
+ frontend/static/languages/indonesian.json          |    317 -
+ frontend/static/languages/indonesian_10k.json      |  13776 -
+ frontend/static/languages/indonesian_1k.json       |   1027 -
+ frontend/static/languages/irish.json               |    189 -
+ frontend/static/languages/irish_1k.json            |   1006 -
+ frontend/static/languages/italian.json             |    205 -
+ frontend/static/languages/italian_1k.json          |   1165 -
+ frontend/static/languages/italian_280k.json        | 279839 --------
+ frontend/static/languages/italian_60k.json         |  60448 --
+ frontend/static/languages/italian_7k.json          |   7160 -
+ frontend/static/languages/japanese_hiragana.json   |    561 -
+ frontend/static/languages/japanese_katakana.json   |    350 -
+ frontend/static/languages/japanese_romaji.json     |    160 -
+ frontend/static/languages/japanese_romaji_1k.json  |    994 -
+ frontend/static/languages/jyutping.json            |    206 -
+ frontend/static/languages/kabyle.json              |    207 -
+ frontend/static/languages/kabyle_10k.json          |  10007 -
+ frontend/static/languages/kabyle_1k.json           |   1007 -
+ frontend/static/languages/kabyle_2k.json           |   2007 -
+ frontend/static/languages/kabyle_5k.json           |   5007 -
+ frontend/static/languages/kannada.json             |    209 -
+ frontend/static/languages/kazakh.json              |    208 -
+ frontend/static/languages/kazakh_1k.json           |    996 -
+ frontend/static/languages/khmer.json               |    339 -
+ frontend/static/languages/kinyarwanda.json         |    376 -
+ frontend/static/languages/klingon.json             |    208 -
+ frontend/static/languages/klingon_1k.json          |   1007 -
+ frontend/static/languages/kokanu.json              |    389 -
+ frontend/static/languages/korean.json              |    478 -
+ frontend/static/languages/korean_1k.json           |    983 -
+ frontend/static/languages/korean_5k.json           |   4209 -
+ frontend/static/languages/kurdish_central.json     |    212 -
+ frontend/static/languages/kurdish_central_2k.json  |   1494 -
+ frontend/static/languages/kurdish_central_4k.json  |   4264 -
+ frontend/static/languages/kyrgyz.json              |    240 -
+ frontend/static/languages/kyrgyz_1k.json           |    856 -
+ frontend/static/languages/lao.json                 |    546 -
+ frontend/static/languages/latin.json               |    367 -
+ frontend/static/languages/latvian.json             |    185 -
+ frontend/static/languages/latvian_1k.json          |    936 -
+ frontend/static/languages/league_of_legends.json   |    448 -
+ frontend/static/languages/likanu.json              |    390 -
+ frontend/static/languages/lithuanian.json          |    204 -
+ frontend/static/languages/lithuanian_1k.json       |    995 -
+ frontend/static/languages/lithuanian_3k.json       |   2983 -
+ frontend/static/languages/lojban_cmavo.json        |    680 -
+ frontend/static/languages/lojban_gismu.json        |   1398 -
+ frontend/static/languages/lorem_ipsum.json         |    193 -
+ frontend/static/languages/macedonian.json          |    179 -
+ frontend/static/languages/macedonian_10k.json      |  10006 -
+ frontend/static/languages/macedonian_1k.json       |    907 -
+ frontend/static/languages/macedonian_75k.json      |  75006 --
+ frontend/static/languages/malagasy.json            |    203 -
+ frontend/static/languages/malagasy_1k.json         |    981 -
+ frontend/static/languages/malay.json               |    235 -
+ frontend/static/languages/malay_1k.json            |   1007 -
+ frontend/static/languages/malayalam.json           |    208 -
+ frontend/static/languages/maltese.json             |    189 -
+ frontend/static/languages/maltese_1k.json          |    933 -
+ frontend/static/languages/maori_1k.json            |    981 -
+ frontend/static/languages/marathi.json             |    208 -
+ frontend/static/languages/mongolian.json           |   1091 -
+ frontend/static/languages/mongolian_10k.json       |   9225 -
+ frontend/static/languages/myanmar_burmese.json     |    208 -
+ frontend/static/languages/nepali.json              |    208 -
+ frontend/static/languages/nepali_1k.json           |   1008 -
+ frontend/static/languages/nepali_romanized.json    |    436 -
+ frontend/static/languages/norwegian_bokmal.json    |    207 -
+ .../static/languages/norwegian_bokmal_10k.json     |  10007 -
+ .../static/languages/norwegian_bokmal_150k.json    | 142945 ----
+ frontend/static/languages/norwegian_bokmal_1k.json |   1007 -
+ frontend/static/languages/norwegian_bokmal_5k.json |   5007 -
+ .../static/languages/norwegian_bokmal_600k.json    | 614977 -----------------
+ frontend/static/languages/norwegian_nynorsk.json   |    257 -
+ .../static/languages/norwegian_nynorsk_100k.json   | 104752 ---
+ .../static/languages/norwegian_nynorsk_10k.json    |   9946 -
+ .../static/languages/norwegian_nynorsk_1k.json     |   1007 -
+ .../static/languages/norwegian_nynorsk_400k.json   | 410726 -----------
+ .../static/languages/norwegian_nynorsk_5k.json     |   5007 -
+ frontend/static/languages/occitan.json             |    206 -
+ frontend/static/languages/occitan_10k.json         |  10006 -
+ frontend/static/languages/occitan_1k.json          |   1006 -
+ frontend/static/languages/occitan_2k.json          |   2006 -
+ frontend/static/languages/occitan_5k.json          |   5006 -
+ frontend/static/languages/oromo.json               |    207 -
+ frontend/static/languages/oromo_1k.json            |   1007 -
+ frontend/static/languages/oromo_5k.json            |   5007 -
+ frontend/static/languages/pashto.json              |    201 -
+ frontend/static/languages/persian.json             |    205 -
+ frontend/static/languages/persian_1k.json          |   1009 -
+ frontend/static/languages/persian_20k.json         |  21724 -
+ frontend/static/languages/persian_5k.json          |   5009 -
+ frontend/static/languages/persian_romanized.json   |    202 -
+ frontend/static/languages/pig_latin.json           |    203 -
+ frontend/static/languages/pinyin.json              |    188 -
+ frontend/static/languages/pinyin_10k.json          |   1306 -
+ frontend/static/languages/pinyin_1k.json           |    625 -
+ frontend/static/languages/pokemon_1k.json          |   1033 -
+ frontend/static/languages/polish.json              |    189 -
+ frontend/static/languages/polish_10k.json          |  10007 -
+ frontend/static/languages/polish_200k.json         | 199985 ------
+ frontend/static/languages/polish_20k.json          |  20007 -
+ frontend/static/languages/polish_2k.json           |   2344 -
+ frontend/static/languages/polish_40k.json          |  40007 --
+ frontend/static/languages/polish_5k.json           |   5007 -
+ frontend/static/languages/portuguese.json          |    209 -
+ frontend/static/languages/portuguese_1k.json       |   1007 -
+ frontend/static/languages/portuguese_320k.json     | 318609 ---------
+ frontend/static/languages/portuguese_3k.json       |   3049 -
+ frontend/static/languages/portuguese_550k.json     | 558215 ---------------
+ frontend/static/languages/portuguese_5k.json       |   5673 -
+ .../languages/portuguese_acentos_e_cedilha.json    |   2005 -
+ frontend/static/languages/quenya.json              |   1897 -
+ frontend/static/languages/romanian.json            |    276 -
+ frontend/static/languages/romanian_100k.json       | 100006 ---
+ frontend/static/languages/romanian_10k.json        |  10006 -
+ frontend/static/languages/romanian_1k.json         |   1006 -
+ frontend/static/languages/romanian_200k.json       | 200006 ------
+ frontend/static/languages/romanian_25k.json        |  25006 -
+ frontend/static/languages/romanian_50k.json        |  50006 --
+ frontend/static/languages/romanian_5k.json         |   5006 -
+ frontend/static/languages/russian.json             |    207 -
+ frontend/static/languages/russian_10k.json         |  10002 -
+ frontend/static/languages/russian_1k.json          |   1003 -
+ frontend/static/languages/russian_25k.json         |  26043 -
+ frontend/static/languages/russian_375k.json        | 376105 ----------
+ frontend/static/languages/russian_50k.json         |  51688 --
+ frontend/static/languages/russian_5k.json          |   4979 -
+ .../static/languages/russian_abbreviations.json    |    253 -
+ .../static/languages/russian_contractions.json     |    208 -
+ .../static/languages/russian_contractions_1k.json  |    888 -
+ frontend/static/languages/sanskrit.json            |    260 -
+ frontend/static/languages/sanskrit_roman.json      |    258 -
+ frontend/static/languages/santali.json             |    267 -
+ frontend/static/languages/serbian.json             |    220 -
+ frontend/static/languages/serbian_10k.json         |  10008 -
+ frontend/static/languages/serbian_latin.json       |    220 -
+ frontend/static/languages/serbian_latin_10k.json   |  10008 -
+ frontend/static/languages/shona.json               |    205 -
+ frontend/static/languages/shona_1k.json            |    821 -
+ frontend/static/languages/sindhi.json              |    523 -
+ frontend/static/languages/sinhala.json             |    207 -
+ frontend/static/languages/slovak.json              |    183 -
+ frontend/static/languages/slovak_10k.json          |   9950 -
+ frontend/static/languages/slovak_1k.json           |   1007 -
+ frontend/static/languages/slovenian.json           |    315 -
+ frontend/static/languages/slovenian_1k.json        |   1030 -
+ frontend/static/languages/slovenian_5k.json        |   4978 -
+ frontend/static/languages/spanish.json             |    203 -
+ frontend/static/languages/spanish_10k.json         |   9997 -
+ frontend/static/languages/spanish_1k.json          |   1005 -
+ frontend/static/languages/spanish_650k.json        | 646585 ------------------
+ frontend/static/languages/swahili_1k.json          |    828 -
+ frontend/static/languages/swedish.json             |    204 -
+ frontend/static/languages/swedish_1k.json          |   1000 -
+ frontend/static/languages/swedish_diacritics.json  |    267 -
+ frontend/static/languages/swiss_german.json        |    210 -
+ frontend/static/languages/swiss_german_1k.json     |   1007 -
+ frontend/static/languages/swiss_german_2k.json     |   2007 -
+ frontend/static/languages/tamil.json               |    375 -
+ frontend/static/languages/tamil_1k.json            |    960 -
+ frontend/static/languages/tamil_old.json           |    468 -
+ frontend/static/languages/tanglish.json            |    278 -
+ frontend/static/languages/tatar.json               |    208 -
+ frontend/static/languages/tatar_1k.json            |   1008 -
+ frontend/static/languages/tatar_5k.json            |   5011 -
+ frontend/static/languages/tatar_9k.json            |   9041 -
+ frontend/static/languages/tatar_crimean.json       |    221 -
+ frontend/static/languages/tatar_crimean_10k.json   |  10007 -
+ frontend/static/languages/tatar_crimean_15k.json   |  15089 -
+ frontend/static/languages/tatar_crimean_1k.json    |   1007 -
+ frontend/static/languages/tatar_crimean_5k.json    |   5007 -
+ .../static/languages/tatar_crimean_cyrillic.json   |    221 -
+ .../languages/tatar_crimean_cyrillic_10k.json      |  10007 -
+ .../languages/tatar_crimean_cyrillic_15k.json      |  15089 -
+ .../languages/tatar_crimean_cyrillic_1k.json       |   1007 -
+ .../languages/tatar_crimean_cyrillic_5k.json       |   5007 -
+ frontend/static/languages/telugu.json              |    209 -
+ frontend/static/languages/telugu_1k.json           |    909 -
+ frontend/static/languages/thai.json                |    979 -
+ frontend/static/languages/thai_10k.json            |  10007 -
+ frontend/static/languages/thai_1k.json             |   1007 -
+ frontend/static/languages/thai_20k.json            |  18744 -
+ frontend/static/languages/thai_50k.json            |  50007 --
+ frontend/static/languages/thai_5k.json             |   5007 -
+ frontend/static/languages/thai_60k.json            |  60007 --
+ frontend/static/languages/tibetan.json             |    286 -
+ frontend/static/languages/tibetan_1k.json          |   1089 -
+ frontend/static/languages/toki_pona.json           |    130 -
+ frontend/static/languages/toki_pona_ku_lili.json   |    196 -
+ frontend/static/languages/toki_pona_ku_suli.json   |    144 -
+ frontend/static/languages/turkish.json             |    305 -
+ frontend/static/languages/turkish_1k.json          |   1032 -
+ frontend/static/languages/turkish_5k.json          |   5022 -
+ frontend/static/languages/twitch_emotes.json       |    207 -
+ frontend/static/languages/typing_of_the_dead.json  |  10107 -
+ frontend/static/languages/udmurt.json              |    217 -
+ frontend/static/languages/ukrainian.json           |    205 -
+ frontend/static/languages/ukrainian_10k.json       |  10004 -
+ frontend/static/languages/ukrainian_1k.json        |   1006 -
+ frontend/static/languages/ukrainian_50k.json       |  49997 --
+ frontend/static/languages/ukrainian_endings.json   |    124 -
+ frontend/static/languages/ukrainian_latynka.json   |    205 -
+ .../static/languages/ukrainian_latynka_10k.json    |  10004 -
+ .../static/languages/ukrainian_latynka_1k.json     |   1006 -
+ .../static/languages/ukrainian_latynka_50k.json    |  49997 --
+ .../languages/ukrainian_latynka_endings.json       |    123 -
+ frontend/static/languages/urdish.json              |    206 -
+ frontend/static/languages/urdu.json                |    208 -
+ frontend/static/languages/urdu_1k.json             |    942 -
+ frontend/static/languages/urdu_5k.json             |   4989 -
+ frontend/static/languages/urdu_roman.json          |    208 -
+ frontend/static/languages/uzbek.json               |    203 -
+ frontend/static/languages/uzbek_1k.json            |    828 -
+ frontend/static/languages/uzbek_70k.json           |  76602 ---
+ frontend/static/languages/vietnamese.json          |    333 -
+ frontend/static/languages/vietnamese_1k.json       |   1014 -
+ frontend/static/languages/vietnamese_5k.json       |   5014 -
+ frontend/static/languages/viossa.json              |    216 -
+ frontend/static/languages/viossa_njutro.json       |    228 -
+ frontend/static/languages/welsh.json               |    205 -
+ frontend/static/languages/welsh_1k.json            |   1005 -
+ frontend/static/languages/wordle.json              |    207 -
+ frontend/static/languages/wordle_1k.json           |   1006 -
+ frontend/static/languages/xhosa.json               |    878 -
+ frontend/static/languages/xhosa_3k.json            |   2940 -
+ frontend/static/languages/yiddish.json             |    226 -
+ frontend/static/languages/yoruba_1k.json           |    737 -
+ frontend/static/languages/zulu.json                |    179 -
+ frontend/static/layouts/3l.json                    |     62 -
+ frontend/static/layouts/ABNT2.json                 |     63 -
+ frontend/static/layouts/APT.json                   |     62 -
+ frontend/static/layouts/APT_angle.json             |     62 -
+ frontend/static/layouts/ARTS.json                  |     62 -
+ frontend/static/layouts/AdNW.json                  |     63 -
+ frontend/static/layouts/BEAKL_Zi.json              |     62 -
+ frontend/static/layouts/Diktor.json                |     62 -
+ frontend/static/layouts/Diktor_VoronovMod.json     |     62 -
+ frontend/static/layouts/Foalmak.json               |     62 -
+ frontend/static/layouts/Gralmak.json               |     62 -
+ frontend/static/layouts/GralmakS.json              |     62 -
+ frontend/static/layouts/HiYou.json                 |     63 -
+ frontend/static/layouts/ISRT.json                  |     62 -
+ frontend/static/layouts/ISRT_Angle.json            |     62 -
+ frontend/static/layouts/JCUKEN.json                |     62 -
+ frontend/static/layouts/JUIYAF.json                |     62 -
+ frontend/static/layouts/Kuntem.json                |     62 -
+ frontend/static/layouts/MALTRON.json               |     62 -
+ frontend/static/layouts/MTGAP.json                 |     62 -
+ frontend/static/layouts/MTGAP_ASRT.json            |     62 -
+ frontend/static/layouts/MTGAP_full.json            |     62 -
+ frontend/static/layouts/ORNATE.json                |     62 -
+ frontend/static/layouts/PRSTEN.json                |     62 -
+ frontend/static/layouts/QGMLWB.json                |     62 -
+ frontend/static/layouts/QGMLWY.json                |     62 -
+ frontend/static/layouts/RSTHD.json                 |     62 -
+ frontend/static/layouts/Redaktor.json              |     62 -
+ frontend/static/layouts/UGJRMV.json                |     62 -
+ frontend/static/layouts/Vestnik.json               |     62 -
+ frontend/static/layouts/Zubachev.json              |     62 -
+ frontend/static/layouts/alpha.json                 |     62 -
+ frontend/static/layouts/anishtro.json              |     62 -
+ frontend/static/layouts/arabic_101.json            |     62 -
+ frontend/static/layouts/arabic_102.json            |     62 -
+ frontend/static/layouts/arabic_mac.json            |     62 -
+ frontend/static/layouts/arensito.json              |     62 -
+ frontend/static/layouts/armenian_hm_qwerty.json    |     62 -
+ frontend/static/layouts/asset.json                 |     62 -
+ frontend/static/layouts/azerty.json                |     63 -
+ frontend/static/layouts/azerty_AFNOR.json          |     63 -
+ frontend/static/layouts/beakl_15.json              |     62 -
+ frontend/static/layouts/beakl_19.json              |     62 -
+ frontend/static/layouts/beakl_19_bis.json          |     62 -
+ frontend/static/layouts/belarusian.json            |     62 -
+ frontend/static/layouts/bepo.json                  |     63 -
+ frontend/static/layouts/bepo_AFNOR.json            |     63 -
+ frontend/static/layouts/bone.json                  |     63 -
+ frontend/static/layouts/boo.json                   |     62 -
+ frontend/static/layouts/boo_mangle.json            |     62 -
+ frontend/static/layouts/brasileiro_nativo.json     |     63 -
+ frontend/static/layouts/bulgarian.json             |     63 -
+ .../layouts/bulgarian_phonetic_traditional.json    |     63 -
+ frontend/static/layouts/burmese.json               |     62 -
+ frontend/static/layouts/canary.json                |     62 -
+ frontend/static/layouts/canary_matrix.json         |     62 -
+ frontend/static/layouts/capewell_dvorak.json       |     62 -
+ frontend/static/layouts/cascade.json               |     62 -
+ frontend/static/layouts/colemaQ.json               |     62 -
+ frontend/static/layouts/colemaQ_F.json             |     62 -
+ frontend/static/layouts/colemak.json               |     62 -
+ frontend/static/layouts/colemak_Qi.json            |     62 -
+ frontend/static/layouts/colemak_Qix.json           |     62 -
+ frontend/static/layouts/colemak_angle.json         |     62 -
+ frontend/static/layouts/colemak_dh.json            |     62 -
+ frontend/static/layouts/colemak_dh_iso.json        |     63 -
+ frontend/static/layouts/colemak_dh_iso_wide.json   |     63 -
+ frontend/static/layouts/colemak_dh_matrix.json     |     62 -
+ frontend/static/layouts/colemak_dh_wide.json       |     62 -
+ frontend/static/layouts/colemak_dhk.json           |     62 -
+ frontend/static/layouts/colemak_dhk_iso.json       |     63 -
+ frontend/static/layouts/colemak_dhv.json           |     62 -
+ frontend/static/layouts/colemak_wide.json          |     62 -
+ frontend/static/layouts/colman.json                |     62 -
+ frontend/static/layouts/ctgap.json                 |     62 -
+ frontend/static/layouts/danish_qwerty.json         |     63 -
+ frontend/static/layouts/dhorf.json                 |     62 -
+ frontend/static/layouts/dusk.json                  |     62 -
+ frontend/static/layouts/dvorak.json                |     62 -
+ frontend/static/layouts/dvorak_L.json              |     62 -
+ frontend/static/layouts/dvorak_R.json              |     62 -
+ frontend/static/layouts/dvorak_fr.json             |     63 -
+ frontend/static/layouts/dwarf.json                 |     62 -
+ frontend/static/layouts/ekverto_b.json             |     63 -
+ frontend/static/layouts/engram.json                |     62 -
+ frontend/static/layouts/engrammer.json             |     62 -
+ frontend/static/layouts/ergo_split46.json          |     62 -
+ frontend/static/layouts/ergol.json                 |     62 -
+ frontend/static/layouts/ergopti.json               |     63 -
+ frontend/static/layouts/estonian.json              |     63 -
+ frontend/static/layouts/flaw.json                  |     62 -
+ frontend/static/layouts/focal.json                 |     62 -
+ frontend/static/layouts/gallaya_angle_ansi.json    |     62 -
+ frontend/static/layouts/gallaya_angle_iso.json     |     63 -
+ frontend/static/layouts/gallaya_matrix.json        |     62 -
+ frontend/static/layouts/gallium.json               |     62 -
+ frontend/static/layouts/gallium_angle.json         |     62 -
+ frontend/static/layouts/gallium_nl.json            |     62 -
+ frontend/static/layouts/gallium_v2.json            |     62 -
+ frontend/static/layouts/gallium_v2_matrix.json     |     62 -
+ frontend/static/layouts/german_dvorak.json         |     63 -
+ frontend/static/layouts/german_dvorak_imp.json     |     63 -
+ frontend/static/layouts/graphite.json              |     62 -
+ frontend/static/layouts/graphite_angle.json        |     62 -
+ frontend/static/layouts/graphite_angle_kp.json     |     62 -
+ frontend/static/layouts/graphite_angle_vc.json     |     62 -
+ frontend/static/layouts/graphite_matrix.json       |     62 -
+ frontend/static/layouts/gust.json                  |     62 -
+ frontend/static/layouts/halmak.json                |     62 -
+ frontend/static/layouts/handsdown.json             |     62 -
+ frontend/static/layouts/handsdown_alt.json         |     62 -
+ frontend/static/layouts/handsdown_neu.json         |     62 -
+ .../static/layouts/handsdown_neu_inverted.json     |     62 -
+ frontend/static/layouts/handsdown_promethium.json  |     62 -
+ frontend/static/layouts/haruka.json                |     62 -
+ frontend/static/layouts/heart.json                 |     62 -
+ frontend/static/layouts/hebrew.json                |     62 -
+ frontend/static/layouts/hindi_inscript.json        |     62 -
+ frontend/static/layouts/hungarian.json             |     63 -
+ frontend/static/layouts/hyperroll.json             |     62 -
+ frontend/static/layouts/ina.json                   |     62 -
+ frontend/static/layouts/inqwerted.json             |     62 -
+ frontend/static/layouts/ints.json                  |     62 -
+ frontend/static/layouts/italian_qwerty.json        |     63 -
+ frontend/static/layouts/japanese_hiragana.json     |     62 -
+ frontend/static/layouts/klauser.json               |     62 -
+ frontend/static/layouts/korean.json                |     62 -
+ frontend/static/layouts/koy.json                   |     63 -
+ frontend/static/layouts/krai.json                  |     62 -
+ frontend/static/layouts/kuntem-jq.json             |     62 -
+ frontend/static/layouts/kuntum.json                |     62 -
+ frontend/static/layouts/latam_qwerty.json          |     63 -
+ frontend/static/layouts/macedonian.json            |     62 -
+ frontend/static/layouts/maya.json                  |     62 -
+ frontend/static/layouts/middlemak-nh.json          |     62 -
+ frontend/static/layouts/middlemak.json             |     62 -
+ frontend/static/layouts/miligram.json              |     63 -
+ frontend/static/layouts/mine.json                  |     63 -
+ frontend/static/layouts/minimak_12k.json           |     62 -
+ frontend/static/layouts/minimak_4k.json            |     62 -
+ frontend/static/layouts/minimak_8k.json            |     62 -
+ frontend/static/layouts/mir.json                   |     62 -
+ frontend/static/layouts/mongolian.json             |     62 -
+ frontend/static/layouts/neo.json                   |     63 -
+ frontend/static/layouts/nerps.json                 |     62 -
+ frontend/static/layouts/night.json                 |     62 -
+ frontend/static/layouts/night_stic.json            |     62 -
+ frontend/static/layouts/nila.json                  |     62 -
+ frontend/static/layouts/niro.json                  |     62 -
+ frontend/static/layouts/noctum.json                |     62 -
+ frontend/static/layouts/nokwts.json                |     62 -
+ frontend/static/layouts/norman.json                |     62 -
+ frontend/static/layouts/norwegian_qwerty.json      |     63 -
+ frontend/static/layouts/noted.json                 |     63 -
+ frontend/static/layouts/octa8.json                 |     62 -
+ frontend/static/layouts/oneproduct.json            |     62 -
+ frontend/static/layouts/optimot.json               |     63 -
+ frontend/static/layouts/opy.json                   |     62 -
+ frontend/static/layouts/panini.json                |     62 -
+ frontend/static/layouts/panini_wide.json           |     62 -
+ frontend/static/layouts/pashto.json                |     62 -
+ frontend/static/layouts/persian_farsi.json         |     62 -
+ frontend/static/layouts/persian_farsi_colemak.json |     62 -
+ frontend/static/layouts/persian_standard.json      |     62 -
+ .../static/layouts/persian_standard_colemak.json   |     62 -
+ frontend/static/layouts/pine.json                  |     62 -
+ frontend/static/layouts/pine_v4.json               |     62 -
+ frontend/static/layouts/polish_programmers.json    |     62 -
+ .../static/layouts/portuguese_pt_qwerty_ansi.json  |     62 -
+ .../static/layouts/portuguese_pt_qwerty_iso.json   |     63 -
+ frontend/static/layouts/prog_dvorak.json           |     62 -
+ frontend/static/layouts/prog_dvorak_prime.json     |     62 -
+ frontend/static/layouts/prog_workman.json          |     62 -
+ frontend/static/layouts/quartz.json                |     62 -
+ frontend/static/layouts/qwerty.json                |     62 -
+ frontend/static/layouts/qwertz.json                |     63 -
+ frontend/static/layouts/qwpr.json                  |     62 -
+ frontend/static/layouts/rain.json                  |     62 -
+ frontend/static/layouts/real.json                  |     62 -
+ frontend/static/layouts/recurva.json               |     62 -
+ frontend/static/layouts/rolll.json                 |     62 -
+ frontend/static/layouts/rollla.json                |     62 -
+ frontend/static/layouts/romak.json                 |     62 -
+ frontend/static/layouts/rulemak.json               |     62 -
+ frontend/static/layouts/russian.json               |     62 -
+ frontend/static/layouts/saiga-e.json               |     62 -
+ frontend/static/layouts/saiga.json                 |     62 -
+ frontend/static/layouts/scythe.json                |     62 -
+ frontend/static/layouts/seht-drai.json             |     62 -
+ frontend/static/layouts/semimak.json               |     62 -
+ frontend/static/layouts/semimak_jq.json            |     62 -
+ frontend/static/layouts/semimak_jqc.json           |     62 -
+ frontend/static/layouts/sertain.json               |     62 -
+ frontend/static/layouts/snorkle.json               |     62 -
+ frontend/static/layouts/soul.json                  |     62 -
+ frontend/static/layouts/spanish_dvorak.json        |     63 -
+ frontend/static/layouts/spanish_qwerty.json        |     63 -
+ frontend/static/layouts/statica_3x5.json           |     62 -
+ frontend/static/layouts/stndc.json                 |     62 -
+ frontend/static/layouts/stronk.json                |     62 -
+ frontend/static/layouts/sturdy_angle_ansi.json     |     62 -
+ frontend/static/layouts/sturdy_angle_iso.json      |     63 -
+ frontend/static/layouts/sturdy_ortho.json          |     62 -
+ frontend/static/layouts/swedish_colemak.json       |     64 -
+ frontend/static/layouts/swedish_dvorak.json        |     63 -
+ frontend/static/layouts/swedish_qwerty.json        |     64 -
+ frontend/static/layouts/swiss_french.json          |     63 -
+ frontend/static/layouts/swiss_german.json          |     63 -
+ frontend/static/layouts/sword.json                 |     62 -
+ frontend/static/layouts/tamil99.json               |     62 -
+ frontend/static/layouts/tarmak_1.json              |     62 -
+ frontend/static/layouts/tarmak_2.json              |     62 -
+ frontend/static/layouts/tarmak_3.json              |     62 -
+ frontend/static/layouts/tarmak_4.json              |     62 -
+ frontend/static/layouts/thai_kedmanee.json         |     62 -
+ frontend/static/layouts/thai_manoonchai.json       |     62 -
+ frontend/static/layouts/thai_pattachote.json       |     62 -
+ frontend/static/layouts/three.json                 |     62 -
+ frontend/static/layouts/turkish_e.json             |     63 -
+ frontend/static/layouts/turkish_f.json             |     62 -
+ frontend/static/layouts/turkish_q.json             |     62 -
+ frontend/static/layouts/typehack.json              |     62 -
+ frontend/static/layouts/uciea.json                 |     62 -
+ frontend/static/layouts/uk_qwerty.json             |     62 -
+ frontend/static/layouts/ukrainian.json             |     62 -
+ frontend/static/layouts/urdu_phonetic.json         |     62 -
+ frontend/static/layouts/vitrimak.json              |     62 -
+ frontend/static/layouts/vylet.json                 |     62 -
+ frontend/static/layouts/vylet_v4.json              |     62 -
+ frontend/static/layouts/whix2.json                 |     62 -
+ frontend/static/layouts/whorf.json                 |     62 -
+ frontend/static/layouts/whorf6.json                |     62 -
+ frontend/static/layouts/whorfmax.json              |     62 -
+ frontend/static/layouts/whorfmax_ortho.json        |     62 -
+ frontend/static/layouts/workman.json               |     62 -
+ frontend/static/layouts/wreathy.json               |     62 -
+ frontend/static/layouts/xenia.json                 |     62 -
+ frontend/static/layouts/xenia_alt.json             |     62 -
+ frontend/static/layouts/zenith.json                |     62 -
+ frontend/static/quotes/afrikaans.json              |     71 -
+ frontend/static/quotes/albanian.json               |    161 -
+ frontend/static/quotes/arabic.json                 |    545 -
+ frontend/static/quotes/arabic_egypt.json           |    503 -
+ frontend/static/quotes/azerbaijani.json            |    155 -
+ frontend/static/quotes/bangla.json                 |   1691 -
+ frontend/static/quotes/belarusian.json             |    665 -
+ frontend/static/quotes/belarusian_lacinka.json     |    311 -
+ frontend/static/quotes/bulgarian.json              |    125 -
+ frontend/static/quotes/chinese_simplified.json     |   1991 -
+ frontend/static/quotes/code_arduino.json           |    491 -
+ frontend/static/quotes/code_assembly.json          |     53 -
+ frontend/static/quotes/code_bash.json              |     77 -
+ frontend/static/quotes/code_c++.json               |    197 -
+ frontend/static/quotes/code_c.json                 |    197 -
+ frontend/static/quotes/code_csharp.json            |    179 -
+ frontend/static/quotes/code_css.json               |    137 -
+ frontend/static/quotes/code_cuda.json              |     77 -
+ frontend/static/quotes/code_go.json                |    317 -
+ frontend/static/quotes/code_java.json              |   1043 -
+ frontend/static/quotes/code_javascript.json        |    293 -
+ frontend/static/quotes/code_jule.json              |    179 -
+ frontend/static/quotes/code_julia.json             |     47 -
+ frontend/static/quotes/code_kotlin.json            |     77 -
+ frontend/static/quotes/code_lua.json               |     83 -
+ frontend/static/quotes/code_nim.json               |   8477 -
+ frontend/static/quotes/code_php.json               |    131 -
+ frontend/static/quotes/code_python.json            |    467 -
+ frontend/static/quotes/code_r.json                 |     41 -
+ frontend/static/quotes/code_ruby.json              |    173 -
+ frontend/static/quotes/code_rust.json              |   1667 -
+ frontend/static/quotes/code_sql.json               |    251 -
+ frontend/static/quotes/code_systemverilog.json     |    149 -
+ frontend/static/quotes/code_typescript.json        |    137 -
+ frontend/static/quotes/code_vhdl.json              |     59 -
+ frontend/static/quotes/code_yoptascript.json       |     29 -
+ frontend/static/quotes/czech.json                  |    131 -
+ frontend/static/quotes/danish.json                 |    191 -
+ frontend/static/quotes/docker_file.json            |    131 -
+ frontend/static/quotes/dutch.json                  |    425 -
+ frontend/static/quotes/english.json                |  39350 --
+ frontend/static/quotes/esperanto.json              |    191 -
+ frontend/static/quotes/esperanto_x_sistemo.json    |    191 -
+ frontend/static/quotes/estonian.json               |    101 -
+ frontend/static/quotes/filipino.json               |    281 -
+ frontend/static/quotes/finnish.json                |    143 -
+ frontend/static/quotes/french.json                 |   6653 -
+ frontend/static/quotes/georgian.json               |    149 -
+ frontend/static/quotes/german.json                 |   3371 -
+ frontend/static/quotes/hebrew.json                 |    545 -
+ frontend/static/quotes/hindi.json                  |    389 -
+ frontend/static/quotes/hungarian.json              |    323 -
+ frontend/static/quotes/icelandic.json              |    155 -
+ frontend/static/quotes/indonesian.json             |   1349 -
+ frontend/static/quotes/irish.json                  |    743 -
+ frontend/static/quotes/italian.json                |    851 -
+ frontend/static/quotes/kannada.json                |    173 -
+ frontend/static/quotes/kazakh.json                 |    167 -
+ frontend/static/quotes/korean.json                 |    173 -
+ frontend/static/quotes/latin.json                  |    113 -
+ frontend/static/quotes/lithuanian.json             |    311 -
+ frontend/static/quotes/malagasy.json               |     29 -
+ frontend/static/quotes/malayalam.json              |     59 -
+ frontend/static/quotes/marathi.json                |     59 -
+ frontend/static/quotes/mongolian.json              |    371 -
+ frontend/static/quotes/nepali.json                 |    623 -
+ frontend/static/quotes/norwegian_bokmal.json       |    899 -
+ frontend/static/quotes/norwegian_nynorsk.json      |    299 -
+ frontend/static/quotes/oromo.json                  |   1037 -
+ frontend/static/quotes/persian.json                |    119 -
+ frontend/static/quotes/polish.json                 |   1463 -
+ frontend/static/quotes/portuguese.json             |    665 -
+ frontend/static/quotes/romanian.json               |    443 -
+ frontend/static/quotes/russian.json                |   6989 -
+ frontend/static/quotes/sanskrit.json               |     65 -
+ frontend/static/quotes/serbian.json                |     53 -
+ frontend/static/quotes/slovak.json                 |     29 -
+ frontend/static/quotes/spanish.json                |   1193 -
+ frontend/static/quotes/swedish.json                |    935 -
+ frontend/static/quotes/tamil.json                  |    203 -
+ frontend/static/quotes/tamil_old.json              |    281 -
+ frontend/static/quotes/thai.json                   |    119 -
+ frontend/static/quotes/toki_pona.json              |     23 -
+ frontend/static/quotes/turkish.json                |    827 -
+ frontend/static/quotes/ukrainian.json              |    893 -
+ frontend/static/quotes/urdu.json                   |    173 -
+ frontend/static/quotes/vietnamese.json             |    641 -
+ frontend/static/robots.txt                         |      4 -
+ frontend/static/sitemap.xml                        |     30 -
+ frontend/static/sounds/click1/1.wav                |    Bin 3688 -> 0 bytes
+ frontend/static/sounds/click1/2.wav                |    Bin 3684 -> 0 bytes
+ frontend/static/sounds/click1/3.wav                |    Bin 3684 -> 0 bytes
+ frontend/static/sounds/click14/1.wav               |    Bin 33154 -> 0 bytes
+ frontend/static/sounds/click14/2.wav               |    Bin 33154 -> 0 bytes
+ frontend/static/sounds/click14/3.wav               |    Bin 33154 -> 0 bytes
+ frontend/static/sounds/click14/4.wav               |    Bin 33154 -> 0 bytes
+ frontend/static/sounds/click14/5.wav               |    Bin 33154 -> 0 bytes
+ frontend/static/sounds/click14/6.wav               |    Bin 33154 -> 0 bytes
+ frontend/static/sounds/click14/7.wav               |    Bin 33154 -> 0 bytes
+ frontend/static/sounds/click14/8.wav               |    Bin 33154 -> 0 bytes
+ frontend/static/sounds/click15/1.wav               |    Bin 88278 -> 0 bytes
+ frontend/static/sounds/click15/2.wav               |    Bin 88278 -> 0 bytes
+ frontend/static/sounds/click15/3.wav               |    Bin 88278 -> 0 bytes
+ frontend/static/sounds/click15/4.wav               |    Bin 88278 -> 0 bytes
+ frontend/static/sounds/click15/5.wav               |    Bin 88278 -> 0 bytes
+ frontend/static/sounds/click16/1.wav               |    Bin 17874 -> 0 bytes
+ frontend/static/sounds/click16/2.wav               |    Bin 9586 -> 0 bytes
+ frontend/static/sounds/click16/3.wav               |    Bin 13834 -> 0 bytes
+ frontend/static/sounds/click16/4.wav               |    Bin 8878 -> 0 bytes
+ frontend/static/sounds/click16/5.wav               |    Bin 4630 -> 0 bytes
+ frontend/static/sounds/click16/6.wav               |    Bin 10496 -> 0 bytes
+ frontend/static/sounds/click16/7.wav               |    Bin 9182 -> 0 bytes
+ frontend/static/sounds/click16/8.wav               |    Bin 9080 -> 0 bytes
+ frontend/static/sounds/click17/1.wav               |    Bin 28954 -> 0 bytes
+ frontend/static/sounds/click17/10.wav              |    Bin 28234 -> 0 bytes
+ frontend/static/sounds/click17/2.wav               |    Bin 38006 -> 0 bytes
+ frontend/static/sounds/click17/3.wav               |    Bin 37710 -> 0 bytes
+ frontend/static/sounds/click17/4.wav               |    Bin 43058 -> 0 bytes
+ frontend/static/sounds/click17/5.wav               |    Bin 30694 -> 0 bytes
+ frontend/static/sounds/click17/6.wav               |    Bin 38748 -> 0 bytes
+ frontend/static/sounds/click17/7.wav               |    Bin 37280 -> 0 bytes
+ frontend/static/sounds/click17/8.wav               |    Bin 32418 -> 0 bytes
+ frontend/static/sounds/click17/9.wav               |    Bin 27998 -> 0 bytes
+ frontend/static/sounds/click18/1.wav               |    Bin 34634 -> 0 bytes
+ frontend/static/sounds/click18/10.wav              |    Bin 33526 -> 0 bytes
+ frontend/static/sounds/click18/2.wav               |    Bin 31822 -> 0 bytes
+ frontend/static/sounds/click18/3.wav               |    Bin 28786 -> 0 bytes
+ frontend/static/sounds/click18/4.wav               |    Bin 30854 -> 0 bytes
+ frontend/static/sounds/click18/5.wav               |    Bin 38934 -> 0 bytes
+ frontend/static/sounds/click18/6.wav               |    Bin 40890 -> 0 bytes
+ frontend/static/sounds/click18/7.wav               |    Bin 35906 -> 0 bytes
+ frontend/static/sounds/click18/8.wav               |    Bin 27358 -> 0 bytes
+ frontend/static/sounds/click18/9.wav               |    Bin 28486 -> 0 bytes
+ frontend/static/sounds/click19/1.wav               |    Bin 21014 -> 0 bytes
+ frontend/static/sounds/click19/10.wav              |    Bin 27874 -> 0 bytes
+ frontend/static/sounds/click19/2.wav               |    Bin 20698 -> 0 bytes
+ frontend/static/sounds/click19/3.wav               |    Bin 21366 -> 0 bytes
+ frontend/static/sounds/click19/4.wav               |    Bin 21714 -> 0 bytes
+ frontend/static/sounds/click19/5.wav               |    Bin 26338 -> 0 bytes
+ frontend/static/sounds/click19/6.wav               |    Bin 26062 -> 0 bytes
+ frontend/static/sounds/click19/7.wav               |    Bin 27882 -> 0 bytes
+ frontend/static/sounds/click19/8.wav               |    Bin 26042 -> 0 bytes
+ frontend/static/sounds/click19/9.wav               |    Bin 23446 -> 0 bytes
+ frontend/static/sounds/click2/1.wav                |    Bin 10222 -> 0 bytes
+ frontend/static/sounds/click2/2.wav                |    Bin 10222 -> 0 bytes
+ frontend/static/sounds/click2/3.wav                |    Bin 10222 -> 0 bytes
+ frontend/static/sounds/click20/1.wav               |    Bin 36570 -> 0 bytes
+ frontend/static/sounds/click20/10.wav              |    Bin 28234 -> 0 bytes
+ frontend/static/sounds/click20/2.wav               |    Bin 32286 -> 0 bytes
+ frontend/static/sounds/click20/3.wav               |    Bin 31526 -> 0 bytes
+ frontend/static/sounds/click20/4.wav               |    Bin 32242 -> 0 bytes
+ frontend/static/sounds/click20/5.wav               |    Bin 37374 -> 0 bytes
+ frontend/static/sounds/click20/6.wav               |    Bin 34610 -> 0 bytes
+ frontend/static/sounds/click20/7.wav               |    Bin 37654 -> 0 bytes
+ frontend/static/sounds/click20/8.wav               |    Bin 32506 -> 0 bytes
+ frontend/static/sounds/click20/9.wav               |    Bin 32702 -> 0 bytes
+ frontend/static/sounds/click21/1.wav               |    Bin 32790 -> 0 bytes
+ frontend/static/sounds/click21/10.wav              |    Bin 32726 -> 0 bytes
+ frontend/static/sounds/click21/2.wav               |    Bin 32338 -> 0 bytes
+ frontend/static/sounds/click21/3.wav               |    Bin 36758 -> 0 bytes
+ frontend/static/sounds/click21/4.wav               |    Bin 30362 -> 0 bytes
+ frontend/static/sounds/click21/5.wav               |    Bin 40566 -> 0 bytes
+ frontend/static/sounds/click21/6.wav               |    Bin 34038 -> 0 bytes
+ frontend/static/sounds/click21/7.wav               |    Bin 37446 -> 0 bytes
+ frontend/static/sounds/click21/8.wav               |    Bin 31646 -> 0 bytes
+ frontend/static/sounds/click21/9.wav               |    Bin 35958 -> 0 bytes
+ frontend/static/sounds/click22/1.wav               |    Bin 32470 -> 0 bytes
+ frontend/static/sounds/click22/10.wav              |    Bin 32610 -> 0 bytes
+ frontend/static/sounds/click22/2.wav               |    Bin 30318 -> 0 bytes
+ frontend/static/sounds/click22/3.wav               |    Bin 31214 -> 0 bytes
+ frontend/static/sounds/click22/4.wav               |    Bin 31802 -> 0 bytes
+ frontend/static/sounds/click22/5.wav               |    Bin 35074 -> 0 bytes
+ frontend/static/sounds/click22/6.wav               |    Bin 31202 -> 0 bytes
+ frontend/static/sounds/click22/7.wav               |    Bin 27670 -> 0 bytes
+ frontend/static/sounds/click22/8.wav               |    Bin 30822 -> 0 bytes
+ frontend/static/sounds/click22/9.wav               |    Bin 31210 -> 0 bytes
+ frontend/static/sounds/click23/1.wav               |    Bin 31674 -> 0 bytes
+ frontend/static/sounds/click23/10.wav              |    Bin 31822 -> 0 bytes
+ frontend/static/sounds/click23/2.wav               |    Bin 34354 -> 0 bytes
+ frontend/static/sounds/click23/3.wav               |    Bin 64794 -> 0 bytes
+ frontend/static/sounds/click23/4.wav               |    Bin 63934 -> 0 bytes
+ frontend/static/sounds/click23/5.wav               |    Bin 64442 -> 0 bytes
+ frontend/static/sounds/click23/6.wav               |    Bin 27630 -> 0 bytes
+ frontend/static/sounds/click23/7.wav               |    Bin 50818 -> 0 bytes
+ frontend/static/sounds/click23/8.wav               |    Bin 39894 -> 0 bytes
+ frontend/static/sounds/click23/9.wav               |    Bin 73994 -> 0 bytes
+ frontend/static/sounds/click24/1.wav               |    Bin 48422 -> 0 bytes
+ frontend/static/sounds/click24/10.wav              |    Bin 50842 -> 0 bytes
+ frontend/static/sounds/click24/2.wav               |    Bin 50294 -> 0 bytes
+ frontend/static/sounds/click24/3.wav               |    Bin 35354 -> 0 bytes
+ frontend/static/sounds/click24/4.wav               |    Bin 38338 -> 0 bytes
+ frontend/static/sounds/click24/5.wav               |    Bin 52694 -> 0 bytes
+ frontend/static/sounds/click24/6.wav               |    Bin 54098 -> 0 bytes
+ frontend/static/sounds/click24/7.wav               |    Bin 51902 -> 0 bytes
+ frontend/static/sounds/click24/8.wav               |    Bin 52098 -> 0 bytes
+ frontend/static/sounds/click24/9.wav               |    Bin 49078 -> 0 bytes
+ frontend/static/sounds/click25/1.wav               |    Bin 14088 -> 0 bytes
+ frontend/static/sounds/click25/10.wav              |    Bin 13486 -> 0 bytes
+ frontend/static/sounds/click25/2.wav               |    Bin 16014 -> 0 bytes
+ frontend/static/sounds/click25/3.wav               |    Bin 16442 -> 0 bytes
+ frontend/static/sounds/click25/4.wav               |    Bin 11074 -> 0 bytes
+ frontend/static/sounds/click25/5.wav               |    Bin 21326 -> 0 bytes
+ frontend/static/sounds/click25/6.wav               |    Bin 13192 -> 0 bytes
+ frontend/static/sounds/click25/7.wav               |    Bin 12814 -> 0 bytes
+ frontend/static/sounds/click25/8.wav               |    Bin 12862 -> 0 bytes
+ frontend/static/sounds/click25/9.wav               |    Bin 13358 -> 0 bytes
+ frontend/static/sounds/click26/1.wav               |    Bin 23706 -> 0 bytes
+ frontend/static/sounds/click26/10.wav              |    Bin 29112 -> 0 bytes
+ frontend/static/sounds/click26/2.wav               |    Bin 27448 -> 0 bytes
+ frontend/static/sounds/click26/3.wav               |    Bin 23624 -> 0 bytes
+ frontend/static/sounds/click26/4.wav               |    Bin 26184 -> 0 bytes
+ frontend/static/sounds/click26/5.wav               |    Bin 28384 -> 0 bytes
+ frontend/static/sounds/click26/6.wav               |    Bin 25948 -> 0 bytes
+ frontend/static/sounds/click26/7.wav               |    Bin 24276 -> 0 bytes
+ frontend/static/sounds/click26/8.wav               |    Bin 24780 -> 0 bytes
+ frontend/static/sounds/click26/9.wav               |    Bin 27668 -> 0 bytes
+ frontend/static/sounds/click3/1.wav                |    Bin 6938 -> 0 bytes
+ frontend/static/sounds/click3/2.wav                |    Bin 6938 -> 0 bytes
+ frontend/static/sounds/click3/3.wav                |    Bin 6938 -> 0 bytes
+ frontend/static/sounds/click4/1.wav                |    Bin 28070 -> 0 bytes
+ frontend/static/sounds/click4/2.wav                |    Bin 29062 -> 0 bytes
+ frontend/static/sounds/click4/3.wav                |    Bin 30926 -> 0 bytes
+ frontend/static/sounds/click4/4.wav                |    Bin 29062 -> 0 bytes
+ frontend/static/sounds/click4/5.wav                |    Bin 29470 -> 0 bytes
+ frontend/static/sounds/click4/6.wav                |    Bin 36378 -> 0 bytes
+ frontend/static/sounds/click5/1.wav                |    Bin 40526 -> 0 bytes
+ frontend/static/sounds/click5/2.wav                |    Bin 46158 -> 0 bytes
+ frontend/static/sounds/click5/3.wav                |    Bin 45134 -> 0 bytes
+ frontend/static/sounds/click5/4.wav                |    Bin 53326 -> 0 bytes
+ frontend/static/sounds/click5/5.wav                |    Bin 56718 -> 0 bytes
+ frontend/static/sounds/click5/6.wav                |    Bin 41102 -> 0 bytes
+ frontend/static/sounds/click6/1.wav                |    Bin 23374 -> 0 bytes
+ frontend/static/sounds/click6/2.wav                |    Bin 23374 -> 0 bytes
+ frontend/static/sounds/click6/3.wav                |    Bin 23374 -> 0 bytes
+ frontend/static/sounds/click7/1.wav                |    Bin 11214 -> 0 bytes
+ frontend/static/sounds/click7/2.wav                |    Bin 11214 -> 0 bytes
+ frontend/static/sounds/click7/3.wav                |    Bin 11214 -> 0 bytes
+ frontend/static/sounds/error1/1.wav                |    Bin 12076 -> 0 bytes
+ frontend/static/sounds/error2/1.wav                |    Bin 16624 -> 0 bytes
+ frontend/static/sounds/error3/1.wav                |    Bin 16518 -> 0 bytes
+ frontend/static/sounds/error4/1.wav                |    Bin 33154 -> 0 bytes
+ frontend/static/sounds/error4/2.wav                |    Bin 33154 -> 0 bytes
+ frontend/static/sounds/fart-reverb.wav             |    Bin 307278 -> 0 bytes
+ frontend/static/sounds/timeWarning.wav             |    Bin 249494 -> 0 bytes
+ frontend/static/supporters.json                    |    107 -
+ frontend/static/themes/9009.css                    |     43 -
+ frontend/static/themes/aether.css                  |     40 -
+ frontend/static/themes/aurora.css                  |     86 -
+ frontend/static/themes/beach.css                   |      6 -
+ frontend/static/themes/bingsu.css                  |      6 -
+ frontend/static/themes/blueberry_dark.css          |      3 -
+ frontend/static/themes/blueberry_light.css         |      3 -
+ frontend/static/themes/camping.css                 |      3 -
+ frontend/static/themes/catppuccin.css              |     52 -
+ frontend/static/themes/chaos_theory.css            |    190 -
+ frontend/static/themes/cheesecake.css              |     36 -
+ frontend/static/themes/dark_note.css               |     80 -
+ frontend/static/themes/desert_oasis.css            |     10 -
+ frontend/static/themes/dmg.css                     |     48 -
+ frontend/static/themes/dots.css                    |     95 -
+ frontend/static/themes/dracula.css                 |     38 -
+ frontend/static/themes/dualshot.css                |     38 -
+ frontend/static/themes/ez_mode.css                 |     15 -
+ frontend/static/themes/fire.css                    |     92 -
+ frontend/static/themes/froyo.css                   |     38 -
+ frontend/static/themes/fruit_chew.css              |     38 -
+ frontend/static/themes/fundamentals.css            |      3 -
+ frontend/static/themes/future_funk.css             |     38 -
+ frontend/static/themes/graen.css                   |      6 -
+ frontend/static/themes/grape.css                   |     87 -
+ frontend/static/themes/horizon.css                 |     38 -
+ frontend/static/themes/husqy.css                   |      4 -
+ frontend/static/themes/incognito.css               |     28 -
+ frontend/static/themes/ishtar.css                  |      3 -
+ frontend/static/themes/lavender.css                |     39 -
+ frontend/static/themes/lil_dragon.css              |      7 -
+ frontend/static/themes/matrix.css                  |      4 -
+ frontend/static/themes/metropolis.css              |     10 -
+ frontend/static/themes/milkshake.css               |     38 -
+ frontend/static/themes/modern_ink.css              |     14 -
+ frontend/static/themes/moonlight.css               |     39 -
+ frontend/static/themes/mr_sleeves.css              |      3 -
+ frontend/static/themes/oblivion.css                |     38 -
+ frontend/static/themes/phantom.css                 |    160 -
+ frontend/static/themes/rainbow_trail.css           |    325 -
+ frontend/static/themes/retrocast.css               |     26 -
+ frontend/static/themes/rgb.css                     |    116 -
+ frontend/static/themes/sewing_tin.css              |      7 -
+ frontend/static/themes/sewing_tin_light.css        |     31 -
+ frontend/static/themes/shadow.css                  |     48 -
+ frontend/static/themes/snes.css                    |    122 -
+ frontend/static/themes/solarized_osaka.css         |     37 -
+ frontend/static/themes/stealth.css                 |      9 -
+ frontend/static/themes/suisei.css                  |     59 -
+ frontend/static/themes/sunset.css                  |      9 -
+ frontend/static/themes/taro.css                    |     34 -
+ frontend/static/themes/terrazzo.css                |     90 -
+ frontend/static/themes/trackday.css                |     20 -
+ frontend/static/themes/trance.css                  |     75 -
+ frontend/static/version.json                       |      1 -
+ frontend/static/webfonts/0xProto-Regular.woff2     |    Bin 56732 -> 0 bytes
+ frontend/static/webfonts/AdwaitaMono-Regular.woff2 |    Bin 361248 -> 0 bytes
+ .../webfonts/AtkinsonHyperlegible-Regular.woff2    |    Bin 23196 -> 0 bytes
+ frontend/static/webfonts/Boon-Regular.woff2        |    Bin 52228 -> 0 bytes
+ .../static/webfonts/CascadiaMono-Regular.woff2     |    Bin 211268 -> 0 bytes
+ frontend/static/webfonts/Comfortaa-Regular.woff2   |    Bin 51212 -> 0 bytes
+ frontend/static/webfonts/ComingSoon-Regular.woff2  |    Bin 21432 -> 0 bytes
+ frontend/static/webfonts/CommitMono-Regular.woff2  |    Bin 39992 -> 0 bytes
+ frontend/static/webfonts/FiraCode-Regular.woff2    |    Bin 103240 -> 0 bytes
+ frontend/static/webfonts/GallaudetRegular.woff2    |    Bin 30648 -> 0 bytes
+ frontend/static/webfonts/Geist-Medium.woff2        |    Bin 42132 -> 0 bytes
+ frontend/static/webfonts/GeistMono-Medium.woff2    |    Bin 44108 -> 0 bytes
+ frontend/static/webfonts/Hack-Regular.woff2        |    Bin 106236 -> 0 bytes
+ frontend/static/webfonts/IBMPlexMono-Regular.woff2 |    Bin 45640 -> 0 bytes
+ .../static/webfonts/IBMPlexSans-SemiBold.woff2     |    Bin 67060 -> 0 bytes
+ frontend/static/webfonts/Inconsolata-Regular.woff2 |    Bin 38772 -> 0 bytes
+ frontend/static/webfonts/InterTight-Regular.woff2  |    Bin 99132 -> 0 bytes
+ frontend/static/webfonts/Iosevka-Regular.woff2     |    Bin 1494892 -> 0 bytes
+ frontend/static/webfonts/Itim-Regular.woff2        |    Bin 100780 -> 0 bytes
+ .../static/webfonts/JetBrainsMono-Regular.woff2    |    Bin 92164 -> 0 bytes
+ frontend/static/webfonts/Kanit-Regular.woff2       |    Bin 53656 -> 0 bytes
+ frontend/static/webfonts/Lalezar-Regular.woff2     |    Bin 85748 -> 0 bytes
+ frontend/static/webfonts/Lato-Regular.woff2        |    Bin 182708 -> 0 bytes
+ frontend/static/webfonts/LexendDeca-Regular.woff2  |    Bin 25888 -> 0 bytes
+ frontend/static/webfonts/Mononoki-Regular.woff2    |    Bin 28860 -> 0 bytes
+ frontend/static/webfonts/Montserrat-Regular.woff2  |    Bin 86900 -> 0 bytes
+ .../static/webfonts/NotoNaskhArabic-Regular.woff2  |    Bin 71592 -> 0 bytes
+ frontend/static/webfonts/NotoSansLao-Regular.woff2 |    Bin 23008 -> 0 bytes
+ frontend/static/webfonts/Nunito-Bold.woff2         |    Bin 41676 -> 0 bytes
+ .../static/webfonts/OpenDyslexic-Regular.woff2     |    Bin 117196 -> 0 bytes
+ .../static/webfonts/OverpassMono-Regular.woff2     |    Bin 97068 -> 0 bytes
+ frontend/static/webfonts/Oxygen-Regular.woff2      |    Bin 19804 -> 0 bytes
+ frontend/static/webfonts/Parkinsans-Regular.woff2  |    Bin 17740 -> 0 bytes
+ frontend/static/webfonts/Roboto-Regular.woff2      |    Bin 50476 -> 0 bytes
+ frontend/static/webfonts/RobotoMono-Regular.woff2  |    Bin 37632 -> 0 bytes
+ frontend/static/webfonts/Sarabun-Bold.woff2        |    Bin 59236 -> 0 bytes
+ .../static/webfonts/SourceCodePro-Regular.woff2    |    Bin 76348 -> 0 bytes
+ .../static/webfonts/SpaceGrotesk-Regular.woff2     |    Bin 28560 -> 0 bytes
+ .../static/webfonts/TitilliumWeb-Regular.woff2     |    Bin 18136 -> 0 bytes
+ frontend/static/webfonts/Ubuntu-Regular.woff2      |    Bin 111604 -> 0 bytes
+ frontend/static/webfonts/UbuntuMono-Regular.woff2  |    Bin 79680 -> 0 bytes
+ .../static/webfonts/Vazirharf-NL-Regular.woff2     |    Bin 22196 -> 0 bytes
+ frontend/storybook/.gitignore                      |      5 -
+ frontend/storybook/.storybook/ThemeDecorator.tsx   |     51 -
+ frontend/storybook/.storybook/main.ts              |    153 -
+ frontend/storybook/.storybook/preview-body.html    |      6 -
+ frontend/storybook/.storybook/preview.ts           |     74 -
+ frontend/storybook/package.json                    |     38 -
+ frontend/storybook/stories/AccountMenu.stories.tsx |     37 -
+ .../storybook/stories/AccountXpBar.stories.tsx     |     62 -
+ .../storybook/stories/AnimatedModal.stories.tsx    |     76 -
+ frontend/storybook/stories/Anime.stories.tsx       |     98 -
+ frontend/storybook/stories/AnimeGroup.stories.tsx  |    178 -
+ .../storybook/stories/AnimePresence.stories.tsx    |    194 -
+ frontend/storybook/stories/AnimeShow.stories.tsx   |     80 -
+ frontend/storybook/stories/AnimeSwitch.stories.tsx |     77 -
+ .../storybook/stories/AsyncContent.stories.tsx     |     84 -
+ frontend/storybook/stories/AutoShrink.stories.tsx  |     84 -
+ frontend/storybook/stories/Balloon.stories.tsx     |    123 -
+ frontend/storybook/stories/Bar.stories.tsx         |     32 -
+ frontend/storybook/stories/Button.stories.tsx      |    128 -
+ frontend/storybook/stories/ChartJs.stories.tsx     |    117 -
+ frontend/storybook/stories/Checkbox.stories.tsx    |     64 -
+ frontend/storybook/stories/DataTable.stories.tsx   |    159 -
+ .../storybook/stories/DiscordAvatar.stories.tsx    |     96 -
+ frontend/storybook/stories/Fa.stories.tsx          |     91 -
+ .../storybook/stories/FieldIndicator.stories.tsx   |     96 -
+ frontend/storybook/stories/Footer.stories.tsx      |     21 -
+ frontend/storybook/stories/Form.stories.tsx        |    106 -
+ frontend/storybook/stories/H2.stories.tsx          |     24 -
+ frontend/storybook/stories/H3.stories.tsx          |     26 -
+ frontend/storybook/stories/Header.stories.tsx      |     28 -
+ frontend/storybook/stories/InputField.stories.tsx  |    104 -
+ .../storybook/stories/LoadingCircle.stories.tsx    |     52 -
+ frontend/storybook/stories/Logo.stories.tsx        |     14 -
+ frontend/storybook/stories/Nav.stories.tsx         |     28 -
+ .../stories/NotificationBubble.stories.tsx         |     75 -
+ frontend/storybook/stories/Separator.stories.tsx   |     34 -
+ frontend/storybook/stories/SlimSelect.stories.tsx  |    170 -
+ frontend/storybook/stories/Table.stories.tsx       |     78 -
+ frontend/storybook/stories/User.stories.tsx        |    160 -
+ frontend/storybook/stories/UserBadge.stories.tsx   |     66 -
+ frontend/storybook/stories/UserFlags.stories.tsx   |     85 -
+ frontend/storybook/stories/UserProfile.stories.tsx |    247 -
+ frontend/storybook/stories/storybook-theme.css     |     32 -
+ frontend/storybook/stories/tailwind.css            |      2 -
+ frontend/storybook/tsconfig.json                   |     22 -
+ frontend/storybook/vite.config.ts                  |     48 -
+ frontend/tsconfig.json                             |     28 -
+ frontend/vite-plugins/env-config.ts                |     57 -
+ frontend/vite-plugins/font-preview.ts              |     77 -
+ frontend/vite-plugins/fontawesome-subset.ts        |    207 -
+ frontend/vite-plugins/inject-preload.ts            |     48 -
+ frontend/vite-plugins/language-hashes.ts           |     63 -
+ frontend/vite-plugins/minify-json.ts               |     76 -
+ frontend/vite-plugins/oxlint-checker.ts            |    314 -
+ frontend/vite-plugins/oxlint-overlay.ts            |    126 -
+ frontend/vite-plugins/version-file.ts              |     20 -
+ frontend/vite.config.ts                            |    374 -
+ frontend/vitest.config.ts                          |     82 -
+ packages/.vscode/settings.json                     |      3 -
+ packages/challenges/.oxlintrc.json                 |      7 -
+ packages/challenges/__test__/tsconfig.json         |      7 -
+ packages/challenges/package.json                   |     35 -
+ packages/challenges/scripts/challenge-roles.ts     |      8 -
+ packages/challenges/src/index.ts                   |    871 -
+ packages/challenges/tsconfig.json                  |     13 -
+ packages/challenges/tsup.config.js                 |      3 -
+ packages/challenges/vitest.config.ts               |     11 -
+ packages/contracts/.oxlintrc.json                  |      7 -
+ packages/contracts/__test__/tsconfig.json          |      7 -
+ .../__test__/validation/validation.spec.ts         |     45 -
+ packages/contracts/package.json                    |     43 -
+ packages/contracts/src/admin.ts                    |    142 -
+ packages/contracts/src/ape-keys.ts                 |    110 -
+ packages/contracts/src/configs.ts                  |     69 -
+ packages/contracts/src/configuration.ts            |    102 -
+ packages/contracts/src/connections.ts              |    136 -
+ packages/contracts/src/dev.ts                      |     79 -
+ packages/contracts/src/index.ts                    |     41 -
+ packages/contracts/src/leaderboards.ts             |    261 -
+ packages/contracts/src/presets.ts                  |     98 -
+ packages/contracts/src/psas.ts                     |     34 -
+ packages/contracts/src/public.ts                   |     70 -
+ packages/contracts/src/quotes.ts                   |    217 -
+ packages/contracts/src/rate-limit/index.ts         |    411 -
+ .../contracts/src/require-configuration/index.ts   |     27 -
+ packages/contracts/src/results.ts                  |    204 -
+ packages/contracts/src/users.ts                    |    965 -
+ packages/contracts/src/util/api.ts                 |    148 -
+ packages/contracts/src/webhooks.ts                 |     60 -
+ packages/contracts/tsconfig.json                   |     10 -
+ packages/contracts/tsup.config.js                  |      3 -
+ packages/contracts/vitest.config.ts                |     10 -
+ packages/funbox/.oxlintrc.json                     |      7 -
+ packages/funbox/__test__/tsconfig.json             |      7 -
+ packages/funbox/__test__/validation.spec.ts        |    160 -
+ packages/funbox/package.json                       |     35 -
+ packages/funbox/src/index.ts                       |     15 -
+ packages/funbox/src/list.ts                        |    527 -
+ packages/funbox/src/types.ts                       |     39 -
+ packages/funbox/src/validation.ts                  |    245 -
+ packages/funbox/tsconfig.json                      |     13 -
+ packages/funbox/tsup.config.js                     |      3 -
+ packages/funbox/vitest.config.ts                   |     10 -
+ packages/oxlint-config/index.jsonc                 |     19 -
+ packages/oxlint-config/overrides.jsonc             |     76 -
+ packages/oxlint-config/package.json                |     11 -
+ packages/oxlint-config/plugin.jsonc                |     34 -
+ packages/oxlint-config/plugins/monkeytype-rules.js |    339 -
+ packages/oxlint-config/rules/consider.jsonc        |      9 -
+ packages/oxlint-config/rules/disabled.jsonc        |     17 -
+ packages/oxlint-config/rules/enabled.jsonc         |     89 -
+ packages/oxlint-config/rules/jsx.jsonc             |     46 -
+ packages/oxlint-config/rules/ts-consider.jsonc     |     21 -
+ packages/oxlint-config/rules/ts-disabled.jsonc     |     13 -
+ packages/oxlint-config/rules/ts-enabled.jsonc      |     64 -
+ packages/release/.oxlintrc.json                    |      7 -
+ packages/release/bin/deployBackend.sh              |     21 -
+ packages/release/bin/purgeCfCache.sh               |     23 -
+ packages/release/example.env                       |      6 -
+ packages/release/package.json                      |     26 -
+ packages/release/src/buildChangelog.js             |    399 -
+ packages/release/src/buildContributors.js          |     60 -
+ packages/release/src/index.js                      |    371 -
+ packages/schemas/.oxlintrc.json                    |      7 -
+ packages/schemas/__tests__/config.spec.ts          |     83 -
+ packages/schemas/__tests__/tsconfig.json           |      7 -
+ packages/schemas/__tests__/util.spec.ts            |     56 -
+ packages/schemas/package.json                      |     42 -
+ packages/schemas/src/ape-keys.ts                   |     19 -
+ packages/schemas/src/challenges.ts                 |     70 -
+ packages/schemas/src/configs.ts                    |    532 -
+ packages/schemas/src/configuration.ts              |    131 -
+ packages/schemas/src/connections.ts                |     24 -
+ packages/schemas/src/fonts.ts                      |     62 -
+ packages/schemas/src/languages.ts                  |    475 -
+ packages/schemas/src/layouts.ts                    |    295 -
+ packages/schemas/src/leaderboards.ts               |     66 -
+ packages/schemas/src/presets.ts                    |     51 -
+ packages/schemas/src/psas.ts                       |     12 -
+ packages/schemas/src/public.ts                     |     15 -
+ packages/schemas/src/quotes.ts                     |     71 -
+ packages/schemas/src/results.ts                    |    183 -
+ packages/schemas/src/shared.ts                     |     83 -
+ packages/schemas/src/themes.ts                     |    197 -
+ packages/schemas/src/users.ts                      |    406 -
+ packages/schemas/src/util.ts                       |     73 -
+ packages/schemas/src/validation/homoglyphs.ts      |     42 -
+ packages/schemas/src/validation/validation.ts      |    431 -
+ packages/schemas/tsconfig.json                     |     10 -
+ packages/schemas/tsup.config.js                    |      3 -
+ packages/schemas/vitest.config.ts                  |     10 -
+ packages/tsup-config/.oxlintrc.json                |      7 -
+ packages/tsup-config/package.json                  |     28 -
+ packages/tsup-config/src/index.ts                  |     21 -
+ packages/tsup-config/tsconfig.json                 |     13 -
+ packages/tsup-config/tsup.config.js                |     10 -
+ packages/typescript-config/base.json               |     34 -
+ packages/typescript-config/package.json            |      4 -
+ packages/util/.oxlintrc.json                       |      7 -
+ packages/util/__test__/arrays.spec.ts              |     49 -
+ packages/util/__test__/date-and-time.spec.ts       |    223 -
+ packages/util/__test__/json.spec.ts                |    147 -
+ packages/util/__test__/numbers.spec.ts             |    157 -
+ packages/util/__test__/predicates.spec.ts          |     41 -
+ packages/util/__test__/strings.spec.ts             |     66 -
+ packages/util/__test__/trycatch.spec.ts            |     92 -
+ packages/util/__test__/tsconfig.json               |      7 -
+ packages/util/package.json                         |     31 -
+ packages/util/src/arrays.ts                        |     15 -
+ packages/util/src/date-and-time.ts                 |     90 -
+ packages/util/src/json.ts                          |     71 -
+ packages/util/src/numbers.ts                       |    158 -
+ packages/util/src/objects.ts                       |     15 -
+ packages/util/src/predicates.ts                    |     12 -
+ packages/util/src/strings.ts                       |     15 -
+ packages/util/src/trycatch.ts                      |     33 -
+ packages/util/src/zod.ts                           |     12 -
+ packages/util/tsconfig.json                        |     13 -
+ packages/util/tsup.config.js                       |      3 -
+ packages/util/vitest.config.ts                     |     10 -
+ 2021 files changed, 7580106 deletions(-)
+---exit 0
+CHECK-DONE

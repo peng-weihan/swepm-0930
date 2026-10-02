@@ -1,0 +1,69 @@
+{
+  "instance_id": "netease-youdao__LobsterAI-1091",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.78,
+  "gold_patch_assessment": "The gold patch is extremely large (81 files, ~7660 added lines, ~848 removed lines). It creates the requested src/scheduled-task/ module with constants, types, policies, origin inference, model mapper, meta store, fixtures, and engine prompt. However, it also includes many changes unrelated to the scheduled-task domain module: SKILLs (article-writer, content-planner, daily-trending, stock-analyzer, etc.), agent management (agentManager, presetAgents, AgentCreateModal, AgentsView), UI components (Sidebar, ModelSelector, CoworkView), renderer store slices, i18n, and documentation. The scheduled-task domain module itself appears well-designed and matches the issue requirements.",
+  "base_vs_gold_expectation": "On the unmodified base, src/scheduled-task/ does not exist, so all test files that import from modules like ./metaStore, ./modelMapper, ./origin, ./policies/*, ./constants, ./fixtures, ./enginePrompt will fail with module-not-found errors. With the gold patch applied, these modules exist and tests should pass. The tests correctly distinguish gold from base in principle.",
+  "too_narrow_risks": [
+    "The issue's core requirement is replacing scattered string literals with centralized constants across 'main and renderer code', but no tests verify that string literals in the ~50+ modified files outside src/scheduled-task/ were actually replaced with constant references.",
+    "No tests verify that ScheduledTaskDelivery.mode, ScheduledTask.sessionTarget, ScheduledTask.wakeMode, ScheduledTaskRun.status fields use shared constant-derived types as specified in the issue.",
+    "No tests verify the import path migration (e.g., that renderer/types/scheduledTask.ts types were moved to src/scheduled-task/types.ts and existing imports were updated).",
+    "No tests verify IPC channel constants are actually used in ipcMain.handle/ipcRenderer.invoke calls, which is an explicit requirement in the issue.",
+    "No tests for the scheduled reminder text import updates mentioned in the issue.",
+    "The enginePrompt.test.ts only tests two engine types (openclaw, yd_cowork) with regex matching on prompt text — doesn't verify the module was actually moved from src/main/libs/ to src/scheduled-task/."
+  ],
+  "too_broad_risks": [
+    "openclawConfigSync.test.ts tests provider API key env var naming logic, which is unrelated to the scheduled-task domain module described in the issue.",
+    "The test patch modifies src/main/sqliteStore.ts to add an agents table and migrations — this is infrastructure for the gold patch's agent management changes, not the scheduled-task refactoring.",
+    "The test-inject-messages.js script added by the test patch is a DevTools performance testing script, completely unrelated to the issue."
+  ],
+  "implementation_coupling": [
+    "Tests import exact class names from the gold patch: TaskModelMapper, ScheduledTaskMetaStore, ManualTaskPolicy, IMTaskPolicy, CoworkTaskPolicy, LegacyTaskPolicy, TaskPolicyRegistry — any alternative class naming would fail.",
+    "Tests import exact function names: inferOriginAndBinding, makeTask, makeModel, buildScheduledTaskEnginePrompt, SCHEDULED_TASK_SWITCH_MESSAGE.",
+    "Tests depend on exact constant object names and member names: OriginKind.Manual, BindingKind.NewSession, ScheduleKind.Cron, PayloadKind.AgentTurn, DeliveryMode.Announce, DeliveryChannel.Last, SessionTarget.Main, WakeMode.Now, WakeMode.NextHeartbeat.",
+    "Tests depend on exact module paths (src/scheduled-task/metaStore, src/scheduled-task/modelMapper, src/scheduled-task/origin, etc.) — though the issue does specify src/scheduled-task/policies as the export path.",
+    "Tests depend on fixtures.ts (makeTask, makeModel helpers) defined in the gold patch's production code — alternative implementations would need to provide compatible test helpers at the exact same path.",
+    "Tests check specific method names: .normalizeDraft(), .onDeliveryChanged(), .toWireBinding(), .describeRunBehavior(), .getReadonlyFields(), .getCreateDefaults(), .createDraft(), .fromWire(), .toWireInput() — though the issue does describe most of these behaviors.",
+    "Tests check the exact managed session key format 'agent:main:lobsterai:sess-x' which is an internal implementation detail."
+  ],
+  "environment_risks": [
+    "Tests depend on sql.js for in-memory SQLite (metaStore.test.ts, integration.test.ts) — sql.js is listed as a dependency but needs to be installed and the WASM file available.",
+    "The vitest config includes only 'src/**/*.test.ts' but eval.sh also references a test that was deleted by the test patch (tests/scheduledTaskEnginePrompt.test.mjs) — should be fine since the old test is removed and new one is added in src/.",
+    "npm test command runs vitest which may need node_modules to be installed beforehand."
+  ],
+  "mismatches": [
+    "The gold patch touches 81 files across many subsystems (agents, SKILLs, IM, cowork, renderer UI), but the issue focuses specifically on scheduled-task domain constants, types, and policies. The gold patch appears to bundle multiple features/changes beyond the issue scope.",
+    "The test patch includes sqliteStore.ts changes adding an agents table — this supports the gold patch's agent management changes but is not part of the stated issue.",
+    "The openclawConfigSync.test.ts in the test patch tests env var naming logic that is not mentioned in the issue about scheduled-task domain module.",
+    "The issue mentions scheduled task types should move from 'renderer-only paths' to the shared module — the gold patch renames src/renderer/types/scheduledTask.ts to src/scheduled-task/types.ts, but no test verifies this relocation or that imports were updated."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/netease-youdao__LobsterAI-1091/instruction.md",
+      "detail": "Issue requires centralized constants, policy abstraction with specific API surface, origin/binding modeling, and codebase-wide string literal replacement."
+    },
+    {
+      "file": "/audit_tasks/netease-youdao__LobsterAI-1091/solution/solve.sh",
+      "detail": "Gold patch touches 81 files with ~7660 additions and ~848 deletions, far exceeding the scheduled-task module scope."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch creates 10 test files in src/scheduled-task/ plus openclawConfigSync.test.ts, modifies sqliteStore.ts, and adds test-inject-messages.js. Tests are heavily coupled to gold patch's exact API."
+    },
+    {
+      "file": "/audit_tasks/netease-youdao__LobsterAI-1091/tests/eval.sh",
+      "detail": "Test command: 'npm test -- src/scheduled-task src/main/libs/openclawConfigSync.test.ts' — only tests scheduled-task module and one unrelated file."
+    },
+    {
+      "file": "/testbed/src/scheduled-task",
+      "detail": "Directory does not exist in base commit — all test imports will fail without the gold patch creating this module."
+    },
+    {
+      "file": "/testbed/vitest.config.ts",
+      "detail": "Vitest configured with include: ['src/**/*.test.ts'] and node environment."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch is vastly oversized (81 files) relative to the issue's scheduled-task domain focus, bundling unrelated agent management, SKILLs, and UI changes. Tests are comprehensive for the new scheduled-task module's internal API but are heavily implementation-coupled — they import exact class names, method signatures, constant names, and module paths from the gold patch. The tests completely miss the issue's core requirement of replacing scattered string literals with constants across the codebase (~50+ files). Additionally, the test patch includes unrelated changes (sqliteStore agents table, openclawConfigSync env var tests, test-inject-messages script). An alternative implementation that achieves the same behavioral goals through a different API design would fail all tests. Tests should be revised to: (1) verify codebase-wide string literal replacement, (2) remove unrelated test additions, and (3) reduce coupling to exact implementation details where possible."
+}

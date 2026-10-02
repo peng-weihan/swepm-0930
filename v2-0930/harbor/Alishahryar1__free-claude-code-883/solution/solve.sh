@@ -1,0 +1,3538 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/ARCHITECTURE.md b/ARCHITECTURE.md
+--- a/ARCHITECTURE.md
++++ b/ARCHITECTURE.md
+@@ -348,23 +348,22 @@ where supported, and returning Anthropic SSE strings to the service layer.
+ - content and message conversion for OpenAI-compatible upstreams;
+ - tool schema and tool-result handling;
+ - thinking block handling;
+-- SSE event formatting through `SSEBuilder`;
++- stream lifecycle through `core/anthropic/streaming`, including the neutral
++  stream ledger, Anthropic SSE emitter, native event normalization, retry
++  holdback, continuation, and tool repair;
+ - native Anthropic stream policy;
+-- stream recovery policy, holdback, continuation, and repair helpers;
+ - token counting and user-facing error formatting.
+ 
+-Shared stream recovery policy lives in
+-[core/anthropic/stream_recovery_session.py](core/anthropic/stream_recovery_session.py)
+-and [core/anthropic/stream_recovery.py](core/anthropic/stream_recovery.py). The
+-shared layer owns early retry classification, holdback buffering, retry attempt
+-counting, and common flush/discard behavior. Provider transports still own
+-upstream request construction, stream semantic parsing, transport-specific state
+-tracking, and the actual recovery SSE events emitted for OpenAI-chat or native
+-Anthropic streams. Per-request stream runners in
+-[providers/transports/openai_chat/](providers/transports/openai_chat/) and
+-[providers/transports/anthropic_messages/](providers/transports/anthropic_messages/)
+-own mutable stream state so transport base classes stay focused on provider
+-hooks, client setup, and model listing.
++Shared stream behavior lives under
++[core/anthropic/streaming/](core/anthropic/streaming/). The shared layer owns the
++Anthropic content-block ledger, SSE serialization, early retry classification,
++holdback buffering, retry attempt counting, common flush/discard behavior,
++midstream continuation, tool JSON repair, and final success/error tails. Provider
++transport packages are upstream adapters: OpenAI-chat providers convert chat
++chunks into ledger operations, and native Anthropic providers parse upstream SSE,
++apply native block policy, and re-emit normalized Anthropic SSE from the shared
++ledger. Transport bases stay focused on provider hooks, client setup, request
++construction, rate limiting, and model listing.
+ 
+ [core/openai_responses/](core/openai_responses/) owns OpenAI Responses support:
+ 
+diff --git a/api/request_pipeline.py b/api/request_pipeline.py
+--- a/api/request_pipeline.py
++++ b/api/request_pipeline.py
+@@ -15,7 +15,7 @@
+ from config.provider_catalog import PROVIDER_CATALOG
+ from config.settings import Settings
+ from core.anthropic import get_token_count, get_user_facing_error_message
+-from core.anthropic.sse import ANTHROPIC_SSE_RESPONSE_HEADERS
++from core.anthropic.streaming import ANTHROPIC_SSE_RESPONSE_HEADERS
+ from core.openai_responses import OpenAIResponsesAdapter
+ from core.trace import api_messages_request_snapshot, trace_event, traced_async_stream
+ from providers.base import BaseProvider
+diff --git a/api/web_tools/streaming.py b/api/web_tools/streaming.py
+--- a/api/web_tools/streaming.py
++++ b/api/web_tools/streaming.py
+@@ -15,7 +15,7 @@
+     WEB_SEARCH_TOOL_RESULT,
+     WEB_SEARCH_TOOL_RESULT_ERROR,
+ )
+-from core.anthropic.sse import format_sse_event
++from core.anthropic.streaming import format_sse_event
+ 
+ from . import outbound
+ from .constants import _MAX_FETCH_CHARS
+diff --git a/core/anthropic/__init__.py b/core/anthropic/__init__.py
+--- a/core/anthropic/__init__.py
++++ b/core/anthropic/__init__.py
+@@ -14,22 +14,29 @@
+ )
+ from .native_messages_request import sanitize_native_messages_thinking_policy
+ from .provider_stream_error import iter_provider_stream_error_sse_events
+-from .sse import ContentBlockManager, SSEBuilder, format_sse_event, map_stop_reason
++from .streaming import (
++    AnthropicStreamLedger,
++    StreamBlockLedger,
++    ToolBlockState,
++    format_sse_event,
++    map_stop_reason,
++)
+ from .thinking import ContentChunk, ContentType, ThinkTagParser
+ from .tokens import get_token_count
+ from .tools import HeuristicToolParser
+ from .utils import set_if_not_none
+ 
+ __all__ = [
++    "AnthropicStreamLedger",
+     "AnthropicToOpenAIConverter",
+-    "ContentBlockManager",
+     "ContentChunk",
+     "ContentType",
+     "HeuristicToolParser",
+     "OpenAIConversionError",
+     "ReasoningReplayMode",
+-    "SSEBuilder",
++    "StreamBlockLedger",
+     "ThinkTagParser",
++    "ToolBlockState",
+     "append_request_id",
+     "build_base_request_body",
+     "extract_text_from_content",
+diff --git a/core/anthropic/emitted_sse_tracker.py b/core/anthropic/emitted_sse_tracker.py
+deleted file mode 100644
+--- a/core/anthropic/emitted_sse_tracker.py
++++ /dev/null
+@@ -1,346 +0,0 @@
+-"""Track content-block state for native Anthropic SSE strings we emit to clients."""
+-
+-from __future__ import annotations
+-
+-import uuid
+-from collections.abc import Iterator
+-from contextlib import suppress
+-from dataclasses import dataclass, field
+-from typing import Any
+-
+-from core.anthropic.sse import SSEBuilder, format_sse_event
+-from core.anthropic.stream_contracts import SSEEvent, parse_sse_lines
+-from core.anthropic.stream_recovery import (
+-    ToolSchema,
+-    accept_tool_json_repair,
+-    continuation_suffix,
+-    parse_complete_tool_input,
+-)
+-
+-
+-@dataclass
+-class EmittedBlockState:
+-    """Tracked downstream block payload emitted to the client."""
+-
+-    index: int
+-    block_type: str
+-    open: bool = True
+-    tool_id: str = ""
+-    name: str = ""
+-    parts: list[str] = field(default_factory=list)
+-
+-    @property
+-    def content(self) -> str:
+-        return "".join(self.parts)
+-
+-
+-class EmittedNativeSseTracker:
+-    """Parse emitted SSE frames so mid-stream errors can close blocks and pick a fresh index."""
+-
+-    def __init__(self) -> None:
+-        self._buf = ""
+-        self._open_stack: list[int] = []
+-        self._max_index = -1
+-        self._blocks: dict[int, EmittedBlockState] = {}
+-        self.message_id: str | None = None
+-        self.model: str = ""
+-        self.stop_reason: str | None = None
+-        self.message_stopped = False
+-
+-    def feed(self, chunk: str) -> None:
+-        """Record SSE frames completed by ``chunk`` (handles splitting across reads)."""
+-        self._buf += chunk
+-        while True:
+-            sep = self._buf.find("\n\n")
+-            if sep < 0:
+-                break
+-            frame = self._buf[:sep]
+-            self._buf = self._buf[sep + 2 :]
+-            if not frame.strip():
+-                continue
+-            for event in parse_sse_lines(frame.splitlines()):
+-                self._observe(event)
+-
+-    def _observe(self, event: SSEEvent) -> None:
+-        if event.event == "message_start":
+-            message = event.data.get("message")
+-            if isinstance(message, dict):
+-                mid = message.get("id")
+-                if isinstance(mid, str) and mid:
+-                    self.message_id = mid
+-                model = message.get("model")
+-                if isinstance(model, str) and model:
+-                    self.model = model
+-            return
+-
+-        if event.event == "content_block_start":
+-            raw_index = event.data.get("index")
+-            if not isinstance(raw_index, int):
+-                return
+-            idx = raw_index
+-            self._max_index = max(self._max_index, idx)
+-            self._open_stack.append(idx)
+-            block = event.data.get("content_block")
+-            if isinstance(block, dict):
+-                block_type = str(block.get("type", ""))
+-                state = EmittedBlockState(index=idx, block_type=block_type)
+-                if block_type == "tool_use":
+-                    tool_id = block.get("id")
+-                    name = block.get("name")
+-                    state.tool_id = tool_id if isinstance(tool_id, str) else ""
+-                    state.name = name if isinstance(name, str) else ""
+-                elif block_type == "text":
+-                    text = block.get("text")
+-                    if isinstance(text, str) and text:
+-                        state.parts.append(text)
+-                elif block_type == "thinking":
+-                    thinking = block.get("thinking")
+-                    if isinstance(thinking, str) and thinking:
+-                        state.parts.append(thinking)
+-                self._blocks[idx] = state
+-            return
+-
+-        if event.event == "content_block_delta":
+-            raw_index = event.data.get("index")
+-            if not isinstance(raw_index, int):
+-                return
+-            idx = raw_index
+-            state = self._blocks.get(idx)
+-            delta = event.data.get("delta")
+-            if state is not None and isinstance(delta, dict):
+-                if state.block_type == "text":
+-                    text = delta.get("text")
+-                    if isinstance(text, str):
+-                        state.parts.append(text)
+-                elif state.block_type == "thinking":
+-                    thinking = delta.get("thinking")
+-                    if isinstance(thinking, str):
+-                        state.parts.append(thinking)
+-                elif state.block_type == "tool_use":
+-                    partial = delta.get("partial_json")
+-                    if isinstance(partial, str):
+-                        state.parts.append(partial)
+-            return
+-
+-        if event.event == "content_block_stop":
+-            raw_index = event.data.get("index")
+-            if not isinstance(raw_index, int):
+-                return
+-            idx = raw_index
+-            if self._open_stack and self._open_stack[-1] == idx:
+-                self._open_stack.pop()
+-            else:
+-                with suppress(ValueError):
+-                    self._open_stack.remove(idx)
+-            state = self._blocks.get(idx)
+-            if state is not None:
+-                state.open = False
+-            return
+-
+-        if event.event == "message_delta":
+-            delta = event.data.get("delta")
+-            if isinstance(delta, dict):
+-                stop_reason = delta.get("stop_reason")
+-                if isinstance(stop_reason, str):
+-                    self.stop_reason = stop_reason
+-            return
+-
+-        if event.event == "message_stop":
+-            self.message_stopped = True
+-
+-    def next_content_index(self) -> int:
+-        """Next unused content block index based on emitted starts."""
+-        return self._max_index + 1
+-
+-    def iter_close_unclosed_blocks(self) -> Iterator[str]:
+-        """Yield ``content_block_stop`` events for blocks that were started but not stopped."""
+-        while self._open_stack:
+-            idx = self._open_stack.pop()
+-            state = self._blocks.get(idx)
+-            if state is not None:
+-                state.open = False
+-            yield format_sse_event(
+-                "content_block_stop",
+-                {"type": "content_block_stop", "index": idx},
+-            )
+-
+-    def emitted_text(self) -> str:
+-        return "".join(
+-            block.content
+-            for block in self._blocks.values()
+-            if block.block_type == "text"
+-        )
+-
+-    def emitted_thinking(self) -> str:
+-        return "".join(
+-            block.content
+-            for block in self._blocks.values()
+-            if block.block_type == "thinking"
+-        )
+-
+-    def has_tool_block(self) -> bool:
+-        return any(block.block_type == "tool_use" for block in self._blocks.values())
+-
+-    def has_content_block(self) -> bool:
+-        return bool(self._blocks)
+-
+-    def has_terminal_message(self) -> bool:
+-        return self.message_stopped
+-
+-    def tool_blocks(self) -> list[EmittedBlockState]:
+-        return [
+-            block for block in self._blocks.values() if block.block_type == "tool_use"
+-        ]
+-
+-    def can_salvage_tool_use(self, schemas: dict[str, ToolSchema]) -> bool:
+-        tool_blocks = self.tool_blocks()
+-        if not tool_blocks:
+-            return False
+-        for block in tool_blocks:
+-            if not block.tool_id or not block.name:
+-                return False
+-            if parse_complete_tool_input(block.content, block.name, schemas) is None:
+-                return False
+-        return True
+-
+-    def append_text_suffix(self, suffix: str) -> Iterator[str]:
+-        if not suffix:
+-            return
+-        active = self._last_open_block("text")
+-        if active is None:
+-            index = self.next_content_index()
+-            self._max_index = max(self._max_index, index)
+-            active = EmittedBlockState(index=index, block_type="text")
+-            self._blocks[index] = active
+-            self._open_stack.append(index)
+-            yield format_sse_event(
+-                "content_block_start",
+-                {
+-                    "type": "content_block_start",
+-                    "index": index,
+-                    "content_block": {"type": "text", "text": ""},
+-                },
+-            )
+-        active.parts.append(suffix)
+-        yield format_sse_event(
+-            "content_block_delta",
+-            {
+-                "type": "content_block_delta",
+-                "index": active.index,
+-                "delta": {"type": "text_delta", "text": suffix},
+-            },
+-        )
+-
+-    def append_thinking_suffix(self, suffix: str) -> Iterator[str]:
+-        if not suffix:
+-            return
+-        active = self._last_open_block("thinking")
+-        if active is None:
+-            index = self.next_content_index()
+-            self._max_index = max(self._max_index, index)
+-            active = EmittedBlockState(index=index, block_type="thinking")
+-            self._blocks[index] = active
+-            self._open_stack.append(index)
+-            yield format_sse_event(
+-                "content_block_start",
+-                {
+-                    "type": "content_block_start",
+-                    "index": index,
+-                    "content_block": {"type": "thinking", "thinking": ""},
+-                },
+-            )
+-        active.parts.append(suffix)
+-        yield format_sse_event(
+-            "content_block_delta",
+-            {
+-                "type": "content_block_delta",
+-                "index": active.index,
+-                "delta": {"type": "thinking_delta", "thinking": suffix},
+-            },
+-        )
+-
+-    def append_tool_repair_suffix(
+-        self,
+-        tool_index: int,
+-        suffix: str,
+-    ) -> Iterator[str]:
+-        tool_blocks = self.tool_blocks()
+-        if tool_index >= len(tool_blocks) or not suffix:
+-            return
+-        block = tool_blocks[tool_index]
+-        block.parts.append(suffix)
+-        yield format_sse_event(
+-            "content_block_delta",
+-            {
+-                "type": "content_block_delta",
+-                "index": block.index,
+-                "delta": {"type": "input_json_delta", "partial_json": suffix},
+-            },
+-        )
+-
+-    def iter_success_tail(self, stop_reason: str) -> Iterator[str]:
+-        yield from self.iter_close_unclosed_blocks()
+-        if self.stop_reason is None:
+-            yield format_sse_event(
+-                "message_delta",
+-                {
+-                    "type": "message_delta",
+-                    "delta": {"stop_reason": stop_reason, "stop_sequence": None},
+-                    "usage": {"input_tokens": 0, "output_tokens": 1},
+-                },
+-            )
+-        if not self.message_stopped:
+-            yield format_sse_event("message_stop", {"type": "message_stop"})
+-
+-    def accept_tool_repair(
+-        self,
+-        tool_index: int,
+-        candidate: str,
+-        schemas: dict[str, ToolSchema],
+-    ) -> str | None:
+-        tool_blocks = self.tool_blocks()
+-        if tool_index >= len(tool_blocks):
+-            return None
+-        block = tool_blocks[tool_index]
+-        repair = accept_tool_json_repair(
+-            block.content,
+-            candidate,
+-            tool_name=block.name,
+-            schemas=schemas,
+-        )
+-        return repair.suffix if repair is not None else None
+-
+-    def continuation_text_suffix(self, candidate: str) -> str | None:
+-        return continuation_suffix(self.emitted_text(), candidate)
+-
+-    def continuation_thinking_suffix(self, candidate: str) -> str | None:
+-        return continuation_suffix(self.emitted_thinking(), candidate)
+-
+-    def iter_midstream_error_tail(
+-        self,
+-        error_message: str,
+-        *,
+-        request: Any,
+-        input_tokens: int,
+-        log_raw_sse_events: bool,
+-    ) -> Iterator[str]:
+-        """Close dangling blocks, emit a text error block at a fresh index, then message tail."""
+-        mid = self.message_id or f"msg_{uuid.uuid4()}"
+-        model = self.model or (getattr(request, "model", "") or "")
+-        sse = SSEBuilder(
+-            mid,
+-            model,
+-            input_tokens,
+-            log_raw_events=log_raw_sse_events,
+-        )
+-        sse.blocks.next_index = self.next_content_index()
+-        yield from sse.emit_error(error_message)
+-        yield sse.message_delta("end_turn", 1)
+-        yield sse.message_stop()
+-
+-    def _last_open_block(self, block_type: str) -> EmittedBlockState | None:
+-        for index in reversed(self._open_stack):
+-            block = self._blocks.get(index)
+-            if block is not None and block.block_type == block_type and block.open:
+-                return block
+-        return None
+diff --git a/core/anthropic/provider_stream_error.py b/core/anthropic/provider_stream_error.py
+--- a/core/anthropic/provider_stream_error.py
++++ b/core/anthropic/provider_stream_error.py
+@@ -6,7 +6,7 @@
+ from collections.abc import Iterator
+ from typing import Any
+ 
+-from core.anthropic.sse import SSEBuilder
++from core.anthropic.streaming import AnthropicStreamLedger
+ 
+ 
+ def iter_provider_stream_error_sse_events(
+@@ -21,14 +21,14 @@ def iter_provider_stream_error_sse_events(
+     """Yield message_start (if needed), a text block with the error, then message_delta/stop."""
+     mid = message_id or f"msg_{uuid.uuid4()}"
+     model = getattr(request, "model", "") or ""
+-    sse = SSEBuilder(
++    ledger = AnthropicStreamLedger(
+         mid,
+         model,
+         input_tokens,
+         log_raw_events=log_raw_sse_events,
+     )
+     if not sent_any_event:
+-        yield sse.message_start()
+-    yield from sse.emit_error(error_message)
+-    yield sse.message_delta("end_turn", 1)
+-    yield sse.message_stop()
++        yield ledger.message_start()
++    yield from ledger.emit_error(error_message)
++    yield ledger.message_delta("end_turn", 1)
++    yield ledger.message_stop()
+diff --git a/core/anthropic/sse.py b/core/anthropic/sse.py
+deleted file mode 100644
+--- a/core/anthropic/sse.py
++++ /dev/null
+@@ -1,440 +0,0 @@
+-"""SSE event builder for Anthropic-format streaming responses."""
+-
+-import hashlib
+-import json
+-from collections.abc import Iterator
+-from dataclasses import dataclass, field
+-from typing import Any
+-
+-from loguru import logger
+-
+-try:
+-    import tiktoken
+-
+-    ENCODER = tiktoken.get_encoding("cl100k_base")
+-except Exception:
+-    ENCODER = None
+-
+-
+-# Standard headers for Anthropic-style ``text/event-stream`` responses from this proxy.
+-ANTHROPIC_SSE_RESPONSE_HEADERS: dict[str, str] = {
+-    "X-Accel-Buffering": "no",
+-    "Cache-Control": "no-cache",
+-    "Connection": "keep-alive",
+-}
+-
+-STOP_REASON_MAP = {
+-    "stop": "end_turn",
+-    "length": "max_tokens",
+-    "tool_calls": "tool_use",
+-    "content_filter": "end_turn",
+-}
+-
+-
+-def map_stop_reason(openai_reason: str | None) -> str:
+-    """Map OpenAI finish_reason to Anthropic stop_reason."""
+-    return (
+-        STOP_REASON_MAP.get(openai_reason, "end_turn") if openai_reason else "end_turn"
+-    )
+-
+-
+-def _safe_usage_int(value: object) -> int:
+-    """Coerce streamed usage counters to int; non-integers become 0."""
+-    return value if isinstance(value, int) else 0
+-
+-
+-def format_sse_event(event_type: str, data: dict) -> str:
+-    """Format one Anthropic-style SSE event (no logging)."""
+-    return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
+-
+-
+-@dataclass
+-class ToolCallState:
+-    """State for a single streaming tool call."""
+-
+-    block_index: int
+-    tool_id: str
+-    name: str
+-    extra_content: dict[str, Any] | None = None
+-    contents: list[str] = field(default_factory=list)
+-    started: bool = False
+-    task_arg_buffer: str = ""
+-    task_args_emitted: bool = False
+-    pre_start_args: str = ""
+-
+-
+-@dataclass
+-class ContentBlockManager:
+-    """Manage content block indices and state."""
+-
+-    next_index: int = 0
+-    thinking_index: int = -1
+-    text_index: int = -1
+-    thinking_started: bool = False
+-    text_started: bool = False
+-    tool_states: dict[int, ToolCallState] = field(default_factory=dict)
+-
+-    def allocate_index(self) -> int:
+-        idx = self.next_index
+-        self.next_index += 1
+-        return idx
+-
+-    def ensure_tool_state(self, index: int) -> ToolCallState:
+-        """Create tool stream state for ``index`` when the first tool delta arrives."""
+-        if index not in self.tool_states:
+-            self.tool_states[index] = ToolCallState(block_index=-1, tool_id="", name="")
+-        return self.tool_states[index]
+-
+-    def set_stream_tool_id(self, index: int, tool_id: str | None) -> None:
+-        """Record OpenAI tool call id before ``content_block_start`` (split-stream providers)."""
+-        if not tool_id:
+-            return
+-        state = self.ensure_tool_state(index)
+-        state.tool_id = str(tool_id)
+-
+-    def set_tool_extra_content(
+-        self, index: int, extra_content: dict[str, Any] | None
+-    ) -> None:
+-        """Record provider-specific OpenAI tool-call metadata before block start."""
+-        if not extra_content:
+-            return
+-        state = self.ensure_tool_state(index)
+-        state.extra_content = extra_content
+-
+-    def register_tool_name(self, index: int, name: str) -> None:
+-        """Record tool name fragments as they arrive from chunked OpenAI streams.
+-
+-        Names may be split across deltas; later chunks can extend (``ab`` + ``c``)
+-        or repeat prefixes, so we merge conservatively.
+-        """
+-        if index not in self.tool_states:
+-            self.tool_states[index] = ToolCallState(
+-                block_index=-1, tool_id="", name=name
+-            )
+-            return
+-        state = self.tool_states[index]
+-        prev = state.name
+-        if not prev or name.startswith(prev):
+-            state.name = name
+-        elif not prev.startswith(name):
+-            state.name = prev + name
+-
+-    def buffer_task_args(self, index: int, args: str) -> dict | None:
+-        state = self.tool_states.get(index)
+-        if state is None or state.task_args_emitted:
+-            return None
+-
+-        state.task_arg_buffer += args
+-        try:
+-            args_json = json.loads(state.task_arg_buffer)
+-        except Exception:
+-            return None
+-
+-        _normalize_task_run_in_background(args_json)
+-
+-        state.task_args_emitted = True
+-        state.task_arg_buffer = ""
+-        return args_json
+-
+-    def has_emitted_tool_block(self) -> bool:
+-        """True when native OpenAI tool streaming has started a ``tool_use`` block."""
+-        return any(s.started for s in self.tool_states.values())
+-
+-    def flush_task_arg_buffers(self) -> list[tuple[int, str]]:
+-        results: list[tuple[int, str]] = []
+-        for tool_index, state in list(self.tool_states.items()):
+-            if not state.task_arg_buffer or state.task_args_emitted:
+-                continue
+-
+-            out = "{}"
+-            try:
+-                args_json = json.loads(state.task_arg_buffer)
+-                _normalize_task_run_in_background(args_json)
+-                out = json.dumps(args_json)
+-            except (json.JSONDecodeError, TypeError, ValueError) as e:
+-                digest = hashlib.sha256(
+-                    state.task_arg_buffer.encode("utf-8", errors="replace")
+-                ).hexdigest()[:16]
+-                logger.warning(
+-                    "Task args invalid JSON (id={} len={} buffer_sha256_prefix={}): {}",
+-                    state.tool_id or "unknown",
+-                    len(state.task_arg_buffer),
+-                    digest,
+-                    e,
+-                )
+-
+-            state.task_args_emitted = True
+-            state.task_arg_buffer = ""
+-            results.append((tool_index, out))
+-        return results
+-
+-
+-def _normalize_task_run_in_background(args_json: dict) -> None:
+-    """Force Claude Code Task subagents to run in foreground (single shared rule)."""
+-    if args_json.get("run_in_background") is not False:
+-        args_json["run_in_background"] = False
+-
+-
+-class SSEBuilder:
+-    """Builder for Anthropic SSE streaming events."""
+-
+-    def __init__(
+-        self,
+-        message_id: str,
+-        model: str,
+-        input_tokens: int = 0,
+-        *,
+-        log_raw_events: bool = False,
+-    ):
+-        self.message_id = message_id
+-        self.model = model
+-        self.input_tokens = input_tokens
+-        self._log_raw_events = log_raw_events
+-        self.blocks = ContentBlockManager()
+-        self._accumulated_text_parts: list[str] = []
+-        self._accumulated_reasoning_parts: list[str] = []
+-
+-    def _format_event(self, event_type: str, data: dict) -> str:
+-        event_str = format_sse_event(event_type, data)
+-        if self._log_raw_events:
+-            logger.debug("SSE_EVENT: {} - {}", event_type, event_str.strip())
+-        return event_str
+-
+-    def message_start(self) -> str:
+-        safe_input = _safe_usage_int(self.input_tokens)
+-        usage = {"input_tokens": safe_input, "output_tokens": 1}
+-        return self._format_event(
+-            "message_start",
+-            {
+-                "type": "message_start",
+-                "message": {
+-                    "id": self.message_id,
+-                    "type": "message",
+-                    "role": "assistant",
+-                    "content": [],
+-                    "model": self.model,
+-                    "stop_reason": None,
+-                    "stop_sequence": None,
+-                    "usage": usage,
+-                },
+-            },
+-        )
+-
+-    def message_delta(self, stop_reason: str, output_tokens: int | None) -> str:
+-        safe_in = _safe_usage_int(self.input_tokens)
+-        safe_out = output_tokens if isinstance(output_tokens, int) else 0
+-        return self._format_event(
+-            "message_delta",
+-            {
+-                "type": "message_delta",
+-                "delta": {"stop_reason": stop_reason, "stop_sequence": None},
+-                "usage": {
+-                    "input_tokens": safe_in,
+-                    "output_tokens": safe_out,
+-                },
+-            },
+-        )
+-
+-    def message_stop(self) -> str:
+-        return self._format_event("message_stop", {"type": "message_stop"})
+-
+-    def content_block_start(self, index: int, block_type: str, **kwargs) -> str:
+-        content_block: dict = {"type": block_type}
+-        if block_type == "thinking":
+-            content_block["thinking"] = kwargs.get("thinking", "")
+-        elif block_type == "text":
+-            content_block["text"] = kwargs.get("text", "")
+-        elif block_type == "tool_use":
+-            content_block["id"] = kwargs.get("id", "")
+-            content_block["name"] = kwargs.get("name", "")
+-            content_block["input"] = kwargs.get("input", {})
+-            extra_content = kwargs.get("extra_content")
+-            if isinstance(extra_content, dict) and extra_content:
+-                content_block["extra_content"] = extra_content
+-
+-        return self._format_event(
+-            "content_block_start",
+-            {
+-                "type": "content_block_start",
+-                "index": index,
+-                "content_block": content_block,
+-            },
+-        )
+-
+-    def content_block_delta(self, index: int, delta_type: str, content: str) -> str:
+-        delta: dict = {"type": delta_type}
+-        if delta_type == "thinking_delta":
+-            delta["thinking"] = content
+-        elif delta_type == "text_delta":
+-            delta["text"] = content
+-        elif delta_type == "input_json_delta":
+-            delta["partial_json"] = content
+-
+-        return self._format_event(
+-            "content_block_delta",
+-            {
+-                "type": "content_block_delta",
+-                "index": index,
+-                "delta": delta,
+-            },
+-        )
+-
+-    def content_block_stop(self, index: int) -> str:
+-        return self._format_event(
+-            "content_block_stop",
+-            {
+-                "type": "content_block_stop",
+-                "index": index,
+-            },
+-        )
+-
+-    def start_thinking_block(self) -> str:
+-        self.blocks.thinking_index = self.blocks.allocate_index()
+-        self.blocks.thinking_started = True
+-        return self.content_block_start(self.blocks.thinking_index, "thinking")
+-
+-    def emit_thinking_delta(self, content: str) -> str:
+-        self._accumulated_reasoning_parts.append(content)
+-        return self.content_block_delta(
+-            self.blocks.thinking_index, "thinking_delta", content
+-        )
+-
+-    def stop_thinking_block(self) -> str:
+-        self.blocks.thinking_started = False
+-        return self.content_block_stop(self.blocks.thinking_index)
+-
+-    def start_text_block(self) -> str:
+-        self.blocks.text_index = self.blocks.allocate_index()
+-        self.blocks.text_started = True
+-        return self.content_block_start(self.blocks.text_index, "text")
+-
+-    def emit_text_delta(self, content: str) -> str:
+-        self._accumulated_text_parts.append(content)
+-        return self.content_block_delta(self.blocks.text_index, "text_delta", content)
+-
+-    def stop_text_block(self) -> str:
+-        self.blocks.text_started = False
+-        return self.content_block_stop(self.blocks.text_index)
+-
+-    def start_tool_block(
+-        self,
+-        tool_index: int,
+-        tool_id: str,
+-        name: str,
+-        *,
+-        extra_content: dict[str, Any] | None = None,
+-    ) -> str:
+-        block_idx = self.blocks.allocate_index()
+-        if tool_index in self.blocks.tool_states:
+-            state = self.blocks.tool_states[tool_index]
+-            state.block_index = block_idx
+-            state.tool_id = tool_id
+-            if extra_content:
+-                state.extra_content = extra_content
+-            state.started = True
+-        else:
+-            self.blocks.tool_states[tool_index] = ToolCallState(
+-                block_index=block_idx,
+-                tool_id=tool_id,
+-                name=name,
+-                extra_content=extra_content,
+-                started=True,
+-            )
+-        return self.content_block_start(
+-            block_idx,
+-            "tool_use",
+-            id=tool_id,
+-            name=name,
+-            extra_content=extra_content,
+-        )
+-
+-    def emit_tool_delta(self, tool_index: int, partial_json: str) -> str:
+-        state = self.blocks.tool_states[tool_index]
+-        state.contents.append(partial_json)
+-        return self.content_block_delta(
+-            state.block_index, "input_json_delta", partial_json
+-        )
+-
+-    def stop_tool_block(self, tool_index: int) -> str:
+-        block_idx = self.blocks.tool_states[tool_index].block_index
+-        return self.content_block_stop(block_idx)
+-
+-    def ensure_thinking_block(self) -> Iterator[str]:
+-        if self.blocks.text_started:
+-            yield self.stop_text_block()
+-        if not self.blocks.thinking_started:
+-            yield self.start_thinking_block()
+-
+-    def ensure_text_block(self) -> Iterator[str]:
+-        if self.blocks.thinking_started:
+-            yield self.stop_thinking_block()
+-        if not self.blocks.text_started:
+-            yield self.start_text_block()
+-
+-    def close_content_blocks(self) -> Iterator[str]:
+-        if self.blocks.thinking_started:
+-            yield self.stop_thinking_block()
+-        if self.blocks.text_started:
+-            yield self.stop_text_block()
+-
+-    def close_all_blocks(self) -> Iterator[str]:
+-        yield from self.close_content_blocks()
+-        for tool_index, state in list(self.blocks.tool_states.items()):
+-            if state.started:
+-                yield self.stop_tool_block(tool_index)
+-
+-    def emit_error(self, error_message: str) -> Iterator[str]:
+-        error_index = self.blocks.allocate_index()
+-        yield self.content_block_start(error_index, "text")
+-        yield self.content_block_delta(error_index, "text_delta", error_message)
+-        yield self.content_block_stop(error_index)
+-
+-    def emit_top_level_error(self, error_message: str) -> str:
+-        """Emit a top-level ``event: error`` (not assistant text) for transport failures."""
+-        return self._format_event(
+-            "error",
+-            {
+-                "type": "error",
+-                "error": {
+-                    "type": "api_error",
+-                    "message": error_message,
+-                },
+-            },
+-        )
+-
+-    @property
+-    def accumulated_text(self) -> str:
+-        return "".join(self._accumulated_text_parts)
+-
+-    @property
+-    def accumulated_reasoning(self) -> str:
+-        return "".join(self._accumulated_reasoning_parts)
+-
+-    def estimate_output_tokens(self) -> int:
+-        accumulated_text = self.accumulated_text
+-        accumulated_reasoning = self.accumulated_reasoning
+-        if ENCODER:
+-            text_tokens = len(ENCODER.encode(accumulated_text))
+-            reasoning_tokens = len(ENCODER.encode(accumulated_reasoning))
+-            tool_tokens = 0
+-            started_tool_count = 0
+-            for state in self.blocks.tool_states.values():
+-                tool_tokens += len(ENCODER.encode(state.name))
+-                tool_tokens += len(ENCODER.encode("".join(state.contents)))
+-                tool_tokens += 15
+-                if state.started:
+-                    started_tool_count += 1
+-
+-            block_count = (
+-                (1 if accumulated_reasoning else 0)
+-                + (1 if accumulated_text else 0)
+-                + started_tool_count
+-            )
+-            return text_tokens + reasoning_tokens + tool_tokens + (block_count * 4)
+-
+-        text_tokens = len(accumulated_text) // 4
+-        reasoning_tokens = len(accumulated_reasoning) // 4
+-        tool_tokens = (
+-            sum(1 for state in self.blocks.tool_states.values() if state.started) * 50
+-        )
+-        return text_tokens + reasoning_tokens + tool_tokens
+diff --git a/core/anthropic/stream_recovery_session.py b/core/anthropic/stream_recovery_session.py
+deleted file mode 100644
+--- a/core/anthropic/stream_recovery_session.py
++++ /dev/null
+@@ -1,133 +0,0 @@
+-"""Shared stream recovery policy for provider transports."""
+-
+-from __future__ import annotations
+-
+-from dataclasses import dataclass
+-from enum import StrEnum
+-
+-from core.anthropic.stream_recovery import (
+-    EARLY_TRANSPARENT_MAX_RETRIES,
+-    EARLY_TRANSPARENT_TOTAL_ATTEMPTS,
+-    RecoveryHoldbackBuffer,
+-    is_retryable_stream_error,
+-)
+-from core.trace import trace_event
+-
+-
+-class StreamFailureAction(StrEnum):
+-    """Transport action selected after a provider stream failure."""
+-
+-    EARLY_RETRY = "early_retry"
+-    MIDSTREAM_RECOVERY = "midstream_recovery"
+-    FINAL_ERROR = "final_error"
+-
+-
+-@dataclass(frozen=True, slots=True)
+-class StreamFailureDecision:
+-    """Failure-state snapshot for the current provider stream transition."""
+-
+-    action: StreamFailureAction
+-    retryable: bool
+-    committed: bool
+-    has_buffered: bool
+-    early_retry_attempt: int | None = None
+-
+-
+-class StreamRecoverySession:
+-    """Own holdback and retry policy shared by provider stream transports."""
+-
+-    def __init__(self, *, provider_name: str, request_id: str | None) -> None:
+-        self._provider_name = provider_name
+-        self._request_id = request_id
+-        self._holdback = RecoveryHoldbackBuffer()
+-        self._early_retries = 0
+-
+-    @property
+-    def committed(self) -> bool:
+-        return self._holdback.committed
+-
+-    @property
+-    def has_buffered(self) -> bool:
+-        return self._holdback.has_buffered
+-
+-    @property
+-    def early_retries(self) -> int:
+-        return self._early_retries
+-
+-    def push(self, event: str) -> list[str]:
+-        """Buffer one downstream event through the early retry holdback."""
+-        return self._holdback.push(event)
+-
+-    def flush(self) -> list[str]:
+-        """Commit and return held events."""
+-        return self._holdback.flush()
+-
+-    def flush_uncommitted(self, decision: StreamFailureDecision) -> list[str]:
+-        """Commit held events when the decision snapshot is still uncommitted."""
+-        if decision.committed:
+-            return []
+-        return self.flush()
+-
+-    def discard(self) -> None:
+-        """Drop held events without committing them."""
+-        self._holdback.discard()
+-
+-    def advance_failure(
+-        self,
+-        error: BaseException,
+-        *,
+-        stream_opened: bool,
+-        generated_output: bool,
+-        complete_tool_salvageable: bool,
+-    ) -> StreamFailureDecision:
+-        """Consume a stream failure and apply shared recovery state changes."""
+-        committed = self.committed
+-        has_buffered = self.has_buffered
+-        retryable = is_retryable_stream_error(error)
+-
+-        if (
+-            not committed
+-            and stream_opened
+-            and retryable
+-            and not complete_tool_salvageable
+-            and self._early_retries < EARLY_TRANSPARENT_MAX_RETRIES
+-        ):
+-            self._early_retries += 1
+-            attempt = self._early_retries
+-            self._reset_holdback()
+-            trace_event(
+-                stage="provider",
+-                event="provider.recovery.early_retry",
+-                source="provider",
+-                provider=self._provider_name,
+-                request_id=self._request_id,
+-                attempt=attempt,
+-                max_attempts=EARLY_TRANSPARENT_TOTAL_ATTEMPTS,
+-                exc_type=type(error).__name__,
+-            )
+-            return StreamFailureDecision(
+-                action=StreamFailureAction.EARLY_RETRY,
+-                retryable=retryable,
+-                committed=committed,
+-                has_buffered=has_buffered,
+-                early_retry_attempt=attempt,
+-            )
+-
+-        if generated_output and retryable:
+-            return StreamFailureDecision(
+-                action=StreamFailureAction.MIDSTREAM_RECOVERY,
+-                retryable=retryable,
+-                committed=committed,
+-                has_buffered=has_buffered,
+-            )
+-
+-        return StreamFailureDecision(
+-            action=StreamFailureAction.FINAL_ERROR,
+-            retryable=retryable,
+-            committed=committed,
+-            has_buffered=has_buffered,
+-        )
+-
+-    def _reset_holdback(self) -> None:
+-        self._holdback.discard()
+-        self._holdback = RecoveryHoldbackBuffer()
+diff --git a/core/anthropic/streaming/__init__.py b/core/anthropic/streaming/__init__.py
+new file mode 100644
+--- /dev/null
++++ b/core/anthropic/streaming/__init__.py
+@@ -0,0 +1,53 @@
++"""Shared Anthropic streaming engine."""
++
++from .emitter import (
++    ANTHROPIC_SSE_RESPONSE_HEADERS,
++    AnthropicSseEmitter,
++    format_sse_event,
++    map_stop_reason,
++)
++from .ledger import AnthropicStreamLedger, StreamBlockLedger, ToolBlockState
++from .recovery import (
++    EARLY_TRANSPARENT_MAX_RETRIES,
++    EARLY_TRANSPARENT_TOTAL_ATTEMPTS,
++    MIDSTREAM_RECOVERY_ATTEMPTS,
++    RECOVERY_BUFFER_MAX_BYTES,
++    RecoveryController,
++    RecoveryFailureAction,
++    RecoveryHoldbackBuffer,
++    ToolSchema,
++    TruncatedProviderStreamError,
++    accept_tool_json_repair,
++    continuation_suffix,
++    is_retryable_stream_error,
++    make_text_recovery_body,
++    make_tool_repair_body,
++    parse_complete_tool_input,
++    tool_schemas_by_name,
++)
++
++__all__ = [
++    "ANTHROPIC_SSE_RESPONSE_HEADERS",
++    "EARLY_TRANSPARENT_MAX_RETRIES",
++    "EARLY_TRANSPARENT_TOTAL_ATTEMPTS",
++    "MIDSTREAM_RECOVERY_ATTEMPTS",
++    "RECOVERY_BUFFER_MAX_BYTES",
++    "AnthropicSseEmitter",
++    "AnthropicStreamLedger",
++    "RecoveryController",
++    "RecoveryFailureAction",
++    "RecoveryHoldbackBuffer",
++    "StreamBlockLedger",
++    "ToolBlockState",
++    "ToolSchema",
++    "TruncatedProviderStreamError",
++    "accept_tool_json_repair",
++    "continuation_suffix",
++    "format_sse_event",
++    "is_retryable_stream_error",
++    "make_text_recovery_body",
++    "make_tool_repair_body",
++    "map_stop_reason",
++    "parse_complete_tool_input",
++    "tool_schemas_by_name",
++]
+diff --git a/core/anthropic/streaming/emitter.py b/core/anthropic/streaming/emitter.py
+new file mode 100644
+--- /dev/null
++++ b/core/anthropic/streaming/emitter.py
+@@ -0,0 +1,46 @@
++"""Anthropic SSE serialization helpers."""
++
++from __future__ import annotations
++
++import json
++from typing import Any
++
++from loguru import logger
++
++ANTHROPIC_SSE_RESPONSE_HEADERS: dict[str, str] = {
++    "X-Accel-Buffering": "no",
++    "Cache-Control": "no-cache",
++    "Connection": "keep-alive",
++}
++
++STOP_REASON_MAP = {
++    "stop": "end_turn",
++    "length": "max_tokens",
++    "tool_calls": "tool_use",
++    "content_filter": "end_turn",
++}
++
++
++def map_stop_reason(openai_reason: str | None) -> str:
++    """Map OpenAI ``finish_reason`` values to Anthropic ``stop_reason`` values."""
++    return (
++        STOP_REASON_MAP.get(openai_reason, "end_turn") if openai_reason else "end_turn"
++    )
++
++
++def format_sse_event(event_type: str, data: dict[str, Any]) -> str:
++    """Format one Anthropic-style SSE event."""
++    return f"event: {event_type}\ndata: {json.dumps(data)}\n\n"
++
++
++class AnthropicSseEmitter:
++    """Serialize Anthropic SSE events and optionally log raw event bodies."""
++
++    def __init__(self, *, log_raw_events: bool = False) -> None:
++        self._log_raw_events = log_raw_events
++
++    def event(self, event_type: str, data: dict[str, Any]) -> str:
++        event = format_sse_event(event_type, data)
++        if self._log_raw_events:
++            logger.debug("SSE_EVENT: {} - {}", event_type, event.strip())
++        return event
+diff --git a/core/anthropic/streaming/ledger.py b/core/anthropic/streaming/ledger.py
+new file mode 100644
+--- /dev/null
++++ b/core/anthropic/streaming/ledger.py
+@@ -0,0 +1,680 @@
++"""Anthropic stream state ledger."""
++
++from __future__ import annotations
++
++import hashlib
++import json
++import uuid
++from collections.abc import Iterator
++from contextlib import suppress
++from dataclasses import dataclass, field
++from typing import Any
++
++from loguru import logger
++
++from core.anthropic.stream_contracts import SSEEvent
++
++from .emitter import AnthropicSseEmitter
++from .recovery import (
++    ToolSchema,
++    accept_tool_json_repair,
++    continuation_suffix,
++    parse_complete_tool_input,
++)
++
++try:
++    import tiktoken
++
++    ENCODER = tiktoken.get_encoding("cl100k_base")
++except Exception:
++    ENCODER = None
++
++
++def _safe_usage_int(value: object) -> int:
++    return value if isinstance(value, int) else 0
++
++
++@dataclass
++class ToolBlockState:
++    """State for one streamed tool call."""
++
++    block_index: int
++    tool_id: str
++    name: str
++    extra_content: dict[str, Any] | None = None
++    started: bool = False
++    task_arg_buffer: str = ""
++    task_args_emitted: bool = False
++    pre_start_args: str = ""
++
++
++@dataclass
++class StreamBlockState:
++    """Tracked downstream Anthropic content block."""
++
++    index: int
++    block_type: str
++    open: bool = True
++    tool_id: str = ""
++    name: str = ""
++    parts: list[str] = field(default_factory=list)
++    extra_content: dict[str, Any] | None = None
++
++    @property
++    def content(self) -> str:
++        return "".join(self.parts)
++
++
++@dataclass
++class StreamBlockLedger:
++    """Allocate and track Anthropic content block indexes."""
++
++    next_index: int = 0
++    thinking_index: int = -1
++    text_index: int = -1
++    thinking_started: bool = False
++    text_started: bool = False
++    tool_states: dict[int, ToolBlockState] = field(default_factory=dict)
++
++    def allocate_index(self) -> int:
++        idx = self.next_index
++        self.next_index += 1
++        return idx
++
++    def reserve_index(self, index: int) -> None:
++        self.next_index = max(self.next_index, index + 1)
++
++    def ensure_tool_state(self, index: int) -> ToolBlockState:
++        if index not in self.tool_states:
++            self.tool_states[index] = ToolBlockState(
++                block_index=-1, tool_id="", name=""
++            )
++        return self.tool_states[index]
++
++    def set_stream_tool_id(self, index: int, tool_id: str | None) -> None:
++        if not tool_id:
++            return
++        self.ensure_tool_state(index).tool_id = str(tool_id)
++
++    def set_tool_extra_content(
++        self, index: int, extra_content: dict[str, Any] | None
++    ) -> None:
++        if extra_content:
++            self.ensure_tool_state(index).extra_content = extra_content
++
++    def register_tool_name(self, index: int, name: str) -> None:
++        if index not in self.tool_states:
++            self.tool_states[index] = ToolBlockState(
++                block_index=-1, tool_id="", name=name
++            )
++            return
++        state = self.tool_states[index]
++        prev = state.name
++        if not prev or name.startswith(prev):
++            state.name = name
++        elif not prev.startswith(name):
++            state.name = prev + name
++
++    def buffer_task_args(self, index: int, args: str) -> dict[str, Any] | None:
++        state = self.tool_states.get(index)
++        if state is None or state.task_args_emitted:
++            return None
++
++        state.task_arg_buffer += args
++        try:
++            args_json = json.loads(state.task_arg_buffer)
++        except Exception:
++            return None
++        if not isinstance(args_json, dict):
++            return None
++
++        _normalize_task_run_in_background(args_json)
++        state.task_args_emitted = True
++        state.task_arg_buffer = ""
++        return args_json
++
++    def flush_task_arg_buffers(self) -> list[tuple[int, str]]:
++        results: list[tuple[int, str]] = []
++        for tool_index, state in list(self.tool_states.items()):
++            if not state.task_arg_buffer or state.task_args_emitted:
++                continue
++
++            out = "{}"
++            try:
++                args_json = json.loads(state.task_arg_buffer)
++                if isinstance(args_json, dict):
++                    _normalize_task_run_in_background(args_json)
++                    out = json.dumps(args_json)
++            except (json.JSONDecodeError, TypeError, ValueError) as exc:
++                digest = hashlib.sha256(
++                    state.task_arg_buffer.encode("utf-8", errors="replace")
++                ).hexdigest()[:16]
++                logger.warning(
++                    "Task args invalid JSON (id={} len={} buffer_sha256_prefix={}): {}",
++                    state.tool_id or "unknown",
++                    len(state.task_arg_buffer),
++                    digest,
++                    exc,
++                )
++
++            state.task_args_emitted = True
++            state.task_arg_buffer = ""
++            results.append((tool_index, out))
++        return results
++
++
++class AnthropicStreamLedger:
++    """Own mutable Anthropic stream state and produce serialized SSE events."""
++
++    def __init__(
++        self,
++        message_id: str | None,
++        model: str,
++        input_tokens: int = 0,
++        *,
++        log_raw_events: bool = False,
++    ) -> None:
++        self.message_id = message_id or f"msg_{uuid.uuid4()}"
++        self.model = model
++        self.input_tokens = input_tokens
++        self.blocks = StreamBlockLedger()
++        self._emitter = AnthropicSseEmitter(log_raw_events=log_raw_events)
++        self._text_parts: list[str] = []
++        self._thinking_parts: list[str] = []
++        self._open_stack: list[int] = []
++        self._content_blocks: dict[int, StreamBlockState] = {}
++        self.message_started = False
++        self.message_stopped = False
++        self.stop_reason: str | None = None
++
++    def message_start(self) -> str:
++        self.message_started = True
++        safe_input = _safe_usage_int(self.input_tokens)
++        return self._emitter.event(
++            "message_start",
++            {
++                "type": "message_start",
++                "message": {
++                    "id": self.message_id,
++                    "type": "message",
++                    "role": "assistant",
++                    "content": [],
++                    "model": self.model,
++                    "stop_reason": None,
++                    "stop_sequence": None,
++                    "usage": {"input_tokens": safe_input, "output_tokens": 1},
++                },
++            },
++        )
++
++    def message_delta(self, stop_reason: str, output_tokens: int | None) -> str:
++        self.stop_reason = stop_reason
++        safe_in = _safe_usage_int(self.input_tokens)
++        safe_out = output_tokens if isinstance(output_tokens, int) else 0
++        return self._emitter.event(
++            "message_delta",
++            {
++                "type": "message_delta",
++                "delta": {"stop_reason": stop_reason, "stop_sequence": None},
++                "usage": {"input_tokens": safe_in, "output_tokens": safe_out},
++            },
++        )
++
++    def message_stop(self) -> str:
++        self.message_stopped = True
++        return self._emitter.event("message_stop", {"type": "message_stop"})
++
++    def content_block_start(self, index: int, block_type: str, **kwargs: Any) -> str:
++        content_block: dict[str, Any] = {"type": block_type}
++        if block_type == "thinking":
++            content_block["thinking"] = kwargs.get("thinking", "")
++        elif block_type == "text":
++            content_block["text"] = kwargs.get("text", "")
++        elif block_type == "tool_use":
++            content_block["id"] = kwargs.get("id", "")
++            content_block["name"] = kwargs.get("name", "")
++            content_block["input"] = kwargs.get("input", {})
++            extra_content = kwargs.get("extra_content")
++            if isinstance(extra_content, dict) and extra_content:
++                content_block["extra_content"] = extra_content
++        elif block_type == "redacted_thinking":
++            data = kwargs.get("data")
++            if isinstance(data, str):
++                content_block["data"] = data
++
++        self._record_block_start(index, content_block)
++        return self._emitter.event(
++            "content_block_start",
++            {
++                "type": "content_block_start",
++                "index": index,
++                "content_block": content_block,
++            },
++        )
++
++    def content_block_delta(self, index: int, delta_type: str, content: str) -> str:
++        delta: dict[str, Any] = {"type": delta_type}
++        if delta_type == "thinking_delta":
++            delta["thinking"] = content
++        elif delta_type == "signature_delta":
++            delta["signature"] = content
++        elif delta_type == "text_delta":
++            delta["text"] = content
++        elif delta_type == "input_json_delta":
++            delta["partial_json"] = content
++
++        self._record_block_delta(index, delta)
++        return self._emitter.event(
++            "content_block_delta",
++            {
++                "type": "content_block_delta",
++                "index": index,
++                "delta": delta,
++            },
++        )
++
++    def content_block_stop(self, index: int) -> str:
++        self._record_block_stop(index)
++        return self._emitter.event(
++            "content_block_stop",
++            {"type": "content_block_stop", "index": index},
++        )
++
++    def start_thinking_block(self) -> str:
++        self.blocks.thinking_index = self.blocks.allocate_index()
++        self.blocks.thinking_started = True
++        return self.content_block_start(self.blocks.thinking_index, "thinking")
++
++    def emit_thinking_delta(self, content: str) -> str:
++        return self.content_block_delta(
++            self.blocks.thinking_index, "thinking_delta", content
++        )
++
++    def stop_thinking_block(self) -> str:
++        self.blocks.thinking_started = False
++        return self.content_block_stop(self.blocks.thinking_index)
++
++    def start_text_block(self) -> str:
++        self.blocks.text_index = self.blocks.allocate_index()
++        self.blocks.text_started = True
++        return self.content_block_start(self.blocks.text_index, "text")
++
++    def emit_text_delta(self, content: str) -> str:
++        return self.content_block_delta(self.blocks.text_index, "text_delta", content)
++
++    def stop_text_block(self) -> str:
++        self.blocks.text_started = False
++        return self.content_block_stop(self.blocks.text_index)
++
++    def start_tool_block(
++        self,
++        tool_index: int,
++        tool_id: str,
++        name: str,
++        *,
++        extra_content: dict[str, Any] | None = None,
++    ) -> str:
++        block_idx = self.blocks.allocate_index()
++        if tool_index in self.blocks.tool_states:
++            state = self.blocks.tool_states[tool_index]
++            state.block_index = block_idx
++            state.tool_id = tool_id
++            state.name = name
++            if extra_content:
++                state.extra_content = extra_content
++            state.started = True
++        else:
++            self.blocks.tool_states[tool_index] = ToolBlockState(
++                block_index=block_idx,
++                tool_id=tool_id,
++                name=name,
++                extra_content=extra_content,
++                started=True,
++            )
++        return self.content_block_start(
++            block_idx,
++            "tool_use",
++            id=tool_id,
++            name=name,
++            extra_content=extra_content,
++        )
++
++    def emit_tool_delta(self, tool_index: int, partial_json: str) -> str:
++        state = self.blocks.tool_states[tool_index]
++        return self.content_block_delta(
++            state.block_index, "input_json_delta", partial_json
++        )
++
++    def stop_tool_block(self, tool_index: int) -> str:
++        return self.content_block_stop(self.blocks.tool_states[tool_index].block_index)
++
++    def ensure_thinking_block(self) -> Iterator[str]:
++        if self.blocks.text_started:
++            yield self.stop_text_block()
++        if not self.blocks.thinking_started:
++            yield self.start_thinking_block()
++
++    def ensure_text_block(self) -> Iterator[str]:
++        if self.blocks.thinking_started:
++            yield self.stop_thinking_block()
++        if not self.blocks.text_started:
++            yield self.start_text_block()
++
++    def close_content_blocks(self) -> Iterator[str]:
++        if self.blocks.thinking_started:
++            yield self.stop_thinking_block()
++        if self.blocks.text_started:
++            yield self.stop_text_block()
++
++    def close_all_blocks(self) -> Iterator[str]:
++        yield from self.close_content_blocks()
++        for tool_index, state in list(self.blocks.tool_states.items()):
++            if state.started:
++                yield self.stop_tool_block(tool_index)
++
++    def emit_error(self, error_message: str) -> Iterator[str]:
++        error_index = self.blocks.allocate_index()
++        yield self.content_block_start(error_index, "text")
++        yield self.content_block_delta(error_index, "text_delta", error_message)
++        yield self.content_block_stop(error_index)
++
++    def emit_top_level_error(self, error_message: str) -> str:
++        return self._emitter.event(
++            "error",
++            {
++                "type": "error",
++                "error": {"type": "api_error", "message": error_message},
++            },
++        )
++
++    def ingest_native_event(self, event: SSEEvent) -> str | None:
++        """Record a native Anthropic SSE event and re-emit its normalized shape."""
++        if event.event == "message_start":
++            message = event.data.get("message")
++            if isinstance(message, dict):
++                mid = message.get("id")
++                if isinstance(mid, str) and mid:
++                    self.message_id = mid
++                model = message.get("model")
++                if isinstance(model, str) and model:
++                    self.model = model
++            self.message_started = True
++            return self._emitter.event(event.event, event.data)
++
++        if event.event == "content_block_start":
++            raw_index = event.data.get("index")
++            block = event.data.get("content_block")
++            if isinstance(raw_index, int) and isinstance(block, dict):
++                self._record_block_start(raw_index, block)
++            return self._emitter.event(event.event, event.data)
++
++        if event.event == "content_block_delta":
++            raw_index = event.data.get("index")
++            delta = event.data.get("delta")
++            if isinstance(raw_index, int) and isinstance(delta, dict):
++                self._record_block_delta(raw_index, delta)
++            return self._emitter.event(event.event, event.data)
++
++        if event.event == "content_block_stop":
++            raw_index = event.data.get("index")
++            if isinstance(raw_index, int):
++                self._record_block_stop(raw_index)
++            return self._emitter.event(event.event, event.data)
++
++        if event.event == "message_delta":
++            delta = event.data.get("delta")
++            if isinstance(delta, dict):
++                stop_reason = delta.get("stop_reason")
++                if isinstance(stop_reason, str):
++                    self.stop_reason = stop_reason
++            return self._emitter.event(event.event, event.data)
++
++        if event.event == "message_stop":
++            self.message_stopped = True
++            return self._emitter.event(event.event, event.data)
++
++        if event.event == "error":
++            return self._emitter.event(event.event, event.data)
++
++        return self._emitter.event(event.event, event.data)
++
++    def close_unclosed_blocks(self) -> Iterator[str]:
++        while self._open_stack:
++            idx = self._open_stack.pop()
++            state = self._content_blocks.get(idx)
++            if state is not None:
++                state.open = False
++                self._clear_active_content_block(state)
++            yield self._emitter.event(
++                "content_block_stop",
++                {"type": "content_block_stop", "index": idx},
++            )
++
++    def append_text_suffix(self, suffix: str) -> Iterator[str]:
++        if not suffix or not self.can_append_content():
++            return
++        yield from self.ensure_text_block()
++        active = self._last_open_block("text")
++        if active is None:
++            return
++        yield self.content_block_delta(active.index, "text_delta", suffix)
++
++    def append_thinking_suffix(self, suffix: str) -> Iterator[str]:
++        if not suffix or not self.can_append_content():
++            return
++        yield from self.ensure_thinking_block()
++        active = self._last_open_block("thinking")
++        if active is None:
++            return
++        yield self.content_block_delta(active.index, "thinking_delta", suffix)
++
++    def append_tool_repair_suffix(self, tool_index: int, suffix: str) -> Iterator[str]:
++        tool_blocks = self.tool_blocks()
++        if (
++            tool_index >= len(tool_blocks)
++            or not suffix
++            or not self.can_append_content()
++        ):
++            return
++        block = tool_blocks[tool_index]
++        yield self.content_block_delta(block.index, "input_json_delta", suffix)
++
++    def success_tail(self, stop_reason: str) -> Iterator[str]:
++        yield from self.close_unclosed_blocks()
++        if self.stop_reason is None:
++            yield self.message_delta(
++                self.final_stop_reason(stop_reason), self.estimate_output_tokens()
++            )
++        if not self.message_stopped:
++            yield self.message_stop()
++
++    def midstream_error_tail(self, error_message: str) -> Iterator[str]:
++        yield from self.close_unclosed_blocks()
++        if self.stop_reason is None and not self.message_stopped:
++            yield from self.emit_error(error_message)
++            yield self.message_delta("end_turn", 1)
++        else:
++            yield self.emit_top_level_error(error_message)
++        if not self.message_stopped:
++            yield self.message_stop()
++
++    def can_salvage_tool_use(self, schemas: dict[str, ToolSchema]) -> bool:
++        tool_blocks = self.tool_blocks()
++        if not tool_blocks:
++            return False
++        for block in tool_blocks:
++            if not block.tool_id or not block.name:
++                return False
++            if parse_complete_tool_input(block.content, block.name, schemas) is None:
++                return False
++        return True
++
++    def accept_tool_repair(
++        self, tool_index: int, candidate: str, schemas: dict[str, ToolSchema]
++    ) -> str | None:
++        tool_blocks = self.tool_blocks()
++        if tool_index >= len(tool_blocks):
++            return None
++        block = tool_blocks[tool_index]
++        repair = accept_tool_json_repair(
++            block.content,
++            candidate,
++            tool_name=block.name,
++            schemas=schemas,
++        )
++        return repair.suffix if repair is not None else None
++
++    def continuation_text_suffix(self, candidate: str) -> str | None:
++        return continuation_suffix(self.accumulated_text, candidate)
++
++    def continuation_thinking_suffix(self, candidate: str) -> str | None:
++        return continuation_suffix(self.accumulated_reasoning, candidate)
++
++    def tool_blocks(self) -> list[StreamBlockState]:
++        return [
++            block
++            for block in self._content_blocks.values()
++            if block.block_type == "tool_use"
++        ]
++
++    def tool_block_for_tool_index(self, tool_index: int) -> StreamBlockState | None:
++        state = self.blocks.tool_states.get(tool_index)
++        if state is None or state.block_index < 0:
++            return None
++        block = self._content_blocks.get(state.block_index)
++        if block is None or block.block_type != "tool_use":
++            return None
++        return block
++
++    def has_emitted_tool_block(self) -> bool:
++        return bool(self.tool_blocks())
++
++    def has_content_block(self) -> bool:
++        return bool(self._content_blocks)
++
++    def can_append_content(self) -> bool:
++        return self.stop_reason is None and not self.message_stopped
++
++    def final_stop_reason(self, fallback: str) -> str:
++        if self.has_emitted_tool_block():
++            return "tool_use"
++        return fallback
++
++    def has_terminal_message(self) -> bool:
++        return self.message_stopped
++
++    @property
++    def accumulated_text(self) -> str:
++        return "".join(self._text_parts)
++
++    @property
++    def accumulated_reasoning(self) -> str:
++        return "".join(self._thinking_parts)
++
++    def estimate_output_tokens(self) -> int:
++        if ENCODER:
++            text_tokens = len(ENCODER.encode(self.accumulated_text))
++            reasoning_tokens = len(ENCODER.encode(self.accumulated_reasoning))
++            tool_tokens = 0
++            tool_count = 0
++            for name, content in self._iter_tool_token_payloads():
++                tool_tokens += len(ENCODER.encode(name))
++                tool_tokens += len(ENCODER.encode(content))
++                tool_tokens += 15
++                tool_count += 1
++
++            block_count = (
++                (1 if self.accumulated_reasoning else 0)
++                + (1 if self.accumulated_text else 0)
++                + tool_count
++            )
++            return text_tokens + reasoning_tokens + tool_tokens + (block_count * 4)
++
++        text_tokens = len(self.accumulated_text) // 4
++        reasoning_tokens = len(self.accumulated_reasoning) // 4
++        tool_tokens = sum(1 for _ in self._iter_tool_token_payloads()) * 50
++        return text_tokens + reasoning_tokens + tool_tokens
++
++    def _iter_tool_token_payloads(self) -> Iterator[tuple[str, str]]:
++        for block in self.tool_blocks():
++            yield block.name, block.content
++
++    def _record_block_start(self, index: int, block: dict[str, Any]) -> None:
++        self.blocks.reserve_index(index)
++        block_type = str(block.get("type", ""))
++        state = StreamBlockState(index=index, block_type=block_type)
++        if block_type == "tool_use":
++            tool_id = block.get("id")
++            name = block.get("name")
++            state.tool_id = tool_id if isinstance(tool_id, str) else ""
++            state.name = name if isinstance(name, str) else ""
++            extra_content = block.get("extra_content")
++            state.extra_content = (
++                extra_content if isinstance(extra_content, dict) else None
++            )
++        elif block_type == "text":
++            self.blocks.text_index = index
++            self.blocks.text_started = True
++            text = block.get("text")
++            if isinstance(text, str) and text:
++                state.parts.append(text)
++                self._text_parts.append(text)
++        elif block_type == "thinking":
++            self.blocks.thinking_index = index
++            self.blocks.thinking_started = True
++            thinking = block.get("thinking")
++            if isinstance(thinking, str) and thinking:
++                state.parts.append(thinking)
++                self._thinking_parts.append(thinking)
++        self._content_blocks[index] = state
++        self._open_stack.append(index)
++
++    def _record_block_delta(self, index: int, delta: dict[str, Any]) -> None:
++        state = self._content_blocks.get(index)
++        if state is None:
++            return
++        if state.block_type == "text":
++            text = delta.get("text")
++            if isinstance(text, str):
++                state.parts.append(text)
++                self._text_parts.append(text)
++        elif state.block_type == "thinking":
++            thinking = delta.get("thinking")
++            if isinstance(thinking, str):
++                state.parts.append(thinking)
++                self._thinking_parts.append(thinking)
++        elif state.block_type == "tool_use":
++            partial = delta.get("partial_json")
++            if isinstance(partial, str):
++                state.parts.append(partial)
++
++    def _record_block_stop(self, index: int) -> None:
++        if self._open_stack and self._open_stack[-1] == index:
++            self._open_stack.pop()
++        else:
++            with suppress(ValueError):
++                self._open_stack.remove(index)
++        state = self._content_blocks.get(index)
++        if state is not None:
++            state.open = False
++            self._clear_active_content_block(state)
++
++    def _last_open_block(self, block_type: str) -> StreamBlockState | None:
++        for index in reversed(self._open_stack):
++            block = self._content_blocks.get(index)
++            if block is not None and block.block_type == block_type and block.open:
++                return block
++        return None
++
++    def _clear_active_content_block(self, state: StreamBlockState) -> None:
++        if state.block_type == "text" and self.blocks.text_index == state.index:
++            self.blocks.text_started = False
++        elif (
++            state.block_type == "thinking" and self.blocks.thinking_index == state.index
++        ):
++            self.blocks.thinking_started = False
++
++
++def _normalize_task_run_in_background(args_json: dict[str, Any]) -> None:
++    if args_json.get("run_in_background") is not False:
++        args_json["run_in_background"] = False
+diff --git a/core/anthropic/streaming/lifecycle.py b/core/anthropic/streaming/lifecycle.py
+new file mode 100644
+--- /dev/null
++++ b/core/anthropic/streaming/lifecycle.py
+@@ -0,0 +1,13 @@
++"""Shared stream lifecycle types."""
++
++from .recovery import (
++    RecoveryController,
++    RecoveryDecision,
++    RecoveryFailureAction,
++)
++
++__all__ = [
++    "RecoveryController",
++    "RecoveryDecision",
++    "RecoveryFailureAction",
++]
+diff --git a/core/anthropic/stream_recovery.py b/core/anthropic/streaming/recovery.py
+rename from core/anthropic/stream_recovery.py
+rename to core/anthropic/streaming/recovery.py
+--- a/core/anthropic/stream_recovery.py
++++ b/core/anthropic/streaming/recovery.py
+@@ -1,4 +1,4 @@
+-"""Always-on recovery helpers for truncated provider streams."""
++"""Shared retry and recovery policy for Anthropic streams."""
+ 
+ from __future__ import annotations
+ 
+@@ -7,13 +7,16 @@
+ from collections.abc import Callable
+ from copy import deepcopy
+ from dataclasses import dataclass
++from enum import StrEnum
+ from typing import Any
+ 
+ import httpx
+ import jsonschema
+ import openai
+ from loguru import logger
+ 
++from core.trace import trace_event
++
+ EARLY_TRANSPARENT_TOTAL_ATTEMPTS = 5
+ EARLY_TRANSPARENT_MAX_RETRIES = EARLY_TRANSPARENT_TOTAL_ATTEMPTS - 1
+ MIDSTREAM_RECOVERY_ATTEMPTS = 5
+@@ -24,12 +27,35 @@
+     "The previous provider stream was interrupted. Continue the assistant response "
+     "exactly where it stopped. Do not repeat text already written."
+ )
++_RECOVERY_THINKING_PREFIX = (
++    "The assistant had already emitted this hidden thinking before the interruption:\n"
++)
+ 
+ 
+ class TruncatedProviderStreamError(RuntimeError):
+     """Raised internally when an upstream stream ends without a terminal marker."""
+ 
+ 
++class RecoveryFailureAction(StrEnum):
++    """How the stream lifecycle should respond to an upstream failure."""
++
++    EARLY_RETRY = "early_retry"
++    MIDSTREAM_RECOVERY = "midstream_recovery"
++    FINAL_ERROR = "final_error"
++
++
++@dataclass(frozen=True, slots=True)
++class RecoveryDecision:
++    """Failure classification result for one stream exception."""
++
++    action: RecoveryFailureAction
++    retryable: bool
++    committed: bool
++    has_buffered: bool
++    early_retry_attempt: int | None = None
++    midstream_recovery_attempt: int | None = None
++
++
+ @dataclass(frozen=True, slots=True)
+ class ToolSchema:
+     """Tool schema resolved from the original Anthropic request."""
+@@ -65,7 +91,6 @@ def __init__(
+         self.committed = False
+ 
+     def push(self, event: str) -> list[str]:
+-        """Buffer ``event`` until holdback expires or cap is reached."""
+         if self.committed:
+             return [event]
+         if self._started_at is None:
+@@ -80,7 +105,6 @@ def push(self, event: str) -> list[str]:
+         return []
+ 
+     def flush(self) -> list[str]:
+-        """Commit and return all held events."""
+         if self.committed:
+             return []
+         self.committed = True
+@@ -91,7 +115,6 @@ def flush(self) -> list[str]:
+         return events
+ 
+     def discard(self) -> None:
+-        """Drop held events without committing them downstream."""
+         self._events = []
+         self._bytes = 0
+         self._started_at = None
+@@ -101,6 +124,107 @@ def has_buffered(self) -> bool:
+         return bool(self._events)
+ 
+ 
++class RecoveryController:
++    """Own holdback and failure classification for one provider stream lifecycle."""
++
++    def __init__(self, *, provider_name: str, request_id: str | None) -> None:
++        self._provider_name = provider_name
++        self._request_id = request_id
++        self._holdback = RecoveryHoldbackBuffer()
++        self._early_retry_count = 0
++        self._midstream_recovery_count = 0
++
++    @property
++    def committed(self) -> bool:
++        return self._holdback.committed
++
++    @property
++    def has_buffered(self) -> bool:
++        return self._holdback.has_buffered
++
++    @property
++    def early_retries(self) -> int:
++        return self._early_retry_count
++
++    @property
++    def midstream_recoveries(self) -> int:
++        return self._midstream_recovery_count
++
++    def push(self, event: str) -> list[str]:
++        return self._holdback.push(event)
++
++    def flush(self) -> list[str]:
++        return self._holdback.flush()
++
++    def discard(self) -> None:
++        self._holdback.discard()
++
++    def flush_uncommitted(self, decision: RecoveryDecision) -> list[str]:
++        if not decision.committed and decision.has_buffered:
++            return self.flush()
++        return []
++
++    def advance_failure(
++        self,
++        error: BaseException,
++        *,
++        stream_opened: bool,
++        generated_output: bool,
++        complete_tool_salvageable: bool,
++    ) -> RecoveryDecision:
++        retryable = is_retryable_stream_error(error)
++        committed = self._holdback.committed
++        has_buffered = self._holdback.has_buffered
++
++        if (
++            retryable
++            and stream_opened
++            and not committed
++            and not complete_tool_salvageable
++            and self._early_retry_count < EARLY_TRANSPARENT_MAX_RETRIES
++        ):
++            self._early_retry_count += 1
++            self._holdback.discard()
++            self._holdback = RecoveryHoldbackBuffer()
++            trace_event(
++                stage="provider",
++                event="provider.recovery.early_retry",
++                source="provider",
++                provider=self._provider_name,
++                request_id=self._request_id,
++                retry_attempt=self._early_retry_count,
++                retryable=True,
++            )
++            return RecoveryDecision(
++                action=RecoveryFailureAction.EARLY_RETRY,
++                retryable=True,
++                committed=False,
++                has_buffered=has_buffered,
++                early_retry_attempt=self._early_retry_count,
++            )
++
++        if (
++            retryable
++            and generated_output
++            and self._midstream_recovery_count < MIDSTREAM_RECOVERY_ATTEMPTS
++        ):
++            self._midstream_recovery_count += 1
++            return RecoveryDecision(
++                action=RecoveryFailureAction.MIDSTREAM_RECOVERY,
++                retryable=True,
++                committed=committed,
++                has_buffered=has_buffered,
++                midstream_recovery_attempt=self._midstream_recovery_count,
++            )
++
++        return RecoveryDecision(
++            action=RecoveryFailureAction.FINAL_ERROR,
++            retryable=retryable,
++            committed=committed,
++            has_buffered=has_buffered,
++        )
++
++
+ def is_retryable_stream_error(exc: BaseException) -> bool:
+     """Return whether a provider stream error can be retried/recovered."""
+     if isinstance(exc, TruncatedProviderStreamError):
+@@ -151,7 +275,6 @@ def tool_schemas_by_name(request: Any) -> dict[str, ToolSchema]:
+ def validate_tool_input(
+     tool_name: str, parsed_input: dict[str, Any], schemas: dict[str, ToolSchema]
+ ) -> bool:
+-    """Validate tool input against its JSON schema; unknown tools accept any object."""
+     tool_schema = schemas.get(tool_name)
+     if tool_schema is None:
+         return True
+@@ -170,7 +293,6 @@ def validate_tool_input(
+ def parse_complete_tool_input(
+     raw_json: str, tool_name: str, schemas: dict[str, ToolSchema]
+ ) -> dict[str, Any] | None:
+-    """Return parsed input when raw JSON is complete and schema-valid."""
+     try:
+         parsed = json.loads(raw_json)
+     except json.JSONDecodeError:
+@@ -189,9 +311,7 @@ def accept_tool_json_repair(
+     tool_name: str,
+     schemas: dict[str, ToolSchema],
+ ) -> ToolRepair | None:
+-    """Accept only append-only JSON repairs that make ``prefix`` valid."""
+-    suffix_candidates = _repair_suffix_candidates(prefix, candidate)
+-    for suffix in suffix_candidates:
++    for suffix in _repair_suffix_candidates(prefix, candidate):
+         combined = prefix + suffix
+         parsed = parse_complete_tool_input(combined, tool_name, schemas)
+         if parsed is not None:
+@@ -200,7 +320,6 @@ def accept_tool_json_repair(
+ 
+ 
+ def continuation_suffix(existing: str, candidate: str) -> str | None:
+-    """Return only the new suffix from a text/thinking continuation candidate."""
+     existing = existing or ""
+     candidate = candidate or ""
+     if not candidate:
+@@ -215,77 +334,40 @@ def continuation_suffix(existing: str, candidate: str) -> str | None:
+         if existing.endswith(candidate[:size]):
+             return candidate[size:]
+ 
+-    # Accept short standalone continuations, but reject full unrelated rewrites.
+     if len(candidate) < max(200, len(existing) // 2):
+         return candidate
+     return None
+ 
+ 
+-def make_openai_text_recovery_body(
+-    body: dict[str, Any], partial: str
+-) -> dict[str, Any]:
+-    """Build a text-only OpenAI-chat continuation request."""
+-    recovery = deepcopy(body)
+-    recovery.pop("tools", None)
+-    recovery.pop("tool_choice", None)
+-    recovery["stream"] = True
+-    messages = _copied_messages(recovery)
+-    if partial:
+-        messages.append({"role": "assistant", "content": partial})
+-    messages.append({"role": "user", "content": _RECOVERY_USER_PREFIX})
+-    recovery["messages"] = messages
+-    return recovery
+-
+-
+-def make_openai_tool_repair_body(
++def make_text_recovery_body(
+     body: dict[str, Any],
+-    *,
+-    tool_name: str,
+-    prefix: str,
+-    input_schema: dict[str, Any] | None,
+-) -> dict[str, Any]:
+-    """Build a text-only OpenAI-chat request asking for a JSON suffix."""
+-    recovery = deepcopy(body)
+-    recovery.pop("tools", None)
+-    recovery.pop("tool_choice", None)
+-    recovery["stream"] = True
+-    messages = _copied_messages(recovery)
+-    messages.append(
+-        {
+-            "role": "user",
+-            "content": _tool_repair_prompt(
+-                tool_name=tool_name, prefix=prefix, input_schema=input_schema
+-            ),
+-        }
+-    )
+-    recovery["messages"] = messages
+-    return recovery
+-
+-
+-def make_native_text_recovery_body(
+-    body: dict[str, Any], partial: str
++    partial_text: str,
++    partial_thinking: str = "",
+ ) -> dict[str, Any]:
+-    """Build a text-only native Anthropic continuation request."""
++    """Build a text-only continuation request for either transport family."""
+     recovery = deepcopy(body)
+     recovery.pop("tools", None)
+     recovery.pop("tool_choice", None)
+     recovery["stream"] = True
+     messages = _copied_messages(recovery)
+-    if partial:
+-        messages.append({"role": "assistant", "content": partial})
+-    messages.append({"role": "user", "content": _RECOVERY_USER_PREFIX})
++    if partial_text:
++        messages.append({"role": "assistant", "content": partial_text})
++    prompt = _RECOVERY_USER_PREFIX
++    if partial_thinking:
++        prompt = f"{_RECOVERY_THINKING_PREFIX}{partial_thinking}\n\n{prompt}"
++    messages.append({"role": "user", "content": prompt})
+     recovery["messages"] = messages
+     return recovery
+ 
+ 
+-def make_native_tool_repair_body(
++def make_tool_repair_body(
+     body: dict[str, Any],
+     *,
+     tool_name: str,
+     prefix: str,
+     input_schema: dict[str, Any] | None,
+ ) -> dict[str, Any]:
+-    """Build a text-only native Anthropic request asking for a JSON suffix."""
++    """Build a text-only request asking for a JSON suffix."""
+     recovery = deepcopy(body)
+     recovery.pop("tools", None)
+     recovery.pop("tool_choice", None)
+diff --git a/providers/transports/anthropic_messages/http.py b/providers/transports/anthropic_messages/http.py
+--- a/providers/transports/anthropic_messages/http.py
++++ b/providers/transports/anthropic_messages/http.py
+@@ -2,7 +2,6 @@
+ 
+ from __future__ import annotations
+ 
+-import inspect
+ from typing import Any
+ 
+ import httpx
+@@ -16,16 +15,6 @@
+ from providers.exceptions import ModelListResponseError
+ 
+ 
+-async def maybe_await_aclose(response: Any) -> None:
+-    """Call ``aclose`` on httpx-like responses; ignore sync test doubles."""
+-    close = getattr(response, "aclose", None)
+-    if not callable(close):
+-        return
+-    result = close()
+-    if inspect.isawaitable(result):
+-        await result
+-
+-
+ def model_list_json(response: httpx.Response, *, provider_name: str) -> Any:
+     """Parse model-list JSON with a provider-specific malformed-body error."""
+     response.raise_for_status()
+diff --git a/providers/transports/anthropic_messages/recovery.py b/providers/transports/anthropic_messages/recovery.py
+--- a/providers/transports/anthropic_messages/recovery.py
++++ b/providers/transports/anthropic_messages/recovery.py
+@@ -7,21 +7,21 @@
+ 
+ import httpx
+ 
+-from core.anthropic.emitted_sse_tracker import EmittedNativeSseTracker
+ from core.anthropic.stream_contracts import parse_sse_text
+-from core.anthropic.stream_recovery import (
++from core.anthropic.streaming import (
+     MIDSTREAM_RECOVERY_ATTEMPTS,
++    AnthropicStreamLedger,
++    TruncatedProviderStreamError,
+     accept_tool_json_repair,
+     continuation_suffix,
+     is_retryable_stream_error,
+-    make_native_text_recovery_body,
+-    make_native_tool_repair_body,
++    make_text_recovery_body,
++    make_tool_repair_body,
+     parse_complete_tool_input,
+     tool_schemas_by_name,
+ )
+ from core.trace import trace_event
+-
+-from .http import maybe_await_aclose
++from providers.transports.http import maybe_await_aclose
+ 
+ IterStreamChunks = Callable[..., AsyncIterator[str]]
+ 
+@@ -68,7 +68,18 @@ async def collect_text(
+                 ]
+                 text_parts: list[str] = []
+                 thinking_parts: list[str] = []
++                terminal_seen = False
+                 for event in parse_sse_text("".join(chunks)):
++                    if event.event == "message_stop":
++                        terminal_seen = True
++                    content_block = event.data.get("content_block")
++                    if isinstance(content_block, dict):
++                        text = content_block.get("text")
++                        if isinstance(text, str):
++                            text_parts.append(text)
++                        thinking = content_block.get("thinking")
++                        if isinstance(thinking, str):
++                            thinking_parts.append(thinking)
+                     delta = event.data.get("delta")
+                     if not isinstance(delta, dict):
+                         continue
+@@ -78,6 +89,10 @@ async def collect_text(
+                     thinking = delta.get("thinking")
+                     if isinstance(thinking, str):
+                         thinking_parts.append(thinking)
++                if not terminal_seen:
++                    raise TruncatedProviderStreamError(
++                        "Recovery stream ended without message_stop."
++                    )
+                 return "".join(text_parts), "".join(thinking_parts)
+             except Exception as error:
+                 last_error = error
+@@ -105,7 +120,7 @@ async def events(
+         *,
+         body: dict[str, Any],
+         request: Any,
+-        tracker: EmittedNativeSseTracker,
++        ledger: AnthropicStreamLedger,
+         error: Exception,
+         request_id: str | None,
+         req_tag: str,
+@@ -116,9 +131,9 @@ async def events(
+             return None
+ 
+         schemas = tool_schemas_by_name(request)
+-        if tracker.has_tool_block():
++        if ledger.tool_blocks():
+             repair_events: list[str] = []
+-            for index, block in enumerate(tracker.tool_blocks()):
++            for index, block in enumerate(ledger.tool_blocks()):
+                 if (
+                     block.tool_id
+                     and block.name
+@@ -127,7 +142,7 @@ async def events(
+                 ):
+                     continue
+                 schema = schemas.get(block.name)
+-                recovery_body = make_native_tool_repair_body(
++                recovery_body = make_tool_repair_body(
+                     body,
+                     tool_name=block.name,
+                     prefix=block.content,
+@@ -160,13 +175,13 @@ async def events(
+                 if accepted_suffix is None:
+                     return None
+                 repair_events.extend(
+-                    tracker.append_tool_repair_suffix(index, accepted_suffix)
++                    ledger.append_tool_repair_suffix(index, accepted_suffix)
+                 )
+ 
+-            if not tracker.can_salvage_tool_use(schemas):
++            if not ledger.can_salvage_tool_use(schemas):
+                 return None
+             events = list(repair_events)
+-            events.extend(tracker.iter_success_tail("tool_use"))
++            events.extend(ledger.success_tail("end_turn"))
+             trace_event(
+                 stage="provider",
+                 event="provider.recovery.tool_salvaged",
+@@ -176,11 +191,13 @@ async def events(
+             )
+             return events
+ 
+-        partial_text = tracker.emitted_text()
+-        partial_thinking = tracker.emitted_thinking()
++        partial_text = ledger.accumulated_text
++        partial_thinking = ledger.accumulated_reasoning
+         if not partial_text and not partial_thinking:
+             return None
+-        recovery_body = make_native_text_recovery_body(body, partial_text)
++        if not ledger.can_append_content():
++            return None
++        recovery_body = make_text_recovery_body(body, partial_text, partial_thinking)
+         text, thinking = await self.collect_text(
+             recovery_body,
+             req_tag=req_tag,
+@@ -190,12 +207,12 @@ async def events(
+         thinking_suffix = continuation_suffix(partial_thinking, thinking)
+         events: list[str] = []
+         if thinking_suffix:
+-            events.extend(tracker.append_thinking_suffix(thinking_suffix))
++            events.extend(ledger.append_thinking_suffix(thinking_suffix))
+         if text_suffix:
+-            events.extend(tracker.append_text_suffix(text_suffix))
++            events.extend(ledger.append_text_suffix(text_suffix))
+         if not events:
+             return None
+-        events.extend(tracker.iter_success_tail("end_turn"))
++        events.extend(ledger.success_tail("end_turn"))
+         trace_event(
+             stage="provider",
+             event="provider.recovery.continued",
+diff --git a/providers/transports/anthropic_messages/stream.py b/providers/transports/anthropic_messages/stream.py
+--- a/providers/transports/anthropic_messages/stream.py
++++ b/providers/transports/anthropic_messages/stream.py
+@@ -1,4 +1,4 @@
+-"""Per-request native Anthropic Messages stream runner."""
++"""Native Anthropic Messages upstream adapter."""
+ 
+ from __future__ import annotations
+ 
+@@ -7,31 +7,20 @@
+ 
+ import httpx
+ 
+-from core.anthropic.emitted_sse_tracker import EmittedNativeSseTracker
+-from core.anthropic.native_sse_block_policy import NativeSseBlockPolicyState
+-from core.anthropic.stream_recovery import (
++from core.anthropic.stream_contracts import parse_sse_text
++from core.anthropic.streaming import (
++    AnthropicStreamLedger,
++    RecoveryController,
++    RecoveryFailureAction,
+     TruncatedProviderStreamError,
+     tool_schemas_by_name,
+ )
+-from core.anthropic.stream_recovery_session import (
+-    StreamFailureAction,
+-    StreamRecoverySession,
+-)
+ from core.trace import provider_native_messages_body_snapshot, trace_event
++from providers.transports.http import maybe_await_aclose
+ 
+-from .http import maybe_await_aclose
+ from .recovery import AnthropicMessagesRecovery
+ 
+ 
+-async def iter_sse_lines(response: httpx.Response) -> AsyncIterator[str]:
+-    """Yield raw SSE line chunks preserving local provider behavior."""
+-    async for line in response.aiter_lines():
+-        if line:
+-            yield f"{line}\n"
+-        else:
+-            yield "\n"
+-
+-
+ async def iter_sse_events(response: httpx.Response) -> AsyncIterator[str]:
+     """Group line-delimited SSE responses into full SSE events."""
+     event_lines: list[str] = []
+@@ -46,8 +35,8 @@ async def iter_sse_events(response: httpx.Response) -> AsyncIterator[str]:
+         yield "\n".join(event_lines) + "\n\n"
+ 
+ 
+-class AnthropicMessagesStreamRunner:
+-    """Own mutable state for one native Anthropic provider stream."""
++class AnthropicMessagesStreamAdapter:
++    """Convert one native Anthropic upstream stream into normalized Anthropic SSE."""
+ 
+     def __init__(
+         self,
+@@ -96,11 +85,8 @@ async def run(self) -> AsyncIterator[str]:
+         state = self._transport._new_stream_state(
+             self._request, thinking_enabled=thinking_enabled
+         )
+-        emitted_tracker = EmittedNativeSseTracker()
+-        recovery_session = StreamRecoverySession(
+-            provider_name=tag,
+-            request_id=self._request_id,
+-        )
++        ledger = self._new_ledger()
++        recovery = RecoveryController(provider_name=tag, request_id=self._request_id)
+ 
+         async with self._transport._global_rate_limiter.concurrency_slot():
+             while True:
+@@ -114,7 +100,6 @@ async def run(self) -> AsyncIterator[str]:
+                         )
+                     )
+                     stream_opened = True
+-
+                     chunk_count = 0
+                     chunk_bytes = 0
+ 
+@@ -125,12 +110,15 @@ async def run(self) -> AsyncIterator[str]:
+                     ):
+                         chunk_count += 1
+                         chunk_bytes += len(chunk.encode("utf-8", errors="replace"))
+-                        emitted_tracker.feed(chunk)
+-                        for event in recovery_session.push(chunk):
+-                            sent_any_event = True
+-                            yield event
++                        for parsed in parse_sse_text(chunk):
++                            emitted = ledger.ingest_native_event(parsed)
++                            if emitted is None:
++                                continue
++                            for event in recovery.push(emitted):
++                                sent_any_event = True
++                                yield event
+ 
+-                    if not emitted_tracker.has_terminal_message():
++                    if not ledger.has_terminal_message():
+                         raise TruncatedProviderStreamError(
+                             "Provider stream ended without message_stop."
+                         )
+@@ -144,42 +132,39 @@ async def run(self) -> AsyncIterator[str]:
+                         sse_chunks_out=chunk_count,
+                         sse_bytes_out=chunk_bytes,
+                     )
+-                    for event in recovery_session.flush():
++                    for event in recovery.flush():
+                         sent_any_event = True
+                         yield event
+                     return
+ 
+                 except Exception as error:
+-                    generated_output = emitted_tracker.has_content_block()
+-                    complete_tool_salvageable = (
+-                        generated_output
+-                        and emitted_tracker.can_salvage_tool_use(
+-                            tool_schemas_by_name(self._request)
+-                        )
++                    generated_output = ledger.has_content_block()
++                    complete_tool_salvageable = generated_output and (
++                        ledger.can_salvage_tool_use(tool_schemas_by_name(self._request))
+                     )
+-                    decision = recovery_session.advance_failure(
++                    decision = recovery.advance_failure(
+                         error,
+                         stream_opened=stream_opened,
+                         generated_output=generated_output,
+                         complete_tool_salvageable=complete_tool_salvageable,
+                     )
+-                    if decision.action == StreamFailureAction.EARLY_RETRY:
++                    if decision.action == RecoveryFailureAction.EARLY_RETRY:
+                         if response is not None and not response.is_closed:
+                             await maybe_await_aclose(response)
+                         response = None
+                         state = self._transport._new_stream_state(
+                             self._request, thinking_enabled=thinking_enabled
+                         )
+-                        emitted_tracker = EmittedNativeSseTracker()
++                        ledger = self._new_ledger()
+                         sent_any_event = False
+                         continue
+ 
+-                    if decision.action == StreamFailureAction.MIDSTREAM_RECOVERY:
++                    if decision.action == RecoveryFailureAction.MIDSTREAM_RECOVERY:
+                         try:
+                             recovery_events = await self._recovery.events(
+                                 body=body,
+                                 request=self._request,
+-                                tracker=emitted_tracker,
++                                ledger=ledger,
+                                 error=error,
+                                 request_id=self._request_id,
+                                 req_tag=req_tag,
+@@ -196,7 +181,7 @@ async def run(self) -> AsyncIterator[str]:
+                             )
+                             recovery_events = None
+                         if recovery_events is not None:
+-                            for event in recovery_session.flush_uncommitted(decision):
++                            for event in recovery.flush_uncommitted(decision):
+                                 sent_any_event = True
+                                 yield event
+                             for event in recovery_events:
+@@ -229,22 +214,13 @@ async def run(self) -> AsyncIterator[str]:
+                     )
+                     if decision.committed or decision.has_buffered:
+                         if not decision.committed:
+-                            for event in recovery_session.flush():
++                            for event in recovery.flush():
+                                 sent_any_event = True
+                                 yield event
+-                        for event in emitted_tracker.iter_close_unclosed_blocks():
+-                            yield event
+-                        for event in emitted_tracker.iter_midstream_error_tail(
+-                            error_message,
+-                            request=self._request,
+-                            input_tokens=self._input_tokens,
+-                            log_raw_sse_events=(
+-                                self._transport._config.log_raw_sse_events
+-                            ),
+-                        ):
++                        for event in ledger.midstream_error_tail(error_message):
+                             yield event
+                     else:
+-                        recovery_session.discard()
++                        recovery.discard()
+                         for event in self._transport._emit_error_events(
+                             request=self._request,
+                             input_tokens=self._input_tokens,
+@@ -264,27 +240,7 @@ async def iter_stream_chunks(
+         state: Any,
+         thinking_enabled: bool,
+     ) -> AsyncIterator[str]:
+-        """Yield chunks according to the provider's observable stream shape."""
+-        if self._transport.stream_chunk_mode == "line" and isinstance(
+-            state, NativeSseBlockPolicyState
+-        ):
+-            async for event in iter_sse_events(response):
+-                output_event = self._transport._transform_stream_event(
+-                    event,
+-                    state,
+-                    thinking_enabled=thinking_enabled,
+-                )
+-                if output_event is None:
+-                    continue
+-                for line in output_event.splitlines(keepends=True):
+-                    yield line
+-            return
+-
+-        if self._transport.stream_chunk_mode == "line":
+-            async for chunk in iter_sse_lines(response):
+-                yield chunk
+-            return
+-
++        """Yield normalized grouped SSE events from the provider stream."""
+         async for event in iter_sse_events(response):
+             output_event = self._transport._transform_stream_event(
+                 event,
+@@ -293,3 +249,11 @@ async def iter_stream_chunks(
+             )
+             if output_event is not None:
+                 yield output_event
++
++    def _new_ledger(self) -> AnthropicStreamLedger:
++        return AnthropicStreamLedger(
++            None,
++            self._request.model,
++            self._input_tokens,
++            log_raw_events=self._transport._config.log_raw_sse_events,
++        )
+diff --git a/providers/transports/anthropic_messages/transport.py b/providers/transports/anthropic_messages/transport.py
+--- a/providers/transports/anthropic_messages/transport.py
++++ b/providers/transports/anthropic_messages/transport.py
+@@ -28,9 +28,10 @@
+     model_infos_from_ids,
+ )
+ from providers.rate_limit import GlobalRateLimiter
++from providers.transports.http import maybe_await_aclose
+ 
+-from .http import maybe_await_aclose, model_list_json, raise_for_status_with_body
+-from .stream import AnthropicMessagesStreamRunner
++from .http import model_list_json, raise_for_status_with_body
++from .stream import AnthropicMessagesStreamAdapter
+ 
+ StreamChunkMode = Literal["line", "event"]
+ 
+@@ -225,12 +226,12 @@ async def stream_response(
+         thinking_enabled: bool | None = None,
+     ) -> AsyncIterator[str]:
+         """Stream response via a native Anthropic-compatible messages endpoint."""
+-        runner = AnthropicMessagesStreamRunner(
++        adapter = AnthropicMessagesStreamAdapter(
+             self,
+             request=request,
+             input_tokens=input_tokens,
+             request_id=request_id,
+             thinking_enabled=thinking_enabled,
+         )
+-        async for event in runner.run():
++        async for event in adapter.run():
+             yield event
+diff --git a/providers/transports/http.py b/providers/transports/http.py
+new file mode 100644
+--- /dev/null
++++ b/providers/transports/http.py
+@@ -0,0 +1,16 @@
++"""Shared HTTP helpers for provider transports."""
++
++from __future__ import annotations
++
++import inspect
++from typing import Any
++
++
++async def maybe_await_aclose(response: Any) -> None:
++    """Call ``aclose`` on httpx-like responses; ignore sync test doubles."""
++    close = getattr(response, "aclose", None)
++    if not callable(close):
++        return
++    result = close()
++    if inspect.isawaitable(result):
++        await result
+diff --git a/providers/transports/openai_chat/recovery.py b/providers/transports/openai_chat/recovery.py
+--- a/providers/transports/openai_chat/recovery.py
++++ b/providers/transports/openai_chat/recovery.py
+@@ -5,20 +5,22 @@
+ from collections.abc import Awaitable, Callable, Iterator
+ from typing import Any
+ 
+-from core.anthropic import SSEBuilder
+-from core.anthropic.stream_recovery import (
++from core.anthropic.streaming import (
+     MIDSTREAM_RECOVERY_ATTEMPTS,
++    AnthropicStreamLedger,
++    TruncatedProviderStreamError,
+     accept_tool_json_repair,
+     continuation_suffix,
+     is_retryable_stream_error,
+-    make_openai_text_recovery_body,
+-    make_openai_tool_repair_body,
++    make_text_recovery_body,
++    make_tool_repair_body,
+     parse_complete_tool_input,
+     tool_schemas_by_name,
+ )
+ from core.trace import trace_event
++from providers.transports.http import maybe_await_aclose
+ 
+-from .tool_calls import all_started_tools_complete, started_tool_states
++from .tool_calls import all_emitted_tools_complete, started_tool_states
+ 
+ CreateStream = Callable[[dict[str, Any]], Awaitable[tuple[Any, dict[str, Any]]]]
+ 
+@@ -34,14 +36,18 @@ async def collect_text(self, body: dict[str, Any]) -> tuple[str, str]:
+         """Collect text/reasoning from an internal recovery request."""
+         last_error: Exception | None = None
+         for attempt in range(MIDSTREAM_RECOVERY_ATTEMPTS):
++            stream: Any | None = None
+             try:
+                 stream, _ = await self._create_stream(body)
+                 text_parts: list[str] = []
+                 thinking_parts: list[str] = []
++                terminal_seen = False
+                 async for chunk in stream:
+                     if not getattr(chunk, "choices", None):
+                         continue
+                     choice = chunk.choices[0]
++                    if choice.finish_reason is not None:
++                        terminal_seen = True
+                     delta = choice.delta
+                     if delta is None:
+                         continue
+@@ -51,6 +57,10 @@ async def collect_text(self, body: dict[str, Any]) -> tuple[str, str]:
+                     content = getattr(delta, "content", None)
+                     if isinstance(content, str) and content:
+                         text_parts.append(content)
++                if not terminal_seen:
++                    raise TruncatedProviderStreamError(
++                        "Recovery stream ended without finish_reason."
++                    )
+                 return "".join(text_parts), "".join(thinking_parts)
+             except Exception as error:
+                 last_error = error
+@@ -66,6 +76,9 @@ async def collect_text(self, body: dict[str, Any]) -> tuple[str, str]:
+                     max_attempts=MIDSTREAM_RECOVERY_ATTEMPTS,
+                     exc_type=type(error).__name__,
+                 )
++            finally:
++                if stream is not None:
++                    await maybe_await_aclose(stream)
+         if last_error is not None:
+             raise last_error
+         return "", ""
+@@ -74,7 +87,7 @@ async def events(
+         self,
+         *,
+         body: dict[str, Any],
+-        sse: SSEBuilder,
++        ledger: AnthropicStreamLedger,
+         request: Any,
+         request_id: str | None,
+         error: Exception,
+@@ -84,11 +97,11 @@ async def events(
+         if not is_retryable_stream_error(error):
+             return None
+ 
+-        if sse.blocks.has_emitted_tool_block():
+-            if not all_started_tools_complete(sse, request):
++        if ledger.has_emitted_tool_block():
++            if not all_emitted_tools_complete(ledger, request):
+                 repair_events = await self._repair_tool_args(
+                     body=body,
+-                    sse=sse,
++                    ledger=ledger,
+                     request=request,
+                     tool_argument_alias_buffers=tool_argument_alias_buffers,
+                 )
+@@ -97,9 +110,14 @@ async def events(
+             else:
+                 repair_events = []
+             events = list(repair_events)
+-            events.extend(sse.close_all_blocks())
+-            events.append(sse.message_delta("tool_use", sse.estimate_output_tokens()))
+-            events.append(sse.message_stop())
++            events.extend(ledger.close_all_blocks())
++            events.append(
++                ledger.message_delta(
++                    ledger.final_stop_reason("end_turn"),
++                    ledger.estimate_output_tokens(),
++                )
++            )
++            events.append(ledger.message_stop())
+             trace_event(
+                 stage="provider",
+                 event="provider.recovery.tool_salvaged",
+@@ -109,29 +127,33 @@ async def events(
+             )
+             return events
+ 
+-        partial_text = sse.accumulated_text
+-        partial_thinking = sse.accumulated_reasoning
++        partial_text = ledger.accumulated_text
++        partial_thinking = ledger.accumulated_reasoning
+         if not partial_text and not partial_thinking:
+             return None
+ 
+-        recovery_body = make_openai_text_recovery_body(body, partial_text)
++        recovery_body = make_text_recovery_body(body, partial_text, partial_thinking)
+         text, thinking = await self.collect_text(recovery_body)
+         text_suffix = continuation_suffix(partial_text, text)
+         thinking_suffix = continuation_suffix(partial_thinking, thinking)
+         events: list[str] = []
+         if thinking_suffix:
+-            for event in sse.ensure_thinking_block():
++            for event in ledger.ensure_thinking_block():
+                 events.append(event)
+-            events.append(sse.emit_thinking_delta(thinking_suffix))
++            events.append(ledger.emit_thinking_delta(thinking_suffix))
+         if text_suffix:
+-            for event in sse.ensure_text_block():
++            for event in ledger.ensure_text_block():
+                 events.append(event)
+-            events.append(sse.emit_text_delta(text_suffix))
++            events.append(ledger.emit_text_delta(text_suffix))
+         if not events:
+             return None
+-        events.extend(sse.close_all_blocks())
+-        events.append(sse.message_delta("end_turn", sse.estimate_output_tokens()))
+-        events.append(sse.message_stop())
++        events.extend(ledger.close_all_blocks())
++        events.append(
++            ledger.message_delta(
++                ledger.final_stop_reason("end_turn"), ledger.estimate_output_tokens()
++            )
++        )
++        events.append(ledger.message_stop())
+         trace_event(
+             stage="provider",
+             event="provider.recovery.continued",
+@@ -141,28 +163,31 @@ async def events(
+         )
+         return events
+ 
+-    def emit_error_tail(self, sse: SSEBuilder, error_message: str) -> Iterator[str]:
++    def emit_error_tail(
++        self, ledger: AnthropicStreamLedger, error_message: str
++    ) -> Iterator[str]:
+         """Emit the canonical OpenAI-chat final error tail."""
+-        yield from sse.close_all_blocks()
+-        if sse.blocks.has_emitted_tool_block():
+-            yield sse.emit_top_level_error(error_message)
++        yield from ledger.close_all_blocks()
++        if ledger.has_emitted_tool_block():
++            yield ledger.emit_top_level_error(error_message)
+         else:
+-            yield from sse.emit_error(error_message)
+-        yield sse.message_delta("end_turn", 1)
+-        yield sse.message_stop()
++            yield from ledger.emit_error(error_message)
++        yield ledger.message_delta("end_turn", 1)
++        yield ledger.message_stop()
+ 
+     async def _repair_tool_args(
+         self,
+         *,
+         body: dict[str, Any],
+-        sse: SSEBuilder,
++        ledger: AnthropicStreamLedger,
+         request: Any,
+         tool_argument_alias_buffers: dict[int, str],
+     ) -> list[str] | None:
+         schemas = tool_schemas_by_name(request)
+         events: list[str] = []
+-        for tool_index, state in started_tool_states(sse):
+-            emitted_prefix = "".join(state.contents)
++        for tool_index, state in started_tool_states(ledger):
++            block = ledger.tool_block_for_tool_index(tool_index)
++            emitted_prefix = block.content if block is not None else ""
+             repair_prefix = emitted_prefix
+             if not repair_prefix and state.name == "Task" and state.task_arg_buffer:
+                 repair_prefix = state.task_arg_buffer
+@@ -175,11 +200,11 @@ async def _repair_tool_args(
+                 if not emitted_prefix:
+                     yield_text = repair_prefix
+                     if yield_text:
+-                        events.append(sse.emit_tool_delta(tool_index, yield_text))
++                        events.append(ledger.emit_tool_delta(tool_index, yield_text))
+                 continue
+ 
+             schema = schemas.get(state.name)
+-            recovery_body = make_openai_tool_repair_body(
++            recovery_body = make_tool_repair_body(
+                 body,
+                 tool_name=state.name,
+                 prefix=repair_prefix,
+@@ -211,7 +236,7 @@ async def _repair_tool_args(
+                 accepted_suffix if emitted_prefix else repair_prefix + accepted_suffix
+             )
+             if to_emit:
+-                events.append(sse.emit_tool_delta(tool_index, to_emit))
+-        if not all_started_tools_complete(sse, request):
++                events.append(ledger.emit_tool_delta(tool_index, to_emit))
++        if not all_emitted_tools_complete(ledger, request):
+             return None
+         return events
+diff --git a/providers/transports/openai_chat/stream.py b/providers/transports/openai_chat/stream.py
+--- a/providers/transports/openai_chat/stream.py
++++ b/providers/transports/openai_chat/stream.py
+@@ -1,4 +1,4 @@
+-"""Per-request OpenAI-chat stream runner."""
++"""OpenAI-chat upstream adapter."""
+ 
+ from __future__ import annotations
+ 
+@@ -12,30 +12,31 @@
+ from core.anthropic import (
+     ContentType,
+     HeuristicToolParser,
+-    SSEBuilder,
+     ThinkTagParser,
+-    map_stop_reason,
+ )
+-from core.anthropic.stream_recovery import TruncatedProviderStreamError
+-from core.anthropic.stream_recovery_session import (
+-    StreamFailureAction,
+-    StreamRecoverySession,
++from core.anthropic.streaming import (
++    AnthropicStreamLedger,
++    RecoveryController,
++    RecoveryFailureAction,
++    TruncatedProviderStreamError,
++    map_stop_reason,
+ )
+ from core.trace import provider_chat_body_snapshot, trace_event
+ from providers.error_mapping import map_error
++from providers.transports.http import maybe_await_aclose
+ 
+ from .recovery import OpenAIChatRecovery
+ from .tool_calls import (
+     OpenAIToolCallAssembler,
+-    all_started_tools_complete,
++    all_emitted_tools_complete,
+     has_committed_sse_output,
+     iter_heuristic_tool_use_sse,
+     tool_call_extra_content,
+ )
+ 
+ 
+-class OpenAIChatStreamRunner:
+-    """Own mutable state for one OpenAI-chat provider stream."""
++class OpenAIChatStreamAdapter:
++    """Convert one OpenAI-chat upstream stream into Anthropic SSE."""
+ 
+     def __init__(
+         self,
+@@ -64,14 +65,14 @@ async def run(self) -> AsyncIterator[str]:
+         """Stream response in Anthropic SSE format."""
+         tag = self._transport._provider_name
+         req_tag = f" request_id={self._request_id}" if self._request_id else ""
+-        sse = self._new_sse_builder()
+-        recovery_session = StreamRecoverySession(
++        ledger = self._new_ledger()
++        recovery = RecoveryController(
+             provider_name=tag,
+             request_id=self._request_id,
+         )
+ 
+         def hold_event(event: str) -> Iterator[str]:
+-            yield from recovery_session.push(event)
++            yield from recovery.push(event)
+ 
+         def hold_events(events: Iterator[str]) -> Iterator[str]:
+             for event in events:
+@@ -95,8 +96,6 @@ def hold_events(events: Iterator[str]) -> Iterator[str]:
+             body=provider_chat_body_snapshot(body),
+         )
+ 
+-        yield sse.message_start()
+-
+         think_parser = ThinkTagParser()
+         heuristic_parser = HeuristicToolParser()
+         finish_reason = None
+@@ -106,6 +105,10 @@ def hold_events(events: Iterator[str]) -> Iterator[str]:
+ 
+         async with self._transport._global_rate_limiter.concurrency_slot():
+             while True:
++                if not ledger.message_started:
++                    for event in hold_event(ledger.message_start()):
++                        yield event
++                stream: Any | None = None
+                 stream_opened = False
+                 try:
+                     stream, body = await self._transport._create_stream(body)
+@@ -129,14 +132,16 @@ def hold_events(events: Iterator[str]) -> Iterator[str]:
+ 
+                         reasoning = getattr(delta, "reasoning_content", None)
+                         if thinking_enabled and reasoning:
+-                            for event in hold_events(sse.ensure_thinking_block()):
++                            for event in hold_events(ledger.ensure_thinking_block()):
+                                 yield event
+-                            for event in hold_event(sse.emit_thinking_delta(reasoning)):
++                            for event in hold_event(
++                                ledger.emit_thinking_delta(reasoning)
++                            ):
+                                 yield event
+ 
+                         for event in self._transport._handle_extra_reasoning(
+                             delta,
+-                            sse,
++                            ledger,
+                             thinking_enabled=thinking_enabled,
+                         ):
+                             for out_event in hold_event(event):
+@@ -148,11 +153,11 @@ def hold_events(events: Iterator[str]) -> Iterator[str]:
+                                     if not thinking_enabled:
+                                         continue
+                                     for event in hold_events(
+-                                        sse.ensure_thinking_block()
++                                        ledger.ensure_thinking_block()
+                                     ):
+                                         yield event
+                                     for event in hold_event(
+-                                        sse.emit_thinking_delta(part.content)
++                                        ledger.emit_thinking_delta(part.content)
+                                     ):
+                                         yield event
+                                 else:
+@@ -163,23 +168,23 @@ def hold_events(events: Iterator[str]) -> Iterator[str]:
+ 
+                                     if filtered_text:
+                                         for event in hold_events(
+-                                            sse.ensure_text_block()
++                                            ledger.ensure_text_block()
+                                         ):
+                                             yield event
+                                         for event in hold_event(
+-                                            sse.emit_text_delta(filtered_text)
++                                            ledger.emit_text_delta(filtered_text)
+                                         ):
+                                             yield event
+ 
+                                     for tool_use in detected_tools:
+                                         for event in iter_heuristic_tool_use_sse(
+-                                            sse, tool_use
++                                            ledger, tool_use
+                                         ):
+                                             for out_event in hold_event(event):
+                                                 yield out_event
+ 
+                         if delta.tool_calls:
+-                            for event in hold_events(sse.close_content_blocks()):
++                            for event in hold_events(ledger.close_content_blocks()):
+                                 yield event
+                             for tc in delta.tool_calls:
+                                 extra_content = tool_call_extra_content(tc)
+@@ -195,7 +200,7 @@ def hold_events(events: Iterator[str]) -> Iterator[str]:
+                                     tc_info["extra_content"] = extra_content
+                                 for event in self._tool_calls.process_tool_call(
+                                     tc_info,
+-                                    sse,
++                                    ledger,
+                                     tool_argument_aliases=tool_argument_aliases,
+                                     tool_argument_alias_buffers=tool_argument_alias_buffers,
+                                 ):
+@@ -211,20 +216,20 @@ def hold_events(events: Iterator[str]) -> Iterator[str]:
+                 except asyncio.CancelledError, GeneratorExit:
+                     raise
+                 except Exception as error:
+-                    generated_output = has_committed_sse_output(sse)
++                    generated_output = has_committed_sse_output(ledger)
+                     complete_tool_salvageable = (
+                         generated_output
+-                        and sse.blocks.has_emitted_tool_block()
+-                        and all_started_tools_complete(sse, self._request)
++                        and ledger.has_emitted_tool_block()
++                        and all_emitted_tools_complete(ledger, self._request)
+                     )
+-                    decision = recovery_session.advance_failure(
++                    decision = recovery.advance_failure(
+                         error,
+                         stream_opened=stream_opened,
+                         generated_output=generated_output,
+                         complete_tool_salvageable=complete_tool_salvageable,
+                     )
+-                    if decision.action == StreamFailureAction.EARLY_RETRY:
+-                        sse = self._new_sse_builder()
++                    if decision.action == RecoveryFailureAction.EARLY_RETRY:
++                        ledger = self._new_ledger()
+                         think_parser = ThinkTagParser()
+                         heuristic_parser = HeuristicToolParser()
+                         finish_reason = None
+@@ -233,11 +238,11 @@ def hold_events(events: Iterator[str]) -> Iterator[str]:
+                         tool_argument_alias_buffers = {}
+                         continue
+ 
+-                    if decision.action == StreamFailureAction.MIDSTREAM_RECOVERY:
++                    if decision.action == RecoveryFailureAction.MIDSTREAM_RECOVERY:
+                         try:
+                             recovery_events = await self._recovery.events(
+                                 body=body,
+-                                sse=sse,
++                                ledger=ledger,
+                                 request=self._request,
+                                 request_id=self._request_id,
+                                 error=error,
+@@ -254,7 +259,7 @@ def hold_events(events: Iterator[str]) -> Iterator[str]:
+                             )
+                             recovery_events = None
+                         if recovery_events is not None:
+-                            for event in recovery_session.flush_uncommitted(decision):
++                            for event in recovery.flush_uncommitted(decision):
+                                 yield event
+                             for event in recovery_events:
+                                 yield event
+@@ -280,63 +285,68 @@ def hold_events(events: Iterator[str]) -> Iterator[str]:
+                         ).__name__,
+                     )
+                     if not decision.committed and decision.has_buffered:
+-                        for event in recovery_session.flush():
++                        for event in recovery.flush():
+                             yield event
+                     elif not decision.committed:
+-                        recovery_session.discard()
+-                        sse = self._new_sse_builder()
+-                    for event in self._recovery.emit_error_tail(sse, error_message):
++                        recovery.discard()
++                        ledger = self._new_ledger()
++                    for event in self._recovery.emit_error_tail(ledger, error_message):
+                         yield event
+                     return
++                finally:
++                    if stream is not None:
++                        await maybe_await_aclose(stream)
+ 
+         remaining = think_parser.flush()
+         if remaining:
+             if remaining.type == ContentType.THINKING:
+                 if not thinking_enabled:
+                     remaining = None
+                 else:
+-                    for event in hold_events(sse.ensure_thinking_block()):
++                    for event in hold_events(ledger.ensure_thinking_block()):
+                         yield event
+-                    for event in hold_event(sse.emit_thinking_delta(remaining.content)):
++                    for event in hold_event(
++                        ledger.emit_thinking_delta(remaining.content)
++                    ):
+                         yield event
+             if remaining and remaining.type == ContentType.TEXT:
+-                for event in hold_events(sse.ensure_text_block()):
++                for event in hold_events(ledger.ensure_text_block()):
+                     yield event
+-                for event in hold_event(sse.emit_text_delta(remaining.content)):
++                for event in hold_event(ledger.emit_text_delta(remaining.content)):
+                     yield event
+ 
+         for tool_use in heuristic_parser.flush():
+-            for event in iter_heuristic_tool_use_sse(sse, tool_use):
++            for event in iter_heuristic_tool_use_sse(ledger, tool_use):
+                 for out_event in hold_event(event):
+                     yield out_event
+ 
+-        has_started_tool = any(s.started for s in sse.blocks.tool_states.values())
++        has_emitted_tool = ledger.has_emitted_tool_block()
+         has_content_blocks = (
+-            sse.blocks.text_index != -1
+-            or sse.blocks.thinking_index != -1
+-            or has_started_tool
++            ledger.blocks.text_index != -1
++            or ledger.blocks.thinking_index != -1
++            or has_emitted_tool
+         )
+         if not has_content_blocks or (
+-            not has_started_tool
+-            and not sse.accumulated_text.strip()
+-            and sse.accumulated_reasoning.strip()
++            not has_emitted_tool
++            and not ledger.accumulated_text.strip()
++            and ledger.accumulated_reasoning.strip()
+         ):
+-            for event in hold_events(sse.ensure_text_block()):
++            for event in hold_events(ledger.ensure_text_block()):
+                 yield event
+-            for event in hold_event(sse.emit_text_delta(" ")):
++            for event in hold_event(ledger.emit_text_delta(" ")):
+                 yield event
+ 
+         for event in self._tool_calls.flush_tool_argument_alias_buffers(
+-            sse, tool_argument_aliases, tool_argument_alias_buffers
++            ledger, tool_argument_aliases, tool_argument_alias_buffers
+         ):
+             for out_event in hold_event(event):
+                 yield out_event
+ 
+-        for event in self._tool_calls.flush_task_arg_buffers(sse):
++        for event in self._tool_calls.flush_task_arg_buffers(ledger):
+             for out_event in hold_event(event):
+                 yield out_event
+ 
+-        for event in hold_events(sse.close_all_blocks()):
++        for event in hold_events(ledger.close_all_blocks()):
+             yield event
+ 
+         completion = (
+@@ -347,7 +357,7 @@ def hold_events(events: Iterator[str]) -> Iterator[str]:
+         if isinstance(completion, int):
+             output_tokens = completion
+         else:
+-            output_tokens = sse.estimate_output_tokens()
++            output_tokens = ledger.estimate_output_tokens()
+         if usage_info and hasattr(usage_info, "prompt_tokens"):
+             provider_input = usage_info.prompt_tokens
+             if isinstance(provider_input, int):
+@@ -367,16 +377,19 @@ def hold_events(events: Iterator[str]) -> Iterator[str]:
+             prompt_tokens_estimate=self._input_tokens,
+         )
+         for event in hold_event(
+-            sse.message_delta(map_stop_reason(finish_reason), output_tokens)
++            ledger.message_delta(
++                ledger.final_stop_reason(map_stop_reason(finish_reason)),
++                output_tokens,
++            )
+         ):
+             yield event
+-        for event in hold_event(sse.message_stop()):
++        for event in hold_event(ledger.message_stop()):
+             yield event
+-        for event in recovery_session.flush():
++        for event in recovery.flush():
+             yield event
+ 
+-    def _new_sse_builder(self) -> SSEBuilder:
+-        return SSEBuilder(
++    def _new_ledger(self) -> AnthropicStreamLedger:
++        return AnthropicStreamLedger(
+             self._message_id,
+             self._request.model,
+             self._input_tokens,
+diff --git a/providers/transports/openai_chat/tool_calls.py b/providers/transports/openai_chat/tool_calls.py
+--- a/providers/transports/openai_chat/tool_calls.py
++++ b/providers/transports/openai_chat/tool_calls.py
+@@ -7,37 +7,36 @@
+ from collections.abc import Callable, Iterator
+ from typing import Any
+ 
+-from core.anthropic import SSEBuilder
+-from core.anthropic.stream_recovery import (
+-    parse_complete_tool_input,
++from core.anthropic.streaming import (
++    AnthropicStreamLedger,
+     tool_schemas_by_name,
+ )
+ 
+ RecordToolExtraContent = Callable[[str, dict[str, Any]], None]
+ 
+ 
+ def iter_heuristic_tool_use_sse(
+-    sse: SSEBuilder, tool_use: dict[str, Any]
++    ledger: AnthropicStreamLedger, tool_use: dict[str, Any]
+ ) -> Iterator[str]:
+     """Emit SSE for one heuristic tool_use block."""
+     if tool_use.get("name") == "Task" and isinstance(tool_use.get("input"), dict):
+         task_input = tool_use["input"]
+         if task_input.get("run_in_background") is not False:
+             task_input["run_in_background"] = False
+-    yield from sse.close_content_blocks()
+-    block_idx = sse.blocks.allocate_index()
+-    yield sse.content_block_start(
++    yield from ledger.close_content_blocks()
++    block_idx = ledger.blocks.allocate_index()
++    yield ledger.content_block_start(
+         block_idx,
+         "tool_use",
+         id=tool_use["id"],
+         name=tool_use["name"],
+     )
+-    yield sse.content_block_delta(
++    yield ledger.content_block_delta(
+         block_idx,
+         "input_json_delta",
+         json.dumps(tool_use["input"]),
+     )
+-    yield sse.content_block_stop(block_idx)
++    yield ledger.content_block_stop(block_idx)
+ 
+ 
+ def tool_call_extra_content(tool_call: Any) -> dict[str, Any] | None:
+@@ -65,35 +64,27 @@ def tool_call_extra_content(tool_call: Any) -> dict[str, Any] | None:
+     return None
+ 
+ 
+-def has_committed_sse_output(sse: SSEBuilder) -> bool:
++def has_committed_sse_output(ledger: AnthropicStreamLedger) -> bool:
+     """Return whether any assistant content escaped the builder."""
+     return (
+-        sse.blocks.text_index != -1
+-        or sse.blocks.thinking_index != -1
+-        or sse.blocks.has_emitted_tool_block()
++        ledger.blocks.text_index != -1
++        or ledger.blocks.thinking_index != -1
++        or ledger.has_emitted_tool_block()
+     )
+ 
+ 
+-def started_tool_states(sse: SSEBuilder) -> list[tuple[int, Any]]:
++def started_tool_states(ledger: AnthropicStreamLedger) -> list[tuple[int, Any]]:
+     """Return started tool states in stream order."""
+     return [
+         (tool_index, state)
+-        for tool_index, state in sse.blocks.tool_states.items()
++        for tool_index, state in ledger.blocks.tool_states.items()
+         if state.started
+     ]
+ 
+ 
+-def all_started_tools_complete(sse: SSEBuilder, request: Any) -> bool:
++def all_emitted_tools_complete(ledger: AnthropicStreamLedger, request: Any) -> bool:
+     """Return whether every emitted tool block has schema-valid input."""
+-    schemas = tool_schemas_by_name(request)
+-    started = started_tool_states(sse)
+-    if not started:
+-        return False
+-    for _, state in started:
+-        raw = "".join(state.contents)
+-        if parse_complete_tool_input(raw, state.name, schemas) is None:
+-            return False
+-    return True
++    return ledger.can_salvage_tool_use(tool_schemas_by_name(request))
+ 
+ 
+ class OpenAIToolCallAssembler:
+@@ -107,7 +98,7 @@ def __init__(
+     def process_tool_call(
+         self,
+         tc: dict[str, Any],
+-        sse: SSEBuilder,
++        ledger: AnthropicStreamLedger,
+         *,
+         tool_argument_aliases: dict[str, dict[str, str]] | None = None,
+         tool_argument_alias_buffers: dict[int, str] | None = None,
+@@ -116,14 +107,14 @@ def process_tool_call(
+         raw_index = tc.get("index", 0)
+         tc_index = raw_index if isinstance(raw_index, int) else 0
+         if tc_index < 0:
+-            tc_index = len(sse.blocks.tool_states)
++            tc_index = len(ledger.blocks.tool_states)
+ 
+         fn_delta = tc.get("function", {})
+         incoming_name = fn_delta.get("name")
+         arguments = fn_delta.get("arguments", "") or ""
+ 
+         if tc.get("id") is not None:
+-            sse.blocks.set_stream_tool_id(tc_index, tc.get("id"))
++            ledger.blocks.set_stream_tool_id(tc_index, tc.get("id"))
+ 
+         raw_extra_content = tc.get("extra_content")
+         extra_content = (
+@@ -132,12 +123,12 @@ def process_tool_call(
+             else None
+         )
+         if extra_content:
+-            sse.blocks.set_tool_extra_content(tc_index, extra_content)
++            ledger.blocks.set_tool_extra_content(tc_index, extra_content)
+ 
+         if incoming_name is not None:
+-            sse.blocks.register_tool_name(tc_index, incoming_name)
++            ledger.blocks.register_tool_name(tc_index, incoming_name)
+ 
+-        state = sse.blocks.tool_states.get(tc_index)
++        state = ledger.blocks.tool_states.get(tc_index)
+         resolved_id = (state.tool_id if state and state.tool_id else None) or tc.get(
+             "id"
+         )
+@@ -151,51 +142,51 @@ def process_tool_call(
+                 start_extra_content = state.extra_content if state else extra_content
+                 if start_extra_content:
+                     self._record_tool_call_extra_content(tool_id, start_extra_content)
+-                yield sse.start_tool_block(
++                yield ledger.start_tool_block(
+                     tc_index,
+                     tool_id,
+                     display_name,
+                     extra_content=start_extra_content,
+                 )
+-                state = sse.blocks.tool_states[tc_index]
++                state = ledger.blocks.tool_states[tc_index]
+                 if state.pre_start_args:
+                     pre = state.pre_start_args
+                     state.pre_start_args = ""
+                     yield from self._emit_tool_arg_delta(
+-                        sse,
++                        ledger,
+                         tc_index,
+                         pre,
+                         tool_argument_aliases=tool_argument_aliases,
+                         tool_argument_alias_buffers=tool_argument_alias_buffers,
+                     )
+ 
+-        state = sse.blocks.tool_states.get(tc_index)
++        state = ledger.blocks.tool_states.get(tc_index)
+         if state is not None and state.tool_id and extra_content:
+             self._record_tool_call_extra_content(state.tool_id, extra_content)
+         if not arguments:
+             return
+         if state is None or not state.started:
+-            state = sse.blocks.ensure_tool_state(tc_index)
++            state = ledger.blocks.ensure_tool_state(tc_index)
+             if not (resolved_name or "").strip():
+                 state.pre_start_args += arguments
+                 return
+ 
+         yield from self._emit_tool_arg_delta(
+-            sse,
++            ledger,
+             tc_index,
+             arguments,
+             tool_argument_aliases=tool_argument_aliases,
+             tool_argument_alias_buffers=tool_argument_alias_buffers,
+         )
+ 
+-    def flush_task_arg_buffers(self, sse: SSEBuilder) -> Iterator[str]:
++    def flush_task_arg_buffers(self, ledger: AnthropicStreamLedger) -> Iterator[str]:
+         """Emit buffered Task args as a single JSON delta."""
+-        for tool_index, out in sse.blocks.flush_task_arg_buffers():
+-            yield sse.emit_tool_delta(tool_index, out)
++        for tool_index, out in ledger.blocks.flush_task_arg_buffers():
++            yield ledger.emit_tool_delta(tool_index, out)
+ 
+     def flush_tool_argument_alias_buffers(
+         self,
+-        sse: SSEBuilder,
++        ledger: AnthropicStreamLedger,
+         tool_argument_aliases: dict[str, dict[str, str]],
+         tool_argument_alias_buffers: dict[int, str],
+     ) -> Iterator[str]:
+@@ -204,22 +195,22 @@ def flush_tool_argument_alias_buffers(
+             if not buffered_args:
+                 tool_argument_alias_buffers.pop(tool_index, None)
+                 continue
+-            state = sse.blocks.tool_states.get(tool_index)
++            state = ledger.blocks.tool_states.get(tool_index)
+             if state is None or state.name == "Task":
+                 continue
+             aliases = tool_argument_aliases.get(state.name, {})
+             if not aliases:
+                 continue
+             restored = self._restore_aliased_tool_arguments(buffered_args, aliases)
+-            yield sse.emit_tool_delta(
++            yield ledger.emit_tool_delta(
+                 tool_index,
+                 restored if restored is not None else buffered_args,
+             )
+             tool_argument_alias_buffers.pop(tool_index, None)
+ 
+     def _emit_tool_arg_delta(
+         self,
+-        sse: SSEBuilder,
++        ledger: AnthropicStreamLedger,
+         tc_index: int,
+         args: str,
+         *,
+@@ -229,13 +220,13 @@ def _emit_tool_arg_delta(
+         """Emit one argument fragment for a started tool block."""
+         if not args:
+             return
+-        state = sse.blocks.tool_states.get(tc_index)
++        state = ledger.blocks.tool_states.get(tc_index)
+         if state is None:
+             return
+         if state.name == "Task":
+-            parsed = sse.blocks.buffer_task_args(tc_index, args)
++            parsed = ledger.blocks.buffer_task_args(tc_index, args)
+             if parsed is not None:
+-                yield sse.emit_tool_delta(tc_index, json.dumps(parsed))
++                yield ledger.emit_tool_delta(tc_index, json.dumps(parsed))
+             return
+         aliases = (
+             tool_argument_aliases.get(state.name, {}) if tool_argument_aliases else {}
+@@ -244,7 +235,7 @@ def _emit_tool_arg_delta(
+             if tool_argument_alias_buffers is None:
+                 restored = self._restore_aliased_tool_arguments(args, aliases)
+                 if restored is not None:
+-                    yield sse.emit_tool_delta(tc_index, restored)
++                    yield ledger.emit_tool_delta(tc_index, restored)
+                 return
+ 
+             buffered_args = tool_argument_alias_buffers.get(tc_index, "") + args
+@@ -253,9 +244,9 @@ def _emit_tool_arg_delta(
+                 tool_argument_alias_buffers[tc_index] = buffered_args
+                 return
+             tool_argument_alias_buffers.pop(tc_index, None)
+-            yield sse.emit_tool_delta(tc_index, restored)
++            yield ledger.emit_tool_delta(tc_index, restored)
+             return
+-        yield sse.emit_tool_delta(tc_index, args)
++        yield ledger.emit_tool_delta(tc_index, args)
+ 
+     def _restore_aliased_tool_arguments(
+         self, argument_json: str, aliases: dict[str, str]
+diff --git a/providers/transports/openai_chat/transport.py b/providers/transports/openai_chat/transport.py
+--- a/providers/transports/openai_chat/transport.py
++++ b/providers/transports/openai_chat/transport.py
+@@ -9,7 +9,7 @@
+ import httpx
+ from openai import AsyncOpenAI
+ 
+-from core.anthropic import SSEBuilder
++from core.anthropic.streaming import AnthropicStreamLedger
+ from providers.base import BaseProvider, ProviderConfig
+ from providers.error_mapping import (
+     extract_provider_error_detail,
+@@ -19,7 +19,7 @@
+ from providers.model_listing import extract_openai_model_ids
+ from providers.rate_limit import GlobalRateLimiter
+ 
+-from .stream import OpenAIChatStreamRunner
++from .stream import OpenAIChatStreamAdapter
+ 
+ 
+ class OpenAIChatTransport(BaseProvider):
+@@ -85,7 +85,7 @@ def _build_request_body(
+         """Build request body. Must be implemented by subclasses."""
+ 
+     def _handle_extra_reasoning(
+-        self, delta: Any, sse: SSEBuilder, *, thinking_enabled: bool
++        self, delta: Any, ledger: AnthropicStreamLedger, *, thinking_enabled: bool
+     ) -> Iterator[str]:
+         """Hook for provider-specific reasoning."""
+         return iter(())
+@@ -145,12 +145,12 @@ async def stream_response(
+         thinking_enabled: bool | None = None,
+     ) -> AsyncIterator[str]:
+         """Stream response in Anthropic SSE format."""
+-        runner = OpenAIChatStreamRunner(
++        adapter = OpenAIChatStreamAdapter(
+             self,
+             request=request,
+             input_tokens=input_tokens,
+             request_id=request_id,
+             thinking_enabled=thinking_enabled,
+         )
+-        async for event in runner.run():
++        async for event in adapter.run():
+             yield event
+diff --git a/smoke/capabilities.py b/smoke/capabilities.py
+--- a/smoke/capabilities.py
++++ b/smoke/capabilities.py
+@@ -171,7 +171,7 @@ class CapabilityContract:
+         "streaming_conversion",
+         "anthropic_sse_lifecycle",
+         "streaming_error_mapping",
+-        "core.anthropic.SSEBuilder",
++        "core.anthropic.streaming.AnthropicStreamLedger",
+         "provider stream chunks or native SSE events",
+         "Anthropic message/content/error SSE lifecycle",
+         "Anthropic-compatible error event",
+@@ -218,7 +218,7 @@ class CapabilityContract:
+         "streaming_conversion",
+         "subagent_task_control",
+         "subagent_control",
+-        "core.anthropic.SSEBuilder",
++        "core.anthropic.streaming.AnthropicStreamLedger",
+         "Task tool call arguments",
+         "run_in_background=false",
+         "invalid JSON flushed as safe object",
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

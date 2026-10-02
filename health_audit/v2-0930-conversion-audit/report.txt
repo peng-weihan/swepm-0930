@@ -1,0 +1,135 @@
+v2-0930 原始格式 → Harbor 接入审计
+日期：2026-10-02 UTC
+
+结论
+
+workdir 修复后，主要题目内容没有丢失，但接入尚不能视为完整等价。
+确认两项转换层缺陷：test_patch 未独立交付/校验；reward 包装存在可复现的误判分支。
+另有两项与当前工作区 v1 runner 的明确差异：共用 agent 容器评测；未迁移执行提示约束。
+后两项是 harness 语义差异，不是原始 JSON 字段丢失，也不能据此直接归因所有失败。
+
+范围与方法
+
+- 检查 v2-0930/v2.json 的 18 类字段及 v2-eval.json 的 3 类字段，共82题。
+- 对照本地已修复 workdir 的 Harbor 产物。
+- 在授权机器10.161.41.9，对82个缓存镜像运行只读、断网检查：仓库、HEAD、tracked状态、测试补丁哈希与 git apply --check。
+- 检查之前四模型主批次的328条结果；不混入32GiB补跑。
+- 对照当前工作区 v1 solver/evaluator 源码；这不是完整上游 v2 reference runner 的认证。
+- 用极小假评测脚本复现 reward 包装边界；不执行实际 benchmark 测试。
+- 未修改转换器、数据集、运行配置或正在执行的实验。只写诊断文件。
+
+1. 已确认正常的映射
+
+82/82 的 instance_id、repo、language、base_commit、image_name、working_dir、
+problem_statement、gold patch 和 eval_script 均与转换产物相符。
+文本比较允许转换器原有的末尾换行规范化；gold patch正文没有截断。
+三份 shell 脚本的执行权限均正确。
+
+82/82 镜像中 /testbed 仓库存在，HEAD与原始base_commit一致。
+environment_setup_commit 在82/82题中都与base_commit相同，未发现漏执行另一套setup提交。
+hints_text 全空，setup_scripts 全部为空字典，没有这两类有效内容被静默遗漏。
+转换器遇到非空setup_scripts会报错，不会假装支持。
+_original_problem_statement 等是历史题面和来源元数据；最终problem_statement完整保留。
+缺少created_at/pull_number及生成器审计元数据属于可追溯性不足，未发现它们包含漏执行的运行参数。
+
+2. test_patch 交付缺口：3题已实际命中
+
+82条原始记录全部有非空test_patch，但转换器没有把它写入tests/资源。
+72题的eval_script依赖镜像内/tmp/test.patch：
+  - 69题：文件存在，SHA256与原始test_patch逐字节一致。
+  - 3题：镜像中缺失，转换也未补交付：
+      0xMiden__miden-vm-c_5a9834d
+      tailcallhq__forgecode-2716
+      xremap__xremap-892
+因此这些任务的目标测试不能靠当前转换产物可靠安装。
+
+责任边界：缺文件的状态原本就在镜像中；Harbor没有删除该文件。当前本地v1 evaluator
+同样依赖镜像或eval内嵌补丁。转换层的问题是没有将原始test_patch完整交付并验证依赖，
+所以它是输入打包问题与转换不完整共同构成的缺口，不能说是Harbor核心制造。
+
+另外10题在eval_script内嵌补丁。8题直接匹配；flowcraft与lerd将删除文件的操作放在
+独立rm循环里，保留的diff内容及删除文件列表均与原始test_patch一致。这2题不算漏测试。
+
+建议：将原始test_patch放入verifier专用资源，在验证阶段明确交付并检查；不要在agent
+开始求解前额外暴露测试补丁。不能简单把Go题的内嵌处理再重复应用一遍。
+
+3. 评测工作区与原runner不同：328/328为shared
+
+当前Harbor默认在agent已经使用、修改过的容器内执行verifier。
+原v1 solver会先记录镜像初始baseline tree，结束时导出相对baseline的二进制diff；
+原v1 evaluator再启动全新镜像容器，重新应用model_patch后评测。
+
+因此当前方式可能继承agent修改过的依赖、工具版本、构建缓存、进程和临时文件。
+之前libspecbleach的agent自测通过、verifier因Meson build.dat版本不兼容而失败，
+说明阶段间状态确有问题，但尚未进行干净容器对照，不能说这个差异解释了全部失败。
+更换为新容器也不会自动修好不安全的test.patch反向应用逻辑。
+
+当前接入还没有配置与v1相同的“verifier之前导出最终代码补丁并重放”环节，
+不应把turn.completed当成代码补丁可重放、可评估的证明。
+建议：先保存agent最终修改，再在新容器中重放、安装测试及评测。
+补丁基线应使用agent开始前的镜像状态，不能只用最终HEAD或盲目reset到base。
+
+4. reward包装误判：已复现，旧328条尚未命中
+
+convert_v2_harbor.py的包装优先采用OMNIGRIL_EXIT_CODE，覆盖真实shell返回值，
+并未识别OMNIGRIL_TEST_PATCH_APPLY_FAILED=1。
+
+实测案例：
+  eval打印OMNIGRIL_EXIT_CODE=0后exit7：当前包装reward=1；v1判失败。
+  eval打印TEST_PATCH_APPLY_FAILED=1和EXIT_CODE=0后exit0：当前包装reward=1；v1判失败。
+  正常成功与正常失败两个对照案例行为一致。
+
+回查旧四模型328条：未发现raw exit与effective exit不同，也没有补丁失败标记被计为1。
+因此这是已确认的潜在判分bug，不能据此宣称之前有328题或某个具体分数被它改写。
+建议：要求真实返回值与报告返回值都成功，并明确拒绝补丁安装失败状态。
+
+5. v1执行提示约束未迁移
+
+当前instruction.md仅包含原始problem_statement；题面本身完整。
+v1 prompt_for还要求实际修改代码、不要仅描述方案、不要联网获取参考答案、不要commit，
+并要求清理非解题源文件。这些额外约束没有迁移到目前的Harbor任务提示。
+这是harness提示差异。之前有只写计划/请求澄清的轨迹，但不能只凭提示差异确认因果。
+建议：补充独立、版本化的执行约束，并保持原题面不变；提示不能替代技术层面的隔离。
+
+6. 已区分的原始问题与实验配置差异
+
+- 72/82原始eval_script就有patch --batch --fuzz=5 fallback。反向应用、部分失败继续执行
+  的危险逻辑不是转换新增；只补齐test.patch文件不能修复它。
+- EvoScientist__EvoScientist-307的原始测试补丁在干净缓存镜像上git apply --check返回128；
+  镜像补丁与原始字段完全一致。这不是转换截断。
+- 80个镜像tracked状态干净；Kafka镜像原本修改了Gradle下载镜像地址，Aimee-c_d9e4faf
+  原本增加了go.sum条目。它们是agent运行前已有的环境修改。
+- v1 solver使用host网络、evaluator默认离线；当前Harbor采用bridge/public网络、清空代理。
+  这会影响依赖下载及网络测试，属于运行协议变化，原始JSON没有对应字段可直接映射。
+- 4CPU、32GiB、agent7200秒、verifier3600秒是当前实验设置；v1 evaluator默认2400秒。
+- 82个镜像默认用户均为root；v1 Claude solver显式使用UID1000，而当前按镜像默认用户执行。
+  27个镜像有Maven/Node entrypoint，v1 solver清空entrypoint，当前保留；未确认由此新增失败。
+- 当前oracle严格git apply；v1允许GNU patch fallback。gold payload完整，但本轮未重跑82个oracle。
+- v1 evaluator另有gold对照及“model/gold相同失败输出也可判通过”的后处理；Harbor未复制。
+  不建议为了复刻旧数字而恢复这种同失败算通过的规则。
+
+建议优先级
+
+先保存agent最终补丁和原始工作区证据，再补齐test_patch交付/校验与reward失败处理；
+随后单独验证新容器重放的评测协议，并处理上游eval_script反向补丁的问题。
+当前运行批次保持其既定配置；本次审计没有中途改分或更换verifier。
+
+证据文件
+
+field-mapping.csv                 18个原始字段+3个eval字段的去向
+all-82-checks.csv                 逐题静态映射、镜像、测试补丁检查
+image-probe-results.json          82个只读镜像探测，含image ID/digest
+embedded-test-patches.json        10个内嵌补丁的完整性分析
+reward-wrapper-reproduction.json  4个极小判分复现场景
+observed-reward-protocol.json     旧328条结果的退出码与shared模式检查
+base-image-dirty-diffs.json       两个镜像预置修改
+report.json                      机器可读结论、责任边界与建议
+
+源码定位
+
+转换器：convert_v2_harbor.py:41（reward包装）、:72（字段转换）
+v1提示：../scripts/run_claude_code_swe_cascade.py:97
+v1补丁导出：同文件:311、:386
+v1判分：../src/evaluation/test_run.py:184
+v1新容器重放：同文件:202
+v1额外gold后处理：同文件:338

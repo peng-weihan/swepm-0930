@@ -1,0 +1,2570 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/apps/app/src/components/promptbox/banner/QueuedMessagesList.stories.tsx b/apps/app/src/components/promptbox/banner/QueuedMessagesList.stories.tsx
+--- a/apps/app/src/components/promptbox/banner/QueuedMessagesList.stories.tsx
++++ b/apps/app/src/components/promptbox/banner/QueuedMessagesList.stories.tsx
+@@ -91,7 +91,7 @@ const longMessage: readonly ThreadQueuedMessage[] = [
+ export function Overview() {
+   return (
+     <StoryCard>
+-      <StoryRow label="single message" hint="one queued follow-up">
++      <StoryRow label="single message" hint="one queued message">
+         <PromptStage>
+           <QueuedMessagesList
+             queuedMessages={oneMessage}
+@@ -106,7 +106,7 @@ export function Overview() {
+       </StoryRow>
+       <StoryRow
+         label="multiple messages"
+-        hint="three queued follow-ups behind the active turn"
++        hint="three queued messages behind the active turn"
+       >
+         <PromptStage>
+           <QueuedMessagesList
+diff --git a/apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx b/apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx
+--- a/apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx
++++ b/apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx
+@@ -4,7 +4,7 @@ import { Icon } from "@/components/ui/icon.js";
+ import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+ import {
+   countQueuedMessageAttachments,
+-  formatQueuedFollowUpPreview,
++  formatQueuedMessagePreview,
+ } from "@/views/thread-detail/threadQueuedMessages";
+ 
+ export interface QueuedMessagesListProps {
+@@ -29,18 +29,15 @@ export function QueuedMessagesList({
+   if (queuedMessages.length === 0) return null;
+ 
+   return (
+-    <PromptStackCard
+-      ariaLabel="Queued follow-up messages"
+-      className="overflow-hidden"
+-    >
++    <PromptStackCard ariaLabel="Queued messages" className="overflow-hidden">
+       <div className="flex items-center justify-between px-2.5 pb-1 pt-2.5">
+         <p className="text-xs text-muted-foreground">
+           Queued ({queuedMessages.length})
+         </p>
+       </div>
+       <ul>
+         {queuedMessages.map((queuedMessage, index) => {
+-          const preview = formatQueuedFollowUpPreview(queuedMessage.content);
++          const preview = formatQueuedMessagePreview(queuedMessage.content);
+           const attachmentCount = countQueuedMessageAttachments(
+             queuedMessage.content,
+           );
+diff --git a/apps/app/src/components/thread/timeline/rows/FileChange.stories.tsx b/apps/app/src/components/thread/timeline/rows/FileChange.stories.tsx
+--- a/apps/app/src/components/thread/timeline/rows/FileChange.stories.tsx
++++ b/apps/app/src/components/thread/timeline/rows/FileChange.stories.tsx
+@@ -133,7 +133,7 @@ const deleteActiveThinking: TimelineRow = {
+ };
+ 
+ // thr_4gfmxbsa64, sequence 1910 — large refactor of ThreadFollowUpComposer.tsx
+-// (extract QueuedFollowUpItem into a memoized component). Real unified diff
++// (extract QueuedMessageItem into a memoized component). Real unified diff
+ // across multiple hunks with substantial added + removed line counts.
+ const largeRefactorComposer: TimelineRow = {
+   "id": "thr_4gfmxbsa64:file-change:call_xFKgOuQKzQxP1vthvrxyx9PS:0",
+@@ -151,7 +151,7 @@ const largeRefactorComposer: TimelineRow = {
+     "path": "/Users/michael/.bb-dev/worktrees/env_story/bb/apps/app/src/views/ThreadFollowUpComposer.tsx",
+     "kind": "update",
+     "movePath": null,
+-    "diff": "@@ -1,2 +1,7 @@\n-import { type ComponentProps, type ComponentType, type ReactNode } from \"react\";\n+import {\n+  memo,\n+  type ComponentProps,\n+  type ComponentType,\n+  type ReactNode,\n+} from \"react\";\n import { useAtom } from \"jotai\";\n@@ -51,2 +56,13 @@\n \n+interface QueuedFollowUpItemProps {\n+  actionDisabled: boolean;\n+  index: number;\n+  isProcessing: boolean;\n+  onDelete: (id: string) => void;\n+  onEdit: (id: string) => void;\n+  onSendImmediately: (id: string) => void;\n+  queuedMessage: ThreadQueuedMessage;\n+  sendDisabled: boolean;\n+}\n+\n function PromptBoxWithScrollAnchor({\n@@ -63,2 +79,87 @@\n \n+const QueuedFollowUpItem = memo(function QueuedFollowUpItem({\n+  actionDisabled,\n+  index,\n+  isProcessing,\n+  onDelete,\n+  onEdit,\n+  onSendImmediately,\n+  queuedMessage,\n+  sendDisabled,\n+}: QueuedFollowUpItemProps) {\n+  const preview = formatQueuedFollowUpPreview(queuedMessage.content);\n+  const attachmentCount = countQueuedMessageAttachments(queuedMessage.content);\n+\n+  return (\n+    <li className=\"px-2.5 py-0.5\">\n+      <div className=\"flex items-center gap-1.5\">\n+        <div className=\"p-0.5 text-muted-foreground\">\n+          <CornerDownRight className=\"size-3.5\" />\n+        </div>\n+        <div className=\"min-w-0 flex-1\">\n+          <div className=\"flex min-w-0 items-center gap-1 text-xs leading-4\">\n+            <p className=\"min-w-0 truncate text-foreground\" title={preview}>\n+              {preview}\n+            </p>\n+            {attachmentCount > 0 ? (\n+              <>\n+                <span className=\"shrink-0 text-muted-foreground\">.</span>\n+                <span className=\"shrink-0 text-muted-foreground\">\n+                  {attachmentCount === 1\n+                    ? \"1 attachment\"\n+                    : `${attachmentCount} attachments`}\n+                </span>\n+              </>\n+            ) : null}\n+            {isProcessing ? (\n+              <>\n+                <span className=\"shrink-0 text-muted-foreground\">.</span>\n+                <span className=\"shrink-0 text-muted-foreground\">\n+                  Sending...\n+                </span>\n+              </>\n+            ) : null}\n+          </div>\n+        </div>\n+        <div className=\"ml-1 flex shrink-0 items-center gap-1\">\n+          <Button\n+            type=\"button\"\n+            size=\"sm\"\n+            variant=\"link\"\n+            className=\"h-auto px-0 pr-1 text-xs text-muted-foreground underline\"\n+            disabled={sendDisabled || isProcessing}\n+            onClick={() => onSendImmediately(queuedMessage.id)}\n+          >\n+            {isProcessing ? \"Sending...\" : \"Send now\"}\n+          </Button>\n+          <Button\n+            type=\"button\"\n+            size=\"icon\"\n+            variant=\"ghost\"\n+            className=\"size-7 text-muted-foreground\"\n+            disabled={actionDisabled || isProcessing}\n+            onClick={() => onEdit(queuedMessage.id)}\n+            aria-label={`Edit queued message ${index + 1}`}\n+            title=\"Edit queued message\"\n+          >\n+            <Pencil className=\"size-3.5\" />\n+          </Button>\n+          <Button\n+            type=\"button\"\n+            size=\"icon\"\n+            variant=\"ghost\"\n+            className=\"size-7 text-muted-foreground hover:text-destructive\"\n+            disabled={actionDisabled || isProcessing}\n+            onClick={() => onDelete(queuedMessage.id)}\n+            aria-label={`Delete queued message ${index + 1}`}\n+            title=\"Delete queued message\"\n+          >\n+            <Trash2 className=\"size-3.5\" />\n+          </Button>\n+        </div>\n+      </div>\n+    </li>\n+  );\n+});\n+\n function QueuedFollowUpList({\n@@ -93,86 +194,15 @@\n       <ul>\n-        {queuedMessages.map((queuedMessage, index) => {\n-          const preview = formatQueuedFollowUpPreview(queuedMessage.content);\n-          const attachmentCount = countQueuedMessageAttachments(\n-            queuedMessage.content,\n-          );\n-          const isProcessing = processingMessageId === queuedMessage.id;\n-          return (\n-            <li key={queuedMessage.id} className=\"px-2.5 py-0.5\">\n-              <div className=\"flex items-center gap-1.5\">\n-                <div className=\"p-0.5 text-muted-foreground\">\n-                  <CornerDownRight className=\"size-3.5\" />\n-                </div>\n-                <div className=\"min-w-0 flex-1\">\n-                  <div className=\"flex min-w-0 items-center gap-1 text-xs leading-4\">\n-                    <p\n-                      className=\"min-w-0 truncate text-foreground\"\n-                      title={preview}\n-                    >\n-                      {preview}\n-                    </p>\n-                    {attachmentCount > 0 ? (\n-                      <>\n-                        <span className=\"shrink-0 text-muted-foreground\">\n-                          .\n-                        </span>\n-                        <span className=\"shrink-0 text-muted-foreground\">\n-                          {attachmentCount === 1\n-                            ? \"1 attachment\"\n-                            : `${attachmentCount} attachments`}\n-                        </span>\n-                      </>\n-                    ) : null}\n-                    {isProcessing ? (\n-                      <>\n-                        <span className=\"shrink-0 text-muted-foreground\">\n-                          .\n-                        </span>\n-                        <span className=\"shrink-0 text-muted-foreground\">\n-                          Sending...\n-                        </span>\n-                      </>\n-                    ) : null}\n-                  </div>\n-                </div>\n-                <div className=\"ml-1 flex shrink-0 items-center gap-1\">\n-                  <Button\n-                    type=\"button\"\n-                    size=\"sm\"\n-                    variant=\"link\"\n-                    className=\"h-auto px-0 pr-1 text-xs text-muted-foreground underline\"\n-                    disabled={sendDisabled || isProcessing}\n-                    onClick={() => onSendImmediately(queuedMessage.id)}\n-                  >\n-                    {isProcessing ? \"Sending...\" : \"Send now\"}\n-                  </Button>\n-                  <Button\n-                    type=\"button\"\n-                    size=\"icon\"\n-                    variant=\"ghost\"\n-                    className=\"size-7 text-muted-foreground\"\n-                    disabled={actionDisabled || isProcessing}\n-                    onClick={() => onEdit(queuedMessage.id)}\n-                    aria-label={`Edit queued message ${index + 1}`}\n-                    title=\"Edit queued message\"\n-                  >\n-                    <Pencil className=\"size-3.5\" />\n-                  </Button>\n-                  <Button\n-                    type=\"button\"\n-                    size=\"icon\"\n-                    variant=\"ghost\"\n-                    className=\"size-7 text-muted-foreground hover:text-destructive\"\n-                    disabled={actionDisabled || isProcessing}\n-                    onClick={() => onDelete(queuedMessage.id)}\n-                    aria-label={`Delete queued message ${index + 1}`}\n-                    title=\"Delete queued message\"\n-                  >\n-                    <Trash2 className=\"size-3.5\" />\n-                  </Button>\n-                </div>\n-              </div>\n-            </li>\n-          );\n-        })}\n+        {queuedMessages.map((queuedMessage, index) => (\n+          <QueuedFollowUpItem\n+            key={queuedMessage.id}\n+            queuedMessage={queuedMessage}\n+            index={index}\n+            isProcessing={processingMessageId === queuedMessage.id}\n+            sendDisabled={sendDisabled}\n+            actionDisabled={actionDisabled}\n+            onDelete={onDelete}\n+            onEdit={onEdit}\n+            onSendImmediately={onSendImmediately}\n+          />\n+        ))}\n       </ul>\n",
++    "diff": "@@ -1,2 +1,7 @@\n-import { type ComponentProps, type ComponentType, type ReactNode } from \"react\";\n+import {\n+  memo,\n+  type ComponentProps,\n+  type ComponentType,\n+  type ReactNode,\n+} from \"react\";\n import { useAtom } from \"jotai\";\n@@ -51,2 +56,13 @@\n \n+interface QueuedMessageItemProps {\n+  actionDisabled: boolean;\n+  index: number;\n+  isProcessing: boolean;\n+  onDelete: (id: string) => void;\n+  onEdit: (id: string) => void;\n+  onSendImmediately: (id: string) => void;\n+  queuedMessage: ThreadQueuedMessage;\n+  sendDisabled: boolean;\n+}\n+\n function PromptBoxWithScrollAnchor({\n@@ -63,2 +79,87 @@\n \n+const QueuedMessageItem = memo(function QueuedMessageItem({\n+  actionDisabled,\n+  index,\n+  isProcessing,\n+  onDelete,\n+  onEdit,\n+  onSendImmediately,\n+  queuedMessage,\n+  sendDisabled,\n+}: QueuedMessageItemProps) {\n+  const preview = formatQueuedMessagePreview(queuedMessage.content);\n+  const attachmentCount = countQueuedMessageAttachments(queuedMessage.content);\n+\n+  return (\n+    <li className=\"px-2.5 py-0.5\">\n+      <div className=\"flex items-center gap-1.5\">\n+        <div className=\"p-0.5 text-muted-foreground\">\n+          <CornerDownRight className=\"size-3.5\" />\n+        </div>\n+        <div className=\"min-w-0 flex-1\">\n+          <div className=\"flex min-w-0 items-center gap-1 text-xs leading-4\">\n+            <p className=\"min-w-0 truncate text-foreground\" title={preview}>\n+              {preview}\n+            </p>\n+            {attachmentCount > 0 ? (\n+              <>\n+                <span className=\"shrink-0 text-muted-foreground\">.</span>\n+                <span className=\"shrink-0 text-muted-foreground\">\n+                  {attachmentCount === 1\n+                    ? \"1 attachment\"\n+                    : `${attachmentCount} attachments`}\n+                </span>\n+              </>\n+            ) : null}\n+            {isProcessing ? (\n+              <>\n+                <span className=\"shrink-0 text-muted-foreground\">.</span>\n+                <span className=\"shrink-0 text-muted-foreground\">\n+                  Sending...\n+                </span>\n+              </>\n+            ) : null}\n+          </div>\n+        </div>\n+        <div className=\"ml-1 flex shrink-0 items-center gap-1\">\n+          <Button\n+            type=\"button\"\n+            size=\"sm\"\n+            variant=\"link\"\n+            className=\"h-auto px-0 pr-1 text-xs text-muted-foreground underline\"\n+            disabled={sendDisabled || isProcessing}\n+            onClick={() => onSendImmediately(queuedMessage.id)}\n+          >\n+            {isProcessing ? \"Sending...\" : \"Send now\"}\n+          </Button>\n+          <Button\n+            type=\"button\"\n+            size=\"icon\"\n+            variant=\"ghost\"\n+            className=\"size-7 text-muted-foreground\"\n+            disabled={actionDisabled || isProcessing}\n+            onClick={() => onEdit(queuedMessage.id)}\n+            aria-label={`Edit queued message ${index + 1}`}\n+            title=\"Edit queued message\"\n+          >\n+            <Pencil className=\"size-3.5\" />\n+          </Button>\n+          <Button\n+            type=\"button\"\n+            size=\"icon\"\n+            variant=\"ghost\"\n+            className=\"size-7 text-muted-foreground hover:text-destructive\"\n+            disabled={actionDisabled || isProcessing}\n+            onClick={() => onDelete(queuedMessage.id)}\n+            aria-label={`Delete queued message ${index + 1}`}\n+            title=\"Delete queued message\"\n+          >\n+            <Trash2 className=\"size-3.5\" />\n+          </Button>\n+        </div>\n+      </div>\n+    </li>\n+  );\n+});\n+\n function QueuedMessageList({\n@@ -93,86 +194,15 @@\n       <ul>\n-        {queuedMessages.map((queuedMessage, index) => {\n-          const preview = formatQueuedMessagePreview(queuedMessage.content);\n-          const attachmentCount = countQueuedMessageAttachments(\n-            queuedMessage.content,\n-          );\n-          const isProcessing = processingMessageId === queuedMessage.id;\n-          return (\n-            <li key={queuedMessage.id} className=\"px-2.5 py-0.5\">\n-              <div className=\"flex items-center gap-1.5\">\n-                <div className=\"p-0.5 text-muted-foreground\">\n-                  <CornerDownRight className=\"size-3.5\" />\n-                </div>\n-                <div className=\"min-w-0 flex-1\">\n-                  <div className=\"flex min-w-0 items-center gap-1 text-xs leading-4\">\n-                    <p\n-                      className=\"min-w-0 truncate text-foreground\"\n-                      title={preview}\n-                    >\n-                      {preview}\n-                    </p>\n-                    {attachmentCount > 0 ? (\n-                      <>\n-                        <span className=\"shrink-0 text-muted-foreground\">\n-                          .\n-                        </span>\n-                        <span className=\"shrink-0 text-muted-foreground\">\n-                          {attachmentCount === 1\n-                            ? \"1 attachment\"\n-                            : `${attachmentCount} attachments`}\n-                        </span>\n-                      </>\n-                    ) : null}\n-                    {isProcessing ? (\n-                      <>\n-                        <span className=\"shrink-0 text-muted-foreground\">\n-                          .\n-                        </span>\n-                        <span className=\"shrink-0 text-muted-foreground\">\n-                          Sending...\n-                        </span>\n-                      </>\n-                    ) : null}\n-                  </div>\n-                </div>\n-                <div className=\"ml-1 flex shrink-0 items-center gap-1\">\n-                  <Button\n-                    type=\"button\"\n-                    size=\"sm\"\n-                    variant=\"link\"\n-                    className=\"h-auto px-0 pr-1 text-xs text-muted-foreground underline\"\n-                    disabled={sendDisabled || isProcessing}\n-                    onClick={() => onSendImmediately(queuedMessage.id)}\n-                  >\n-                    {isProcessing ? \"Sending...\" : \"Send now\"}\n-                  </Button>\n-                  <Button\n-                    type=\"button\"\n-                    size=\"icon\"\n-                    variant=\"ghost\"\n-                    className=\"size-7 text-muted-foreground\"\n-                    disabled={actionDisabled || isProcessing}\n-                    onClick={() => onEdit(queuedMessage.id)}\n-                    aria-label={`Edit queued message ${index + 1}`}\n-                    title=\"Edit queued message\"\n-                  >\n-                    <Pencil className=\"size-3.5\" />\n-                  </Button>\n-                  <Button\n-                    type=\"button\"\n-                    size=\"icon\"\n-                    variant=\"ghost\"\n-                    className=\"size-7 text-muted-foreground hover:text-destructive\"\n-                    disabled={actionDisabled || isProcessing}\n-                    onClick={() => onDelete(queuedMessage.id)}\n-                    aria-label={`Delete queued message ${index + 1}`}\n-                    title=\"Delete queued message\"\n-                  >\n-                    <Trash2 className=\"size-3.5\" />\n-                  </Button>\n-                </div>\n-              </div>\n-            </li>\n-          );\n-        })}\n+        {queuedMessages.map((queuedMessage, index) => (\n+          <QueuedMessageItem\n+            key={queuedMessage.id}\n+            queuedMessage={queuedMessage}\n+            index={index}\n+            isProcessing={processingMessageId === queuedMessage.id}\n+            sendDisabled={sendDisabled}\n+            actionDisabled={actionDisabled}\n+            onDelete={onDelete}\n+            onEdit={onEdit}\n+            onSendImmediately={onSendImmediately}\n+          />\n+        ))}\n       </ul>\n",
+     "diffStats": { "added": 115, "removed": 85 },
+   },
+   "stdout": null,
+diff --git a/apps/app/src/hooks/mutation-cache-effects.ts b/apps/app/src/hooks/mutation-cache-effects.ts
+--- a/apps/app/src/hooks/mutation-cache-effects.ts
++++ b/apps/app/src/hooks/mutation-cache-effects.ts
+@@ -10,7 +10,7 @@ import {
+   projectSourceBranchesQueryKeyPrefix,
+   projectsQueryKey,
+   threadDefaultExecutionOptionsQueryKey,
+-  threadDraftsQueryKey,
++  threadQueuedMessagesQueryKey,
+   threadPendingInteractionsQueryKey,
+   threadPromptHistoryQueryKey,
+   threadQueryKey,
+@@ -145,13 +145,15 @@ export function invalidateThreadQueueQueries({
+   threadId,
+ }: ThreadArg): void {
+   queryClient.invalidateQueries({ queryKey: threadQueryKey(threadId) });
+-  queryClient.invalidateQueries({ queryKey: threadDraftsQueryKey(threadId) });
++  queryClient.invalidateQueries({
++    queryKey: threadQueuedMessagesQueryKey(threadId),
++  });
+   queryClient.invalidateQueries({
+     queryKey: threadPromptHistoryQueryKey(threadId),
+   });
+ }
+ 
+-export function invalidateThreadDraftSendQueries({
++export function invalidateThreadQueuedMessageSendQueries({
+   queryClient,
+   threadId,
+ }: ThreadArg): void {
+@@ -219,7 +221,9 @@ export function removeThreadScopedQueries({
+   queryClient.removeQueries({
+     queryKey: threadDefaultExecutionOptionsQueryKey(threadId),
+   });
+-  queryClient.removeQueries({ queryKey: threadDraftsQueryKey(threadId) });
++  queryClient.removeQueries({
++    queryKey: threadQueuedMessagesQueryKey(threadId),
++  });
+   queryClient.removeQueries({
+     queryKey: threadPromptHistoryQueryKey(threadId),
+   });
+diff --git a/apps/app/src/hooks/mutations/thread-runtime-mutations.ts b/apps/app/src/hooks/mutations/thread-runtime-mutations.ts
+--- a/apps/app/src/hooks/mutations/thread-runtime-mutations.ts
++++ b/apps/app/src/hooks/mutations/thread-runtime-mutations.ts
+@@ -7,9 +7,9 @@ import {
+ } from "@bb/domain";
+ import type {
+   PromptHistoryResponse,
+-  CreateDraftRequest,
+-  SendDraftMode,
+-  SendDraftResponse,
++  CreateQueuedMessageRequest,
++  SendQueuedMessageMode,
++  SendQueuedMessageResponse,
+   TimelineConversationAttachments,
+   TimelineRow,
+ } from "@bb/server-contract";
+@@ -40,24 +40,24 @@ import {
+ import {
+   invalidateProjectPromptHistoryQueries,
+   refetchThreadListsAfterComposerThreadCreate,
+-  invalidateThreadDraftSendQueries,
++  invalidateThreadQueuedMessageSendQueries,
+   invalidateThreadAcceptedMessageQueries,
+   invalidateThreadAcceptedMessageQueriesWithoutRealtime,
+   invalidateThreadQueueQueries,
+   invalidateThreadStopQueries,
+ } from "../cache-effects";
+ 
+-interface CreateThreadDraftMutationRequest extends CreateDraftRequest {
++interface CreateThreadQueuedMessageMutationRequest extends CreateQueuedMessageRequest {
+   id: string;
+ }
+ 
+-interface SendThreadDraftMutationRequest {
++interface SendThreadQueuedMessageMutationRequest {
+   id: string;
+-  mode: SendDraftMode;
++  mode: SendQueuedMessageMode;
+   queuedMessageId: string;
+ }
+ 
+-interface DeleteThreadDraftMutationRequest {
++interface DeleteThreadQueuedMessageMutationRequest {
+   id: string;
+   queuedMessageId: string;
+ }
+@@ -95,7 +95,7 @@ function buildQueuedPromptHistoryEntry(
+   queuedMessage: ThreadQueuedMessage,
+ ): PromptHistoryEntry {
+   return {
+-    id: `draft:${queuedMessage.id}`,
++    id: `queued-message:${queuedMessage.id}`,
+     createdAt: queuedMessage.createdAt,
+     input: queuedMessage.content,
+   };
+@@ -382,12 +382,12 @@ export function useSendThreadMessage() {
+   });
+ }
+ 
+-export function useCreateThreadDraft() {
++export function useCreateThreadQueuedMessage() {
+   const queryClient = useQueryClient();
+ 
+   return useMutation({
+     meta: {
+-      errorMessage: "Failed to queue follow-up.",
++      errorMessage: "Failed to queue message.",
+       showErrorToast: false,
+     },
+     mutationFn: ({
+@@ -397,8 +397,8 @@ export function useCreateThreadDraft() {
+       serviceTier,
+       reasoningLevel,
+       permissionMode,
+-    }: CreateThreadDraftMutationRequest): Promise<ThreadQueuedMessage> =>
+-      api.createThreadDraft(id, {
++    }: CreateThreadQueuedMessageMutationRequest): Promise<ThreadQueuedMessage> =>
++      api.createThreadQueuedMessage(id, {
+         input,
+         model,
+         serviceTier,
+@@ -416,36 +416,42 @@ export function useCreateThreadDraft() {
+   });
+ }
+ 
+-export function useSendThreadDraft() {
++export function useSendThreadQueuedMessage() {
+   const queryClient = useQueryClient();
+ 
+   return useMutation({
+     meta: {
+-      errorMessage: "Failed to send queued follow-up.",
++      errorMessage: "Failed to send queued message.",
+       showErrorToast: false,
+     },
+     mutationFn: ({
+       id,
+       mode,
+       queuedMessageId,
+-    }: SendThreadDraftMutationRequest): Promise<SendDraftResponse> =>
+-      api.sendThreadDraft(id, queuedMessageId, { mode }),
++    }: SendThreadQueuedMessageMutationRequest): Promise<SendQueuedMessageResponse> =>
++      api.sendThreadQueuedMessage(id, queuedMessageId, { mode }),
+     onSuccess: (_data, variables) => {
+-      invalidateThreadDraftSendQueries({ queryClient, threadId: variables.id });
++      invalidateThreadQueuedMessageSendQueries({
++        queryClient,
++        threadId: variables.id,
++      });
+     },
+   });
+ }
+ 
+-export function useDeleteThreadDraft() {
++export function useDeleteThreadQueuedMessage() {
+   const queryClient = useQueryClient();
+ 
+   return useMutation({
+     meta: {
+-      errorMessage: "Failed to delete queued follow-up.",
++      errorMessage: "Failed to delete queued message.",
+       showErrorToast: false,
+     },
+-    mutationFn: ({ id, queuedMessageId }: DeleteThreadDraftMutationRequest) =>
+-      api.deleteThreadDraft(id, queuedMessageId),
++    mutationFn: ({
++      id,
++      queuedMessageId,
++    }: DeleteThreadQueuedMessageMutationRequest) =>
++      api.deleteThreadQueuedMessage(id, queuedMessageId),
+     onSuccess: (_data, variables) => {
+       invalidateThreadQueueQueries({ queryClient, threadId: variables.id });
+     },
+diff --git a/apps/app/src/hooks/queries/query-keys.ts b/apps/app/src/hooks/queries/query-keys.ts
+--- a/apps/app/src/hooks/queries/query-keys.ts
++++ b/apps/app/src/hooks/queries/query-keys.ts
+@@ -22,7 +22,7 @@ export const THREAD_DETAIL_BOOTSTRAP_QUERY_KEY = "threadDetailBootstrap";
+ export const THREAD_COMPOSER_BOOTSTRAP_QUERY_KEY = "threadComposerBootstrap";
+ export const THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
+   "threadDefaultExecutionOptions";
+-export const THREAD_DRAFTS_QUERY_KEY = "threadDrafts";
++export const THREAD_QUEUED_MESSAGES_QUERY_KEY = "threadQueuedMessages";
+ export const THREAD_PROMPT_HISTORY_QUERY_KEY = "threadPromptHistory";
+ export const THREAD_PENDING_INTERACTIONS_QUERY_KEY =
+   "threadPendingInteractions";
+@@ -158,11 +158,11 @@ export type ThreadDefaultExecutionOptionsQueryKey = readonly [
+   typeof THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY,
+   string,
+ ];
+-export type ThreadDraftsQueryKeyPrefix = readonly [
+-  typeof THREAD_DRAFTS_QUERY_KEY,
++export type ThreadQueuedMessagesQueryKeyPrefix = readonly [
++  typeof THREAD_QUEUED_MESSAGES_QUERY_KEY,
+ ];
+-export type ThreadDraftsQueryKey = readonly [
+-  typeof THREAD_DRAFTS_QUERY_KEY,
++export type ThreadQueuedMessagesQueryKey = readonly [
++  typeof THREAD_QUEUED_MESSAGES_QUERY_KEY,
+   string,
+ ];
+ export type ThreadPromptHistoryQueryKeyPrefix = readonly [
+@@ -492,12 +492,14 @@ export function allThreadDefaultExecutionOptionsQueryKeyPrefix(): ThreadDefaultE
+   return [THREAD_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY];
+ }
+ 
+-export function threadDraftsQueryKey(threadId: string): ThreadDraftsQueryKey {
+-  return [THREAD_DRAFTS_QUERY_KEY, threadId];
++export function threadQueuedMessagesQueryKey(
++  threadId: string,
++): ThreadQueuedMessagesQueryKey {
++  return [THREAD_QUEUED_MESSAGES_QUERY_KEY, threadId];
+ }
+ 
+-export function allThreadDraftsQueryKeyPrefix(): ThreadDraftsQueryKeyPrefix {
+-  return [THREAD_DRAFTS_QUERY_KEY];
++export function allThreadQueuedMessagesQueryKeyPrefix(): ThreadQueuedMessagesQueryKeyPrefix {
++  return [THREAD_QUEUED_MESSAGES_QUERY_KEY];
+ }
+ 
+ export function threadPromptHistoryQueryKey(
+diff --git a/apps/app/src/hooks/queries/thread-queries.ts b/apps/app/src/hooks/queries/thread-queries.ts
+--- a/apps/app/src/hooks/queries/thread-queries.ts
++++ b/apps/app/src/hooks/queries/thread-queries.ts
+@@ -12,7 +12,7 @@ import type {
+ import type {
+   PromptHistoryResponse,
+   ThreadComposerBootstrapResponse,
+-  ThreadDraftListResponse,
++  ThreadQueuedMessageListResponse,
+   ThreadListResponse,
+   ManagerTimelineView,
+   ThreadPendingInteractionsResponse,
+@@ -41,7 +41,7 @@ import {
+   threadComposerBootstrapQueryKey,
+   threadDetailBootstrapQueryKey,
+   threadDefaultExecutionOptionsQueryKey,
+-  threadDraftsQueryKey,
++  threadQueuedMessagesQueryKey,
+   threadListQueryKey,
+   threadPendingInteractionsQueryKey,
+   threadPromptHistoryQueryKey,
+@@ -265,7 +265,10 @@ export function useThreadComposerBootstrap(
+         threadDefaultExecutionOptionsQueryKey(id),
+         bootstrap.defaultExecutionOptions,
+       );
+-      queryClient.setQueryData(threadDraftsQueryKey(id), bootstrap.drafts);
++      queryClient.setQueryData(
++        threadQueuedMessagesQueryKey(id),
++        bootstrap.queuedMessages,
++      );
+       queryClient.setQueryData(
+         threadPromptHistoryQueryKey(id),
+         bootstrap.promptHistory,
+@@ -307,10 +310,13 @@ export function useThreadDefaultExecutionOptions(
+   });
+ }
+ 
+-export function useThreadDrafts(id: string, options?: QueryOptions) {
+-  return useQuery<ThreadDraftListResponse>({
+-    queryKey: threadDraftsQueryKey(id),
+-    queryFn: () => api.listThreadDrafts(requireThreadId(id, "useThreadDrafts")),
++export function useThreadQueuedMessages(id: string, options?: QueryOptions) {
++  return useQuery<ThreadQueuedMessageListResponse>({
++    queryKey: threadQueuedMessagesQueryKey(id),
++    queryFn: () =>
++      api.listThreadQueuedMessages(
++        requireThreadId(id, "useThreadQueuedMessages"),
++      ),
+     enabled: (options?.enabled ?? true) && Boolean(id),
+     refetchOnMount: options?.refetchOnMount ?? true,
+     refetchOnWindowFocus: false,
+diff --git a/apps/app/src/hooks/realtime-cache-registry.ts b/apps/app/src/hooks/realtime-cache-registry.ts
+--- a/apps/app/src/hooks/realtime-cache-registry.ts
++++ b/apps/app/src/hooks/realtime-cache-registry.ts
+@@ -22,7 +22,7 @@ import {
+   allHostQueryKeyPrefix,
+   allSystemExecutionOptionsQueryKeyPrefix,
+   allThreadComposerBootstrapQueryKeyPrefix,
+-  allThreadDraftsQueryKeyPrefix,
++  allThreadQueuedMessagesQueryKeyPrefix,
+   allThreadPendingInteractionsQueryKeyPrefix,
+   allThreadQueryKeyPrefix,
+   allThreadTimelineQueryKeyPrefix,
+@@ -35,7 +35,7 @@ import {
+   projectSourceBranchesQueryKeyPrefix,
+   projectsQueryKey,
+   systemProvidersQueryKey,
+-  threadDraftsQueryKey,
++  threadQueuedMessagesQueryKey,
+   threadPendingInteractionsQueryKey,
+   threadPromptHistoryQueryKey,
+   threadPromptHistoryQueryKeyPrefix,
+@@ -96,8 +96,8 @@ export const REALTIME_THREAD_CHANGE_REGISTRY = {
+   "queue-changed": {
+     flush: "debounced",
+     dirty: [
+-      dirtyThreadDraftQueries, // Composer queue reads drafts directly.
+-      dirtyThreadPromptHistoryQueries, // Composer recall includes queued drafts.
++      dirtyThreadQueuedMessageQueries, // Composer queue reads queued messages directly.
++      dirtyThreadPromptHistoryQueries, // Composer recall includes queued messages.
+     ],
+   },
+   "archived-changed": {
+@@ -345,12 +345,12 @@ function dirtyThreadTimelineQueries({
+     : [allThreadTimelineQueryKeyPrefix()];
+ }
+ 
+-function dirtyThreadDraftQueries({
++function dirtyThreadQueuedMessageQueries({
+   threadId,
+ }: ThreadRealtimeDirtyContext): QueryKey[] {
+   return threadId
+-    ? [threadDraftsQueryKey(threadId)]
+-    : [allThreadDraftsQueryKeyPrefix()];
++    ? [threadQueuedMessagesQueryKey(threadId)]
++    : [allThreadQueuedMessagesQueryKeyPrefix()];
+ }
+ 
+ function dirtyThreadPromptHistoryQueries({
+diff --git a/apps/app/src/hooks/system-cache-effects.ts b/apps/app/src/hooks/system-cache-effects.ts
+--- a/apps/app/src/hooks/system-cache-effects.ts
++++ b/apps/app/src/hooks/system-cache-effects.ts
+@@ -10,7 +10,7 @@ import {
+   allSystemExecutionOptionsQueryKeyPrefix,
+   allThreadComposerBootstrapQueryKeyPrefix,
+   allThreadDefaultExecutionOptionsQueryKeyPrefix,
+-  allThreadDraftsQueryKeyPrefix,
++  allThreadQueuedMessagesQueryKeyPrefix,
+   allThreadPendingInteractionsQueryKeyPrefix,
+   allThreadQueryKeyPrefix,
+   allThreadStorageFilePreviewQueryKeyPrefix,
+@@ -105,7 +105,7 @@ function getServerReconnectInvalidationQueryKeys(): QueryKey[] {
+     allThreadQueryKeyPrefix(),
+     allThreadComposerBootstrapQueryKeyPrefix(),
+     allThreadTimelineQueryKeyPrefix(),
+-    allThreadDraftsQueryKeyPrefix(),
++    allThreadQueuedMessagesQueryKeyPrefix(),
+     allThreadPendingInteractionsQueryKeyPrefix(),
+     allThreadDefaultExecutionOptionsQueryKeyPrefix(),
+     allThreadStorageFilesQueryKeyPrefix(),
+diff --git a/apps/app/src/lib/api.ts b/apps/app/src/lib/api.ts
+--- a/apps/app/src/lib/api.ts
++++ b/apps/app/src/lib/api.ts
+@@ -24,7 +24,7 @@ import type {
+   GithubRepoInfo,
+   CreateProjectSourceRequest,
+   CreateProjectRequest,
+-  CreateDraftRequest,
++  CreateQueuedMessageRequest,
+   DeleteThreadRequest,
+   EnvironmentActionRequest,
+   EnvironmentActionResponse,
+@@ -36,8 +36,8 @@ import type {
+   ProjectResponse,
+   ProjectWithThreadsResponse,
+   PromptHistoryResponse,
+-  SendDraftRequest,
+-  SendDraftResponse,
++  SendQueuedMessageRequest,
++  SendQueuedMessageResponse,
+   SendMessageRequest,
+   SystemExecutionOptionsResponse,
+   SystemProviderInfo,
+@@ -49,7 +49,7 @@ import type {
+   ThreadAssignedChildSummaryResponse,
+   ThreadComposerBootstrapResponse,
+   ThreadPendingInteractionsResponse,
+-  ThreadDraftListResponse,
++  ThreadQueuedMessageListResponse,
+   ThreadListResponse,
+   ThreadResponse,
+   ThreadWithIncludesResponse,
+@@ -780,12 +780,15 @@ export async function sendThreadMessage(
+   );
+ }
+ 
+-export async function createThreadDraft(
++export async function createThreadQueuedMessage(
+   id: string,
+-  req: CreateDraftRequest,
++  req: CreateQueuedMessageRequest,
+ ): Promise<ThreadQueuedMessage> {
+   return request<ThreadQueuedMessage>(
+-    apiClient.threads[":id"].drafts.$post({ param: { id }, json: req }),
++    apiClient.threads[":id"]["queued-messages"].$post({
++      param: { id },
++      json: req,
++    }),
+   );
+ }
+ 
+@@ -797,11 +800,11 @@ export async function getThreadComposerBootstrap(
+   );
+ }
+ 
+-export async function listThreadDrafts(
++export async function listThreadQueuedMessages(
+   id: string,
+-): Promise<ThreadDraftListResponse> {
+-  return request<ThreadDraftListResponse>(
+-    apiClient.threads[":id"].drafts.$get({ param: { id } }),
++): Promise<ThreadQueuedMessageListResponse> {
++  return request<ThreadQueuedMessageListResponse>(
++    apiClient.threads[":id"]["queued-messages"].$get({ param: { id } }),
+   );
+ }
+ 
+@@ -817,26 +820,26 @@ export async function listThreadPromptHistory(
+   );
+ }
+ 
+-export async function sendThreadDraft(
++export async function sendThreadQueuedMessage(
+   id: string,
+   queuedMessageId: string,
+-  req: SendDraftRequest,
+-): Promise<SendDraftResponse> {
+-  return request<SendDraftResponse>(
+-    apiClient.threads[":id"].drafts[":draftId"].send.$post({
+-      param: { id, draftId: queuedMessageId },
++  req: SendQueuedMessageRequest,
++): Promise<SendQueuedMessageResponse> {
++  return request<SendQueuedMessageResponse>(
++    apiClient.threads[":id"]["queued-messages"][":queuedMessageId"].send.$post({
++      param: { id, queuedMessageId },
+       json: req,
+     }),
+   );
+ }
+ 
+-export async function deleteThreadDraft(
++export async function deleteThreadQueuedMessage(
+   id: string,
+   queuedMessageId: string,
+ ): Promise<void> {
+   await requestVoid(
+-    apiClient.threads[":id"].drafts[":draftId"].$delete({
+-      param: { id, draftId: queuedMessageId },
++    apiClient.threads[":id"]["queued-messages"][":queuedMessageId"].$delete({
++      param: { id, queuedMessageId },
+     }),
+   );
+ }
+diff --git a/apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx b/apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx
+--- a/apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx
++++ b/apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx
+@@ -31,15 +31,15 @@ import { usePromptMentions } from "@/hooks/usePromptMentions";
+ import { useThreadCreationOptions } from "@/hooks/useThreadCreationOptions";
+ import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
+ import {
+-  useCreateThreadDraft,
+-  useDeleteThreadDraft,
+-  useSendThreadDraft,
++  useCreateThreadQueuedMessage,
++  useDeleteThreadQueuedMessage,
++  useSendThreadQueuedMessage,
+   useStopThread,
+ } from "@/hooks/mutations/thread-runtime-mutations";
+ import {
+   getLatestPendingInteraction,
+   useThreadDefaultExecutionOptions,
+-  useThreadDrafts,
++  useThreadQueuedMessages,
+   useThreadPromptHistory,
+ } from "@/hooks/queries/thread-queries";
+ import { getMutationErrorMessage } from "@/lib/mutation-errors";
+@@ -133,7 +133,7 @@ function getPromptPlaceholder(
+   }
+ }
+ 
+-function shouldQueueFollowUpDraft(
++function shouldQueueFollowUpMessage(
+   displayStatus: ThreadRuntimeDisplayStatus,
+ ): boolean {
+   return displayStatus === "active" || displayStatus === "host-reconnecting";
+@@ -172,7 +172,7 @@ export function ThreadDetailPromptArea({
+       staleTime: composerQueriesStaleTime,
+     },
+   );
+-  const { data: queuedMessages = [] } = useThreadDrafts(thread.id, {
++  const { data: queuedMessages = [] } = useThreadQueuedMessages(thread.id, {
+     enabled: composerQueriesEnabled,
+     refetchOnMount: composerQueriesRefetchOnMount,
+     staleTime: composerQueriesStaleTime,
+@@ -185,9 +185,9 @@ export function ThreadDetailPromptArea({
+       staleTime: composerQueriesStaleTime,
+     },
+   );
+-  const createDraft = useCreateThreadDraft();
+-  const sendDraft = useSendThreadDraft();
+-  const deleteDraft = useDeleteThreadDraft();
++  const createQueuedMessage = useCreateThreadQueuedMessage();
++  const sendQueuedMessage = useSendThreadQueuedMessage();
++  const deleteQueuedMessage = useDeleteThreadQueuedMessage();
+   const stopThread = useStopThread();
+   const uploadPromptAttachment = useUploadPromptAttachment();
+   const promptDraft = usePromptDraftStorage({
+@@ -253,14 +253,14 @@ export function ThreadDetailPromptArea({
+     getLatestPendingInteraction(pendingInteractions);
+   const hasPendingInteraction = activePendingInteraction !== null;
+   const isQueueMutationPending =
+-    createDraft.isPending ||
+-    sendDraft.isPending ||
+-    deleteDraft.isPending ||
++    createQueuedMessage.isPending ||
++    sendQueuedMessage.isPending ||
++    deleteQueuedMessage.isPending ||
+     isSteerBatchSending;
+   const isFollowUpSubmitting =
+     sendMessage.isPending ||
+     isEnvironmentActionPending ||
+-    createDraft.isPending ||
++    createQueuedMessage.isPending ||
+     isSteerBatchSending;
+   const submitMode: FollowUpSubmitMode = (() => {
+     if (isStopRequested) {
+@@ -379,10 +379,10 @@ export function ThreadDetailPromptArea({
+     promptDraft.clearIfCurrentMatches(submittedDraft);
+     setAttachmentError(null);
+ 
+-    const isQueuingDraft = shouldQueueFollowUpDraft(runtimeDisplayStatus);
++    const isQueuingMessage = shouldQueueFollowUpMessage(runtimeDisplayStatus);
+     try {
+-      if (isQueuingDraft) {
+-        await createDraft.mutateAsync({
++      if (isQueuingMessage) {
++        await createQueuedMessage.mutateAsync({
+           id: thread.id,
+           input: submittedInput,
+           model: activeModel?.model ?? selectedModel,
+@@ -405,15 +405,15 @@ export function ThreadDetailPromptArea({
+       toast.error(
+         getMutationErrorMessage({
+           error: nextError,
+-          fallbackMessage: isQueuingDraft
+-            ? "Failed to queue follow-up."
++          fallbackMessage: isQueuingMessage
++            ? "Failed to queue message."
+             : "Failed to send follow-up.",
+         }),
+       );
+     }
+   }, [
+     activeModel?.model,
+-    createDraft,
++    createQueuedMessage,
+     currentPromptDraft,
+     currentPromptDraftInput,
+     promptDraft,
+@@ -446,7 +446,7 @@ export function ThreadDetailPromptArea({
+ 
+     try {
+       for (const queuedMessage of queuedMessages) {
+-        await sendDraft.mutateAsync({
++        await sendQueuedMessage.mutateAsync({
+           id: thread.id,
+           mode: "steer",
+           queuedMessageId: queuedMessage.id,
+@@ -474,7 +474,7 @@ export function ThreadDetailPromptArea({
+     currentPromptDraftInput,
+     promptDraft,
+     queuedMessages,
+-    sendDraft,
++    sendQueuedMessage,
+     sendFollowUpInput,
+     thread.id,
+   ]);
+@@ -489,7 +489,7 @@ export function ThreadDetailPromptArea({
+       }
+ 
+       setProcessingQueuedMessageId(messageId);
+-      void sendDraft
++      void sendQueuedMessage
+         .mutateAsync({
+           id: thread.id,
+           mode: "auto",
+@@ -502,7 +502,7 @@ export function ThreadDetailPromptArea({
+           toast.error(
+             getMutationErrorMessage({
+               error: nextError,
+-              fallbackMessage: "Failed to send queued follow-up.",
++              fallbackMessage: "Failed to send queued message.",
+             }),
+           );
+         })
+@@ -512,7 +512,7 @@ export function ThreadDetailPromptArea({
+           );
+         });
+     },
+-    [queuedMessages, sendDraft, thread.id],
++    [queuedMessages, sendQueuedMessage, thread.id],
+   );
+ 
+   const handleEditQueuedMessage = useCallback(
+@@ -525,7 +525,7 @@ export function ThreadDetailPromptArea({
+       }
+ 
+       setProcessingQueuedMessageId(messageId);
+-      void deleteDraft
++      void deleteQueuedMessage
+         .mutateAsync({
+           id: thread.id,
+           queuedMessageId: messageId,
+@@ -539,7 +539,7 @@ export function ThreadDetailPromptArea({
+           toast.error(
+             getMutationErrorMessage({
+               error: nextError,
+-              fallbackMessage: "Failed to edit queued follow-up.",
++              fallbackMessage: "Failed to edit queued message.",
+             }),
+           );
+         })
+@@ -549,13 +549,13 @@ export function ThreadDetailPromptArea({
+           );
+         });
+     },
+-    [deleteDraft, promptDraft, queuedMessages, thread.id],
++    [deleteQueuedMessage, promptDraft, queuedMessages, thread.id],
+   );
+ 
+   const handleDeleteQueuedMessage = useCallback(
+     (messageId: string) => {
+       setProcessingQueuedMessageId(messageId);
+-      void deleteDraft
++      void deleteQueuedMessage
+         .mutateAsync({
+           id: thread.id,
+           queuedMessageId: messageId,
+@@ -564,7 +564,7 @@ export function ThreadDetailPromptArea({
+           toast.error(
+             getMutationErrorMessage({
+               error: nextError,
+-              fallbackMessage: "Failed to delete queued follow-up.",
++              fallbackMessage: "Failed to delete queued message.",
+             }),
+           );
+         })
+@@ -574,7 +574,7 @@ export function ThreadDetailPromptArea({
+           );
+         });
+     },
+-    [deleteDraft, thread.id],
++    [deleteQueuedMessage, thread.id],
+   );
+ 
+   const handlePromptBannerFileClick = useCallback(
+diff --git a/apps/app/src/views/thread-detail/threadQueuedMessages.ts b/apps/app/src/views/thread-detail/threadQueuedMessages.ts
+--- a/apps/app/src/views/thread-detail/threadQueuedMessages.ts
++++ b/apps/app/src/views/thread-detail/threadQueuedMessages.ts
+@@ -2,7 +2,7 @@ import { type PromptInput } from "@bb/domain";
+ import { fileNameFromPath } from "@bb/thread-view";
+ import { promptInputToDraft, type PromptDraftState } from "@/lib/prompt-draft";
+ 
+-const QUEUED_FOLLOW_UP_PREVIEW_MAX_CHARS = 220;
++const QUEUED_MESSAGE_PREVIEW_MAX_CHARS = 220;
+ 
+ function getAttachmentNameFromPath(path: string): string {
+   const trimmedPath = path.trim();
+@@ -20,7 +20,7 @@ export function countQueuedMessageAttachments(input: PromptInput[]): number {
+   return count;
+ }
+ 
+-export function formatQueuedFollowUpPreview(input: PromptInput[]): string {
++export function formatQueuedMessagePreview(input: PromptInput[]): string {
+   const text = input
+     .filter(
+       (chunk): chunk is Extract<PromptInput, { type: "text" }> =>
+@@ -31,10 +31,10 @@ export function formatQueuedFollowUpPreview(input: PromptInput[]): string {
+     .join("\n\n");
+   const trimmedText = text.trim();
+   if (trimmedText.length > 0) {
+-    if (trimmedText.length <= QUEUED_FOLLOW_UP_PREVIEW_MAX_CHARS) {
++    if (trimmedText.length <= QUEUED_MESSAGE_PREVIEW_MAX_CHARS) {
+       return trimmedText;
+     }
+-    return `${trimmedText.slice(0, QUEUED_FOLLOW_UP_PREVIEW_MAX_CHARS - 1)}...`;
++    return `${trimmedText.slice(0, QUEUED_MESSAGE_PREVIEW_MAX_CHARS - 1)}...`;
+   }
+ 
+   const attachmentCount = countQueuedMessageAttachments(input);
+diff --git a/apps/server/src/internal/events.ts b/apps/server/src/internal/events.ts
+--- a/apps/server/src/internal/events.ts
++++ b/apps/server/src/internal/events.ts
+@@ -50,7 +50,7 @@ import {
+ } from "../services/environments/environment-cleanup.js";
+ import { syncManagerThreadSchedules } from "../services/scheduling/manager-schedule-sync.js";
+ import { queueManagedThreadTurnNotificationBestEffort } from "../services/threads/managed-thread-notifications.js";
+-import { runQueuedDraftAutoSendForThread } from "../services/threads/queued-drafts.js";
++import { runQueuedMessageAutoSendForThread } from "../services/threads/queued-messages.js";
+ import { queueSettledArchivedThreadProviderArchiveCommand } from "../services/threads/thread-lifecycle.js";
+ import {
+   runWithDaemonCommandWaitForbidden,
+@@ -160,15 +160,15 @@ interface ManagerTurnNotificationFollowUp {
+   turnStatus: ThreadEventTurnStatus;
+ }
+ 
+-interface QueuedDraftAutoSendFollowUp {
+-  kind: "queued-draft-auto-send";
++interface QueuedMessageAutoSendFollowUp {
++  kind: "queued-message-auto-send";
+   threadId: string;
+ }
+ 
+ type EventEffectFollowUp =
+   | ManagerScheduleSyncFollowUp
+   | ManagerTurnNotificationFollowUp
+-  | QueuedDraftAutoSendFollowUp;
++  | QueuedMessageAutoSendFollowUp;
+ 
+ interface EventEffectResult {
+   followUps: EventEffectFollowUp[];
+@@ -185,15 +185,15 @@ interface ManagerTurnNotificationLogContext {
+   managerThreadId: string;
+ }
+ 
+-interface QueuedDraftAutoSendLogContext {
+-  followUpKind: "queued-draft-auto-send";
++interface QueuedMessageAutoSendLogContext {
++  followUpKind: "queued-message-auto-send";
+   threadId: string;
+ }
+ 
+ type EventFollowUpLogContext =
+   | ManagerScheduleSyncLogContext
+   | ManagerTurnNotificationLogContext
+-  | QueuedDraftAutoSendLogContext;
++  | QueuedMessageAutoSendLogContext;
+ 
+ function resolveProviderIdentifiers(event: HostDaemonEventEnvelope["event"]): {
+   providerThreadId: string | null;
+@@ -395,7 +395,7 @@ async function applyEventEffects(
+         }
+         if (event.status === "completed") {
+           followUps.push({
+-            kind: "queued-draft-auto-send",
++            kind: "queued-message-auto-send",
+             threadId: entry.threadId,
+           });
+         }
+@@ -455,8 +455,8 @@ async function executeEventFollowUp(
+         title: followUp.title,
+       });
+       return;
+-    case "queued-draft-auto-send":
+-      await runQueuedDraftAutoSendForThread(deps, {
++    case "queued-message-auto-send":
++      await runQueuedMessageAutoSendForThread(deps, {
+         threadId: followUp.threadId,
+       });
+       return;
+@@ -468,7 +468,7 @@ function eventFollowUpLogContext(
+ ): EventFollowUpLogContext {
+   switch (followUp.kind) {
+     case "manager-schedule-sync":
+-    case "queued-draft-auto-send":
++    case "queued-message-auto-send":
+       return {
+         followUpKind: followUp.kind,
+         threadId: followUp.threadId,
+diff --git a/apps/server/src/lifecycle-dedupers.ts b/apps/server/src/lifecycle-dedupers.ts
+--- a/apps/server/src/lifecycle-dedupers.ts
++++ b/apps/server/src/lifecycle-dedupers.ts
+@@ -5,15 +5,15 @@ import {
+ 
+ export interface LifecycleDedupers {
+   environmentCleanupAdvance: AsyncDeduper<string, void>;
+-  queuedDraftAutoSend: AsyncDeduper<string, void>;
++  queuedMessageAutoSend: AsyncDeduper<string, void>;
+   sandboxBootstrap: AsyncDeduper<string, void>;
+   threadProvisionAdvance: AsyncDeduper<string, void>;
+ }
+ 
+ export function createLifecycleDedupers(): LifecycleDedupers {
+   return {
+     environmentCleanupAdvance: createAsyncDeduper<string, void>(),
+-    queuedDraftAutoSend: createAsyncDeduper<string, void>(),
++    queuedMessageAutoSend: createAsyncDeduper<string, void>(),
+     sandboxBootstrap: createAsyncDeduper<string, void>(),
+     threadProvisionAdvance: createAsyncDeduper<string, void>(),
+   };
+diff --git a/apps/server/src/routes/threads/actions.ts b/apps/server/src/routes/threads/actions.ts
+--- a/apps/server/src/routes/threads/actions.ts
++++ b/apps/server/src/routes/threads/actions.ts
+@@ -1,16 +1,16 @@
+ import {
+   archiveThread,
+-  createDraft,
+-  deleteDraft,
++  createQueuedThreadMessage,
++  deleteQueuedThreadMessage,
+   getEnvironment,
+-  getDraft,
++  getQueuedThreadMessage,
+   unarchiveThread,
+   updateThread,
+ } from "@bb/db";
+ import {
+   archiveThreadRequestSchema,
+-  createDraftRequestSchema,
+-  sendDraftRequestSchema,
++  createQueuedMessageRequestSchema,
++  sendQueuedMessageRequestSchema,
+   sendMessageRequestSchema,
+   typedRoutes,
+   type PublicApiSchema,
+@@ -19,7 +19,7 @@ import type { Hono } from "hono";
+ import type { Thread } from "@bb/domain";
+ import type { AppDeps } from "../../types.js";
+ import { ApiError } from "../../errors.js";
+-import { toQueuedMessage } from "../../services/threads/drafts.js";
++import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
+ import {
+   advanceEnvironmentCleanup,
+   requestEnvironmentCleanup,
+@@ -31,9 +31,9 @@ import {
+   requirePublicThreadEnvironment,
+ } from "../../services/lib/entity-lookup.js";
+ import {
+-  requestQueuedDraftAutoSendForThread,
+-  sendQueuedDraft,
+-} from "../../services/threads/queued-drafts.js";
++  requestQueuedMessageAutoSendForThread,
++  sendQueuedMessage,
++} from "../../services/threads/queued-messages.js";
+ import { requireManagerChildThreadsConfirmation } from "../../services/threads/manager-child-confirmation.js";
+ import {
+   ensureThreadIsNotAwaitingUserInteraction,
+@@ -100,8 +100,8 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
+   );
+ 
+   post(
+-    "/threads/:id/drafts",
+-    createDraftRequestSchema,
++    "/threads/:id/queued-messages",
++    createQueuedMessageRequestSchema,
+     async (context, payload) => {
+       const { thread } = requirePublicThreadEnvironment(
+         deps.db,
+@@ -116,7 +116,7 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
+         },
+         "client/turn/requested",
+       );
+-      const draft = createDraft(deps.db, deps.hub, {
++      const queuedMessage = createQueuedThreadMessage(deps.db, deps.hub, {
+         threadId: context.req.param("id"),
+         content: payload.input,
+         model: execution.model,
+@@ -128,46 +128,49 @@ export function registerThreadActionRoutes(app: Hono, deps: AppDeps): void {
+         thread.status === "idle" &&
+         getLastProviderThreadId(deps, thread.id) !== null
+       ) {
+-        requestQueuedDraftAutoSendForThread(deps, {
+-          draftId: draft.id,
++        requestQueuedMessageAutoSendForThread(deps, {
++          queuedMessageId: queuedMessage.id,
+           threadId: thread.id,
+         });
+       }
+-      return context.json(toQueuedMessage(draft), 201);
++      return context.json(toThreadQueuedMessage(queuedMessage), 201);
+     },
+   );
+ 
+   post(
+-    "/threads/:id/drafts/:draftId/send",
+-    sendDraftRequestSchema,
++    "/threads/:id/queued-messages/:queuedMessageId/send",
++    sendQueuedMessageRequestSchema,
+     async (context, payload) => {
+       const { thread } = requirePublicThreadEnvironment(
+         deps.db,
+         context.req.param("id"),
+       );
+       ensureThreadIsWritable(thread);
+       ensureThreadIsNotAwaitingUserInteraction(deps, thread.id);
+-      const queuedMessage = await sendQueuedDraft(deps, {
+-        draftId: context.req.param("draftId"),
++      const queuedMessage = await sendQueuedMessage(deps, {
++        queuedMessageId: context.req.param("queuedMessageId"),
+         mode: payload.mode,
+         threadId: context.req.param("id"),
+       });
+       return context.json({ ok: true, queuedMessage });
+     },
+   );
+ 
+-  del("/threads/:id/drafts/:draftId", (context) => {
+-    const draft = getDraft(deps.db, context.req.param("draftId"));
+-    if (!draft || draft.threadId !== context.req.param("id")) {
+-      throw new ApiError(404, "invalid_request", "Draft not found");
++  del("/threads/:id/queued-messages/:queuedMessageId", (context) => {
++    const queuedMessage = getQueuedThreadMessage(
++      deps.db,
++      context.req.param("queuedMessageId"),
++    );
++    if (!queuedMessage || queuedMessage.threadId !== context.req.param("id")) {
++      throw new ApiError(404, "invalid_request", "Queued message not found");
+     }
+-    const deleted = deleteDraft(
++    const deleted = deleteQueuedThreadMessage(
+       deps.db,
+       deps.hub,
+-      context.req.param("draftId"),
++      context.req.param("queuedMessageId"),
+     );
+     if (!deleted) {
+-      throw new ApiError(404, "invalid_request", "Draft not found");
++      throw new ApiError(404, "invalid_request", "Queued message not found");
+     }
+     return context.json({ ok: true });
+   });
+diff --git a/apps/server/src/routes/threads/data.ts b/apps/server/src/routes/threads/data.ts
+--- a/apps/server/src/routes/threads/data.ts
++++ b/apps/server/src/routes/threads/data.ts
+@@ -1,5 +1,5 @@
+ import path from "node:path";
+-import { listDrafts } from "@bb/db";
++import { listQueuedThreadMessages } from "@bb/db";
+ import { FILE_LIST_LIMIT_MAX } from "@bb/host-daemon-contract";
+ import type { Hono } from "hono";
+ import { PROMPT_HISTORY_ENTRY_LIMIT, threadEventTypeSchema } from "@bb/domain";
+@@ -30,7 +30,7 @@ import {
+   remapDaemonFileRouteError,
+ } from "../../services/hosts/daemon-file-response.js";
+ import { requireThreadStoragePath } from "../../services/threads/thread-storage.js";
+-import { toQueuedMessage } from "../../services/threads/drafts.js";
++import { toThreadQueuedMessage } from "../../services/threads/thread-queued-messages.js";
+ import {
+   buildThreadTimeline,
+   buildTimelineTurnSummaryDetails,
+@@ -91,8 +91,8 @@ async function buildThreadComposerBootstrapResponse(
+       };
+   return {
+     defaultExecutionOptions,
+-    drafts: listDrafts(deps.db, threadId).map((draft) =>
+-      toQueuedMessage(draft),
++    queuedMessages: listQueuedThreadMessages(deps.db, threadId).map(
++      toThreadQueuedMessage,
+     ),
+     executionOptions,
+     pendingInteractions:
+@@ -270,11 +270,11 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
+     ),
+   );
+ 
+-  get("/threads/:id/drafts", (context) => {
++  get("/threads/:id/queued-messages", (context) => {
+     const threadId = context.req.param("id");
+     requirePublicThread(deps.db, threadId);
+     return context.json(
+-      listDrafts(deps.db, threadId).map((draft) => toQueuedMessage(draft)),
++      listQueuedThreadMessages(deps.db, threadId).map(toThreadQueuedMessage),
+     );
+   });
+ 
+diff --git a/apps/server/src/services/prompt-history.ts b/apps/server/src/services/prompt-history.ts
+--- a/apps/server/src/services/prompt-history.ts
++++ b/apps/server/src/services/prompt-history.ts
+@@ -1,10 +1,10 @@
+ import {
+   createPromptHistoryEntry,
+-  listDrafts,
++  listQueuedThreadMessages,
+   listStoredProjectPromptHistoryRows,
+   listStoredThreadPromptHistoryRows,
+   type DbQueryConnection,
+-  type DraftRow,
++  type QueuedThreadMessageRow,
+   type StoredPromptHistoryEntryRow,
+ } from "@bb/db";
+ import {
+@@ -17,7 +17,7 @@ import {
+   type TurnRequestTarget,
+ } from "@bb/domain";
+ import { z } from "zod";
+-import { toQueuedMessage } from "./threads/drafts.js";
++import { toThreadQueuedMessage } from "./threads/thread-queued-messages.js";
+ import type { AppDeps, ServerLogger } from "../types.js";
+ 
+ const storedPromptHistoryInputSchema = z.array(promptInputSchema).min(1);
+@@ -97,11 +97,11 @@ function buildAcceptedPromptHistoryEntry(
+ }
+ 
+ function buildQueuedPromptHistoryEntry(
+-  row: DraftRow,
++  row: QueuedThreadMessageRow,
+ ): InternalPromptHistoryEntry {
+-  const queuedMessage = toQueuedMessage(row);
++  const queuedMessage = toThreadQueuedMessage(row);
+   return {
+-    id: `draft:${queuedMessage.id}`,
++    id: `queued-message:${queuedMessage.id}`,
+     createdAt: queuedMessage.createdAt,
+     input: queuedMessage.content,
+     state: "queued",
+@@ -116,7 +116,7 @@ function comparePromptHistoryEntries(
+     return right.createdAt - left.createdAt;
+   }
+   if (left.state !== right.state) {
+-    // Keep queued drafts ahead of accepted rows on timestamp ties so recall
++    // Keep queued messages ahead of accepted rows on timestamp ties so recall
+     // prefers the still-editable queued version.
+     return left.state === "queued" ? -1 : 1;
+   }
+@@ -223,11 +223,11 @@ export function listThreadPromptHistory(
+   args: ThreadPromptHistoryArgs,
+ ): PromptHistoryEntry[] {
+   const queuedEntries = buildPromptHistoryEntries({
+-    rows: listDrafts(deps.db, args.threadId),
++    rows: listQueuedThreadMessages(deps.db, args.threadId),
+     logger: deps.logger,
+     buildEntry: buildQueuedPromptHistoryEntry,
+     describeRow: (row) => ({
+-      draftId: row.id,
++      queuedMessageId: row.id,
+       threadId: row.threadId,
+     }),
+   });
+diff --git a/apps/server/src/services/system/periodic-sweeps.ts b/apps/server/src/services/system/periodic-sweeps.ts
+--- a/apps/server/src/services/system/periodic-sweeps.ts
++++ b/apps/server/src/services/system/periodic-sweeps.ts
+@@ -44,7 +44,7 @@ import {
+   requestThreadStop,
+ } from "../threads/thread-lifecycle.js";
+ import { advanceThreadProvisioning } from "../threads/thread-provisioning.js";
+-import { runQueuedDraftAutoSendSweep } from "../threads/queued-drafts.js";
++import { runQueuedMessageAutoSendSweep } from "../threads/queued-messages.js";
+ 
+ export type EvaluateManagedEnvironmentArchiveCleanupFn =
+   typeof advanceEnvironmentCleanup;
+@@ -363,7 +363,7 @@ export async function runPeriodicSweeps(
+     await sweepDueNudges(deps);
+     await runEnvironmentProvisioningSweep(deps);
+     await runThreadLifecycleSweep(deps);
+-    await runQueuedDraftAutoSendSweep(deps);
++    await runQueuedMessageAutoSendSweep(deps);
+     await runIdleSandboxSuspendSweep(deps);
+     await runManagedEnvironmentArchiveCleanupSweep(
+       deps,
+diff --git a/apps/server/src/services/threads/queued-drafts.ts b/apps/server/src/services/threads/queued-messages.ts
+rename from apps/server/src/services/threads/queued-drafts.ts
+rename to apps/server/src/services/threads/queued-messages.ts
+--- a/apps/server/src/services/threads/queued-drafts.ts
++++ b/apps/server/src/services/threads/queued-messages.ts
+@@ -1,23 +1,26 @@
+ import {
+-  claimDraft,
+-  claimNextDraft,
+-  deleteClaimedDraft,
+-  deleteClaimedDraftInTransaction,
+-  getDraft,
++  claimQueuedThreadMessage,
++  claimNextQueuedThreadMessage,
++  deleteClaimedQueuedThreadMessage,
++  deleteClaimedQueuedThreadMessageInTransaction,
++  getQueuedThreadMessage,
+   getThread,
+-  listIdleThreadsWithQueuedDrafts,
++  listIdleThreadsWithQueuedMessages,
+   queueCommandInTransaction,
+-  releaseDraftClaim,
+-  releaseStaleDraftClaims,
++  releaseQueuedMessageClaim,
++  releaseStaleQueuedMessageClaims,
+   transitionThreadStatusInTransaction,
+ } from "@bb/db";
+ import type { Thread, ThreadQueuedMessage } from "@bb/domain";
+-import type { SendDraftMode, SendMessageRequest } from "@bb/server-contract";
++import type {
++  SendMessageRequest,
++  SendQueuedMessageMode,
++} from "@bb/server-contract";
+ import type { AppDeps } from "../../types.js";
+ import { ApiError } from "../../errors.js";
+ import { scheduleAfterDaemonIngressResponse } from "../hosts/command-wait-context.js";
+ import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+-import { toQueuedMessage } from "./drafts.js";
++import { toThreadQueuedMessage } from "./thread-queued-messages.js";
+ import {
+   requireEnvironment,
+   requireThreadEnvironment,
+@@ -36,41 +39,44 @@ import { resolvePermissionEscalation } from "./thread-runtime-config.js";
+ import { sendThreadMessage } from "./thread-send.js";
+ import { recordAcceptedPromptHistoryEntry } from "../prompt-history.js";
+ 
+-interface SendQueuedDraftArgs {
+-  draftId: string;
+-  mode: SendDraftMode;
++interface SendQueuedMessageArgs {
++  mode: SendQueuedMessageMode;
++  queuedMessageId: string;
+   threadId: string;
+ }
+ 
+-type ClaimedDraft = Exclude<ReturnType<typeof claimDraft>, null>;
++type ClaimedQueuedMessage = Exclude<
++  ReturnType<typeof claimQueuedThreadMessage>,
++  null
++>;
+ 
+-interface SendClaimedDraftArgs {
+-  draft: ClaimedDraft;
+-  mode: SendDraftMode;
++interface SendClaimedQueuedMessageArgs {
++  mode: SendQueuedMessageMode;
++  queuedMessage: ClaimedQueuedMessage;
+   threadId: string;
+ }
+ 
+-interface SendClaimedDraftForThreadArgs {
+-  draft: ClaimedDraft;
+-  mode: SendDraftMode;
++interface SendClaimedQueuedMessageForThreadArgs {
++  mode: SendQueuedMessageMode;
++  queuedMessage: ClaimedQueuedMessage;
+   thread: Thread;
+ }
+ 
+-export interface QueuedDraftAutoSendArgs {
++export interface QueuedMessageAutoSendArgs {
+   threadId: string;
+ }
+ 
+-export interface QueuedDraftAutoSendRequestArgs {
+-  draftId: string;
++export interface QueuedMessageAutoSendRequestArgs {
++  queuedMessageId: string;
+   threadId: string;
+ }
+ 
+-const STALE_DRAFT_CLAIM_MS = 5 * 60 * 1000;
+-const DRAFT_CLAIM_LOST_CODE = "draft_claim_lost";
++const STALE_QUEUED_MESSAGE_CLAIM_MS = 5 * 60 * 1000;
++const QUEUED_MESSAGE_CLAIM_LOST_CODE = "queued_message_claim_lost";
+ 
+ function sendQueuedMessagePayload(
+   queuedMessage: ThreadQueuedMessage,
+-  mode: SendDraftMode,
++  mode: SendQueuedMessageMode,
+ ): SendMessageRequest {
+   return {
+     input: queuedMessage.content,
+@@ -82,54 +88,74 @@ function sendQueuedMessagePayload(
+   };
+ }
+ 
+-function claimDraftForSend(
++function claimQueuedThreadMessageForSend(
+   deps: Pick<AppDeps, "db" | "hub">,
+-  args: SendQueuedDraftArgs,
+-): ClaimedDraft {
+-  const existingDraft = getDraft(deps.db, args.draftId);
+-  if (!existingDraft || existingDraft.threadId !== args.threadId) {
+-    throw new ApiError(404, "invalid_request", "Draft not found");
++  args: SendQueuedMessageArgs,
++): ClaimedQueuedMessage {
++  const existingQueuedMessage = getQueuedThreadMessage(
++    deps.db,
++    args.queuedMessageId,
++  );
++  if (
++    !existingQueuedMessage ||
++    existingQueuedMessage.threadId !== args.threadId
++  ) {
++    throw new ApiError(404, "invalid_request", "Queued message not found");
+   }
+ 
+-  const claimedDraft = claimDraft(deps.db, deps.hub, args.draftId);
+-  if (claimedDraft) {
+-    return claimedDraft;
++  const claimedQueuedMessage = claimQueuedThreadMessage(
++    deps.db,
++    deps.hub,
++    args.queuedMessageId,
++  );
++  if (claimedQueuedMessage) {
++    return claimedQueuedMessage;
+   }
+ 
+-  const latestDraft = getDraft(deps.db, args.draftId);
+-  if (!latestDraft || latestDraft.threadId !== args.threadId) {
+-    throw new ApiError(404, "invalid_request", "Draft not found");
++  const latestQueuedMessage = getQueuedThreadMessage(
++    deps.db,
++    args.queuedMessageId,
++  );
++  if (!latestQueuedMessage || latestQueuedMessage.threadId !== args.threadId) {
++    throw new ApiError(404, "invalid_request", "Queued message not found");
+   }
+-  throw new ApiError(409, "invalid_request", "Draft is already being sent");
++  throw new ApiError(
++    409,
++    "invalid_request",
++    "Queued message is already being sent",
++  );
+ }
+ 
+-function createDraftClaimLostError(): ApiError {
++function createQueuedMessageClaimLostError(): ApiError {
+   return new ApiError(
+     409,
+-    DRAFT_CLAIM_LOST_CODE,
+-    "Draft claim expired before it could be sent",
++    QUEUED_MESSAGE_CLAIM_LOST_CODE,
++    "Queued message claim expired before it could be sent",
+   );
+ }
+ 
+-function isDraftClaimLostError(error: unknown): boolean {
+-  return error instanceof ApiError && error.body.code === DRAFT_CLAIM_LOST_CODE;
++function isQueuedMessageClaimLostError(error: unknown): boolean {
++  return (
++    error instanceof ApiError &&
++    error.body.code === QUEUED_MESSAGE_CLAIM_LOST_CODE
++  );
+ }
+ 
+-async function sendClaimedDraft(
++async function sendClaimedQueuedMessage(
+   deps: AppDeps,
+-  args: SendClaimedDraftArgs,
++  args: SendClaimedQueuedMessageArgs,
+ ): Promise<ThreadQueuedMessage> {
+   const { thread } = requireThreadEnvironment(deps.db, args.threadId);
+-  return sendClaimedDraftForThread(deps, {
+-    draft: args.draft,
++  return sendClaimedQueuedMessageForThread(deps, {
+     mode: args.mode,
++    queuedMessage: args.queuedMessage,
+     thread,
+   });
+ }
+ 
+-async function sendClaimedDraftForIdleProviderThread(
++async function sendClaimedQueuedMessageForIdleProviderThread(
+   deps: AppDeps,
+-  args: SendClaimedDraftForThreadArgs,
++  args: SendClaimedQueuedMessageForThreadArgs,
+ ): Promise<ThreadQueuedMessage | null> {
+   if (args.mode !== "auto") {
+     return null;
+@@ -152,7 +178,7 @@ async function sendClaimedDraftForIdleProviderThread(
+     requireEnvironment(deps.db, thread.environmentId),
+   );
+   ensureThreadNativeArchiveSettled(deps, { environment, thread });
+-  const queuedMessage = toQueuedMessage(args.draft);
++  const queuedMessage = toThreadQueuedMessage(args.queuedMessage);
+   ensureThreadCanQueueStartRequest(deps, thread);
+ 
+   const payload = sendQueuedMessagePayload(queuedMessage, args.mode);
+@@ -181,9 +207,9 @@ async function sendClaimedDraftForIdleProviderThread(
+ 
+   const sent = deps.db.transaction(
+     (tx) => {
+-      const consumed = deleteClaimedDraftInTransaction(tx, {
+-        id: args.draft.id,
+-        claimToken: args.draft.claimToken,
++      const consumed = deleteClaimedQueuedThreadMessageInTransaction(tx, {
++        id: args.queuedMessage.id,
++        claimToken: args.queuedMessage.claimToken,
+       });
+       if (!consumed) {
+         return false;
+@@ -228,7 +254,7 @@ async function sendClaimedDraftForIdleProviderThread(
+     { behavior: "immediate" },
+   );
+   if (!sent) {
+-    throw createDraftClaimLostError();
++    throw createQueuedMessageClaimLostError();
+   }
+ 
+   deps.hub.notifyThread(
+@@ -242,17 +268,16 @@ async function sendClaimedDraftForIdleProviderThread(
+   return queuedMessage;
+ }
+ 
+-async function sendClaimedDraftForThread(
++async function sendClaimedQueuedMessageForThread(
+   deps: AppDeps,
+-  args: SendClaimedDraftForThreadArgs,
++  args: SendClaimedQueuedMessageForThreadArgs,
+ ): Promise<ThreadQueuedMessage> {
+-  const sent = await sendClaimedDraftForIdleProviderThread(deps, args);
++  const sent = await sendClaimedQueuedMessageForIdleProviderThread(deps, args);
+   if (sent) {
+     return sent;
+   }
+ 
+-  const draft = args.draft;
+-  const queuedMessage = toQueuedMessage(draft);
++  const queuedMessage = toThreadQueuedMessage(args.queuedMessage);
+   if (!args.thread.environmentId) {
+     throw new ApiError(409, "invalid_request", "Thread has no environment");
+   }
+@@ -263,37 +288,37 @@ async function sendClaimedDraftForThread(
+     thread: args.thread,
+     trigger: "auto-dispatch",
+   });
+-  const deleted = deleteClaimedDraft(deps.db, deps.hub, {
+-    id: draft.id,
+-    claimToken: draft.claimToken,
++  const deleted = deleteClaimedQueuedThreadMessage(deps.db, deps.hub, {
++    id: args.queuedMessage.id,
++    claimToken: args.queuedMessage.claimToken,
+   });
+   if (!deleted) {
+-    throw createDraftClaimLostError();
++    throw createQueuedMessageClaimLostError();
+   }
+   return queuedMessage;
+ }
+ 
+-export async function sendQueuedDraft(
++export async function sendQueuedMessage(
+   deps: AppDeps,
+-  args: SendQueuedDraftArgs,
++  args: SendQueuedMessageArgs,
+ ): Promise<ThreadQueuedMessage> {
+-  const draft = claimDraftForSend(deps, args);
++  const queuedMessage = claimQueuedThreadMessageForSend(deps, args);
+   try {
+-    return await sendClaimedDraft(deps, {
+-      draft,
++    return await sendClaimedQueuedMessage(deps, {
+       mode: args.mode,
++      queuedMessage,
+       threadId: args.threadId,
+     });
+   } catch (error) {
+-    releaseDraftClaim(deps.db, deps.hub, {
+-      id: draft.id,
+-      claimToken: draft.claimToken,
++    releaseQueuedMessageClaim(deps.db, deps.hub, {
++      id: queuedMessage.id,
++      claimToken: queuedMessage.claimToken,
+     });
+     throw error;
+   }
+ }
+ 
+-export async function sendNextQueuedDraftIfPresent(
++export async function sendNextQueuedMessageIfPresent(
+   deps: AppDeps,
+   args: { threadId: string },
+ ): Promise<boolean> {
+@@ -307,80 +332,84 @@ export async function sendNextQueuedDraftIfPresent(
+     return false;
+   }
+ 
+-  const nextDraft = claimNextDraft(deps.db, deps.hub, args.threadId);
+-  if (!nextDraft) {
++  const nextQueuedMessage = claimNextQueuedThreadMessage(
++    deps.db,
++    deps.hub,
++    args.threadId,
++  );
++  if (!nextQueuedMessage) {
+     return false;
+   }
+ 
+   try {
+-    await sendClaimedDraftForThread(deps, {
+-      draft: nextDraft,
++    await sendClaimedQueuedMessageForThread(deps, {
+       mode: "auto",
++      queuedMessage: nextQueuedMessage,
+       thread,
+     });
+   } catch (error) {
+-    releaseDraftClaim(deps.db, deps.hub, {
+-      id: nextDraft.id,
+-      claimToken: nextDraft.claimToken,
++    releaseQueuedMessageClaim(deps.db, deps.hub, {
++      id: nextQueuedMessage.id,
++      claimToken: nextQueuedMessage.claimToken,
+     });
+-    if (isDraftClaimLostError(error)) {
++    if (isQueuedMessageClaimLostError(error)) {
+       return false;
+     }
+     deps.logger.warn(
+       {
+-        draftId: nextDraft.id,
++        queuedMessageId: nextQueuedMessage.id,
+         err: error,
+         threadId: args.threadId,
+       },
+-      "Queued draft auto-send failed",
++      "Queued message auto-send failed",
+     );
+     throw error;
+   }
+   return true;
+ }
+ 
+-export async function runQueuedDraftAutoSendForThread(
++export async function runQueuedMessageAutoSendForThread(
+   deps: AppDeps,
+-  args: QueuedDraftAutoSendArgs,
++  args: QueuedMessageAutoSendArgs,
+ ): Promise<void> {
+-  await deps.lifecycleDedupers.queuedDraftAutoSend.run(
++  await deps.lifecycleDedupers.queuedMessageAutoSend.run(
+     args.threadId,
+     async () => {
+-      await sendNextQueuedDraftIfPresent(deps, {
++      await sendNextQueuedMessageIfPresent(deps, {
+         threadId: args.threadId,
+       });
+     },
+   );
+ }
+ 
+-export function requestQueuedDraftAutoSendForThread(
++export function requestQueuedMessageAutoSendForThread(
+   deps: AppDeps,
+-  args: QueuedDraftAutoSendRequestArgs,
++  args: QueuedMessageAutoSendRequestArgs,
+ ): void {
+   scheduleAfterDaemonIngressResponse({
+     context: {
+-      draftId: args.draftId,
++      queuedMessageId: args.queuedMessageId,
+       threadId: args.threadId,
+     },
+     logger: deps.logger,
+-    name: "Queued draft auto-send request",
++    name: "Queued message auto-send request",
+     work: () =>
+-      runQueuedDraftAutoSendForThread(deps, {
++      runQueuedMessageAutoSendForThread(deps, {
+         threadId: args.threadId,
+       }),
+   });
+ }
+ 
+-export async function runQueuedDraftAutoSendSweep(
++export async function runQueuedMessageAutoSendSweep(
+   deps: AppDeps,
+ ): Promise<void> {
+-  releaseStaleDraftClaims(deps.db, deps.hub, {
+-    claimedBefore: Date.now() - STALE_DRAFT_CLAIM_MS,
++  releaseStaleQueuedMessageClaims(deps.db, deps.hub, {
++    claimedBefore: Date.now() - STALE_QUEUED_MESSAGE_CLAIM_MS,
+   });
+ 
+-  for (const candidate of listIdleThreadsWithQueuedDrafts(deps.db)) {
++  for (const candidate of listIdleThreadsWithQueuedMessages(deps.db)) {
+     try {
+-      await runQueuedDraftAutoSendForThread(deps, {
++      await runQueuedMessageAutoSendForThread(deps, {
+         threadId: candidate.threadId,
+       });
+     } catch (error) {
+@@ -389,7 +418,7 @@ export async function runQueuedDraftAutoSendSweep(
+           err: error,
+           threadId: candidate.threadId,
+         },
+-        "Queued draft auto-send sweep failed",
++        "Queued message auto-send sweep failed",
+       );
+     }
+   }
+diff --git a/apps/server/src/services/threads/drafts.ts b/apps/server/src/services/threads/thread-queued-messages.ts
+rename from apps/server/src/services/threads/drafts.ts
+rename to apps/server/src/services/threads/thread-queued-messages.ts
+--- a/apps/server/src/services/threads/drafts.ts
++++ b/apps/server/src/services/threads/thread-queued-messages.ts
+@@ -7,7 +7,7 @@ import type {
+ import { z } from "zod";
+ import { ApiError } from "../../errors.js";
+ 
+-interface StoredDraftRow {
++interface StoredQueuedThreadMessageRow {
+   content: string;
+   createdAt: number;
+   id: string;
+@@ -19,8 +19,8 @@ interface StoredDraftRow {
+   updatedAt: number;
+ }
+ 
+-function parseStoredDraftContent(
+-  row: Pick<StoredDraftRow, "content" | "id" | "threadId">,
++function parseStoredQueuedThreadMessageContent(
++  row: Pick<StoredQueuedThreadMessageRow, "content" | "id" | "threadId">,
+ ): PromptInput[] {
+   let content: unknown;
+   try {
+@@ -29,7 +29,7 @@ function parseStoredDraftContent(
+     throw new ApiError(
+       500,
+       "internal_error",
+-      `Stored draft ${row.id} for thread ${row.threadId} is not valid JSON`,
++      `Stored queued message ${row.id} for thread ${row.threadId} is not valid JSON`,
+     );
+   }
+ 
+@@ -38,17 +38,19 @@ function parseStoredDraftContent(
+     throw new ApiError(
+       500,
+       "internal_error",
+-      `Stored draft ${row.id} for thread ${row.threadId} is malformed`,
++      `Stored queued message ${row.id} for thread ${row.threadId} is malformed`,
+     );
+   }
+ 
+   return parsed.data;
+ }
+ 
+-export function toQueuedMessage(row: StoredDraftRow): ThreadQueuedMessage {
++export function toThreadQueuedMessage(
++  row: StoredQueuedThreadMessageRow,
++): ThreadQueuedMessage {
+   return threadQueuedMessageSchema.parse({
+     id: row.id,
+-    content: parseStoredDraftContent(row),
++    content: parseStoredQueuedThreadMessageContent(row),
+     model: row.model,
+     reasoningLevel: row.reasoningLevel,
+     permissionMode: row.permissionMode,
+diff --git a/apps/server/src/services/threads/timeline.ts b/apps/server/src/services/threads/timeline.ts
+--- a/apps/server/src/services/threads/timeline.ts
++++ b/apps/server/src/services/threads/timeline.ts
+@@ -174,7 +174,7 @@ interface BuildThreadTimelineInternalResult {
+   response: ThreadTimelineResponse;
+ }
+ 
+-interface ThreadTimelineBuildProfileDraft {
++interface ThreadTimelineBuildProfileAccumulator {
+   compactedEventCount: number;
+   contextWindowEventDataBytes: number;
+   contextWindowEventRowCount: number;
+@@ -621,7 +621,7 @@ function byteLengthOfStoredEventRows(rows: readonly StoredEventRow[]): number {
+   return byteLength;
+ }
+ 
+-function createThreadTimelineBuildProfileDraft(): ThreadTimelineBuildProfileDraft {
++function createThreadTimelineBuildProfileAccumulator(): ThreadTimelineBuildProfileAccumulator {
+   return {
+     compactedEventCount: 0,
+     contextWindowEventDataBytes: 0,
+@@ -639,7 +639,7 @@ function createThreadTimelineBuildProfileDraft(): ThreadTimelineBuildProfileDraf
+ }
+ 
+ function measureThreadTimelineStage<TResult>(
+-  profile: ThreadTimelineBuildProfileDraft | null,
++  profile: ThreadTimelineBuildProfileAccumulator | null,
+   stage: ThreadTimelineBuildProfileStage,
+   fn: () => TResult,
+ ): TResult {
+@@ -657,30 +657,30 @@ function measureThreadTimelineStage<TResult>(
+ }
+ 
+ function completeThreadTimelineBuildProfile(
+-  draft: ThreadTimelineBuildProfileDraft,
++  accumulator: ThreadTimelineBuildProfileAccumulator,
+   options: BuildThreadTimelineOptions,
+   response: ThreadTimelineResponse,
+ ): ThreadTimelineBuildProfile {
+-  draft.responseJsonBytes = measureThreadTimelineStage(
+-    draft,
++  accumulator.responseJsonBytes = measureThreadTimelineStage(
++    accumulator,
+     "response-serialization",
+     () => Buffer.byteLength(JSON.stringify(response), "utf8"),
+   );
+   return {
+-    compactedEventCount: draft.compactedEventCount,
+-    contextWindowEventDataBytes: draft.contextWindowEventDataBytes,
+-    contextWindowEventRowCount: draft.contextWindowEventRowCount,
+-    decodedEventCount: draft.decodedEventCount,
+-    eventDataBytes: draft.eventDataBytes,
+-    eventRowCount: draft.eventRowCount,
++    compactedEventCount: accumulator.compactedEventCount,
++    contextWindowEventDataBytes: accumulator.contextWindowEventDataBytes,
++    contextWindowEventRowCount: accumulator.contextWindowEventRowCount,
++    decodedEventCount: accumulator.decodedEventCount,
++    eventDataBytes: accumulator.eventDataBytes,
++    eventRowCount: accumulator.eventRowCount,
+     pageKind: options.page.kind,
+-    projectedRowCount: draft.projectedRowCount,
+-    responseJsonBytes: draft.responseJsonBytes,
+-    responseRowCount: draft.responseRowCount,
+-    returnedSegmentCount: draft.returnedSegmentCount,
++    projectedRowCount: accumulator.projectedRowCount,
++    responseJsonBytes: accumulator.responseJsonBytes,
++    responseRowCount: accumulator.responseRowCount,
++    returnedSegmentCount: accumulator.returnedSegmentCount,
+     segmentLimit: options.page.segmentLimit,
+-    selectionStrategy: draft.selectionStrategy,
+-    stageTimings: draft.stageTimings,
++    selectionStrategy: accumulator.selectionStrategy,
++    stageTimings: accumulator.stageTimings,
+     timelineViewMode: options.timelineViewMode,
+   };
+ }
+@@ -691,7 +691,7 @@ function buildThreadTimelineInternal(
+   options: BuildThreadTimelineInternalOptions,
+ ): BuildThreadTimelineInternalResult {
+   const profile = options.includeProfile
+-    ? createThreadTimelineBuildProfileDraft()
++    ? createThreadTimelineBuildProfileAccumulator()
+     : null;
+   const includeNestedRows = options.includeNestedRows ?? false;
+   const includeProviderUnhandledOperations = options.isDevelopment;
+diff --git a/packages/db/src/data/index.ts b/packages/db/src/data/index.ts
+--- a/packages/db/src/data/index.ts
++++ b/packages/db/src/data/index.ts
+@@ -392,31 +392,31 @@ export type {
+ } from "./sessions.js";
+ 
+ export {
+-  claimDraft,
+-  claimNextDraft,
+-  createDraft,
+-  deleteClaimedDraft,
+-  deleteClaimedDraftInTransaction,
+-  deleteDraft,
+-  deleteDraftInTransaction,
+-  getDraft,
+-  listIdleThreadsWithQueuedDrafts,
+-  listDrafts,
+-  releaseDraftClaim,
+-  releaseStaleDraftClaims,
+-} from "./drafts.js";
++  claimQueuedThreadMessage,
++  claimNextQueuedThreadMessage,
++  createQueuedThreadMessage,
++  deleteClaimedQueuedThreadMessage,
++  deleteClaimedQueuedThreadMessageInTransaction,
++  deleteQueuedThreadMessage,
++  deleteQueuedThreadMessageInTransaction,
++  getQueuedThreadMessage,
++  listIdleThreadsWithQueuedMessages,
++  listQueuedThreadMessages,
++  releaseQueuedMessageClaim,
++  releaseStaleQueuedMessageClaims,
++} from "./queued-thread-messages.js";
+ export type {
+-  ClaimedDraftRow,
+-  ClaimedDraftMutationArgs,
+-  CreateDraftInput,
+-  DeleteClaimedDraftArgs,
+-  DeleteClaimedDraftInTransactionArgs,
+-  DeleteDraftInTransactionArgs,
+-  DraftRow,
+-  QueuedDraftThreadRow,
+-  ReleaseDraftClaimArgs,
+-  ReleaseStaleDraftClaimsArgs,
+-} from "./drafts.js";
++  ClaimedQueuedThreadMessageRow,
++  ClaimedQueuedThreadMessageMutationArgs,
++  CreateQueuedThreadMessageInput,
++  DeleteClaimedQueuedThreadMessageArgs,
++  DeleteClaimedQueuedThreadMessageInTransactionArgs,
++  DeleteQueuedThreadMessageInTransactionArgs,
++  QueuedThreadMessageRow,
++  QueuedMessageThreadRow,
++  ReleaseQueuedMessageClaimArgs,
++  ReleaseStaleQueuedMessageClaimsArgs,
++} from "./queued-thread-messages.js";
+ 
+ export {
+   COMPLETED_COMMAND_PAYLOAD_RETENTION_MS,
+diff --git a/packages/db/src/data/drafts.ts b/packages/db/src/data/queued-thread-messages.ts
+rename from packages/db/src/data/drafts.ts
+rename to packages/db/src/data/queued-thread-messages.ts
+--- a/packages/db/src/data/drafts.ts
++++ b/packages/db/src/data/queued-thread-messages.ts
+@@ -3,9 +3,9 @@ import type { PermissionMode, PromptInput } from "@bb/domain";
+ import type { DbConnection, DbTransaction } from "../connection.js";
+ import type { DbNotifier } from "../notifier.js";
+ import { queuedThreadMessages, threads } from "../schema.js";
+-import { createDraftClaimToken, createDraftId } from "../ids.js";
++import { createQueuedThreadMessageClaimToken, createQueuedThreadMessageId } from "../ids.js";
+ 
+-export interface CreateDraftInput {
++export interface CreateQueuedThreadMessageInput {
+   threadId: string;
+   content: PromptInput[];
+   model: string;
+@@ -14,38 +14,38 @@ export interface CreateDraftInput {
+   serviceTier: string;
+ }
+ 
+-export type DraftRow = typeof queuedThreadMessages.$inferSelect;
++export type QueuedThreadMessageRow = typeof queuedThreadMessages.$inferSelect;
+ 
+-export interface ClaimedDraftRow extends DraftRow {
++export interface ClaimedQueuedThreadMessageRow extends QueuedThreadMessageRow {
+   claimedAt: number;
+   claimToken: string;
+ }
+ 
+-export interface QueuedDraftThreadRow {
+-  oldestDraftCreatedAt: number | null;
++export interface QueuedMessageThreadRow {
++  oldestQueuedMessageCreatedAt: number | null;
+   threadId: string;
+ }
+ 
+-export interface DeleteDraftInTransactionArgs {
++export interface DeleteQueuedThreadMessageInTransactionArgs {
+   id: string;
+ }
+ 
+-export interface ClaimedDraftMutationArgs {
++export interface ClaimedQueuedThreadMessageMutationArgs {
+   claimToken: string;
+   id: string;
+ }
+ 
+-export type DeleteClaimedDraftInTransactionArgs = ClaimedDraftMutationArgs;
++export type DeleteClaimedQueuedThreadMessageInTransactionArgs = ClaimedQueuedThreadMessageMutationArgs;
+ 
+-export type DeleteClaimedDraftArgs = ClaimedDraftMutationArgs;
++export type DeleteClaimedQueuedThreadMessageArgs = ClaimedQueuedThreadMessageMutationArgs;
+ 
+-export interface ReleaseStaleDraftClaimsArgs {
++export interface ReleaseStaleQueuedMessageClaimsArgs {
+   claimedBefore: number;
+ }
+ 
+-export type ReleaseDraftClaimArgs = ClaimedDraftMutationArgs;
++export type ReleaseQueuedMessageClaimArgs = ClaimedQueuedThreadMessageMutationArgs;
+ 
+-function requireClaimedDraft(row: DraftRow | null): ClaimedDraftRow | null {
++function requireClaimedQueuedThreadMessage(row: QueuedThreadMessageRow | null): ClaimedQueuedThreadMessageRow | null {
+   if (!row || row.claimedAt === null || row.claimToken === null) {
+     return null;
+   }
+@@ -56,13 +56,13 @@ function requireClaimedDraft(row: DraftRow | null): ClaimedDraftRow | null {
+   };
+ }
+ 
+-export function createDraft(
++export function createQueuedThreadMessage(
+   db: DbConnection,
+   notifier: DbNotifier,
+-  input: CreateDraftInput,
++  input: CreateQueuedThreadMessageInput,
+ ) {
+   const now = Date.now();
+-  const id = createDraftId();
++  const id = createQueuedThreadMessageId();
+   const row = db
+     .insert(queuedThreadMessages)
+     .values({
+@@ -84,7 +84,7 @@ export function createDraft(
+   return row;
+ }
+ 
+-export function getDraft(db: DbConnection, id: string) {
++export function getQueuedThreadMessage(db: DbConnection, id: string) {
+   return (
+     db
+       .select()
+@@ -94,7 +94,7 @@ export function getDraft(db: DbConnection, id: string) {
+   );
+ }
+ 
+-export function listDrafts(db: DbConnection, threadId: string) {
++export function listQueuedThreadMessages(db: DbConnection, threadId: string) {
+   return db
+     .select()
+     .from(queuedThreadMessages)
+@@ -109,13 +109,13 @@ export function listDrafts(db: DbConnection, threadId: string) {
+     .all();
+ }
+ 
+-export function listIdleThreadsWithQueuedDrafts(
++export function listIdleThreadsWithQueuedMessages(
+   db: DbConnection,
+-): QueuedDraftThreadRow[] {
++): QueuedMessageThreadRow[] {
+   return db
+     .select({
+       threadId: threads.id,
+-      oldestDraftCreatedAt: min(queuedThreadMessages.createdAt),
++      oldestQueuedMessageCreatedAt: min(queuedThreadMessages.createdAt),
+     })
+     .from(queuedThreadMessages)
+     .innerJoin(threads, eq(threads.id, queuedThreadMessages.threadId))
+@@ -135,12 +135,12 @@ export function listIdleThreadsWithQueuedDrafts(
+     .all();
+ }
+ 
+-export function claimDraft(
++export function claimQueuedThreadMessage(
+   db: DbConnection,
+   notifier: DbNotifier,
+   id: string,
+-): ClaimedDraftRow | null {
+-  const claimedDraft = db.transaction(
++): ClaimedQueuedThreadMessageRow | null {
++  const claimedQueuedMessage = db.transaction(
+     (tx) => {
+       const existing = tx
+         .select()
+@@ -152,7 +152,7 @@ export function claimDraft(
+       }
+ 
+       const now = Date.now();
+-      const claimToken = createDraftClaimToken();
++      const claimToken = createQueuedThreadMessageClaimToken();
+       const updated = tx
+         .update(queuedThreadMessages)
+         .set({ claimedAt: now, claimToken, updatedAt: now })
+@@ -166,25 +166,25 @@ export function claimDraft(
+         .returning()
+         .get();
+ 
+-      return requireClaimedDraft(updated ?? null);
++      return requireClaimedQueuedThreadMessage(updated ?? null);
+     },
+     { behavior: "immediate" },
+   );
+ 
+-  if (claimedDraft) {
+-    notifier.notifyThread(claimedDraft.threadId, ["queue-changed"]);
++  if (claimedQueuedMessage) {
++    notifier.notifyThread(claimedQueuedMessage.threadId, ["queue-changed"]);
+   }
+-  return claimedDraft;
++  return claimedQueuedMessage;
+ }
+ 
+-export function claimNextDraft(
++export function claimNextQueuedThreadMessage(
+   db: DbConnection,
+   notifier: DbNotifier,
+   threadId: string,
+-): ClaimedDraftRow | null {
+-  const claimedDraft = db.transaction(
++): ClaimedQueuedThreadMessageRow | null {
++  const claimedQueuedMessage = db.transaction(
+     (tx) => {
+-      const nextDraft = tx
++      const nextQueuedMessage = tx
+         .select()
+         .from(queuedThreadMessages)
+         .where(
+@@ -200,40 +200,40 @@ export function claimNextDraft(
+         )
+         .limit(1)
+         .get();
+-      if (!nextDraft) {
++      if (!nextQueuedMessage) {
+         return null;
+       }
+ 
+       const now = Date.now();
+-      const claimToken = createDraftClaimToken();
++      const claimToken = createQueuedThreadMessageClaimToken();
+       const updated = tx
+         .update(queuedThreadMessages)
+         .set({ claimedAt: now, claimToken, updatedAt: now })
+         .where(
+           and(
+-            eq(queuedThreadMessages.id, nextDraft.id),
++            eq(queuedThreadMessages.id, nextQueuedMessage.id),
+             isNull(queuedThreadMessages.claimedAt),
+             isNull(queuedThreadMessages.claimToken),
+           ),
+         )
+         .returning()
+         .get();
+ 
+-      return requireClaimedDraft(updated ?? null);
++      return requireClaimedQueuedThreadMessage(updated ?? null);
+     },
+     { behavior: "immediate" },
+   );
+ 
+-  if (claimedDraft) {
+-    notifier.notifyThread(claimedDraft.threadId, ["queue-changed"]);
++  if (claimedQueuedMessage) {
++    notifier.notifyThread(claimedQueuedMessage.threadId, ["queue-changed"]);
+   }
+-  return claimedDraft;
++  return claimedQueuedMessage;
+ }
+ 
+-export function releaseDraftClaim(
++export function releaseQueuedMessageClaim(
+   db: DbConnection,
+   notifier: DbNotifier,
+-  args: ReleaseDraftClaimArgs,
++  args: ReleaseQueuedMessageClaimArgs,
+ ): boolean {
+   const existing = db
+     .select()
+@@ -268,10 +268,10 @@ export function releaseDraftClaim(
+   return true;
+ }
+ 
+-export function releaseStaleDraftClaims(
++export function releaseStaleQueuedMessageClaims(
+   db: DbConnection,
+   notifier: DbNotifier,
+-  args: ReleaseStaleDraftClaimsArgs,
++  args: ReleaseStaleQueuedMessageClaimsArgs,
+ ): number {
+   const staleRows = db
+     .select({
+@@ -309,9 +309,9 @@ export function releaseStaleDraftClaims(
+   return result.changes;
+ }
+ 
+-export function deleteClaimedDraftInTransaction(
++export function deleteClaimedQueuedThreadMessageInTransaction(
+   db: DbTransaction,
+-  args: DeleteClaimedDraftInTransactionArgs,
++  args: DeleteClaimedQueuedThreadMessageInTransactionArgs,
+ ): boolean {
+   const deleted =
+     db
+@@ -327,10 +327,10 @@ export function deleteClaimedDraftInTransaction(
+   return deleted !== null;
+ }
+ 
+-export function deleteClaimedDraft(
++export function deleteClaimedQueuedThreadMessage(
+   db: DbConnection,
+   notifier: DbNotifier,
+-  args: DeleteClaimedDraftArgs,
++  args: DeleteClaimedQueuedThreadMessageArgs,
+ ): boolean {
+   const existing = db
+     .select()
+@@ -360,9 +360,9 @@ export function deleteClaimedDraft(
+   return true;
+ }
+ 
+-export function deleteDraftInTransaction(
++export function deleteQueuedThreadMessageInTransaction(
+   db: DbTransaction,
+-  args: DeleteDraftInTransactionArgs,
++  args: DeleteQueuedThreadMessageInTransactionArgs,
+ ): boolean {
+   const deleted =
+     db
+@@ -373,7 +373,7 @@ export function deleteDraftInTransaction(
+   return deleted !== null;
+ }
+ 
+-export function deleteDraft(
++export function deleteQueuedThreadMessage(
+   db: DbConnection,
+   notifier: DbNotifier,
+   id: string,
+diff --git a/packages/db/src/ids.ts b/packages/db/src/ids.ts
+--- a/packages/db/src/ids.ts
++++ b/packages/db/src/ids.ts
+@@ -72,12 +72,12 @@ export function createPromptHistoryEntryId(): string {
+   return createId("phist");
+ }
+ 
+-export function createDraftId(): string {
+-  return createId("draft");
++export function createQueuedThreadMessageId(): string {
++  return createId("qmsg");
+ }
+ 
+-export function createDraftClaimToken(): string {
+-  return createId("dclaim");
++export function createQueuedThreadMessageClaimToken(): string {
++  return createId("qclaim");
+ }
+ 
+ export function createPendingInteractionId(): string {
+diff --git a/packages/db/src/index.ts b/packages/db/src/index.ts
+--- a/packages/db/src/index.ts
++++ b/packages/db/src/index.ts
+@@ -13,8 +13,8 @@ export * from "./schema.js";
+ export {
+   createAutomationId,
+   createCloudAuthAttemptId,
+-  createDraftClaimToken,
+-  createDraftId,
++  createQueuedThreadMessageClaimToken,
++  createQueuedThreadMessageId,
+   createEnvironmentId,
+   createEventId,
+   createEnvironmentProvisioningId,
+diff --git a/packages/server-contract/src/api-types.ts b/packages/server-contract/src/api-types.ts
+--- a/packages/server-contract/src/api-types.ts
++++ b/packages/server-contract/src/api-types.ts
+@@ -351,28 +351,34 @@ export const sendMessageRequestSchema = z.object({
+ });
+ export type SendMessageRequest = z.infer<typeof sendMessageRequestSchema>;
+ 
+-export const sendDraftModeSchema = z.enum(["auto", "steer"]);
+-export type SendDraftMode = z.infer<typeof sendDraftModeSchema>;
++export const sendQueuedMessageModeSchema = z.enum(["auto", "steer"]);
++export type SendQueuedMessageMode = z.infer<typeof sendQueuedMessageModeSchema>;
+ 
+-export const createDraftRequestSchema = z.object({
++export const createQueuedMessageRequestSchema = z.object({
+   input: z.array(promptInputSchema).min(1),
+   model: z.string().optional(),
+   serviceTier: serviceTierSchema.optional(),
+   reasoningLevel: reasoningLevelSchema.optional(),
+   permissionMode: permissionModeSchema.optional(),
+ });
+-export type CreateDraftRequest = z.infer<typeof createDraftRequestSchema>;
++export type CreateQueuedMessageRequest = z.infer<
++  typeof createQueuedMessageRequestSchema
++>;
+ 
+-export const sendDraftRequestSchema = z.object({
+-  mode: sendDraftModeSchema,
++export const sendQueuedMessageRequestSchema = z.object({
++  mode: sendQueuedMessageModeSchema,
+ });
+-export type SendDraftRequest = z.infer<typeof sendDraftRequestSchema>;
++export type SendQueuedMessageRequest = z.infer<
++  typeof sendQueuedMessageRequestSchema
++>;
+ 
+-export const sendDraftResponseSchema = z.object({
++export const sendQueuedMessageResponseSchema = z.object({
+   ok: z.literal(true),
+   queuedMessage: threadQueuedMessageSchema,
+ });
+-export type SendDraftResponse = z.infer<typeof sendDraftResponseSchema>;
++export type SendQueuedMessageResponse = z.infer<
++  typeof sendQueuedMessageResponseSchema
++>;
+ 
+ export const threadListResponseSchema = z.array(threadListEntrySchema);
+ export type ThreadListResponse = z.infer<typeof threadListResponseSchema>;
+@@ -420,9 +426,11 @@ export type ResolvePendingInteractionRequest = z.infer<
+   typeof resolvePendingInteractionRequestSchema
+ >;
+ 
+-export const threadDraftListResponseSchema = z.array(threadQueuedMessageSchema);
+-export type ThreadDraftListResponse = z.infer<
+-  typeof threadDraftListResponseSchema
++export const threadQueuedMessageListResponseSchema = z.array(
++  threadQueuedMessageSchema,
++);
++export type ThreadQueuedMessageListResponse = z.infer<
++  typeof threadQueuedMessageListResponseSchema
+ >;
+ 
+ export const threadAssignedChildSummaryResponseSchema = z.object({
+@@ -688,7 +696,7 @@ export type SystemExecutionOptionsResponse = z.infer<
+ 
+ export const threadComposerBootstrapResponseSchema = z.object({
+   defaultExecutionOptions: resolvedThreadExecutionOptionsSchema.nullable(),
+-  drafts: threadDraftListResponseSchema,
++  queuedMessages: threadQueuedMessageListResponseSchema,
+   executionOptions: systemExecutionOptionsResponseSchema,
+   pendingInteractions: threadPendingInteractionsResponseSchema,
+   promptHistory: promptHistoryResponseSchema,
+diff --git a/packages/server-contract/src/common.ts b/packages/server-contract/src/common.ts
+--- a/packages/server-contract/src/common.ts
++++ b/packages/server-contract/src/common.ts
+@@ -7,4 +7,6 @@ export type PathProjectAutomationId = {
+   param: { id: string; automationId: string };
+ };
+ export type PathProviderId = { param: { providerId: string } };
+-export type PathThreadAndDraft = { param: { id: string; draftId: string } };
++export type PathThreadAndQueuedMessage = {
++  param: { id: string; queuedMessageId: string };
++};
+diff --git a/packages/server-contract/src/index.ts b/packages/server-contract/src/index.ts
+--- a/packages/server-contract/src/index.ts
++++ b/packages/server-contract/src/index.ts
+@@ -6,7 +6,7 @@ export type {
+   PathProjectAutomationId,
+   PathProjectId,
+   PathProviderId,
+-  PathThreadAndDraft,
++  PathThreadAndQueuedMessage,
+   Untyped,
+ } from "./common.js";
+ 
+@@ -111,7 +111,7 @@ export {
+   createHostJoinRequestSchema,
+   createHostJoinResponseSchema,
+   updateHostRequestSchema,
+-  createDraftRequestSchema,
++  createQueuedMessageRequestSchema,
+   createManagerThreadRequestSchema,
+   createProjectRequestSchema,
+   createProjectSourceRequestSchema,
+@@ -152,9 +152,9 @@ export {
+   replayRunResponseSchema,
+   replaySpeedSchema,
+   gitBranchNameSchema,
+-  sendDraftRequestSchema,
+-  sendDraftModeSchema,
+-  sendDraftResponseSchema,
++  sendQueuedMessageRequestSchema,
++  sendQueuedMessageModeSchema,
++  sendQueuedMessageResponseSchema,
+   sendMessageModeSchema,
+   sendMessageRequestSchema,
+   resolvePendingInteractionRequestSchema,
+@@ -171,7 +171,7 @@ export {
+   threadAssignedChildSummaryResponseSchema,
+   threadComposerBootstrapResponseSchema,
+   threadContextWindowUsageSchema,
+-  threadDraftListResponseSchema,
++  threadQueuedMessageListResponseSchema,
+   threadEventWaitQuerySchema,
+   threadEventsQuerySchema,
+   threadGetQuerySchema,
+@@ -240,7 +240,7 @@ export type {
+   CreateAutomationRequest,
+   CreateHostJoinRequest,
+   CreateHostJoinResponse,
+-  CreateDraftRequest,
++  CreateQueuedMessageRequest,
+   ManagerEnvironmentArgs,
+   CreateManagerThreadRequest,
+   CreateProjectRequest,
+@@ -282,9 +282,9 @@ export type {
+   ReplayRunRequest,
+   ReplayRunResponse,
+   ReplayRunSpeed,
+-  SendDraftRequest,
+-  SendDraftMode,
+-  SendDraftResponse,
++  SendQueuedMessageRequest,
++  SendQueuedMessageMode,
++  SendQueuedMessageResponse,
+   SendMessageMode,
+   SendMessageRequest,
+   ResolvePendingInteractionRequest,
+@@ -305,7 +305,7 @@ export type {
+   ThreadAssignedChildSummaryResponse,
+   ThreadComposerBootstrapResponse,
+   ThreadContextWindowUsage,
+-  ThreadDraftListResponse,
++  ThreadQueuedMessageListResponse,
+   ThreadEventWaitQuery,
+   ThreadEventsQuery,
+   ThreadGetQuery,
+diff --git a/packages/server-contract/src/public-api.ts b/packages/server-contract/src/public-api.ts
+--- a/packages/server-contract/src/public-api.ts
++++ b/packages/server-contract/src/public-api.ts
+@@ -19,7 +19,7 @@ import type {
+   PathProjectAutomationId,
+   PathProjectId,
+   PathProviderId,
+-  PathThreadAndDraft,
++  PathThreadAndQueuedMessage,
+ } from "./common.js";
+ import type {
+   ArchiveThreadRequest,
+@@ -31,7 +31,7 @@ import type {
+   CreateAutomationRequest,
+   CreateHostJoinRequest,
+   CreateHostJoinResponse,
+-  CreateDraftRequest,
++  CreateQueuedMessageRequest,
+   CreateManagerThreadRequest,
+   CreateProjectRequest,
+   CreateProjectSourceRequest,
+@@ -59,13 +59,13 @@ import type {
+   PromptHistoryResponse,
+   ProjectResponse,
+   ProjectWithThreadsResponse,
+-  SendDraftRequest,
+-  SendDraftResponse,
++  SendQueuedMessageRequest,
++  SendQueuedMessageResponse,
+   SendMessageRequest,
+   ResolvePendingInteractionRequest,
+   ThreadAssignedChildSummaryResponse,
+   ThreadComposerBootstrapResponse,
+-  ThreadDraftListResponse,
++  ThreadQueuedMessageListResponse,
+   GithubRepoInfo,
+   GithubReposQuery,
+   SandboxEnvVar,
+@@ -373,7 +373,7 @@ export type PublicApiSchema = {
+      * Send a message to a thread.
+      * Idle thread → starts a new turn. Active thread with mode=steer → steers the current turn.
+      * senderThreadId marks immediate agent-to-agent CLI messages so the server can add reply guidance.
+-     * Draft routes intentionally omit it because drafts are stored queued messages,
++     * Queued-message routes intentionally omit it because they are stored queued messages,
+      * not immediate sends from a live sender thread.
+      */
+     $post: Endpoint<PathId & { json: SendMessageRequest }, { ok: true }>;
+@@ -382,20 +382,20 @@ export type PublicApiSchema = {
+     /** Load initial composer state and prime the canonical composer query caches. */
+     $get: Endpoint<PathId, ThreadComposerBootstrapResponse>;
+   };
+-  "/threads/:id/drafts": {
+-    $get: Endpoint<PathId, ThreadDraftListResponse>;
+-    /** Create a queued draft. Use /threads/:id/send for immediate agent-to-agent messages. */
++  "/threads/:id/queued-messages": {
++    $get: Endpoint<PathId, ThreadQueuedMessageListResponse>;
++    /** Create a queued message. Use /threads/:id/send for immediate agent-to-agent messages. */
+     $post: Endpoint<
+-      PathId & { json: CreateDraftRequest },
++      PathId & { json: CreateQueuedMessageRequest },
+       ThreadQueuedMessage,
+       201
+     >;
+   };
+-  "/threads/:id/drafts/:draftId/send": {
+-    /** Send a previously created queued draft in the requested mode, then delete the draft. */
++  "/threads/:id/queued-messages/:queuedMessageId/send": {
++    /** Send a previously created queued message in the requested mode, then delete the queued message. */
+     $post: Endpoint<
+-      PathThreadAndDraft & { json: SendDraftRequest },
+-      SendDraftResponse
++      PathThreadAndQueuedMessage & { json: SendQueuedMessageRequest },
++      SendQueuedMessageResponse
+     >;
+   };
+   "/threads/:id/prompt-history": {
+@@ -404,8 +404,8 @@ export type PublicApiSchema = {
+       PromptHistoryResponse
+     >;
+   };
+-  "/threads/:id/drafts/:draftId": {
+-    $delete: Endpoint<PathThreadAndDraft, { ok: true }>;
++  "/threads/:id/queued-messages/:queuedMessageId": {
++    $delete: Endpoint<PathThreadAndQueuedMessage, { ok: true }>;
+   };
+   "/threads/:id/stop": {
+     $post: Endpoint<PathId, { ok: true }>;
+diff --git a/plans/server-backed-composer-drafts.md b/plans/server-backed-composer-drafts.md
+new file mode 100644
+--- /dev/null
++++ b/plans/server-backed-composer-drafts.md
+@@ -0,0 +1,255 @@
++# Server-Backed Composer Drafts Plan
++
++## Goal
++
++Persist unsubmitted prompt-box contents on the server so a user can refresh the
++page, switch browsers, or use another device and continue the same new-thread or
++follow-up composer draft.
++
++This is intentionally separate from queued messages. A composer draft is text
++and attachments still sitting in a prompt box. A queued message is a submitted
++follow-up waiting to be sent or steered.
++
++## Current Findings
++
++- Prompt-box drafts are stored only in browser `localStorage` by
++  `apps/app/src/hooks/usePromptDraftStorage.ts`.
++- The local storage key is project scoped for the new-thread composer and
++  project+thread scoped for follow-up composers.
++- Follow-up composer bootstrap already loads server state for execution options,
++  prompt history, pending interactions, and queued messages through
++  `GET /api/v1/threads/:id/composer-bootstrap`.
++- Existing queued follow-ups are persisted in `queued_thread_messages`. Do not
++  reuse that table for composer drafts. It has claim tokens and send lifecycle
++  semantics that do not apply to unsent text.
++- Sidebar rows can show a draft indicator only if thread list data includes a
++  user-specific draft signal or the app fetches a targeted draft index. Do not
++  load all threads and filter drafts in JS.
++
++## Product Semantics
++
++- Empty drafts are not stored. Clearing the composer deletes the server row.
++- A draft belongs to one user, one project, and one composer scope:
++  `new-thread` or `thread`.
++- `new-thread` drafts are keyed by project and user.
++- Follow-up drafts are keyed by project, thread, and user.
++- Submitting a composer draft deletes the composer draft only after the send or
++  queued-message creation succeeds. Failed submits restore the local composer
++  state and leave or rewrite the server draft.
++- Queued messages remain submitted work. They continue to appear in the queued
++  message banner and prompt history as queued entries. Composer drafts do not.
++- Draft attachment references use the existing uploaded prompt attachment shape.
++  No new binary storage path is introduced in this plan.
++
++## Data Model
++
++Add a new `composer_drafts` table.
++
++Fields:
++
++- `id text primary key`, with a new `cmpdraft_` ID helper.
++- `user_id text not null references user(id) on delete cascade`.
++- `project_id text not null references projects(id) on delete cascade`.
++- `thread_id text null references threads(id) on delete cascade`.
++- `scope_kind text not null`, constrained to `new-thread` or `thread`.
++- `state text not null`, JSON for the validated prompt draft state.
++- `revision integer not null`.
++- `client_id text not null`.
++- `created_at integer not null`.
++- `updated_at integer not null`.
++
++Indexes:
++
++- Unique partial index for new-thread drafts:
++  `(user_id, project_id, scope_kind)` where `scope_kind = 'new-thread'` and
++  `thread_id IS NULL`.
++- Unique partial index for follow-up drafts:
++  `(user_id, project_id, thread_id, scope_kind)` where
++  `scope_kind = 'thread'` and `thread_id IS NOT NULL`.
++- `composer_drafts_user_project_updated_idx` on
++  `(user_id, project_id, updated_at)`.
++- `composer_drafts_user_thread_idx` on `(user_id, thread_id)` for sidebar and
++  thread bootstrap lookups.
++
++The row stores `PromptDraftState` rather than `PromptInput[]` because the
++editable textarea text and attachment list are the canonical composer state.
++The server validates JSON at the boundary and never stores malformed draft
++state.
++
++## Server API
++
++Add contract/domain schemas for composer drafts:
++
++- `composerDraftScopeSchema`: discriminated union for new-thread and thread
++  scopes.
++- `composerDraftStateSchema`: the shared text + attachments shape currently in
++  the app prompt draft module, moved to a shared package if needed.
++- `composerDraftSchema`: `{ id, projectId, threadId, scopeKind, state,
++revision, clientId, createdAt, updatedAt }`.
++- Request schemas for upsert and delete. No accepted-but-ignored fields.
++
++Routes:
++
++- `GET /api/v1/projects/:id/composer-draft`
++  - Returns the current user's new-thread draft for the project, or `null`.
++- `PUT /api/v1/projects/:id/composer-draft`
++  - Upserts the current user's new-thread draft.
++  - Empty state deletes the row and returns `null`.
++- `DELETE /api/v1/projects/:id/composer-draft`
++  - Deletes the current user's new-thread draft.
++- `GET /api/v1/threads/:id/composer-draft`
++  - Returns the current user's follow-up draft for the thread, or `null`.
++- `PUT /api/v1/threads/:id/composer-draft`
++  - Upserts the current user's follow-up draft.
++  - Empty state deletes the row and returns `null`.
++- `DELETE /api/v1/threads/:id/composer-draft`
++  - Deletes the current user's follow-up draft.
++
++Also extend:
++
++- `GET /api/v1/threads/:id/composer-bootstrap`
++  - Add required `composerDraft: ComposerDraft | null`.
++- Thread list rows
++  - Add required `hasComposerDraft: boolean` for the current user so the sidebar
++    can render a draft icon without a second per-row request.
++
++Implementation notes:
++
++- Resolve the current user at the server boundary. If local/self-host mode uses
++  a system user today, route all draft ownership through the same user identity
++  abstraction rather than storing unauthenticated global drafts.
++- Use targeted SQL for thread list draft signals, ideally a left join or
++  `exists` subquery scoped to the current user.
++- Draft writes should notify only user-visible app cache surfaces. They must not
++  trigger queued-message auto-send, thread lifecycle transitions, or prompt
++  history changes.
++
++## App Implementation
++
++Replace `usePromptDraftStorage` with a server-backed hook that keeps the same
++consumer API where possible:
++
++- `useComposerDraftStorage({ projectId, threadId })`
++  - Reads initial state from React Query.
++  - Maintains a local in-memory draft for immediate typing responsiveness.
++  - Debounces server upserts, for example 500-1000 ms after the last edit.
++  - Flushes immediately on blur, route change, and before submit.
++  - Deletes the server row when the draft becomes empty.
++  - Keeps `getCurrent`, `clearIfCurrentMatches`, and `restoreIfEmpty` semantics
++    so submit failure behavior stays predictable.
++
++React Query keys:
++
++- `projectComposerDraftQueryKey(projectId)`
++- `threadComposerDraftQueryKey(threadId)`
++- `allComposerDraftsQueryKeyPrefix()`
++
++Bootstrap:
++
++- New-thread composer fetches the project draft directly.
++- Follow-up composer uses `threadComposerBootstrap.composerDraft` to seed the
++  draft query, matching the existing bootstrap cache-seeding pattern for queued
++  messages and prompt history.
++
++Local storage cutover:
++
++- Do not migrate existing `bb.promptbox.contents-*` localStorage values.
++- The server-backed hook should not read old localStorage draft keys.
++- New draft writes go only to the server.
++- Once the server-backed hook is in place, `usePromptDraftStorage` and its
++  localStorage cache/subscription helpers can be deleted or replaced by the new
++  server-backed hook.
++
++Conflict behavior:
++
++- Use server-owned `revision` increments on every write.
++- The hook sends the last observed revision with upserts.
++- If the server revision has advanced from another device while this device has
++  unsaved edits, keep the active local text and surface a non-blocking "remote
++  draft updated" affordance later if product wants it.
++- For the first implementation, last writer wins after explicit local editing.
++  Background refetches must not overwrite focused local edits.
++
++Sidebar draft icon:
++
++- Add an icon-only draft indicator to thread rows when `hasComposerDraft` is
++  true.
++- Do not show this icon for queued messages; queued messages should keep their
++  existing composer banner treatment.
++- Tooltip text should say "Draft" or "Unsubmitted draft".
++- The indicator is current-user scoped. A draft from another user must not show
++  on the row.
++
++## Tests
++
++DB tests:
++
++- Creates, reads, updates, and deletes project and thread composer drafts.
++- Enforces one draft per user+project new-thread scope.
++- Enforces one draft per user+thread follow-up scope.
++- Cascades thread deletion to follow-up drafts.
++- Cascades project deletion to all project drafts.
++- Does not treat queued messages as composer drafts.
++
++Server tests:
++
++- Project draft routes upsert, delete, and return `null` for empty drafts.
++- Thread draft routes upsert, delete, and reject cross-thread/project misuse.
++- Composer bootstrap includes `composerDraft`.
++- Thread list returns `hasComposerDraft` for only the current user's drafts.
++- Submitting a follow-up clears the composer draft after successful send.
++- Submitting while active creates a queued message and clears the composer draft
++  after the queued-message create succeeds.
++- Failed submit keeps or restores the composer draft.
++
++App tests:
++
++- New-thread composer hydrates from the server draft.
++- Follow-up composer hydrates from composer bootstrap.
++- Typing debounces a server upsert.
++- Clearing the prompt deletes the server draft.
++- Submit clears the server draft only after success.
++- Sidebar row renders the draft icon from `hasComposerDraft` and does not render
++  it for queued messages alone.
++
++## Validation
++
++Run typechecks:
++
++```sh
++pnpm exec turbo run typecheck --filter=@bb/db
++pnpm exec turbo run typecheck --filter=@bb/server-contract
++pnpm exec turbo run typecheck --filter=@bb/server
++pnpm exec turbo run typecheck --filter=@bb/app
++```
++
++Run focused tests:
++
++```sh
++pnpm exec turbo run test --filter=@bb/db -- test/data/composer-drafts.test.ts test/schema.test.ts
++pnpm exec turbo run test --filter=@bb/server-contract -- test/contract.test.ts
++pnpm exec turbo run test --filter=@bb/server -- test/public/public-composer-drafts.test.ts test/public/public-thread-data.test.ts
++pnpm exec turbo run test --filter=@bb/app -- src/hooks/useComposerDraftStorage.test.tsx src/hooks/queries/thread-queries.test.tsx src/views/thread-detail/ThreadDetailPromptArea.test.tsx
++```
++
++Manual verification:
++
++- Type in the new-thread composer, refresh, and verify the draft returns.
++- Type in a follow-up composer, refresh, and verify the draft returns.
++- Open the same account in a second browser/device, load the project/thread, and
++  verify the draft appears.
++- Type a follow-up draft and verify the sidebar row shows the draft icon.
++- Create a queued message on a thread with no composer draft and verify the
++  draft icon does not appear.
++- Submit a draft successfully and verify the icon disappears.
++
++## Exit Criteria
++
++- Composer drafts are persisted in `composer_drafts`, not `localStorage`.
++- Prompt draft localStorage reads and writes are removed from the active
++  composer path.
++- New-thread and follow-up composers both survive refresh and are available
++  across devices for the same user.
++- Queued-message behavior, prompt history, and auto-send lifecycle are unchanged.
++- Sidebar rows show a user-scoped draft icon for unsubmitted follow-up drafts.
++- Typecheck and focused tests pass through Turbo.
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

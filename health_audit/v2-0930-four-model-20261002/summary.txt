@@ -1,0 +1,54 @@
+v2-0930 四模型运行及评分有效性审查
+
+主批次快照: 2026-10-02T05:22:22.927726+00:00
+Claude original job, overridden task-by-task by network-recovery; completed Codex Luna run; excludes ongoing 32GiB reruns. Missing reward is not zero.
+
+四模型共同 reward=0: 55/82；其中四组均无 Harbor 终止异常: 43；至少一组有异常: 12。
+共同零分中，52/55 至少一组有测试补丁安装异常日志；其中21题四组都有。日志标记是风险筛查，不代表这52题所有0分均由它导致。
+
+模型 | 正常结束 | 终止异常 | 测试补丁异常标记 | 正常结束但带补丁标记 | reward=1仍带补丁标记
+qwen3.8-max-qiniu | 69 | 13 | 54 | 47 | 8
+glm-5.3-siflow | 70 | 12 | 56 | 47 | 10
+kimi-k3-qiniu | 72 | 10 | 59 | 53 | 10
+gpt-6-luna | 82 | 0 | 42 | 42 | 6
+
+终止异常分解：Qwen 6次OOM、6次7200秒超时、1次CLI无法执行；GLM 6次OOM、2次超时、3次300轮上限、1次CLI无法执行；Kimi 5次OOM、4次超时、1次CLI无法执行。Luna最终82次turn.completed，有一次历史自动重试（Harbor标签ApiRateLimitError，未以原始失败请求证实，不能直接认定LLM限流）。
+Codex.txt中的两行孤立左花括号是文本输出，不构成模型协议错误的证据。
+
+直接抽查11道共同零分题：
+1. DeepLabCut__DeepLabCut-3303 [confirmed_verifier_reversal_removes_tests]
+verifier 反向应用已存在的新测试，随后找不到 tests/utils/test_collect_video_paths.py，collected 0 items，exit 4。Qwen 轨迹 step 43 成功 cherry-pick 上游提交并加入测试；此前运行测试有通过记录。
+Kimi 和 Luna 则实际运行34个测试，33通过、1个空字符串扩展名的弃用警告断言失败，不能把这两组失败直接归因环境。
+2. babarot__afx-69 [confirmed_verifier_patch_setup_failure]
+题目要求 pkg -> internal。轨迹中 Qwen/Luna 已完成移动并运行 go test；verifier 从基线恢复 cmd/meta_test.go，然后因旧 pkg/ 下的重命名源文件不存在，git apply 失败但继续测试，遗留旧 github.com/babarot/afx/pkg/config 导入。四组同样 setup failed。
+3. cmu-phil__tetrad-c_d0e10cd [confirmed_external_dependency_network_failure]
+Maven Central 对 Surefire/commons-rng 依赖返回 HTTP 429，构建/测试被依赖解析阻断。Kimi轨迹使用镜像后自测通过，但 verifier 回到原仓库再次429。GLM还叠加300轮上限；Qwen是编译错误，不能把4组都归因429。
+4. apache__devlake-8877 [confirmed_incomplete_test_environment_and_contract_errors]
+E2E_DB_URL 缺失，两个E2E包跳过。Rootly任务测试另外发生函数签名不符；Kimi还遇到 agent 自建测试和注入测试函数同名 redeclared。不能将其0分单独归因缺数据库。Luna轨迹同时记录 gofmt不可见，未运行Go测试；verifier则能调用Go。
+5. duckdb__duckdb-21978 [mixed_verifier_build_failure]
+agent 阶段有成功构建记录，verifier阶段出现补丁反向/部分拒绝、const编译错误以及 cc1plus 被Killed。编译子进程被杀未必使agent终止。不能把所有编译错误都归为OOM，或仅凭日志断言全部由verifier造成。
+6. lucianodato__libspecbleach-81 [confirmed_no_solution_attempt_plus_verifier_build_errors]
+GLM没有执行工具，回复只有PR标题且当前目录/非仓库，请用户提供位置；Harbor仍正常完成并评分0。Luna修改了代码但未运行测试；verifier有补丁应用异常，随后测试源代码重定义/编译失败。
+7. RakuenSoftware__aimee-2499 [mixed_build_setup_and_patch_failure]
+四组verifier都出现 sandbox.h / rules.h 缺失、CMake构建失败与Go断言失败，并带补丁应用异常。Qwen/Luna轨迹使用原Make目标有测试通过记录，verifier使用 cmake --build build -j；构建流程/目标差异需单独修验，现有日志不足以把所有错误归为镜像缺依赖。
+8. get-bb__bb-c_cd3c6ef [mixed_module_resolution_and_assertion_failures]
+四组verifier均报 Cannot find module ../../src/data/queued-thread-messages.js，同时235/234/234/233个测试通过且13/14/14/15个失败；四组均有补丁应用异常。此路径属于题目要求重构的代码，不能直接标成缺第三方依赖。
+9. katspaugh__wavesurfer.js-4340 [mixed_test_patch_and_behavior_failures]
+Kimi轨迹step41成功 cherry-pick 上游修复，删除旧模块/旧测试；verifier发生反向补丁，159个执行到的测试都通过但6个suite加载失败。Luna222个测试中13失败，不能仅凭与Kimi同为0认定同因。
+10. CherryHQ__cherry-studio-13430 [mixed_api_mock_and_behavior_failures]
+四组失败数不同，有 db.delete is not a function、迁移日志对象内容和UI元素断言失败；仅Qwen/GLM有补丁拒绝标记。不能把测试mock/API不符自动归为环境未安装依赖，仍需对照测试契约。
+11. letta-ai__letta-code-3687 [mixed_test_contract_and_baseline_failures]
+Qwen轨迹成功应用上游提交，自测目标测试通过；还在旧commit worktree重现MCP OAuth和package-installer失败。verifier却出现旧导出缺失和断言失败。Luna未运行测试，verifier缺题目域模块/导出；不能全归为网络故障。
+
+reward=1也存在有效性问题：
+四组的 0xMiden__miden-vm-c_5a9834d、tailcallhq__forgecode-2716、xremap__xremap-892 都缺/tmp/test.patch而仍评分1。不能据此证明目标测试正确安装，也不能直接断言代码错误。
+lerna__lerna-4300 四组都 No tests found, exiting with code 0 却评分1；Luna/lucianodato__libspecbleach-83 No tests defined 却评分1。
+
+参考修复泄露：实际Bash cherry-pick命令出现在Qwen10题、GLM5题、Kimi15题、Luna0题。命令计数不代表每次成功，也不覆盖git show等其他读取方式。已确认Qwen/DeepLabCut与Kimi/wavesurfer成功应用仓库里的上游修复。
+任务入口问题：GLM/ETLCPP__etl-1334、GLM/lucianodato__libspecbleach-81、Kimi/ETLCPP__etl-1334共3条轨迹无工具操作，直接请求澄清；相关instruction只是PR标题/提交列表，初始cwd为/，未明确/testbed。
+
+32GiB补跑单列：2026-10-02 05:27:54 UTC，17条中Kimi/gemini-cli与free-claude-code-929已完成2条（均reward=0，无Harbor异常），其余15条仍运行；Kimi/actor-framework容器内已发生21次cc1plus被cgroup OOM杀死，未发现该窗口claude被OOM杀死。不再额外补跑。
+
+结论与边界：当前原始reward混入测试未安装、反向应用、零测试通过、依赖网络失败、入口提示不完整以及参考提交可读等问题，不适合作为干净的模型能力对比分数。未对82题逐题重放；未导出最终git diff，不能认证每条最终patch内容。抽查未修改任务、verifier或运行配置；32GiB运行继续按既定设置进行。
+
+文件：all_82.csv / common_zero_55.csv / report.json / trajectory_samples.json / sampled_findings.json / cherry_pick_indicators.json / oom32g_kernel_events.json。轨迹与verifier完整原文件位置保存在trial_dir字段。

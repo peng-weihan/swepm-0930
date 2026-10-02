@@ -1,0 +1,196 @@
+Checking patch raft/src/main/java/org/apache/kafka/raft/CandidateState.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaNetworkChannelTest.java...
+error: while searching for:
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
+
+
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/KafkaNetworkChannelTest.java:62
+error: raft/src/test/java/org/apache/kafka/raft/KafkaNetworkChannelTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientAutoJoinTest.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientFetchTest.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientPreVoteTest.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientReconfigTest.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientSnapshotTest.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientTest.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/RaftEventSimulationTest.java...
+error: while searching for:
+            cluster.nodeIfRunning(destination.id()).ifPresent(node -> {
+                inflight.put(correlationId, new InflightRequest(senderId, destination));
+
+                inbound.completion.whenComplete((response, exception) -> {
+                    if (response != null && filters.get(destination.id()).acceptOutbound(response)) {
+                        deliver(response);
+                    }
+                });
+
+                node.client.handle(inbound);
+            });
+        }
+
+
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/RaftEventSimulationTest.java:1405
+error: raft/src/test/java/org/apache/kafka/raft/RaftEventSimulationTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/internals/BlockingMessageQueueTest.java...
+error: while searching for:
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class BlockingMessageQueueTest {
+
+    @Test
+    public void testOfferAndPoll() {
+        BlockingMessageQueue queue = new BlockingMessageQueue();
+        assertTrue(queue.isEmpty());
+        assertNull(queue.poll(0));
+
+        RaftMessage message1 = Mockito.mock(RaftMessage.class);
+        queue.add(message1);
+        assertFalse(queue.isEmpty());
+        assertEquals(message1, queue.poll(0));
+        assertTrue(queue.isEmpty());
+
+        RaftMessage message2 = Mockito.mock(RaftMessage.class);
+        RaftMessage message3 = Mockito.mock(RaftMessage.class);
+        queue.add(message2);
+        queue.add(message3);
+        assertFalse(queue.isEmpty());
+        assertEquals(message2, queue.poll(0));
+        assertEquals(message3, queue.poll(0));
+
+    }
+
+    @Test
+    public void testWakeupFromPoll() {
+        BlockingMessageQueue queue = new BlockingMessageQueue();
+        queue.wakeup();
+        assertNull(queue.poll(Long.MAX_VALUE));
+    }
+
+}
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/internals/BlockingMessageQueueTest.java:21
+error: raft/src/test/java/org/apache/kafka/raft/internals/BlockingMessageQueueTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/internals/ChangeVoterHandlerStateTest.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/internals/ThresholdPurgatoryTest.java...
+Checking patch raft/src/testFixtures/java/org/apache/kafka/raft/MockMessageQueue.java...
+error: while searching for:
+package org.apache.kafka.raft;
+
+import java.util.ArrayDeque;
+import java.util.OptionalLong;
+import java.util.Queue;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * Mocked implementation which does not block in {@link #poll(long)}..
+ */
+public class MockMessageQueue implements RaftMessageQueue {
+    private final Queue<RaftMessage> messages = new ArrayDeque<>();
+    private final AtomicBoolean wakeupRequested = new AtomicBoolean(false);
+    private final AtomicLong lastPollTimeout = new AtomicLong(-1);
+
+    @Override
+    public RaftMessage poll(long timeoutMs) {
+        wakeupRequested.set(false);
+        lastPollTimeout.set(timeoutMs);
+        return messages.poll();
+    }
+
+    @Override
+    public void add(RaftMessage message) {
+        messages.offer(message);
+    }
+
+    public OptionalLong lastPollTimeoutMs() {
+
+error: patch failed: raft/src/testFixtures/java/org/apache/kafka/raft/MockMessageQueue.java:17
+error: raft/src/testFixtures/java/org/apache/kafka/raft/MockMessageQueue.java: patch does not apply
+Checking patch raft/src/testFixtures/java/org/apache/kafka/raft/MockNetworkChannel.java...
+error: while searching for:
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public class MockNetworkChannel implements NetworkChannel {
+    public static final ListenerName LISTENER_NAME = VoterSetTestUtil.DEFAULT_LISTENER_NAME;
+
+    private final AtomicInteger correlationIdCounter;
+    private final List<RaftRequest.Outbound> sendQueue = new ArrayList<>();
+    private final Map<Integer, RaftRequest.Outbound> awaitingResponse = new HashMap<>();
+
+    public MockNetworkChannel(AtomicInteger correlationIdCounter) {
+        this.correlationIdCounter = correlationIdCounter;
+
+error: patch failed: raft/src/testFixtures/java/org/apache/kafka/raft/MockNetworkChannel.java:21
+error: raft/src/testFixtures/java/org/apache/kafka/raft/MockNetworkChannel.java: patch does not apply
+Checking patch raft/src/testFixtures/java/org/apache/kafka/raft/RaftClientTestContext.java...
+error: while searching for:
+            versionedRequest,
+            time.milliseconds()
+        );
+        inboundRequest.completion.whenComplete((response, exception) -> {
+            if (exception != null) {
+                throw new RuntimeException(exception);
+            } else {
+                sentResponses.add(response);
+            }
+        });
+        client.handle(inboundRequest);
+    }
+
+    void deliverResponse(int correlationId, Node source, ApiMessage response) {
+
+error: patch failed: raft/src/testFixtures/java/org/apache/kafka/raft/RaftClientTestContext.java:968
+error: raft/src/testFixtures/java/org/apache/kafka/raft/RaftClientTestContext.java: patch does not apply
+/testbed/raft/src/main/java/org/apache/kafka/raft/CandidateState.java:130: error: method does not override or implement a method from a supertype
+    @Override
+    ^
+1 error
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':raft:compileJava'.
+> Compilation failed; see the compiler output below.
+  /testbed/raft/src/main/java/org/apache/kafka/raft/CandidateState.java:130: error: method does not override or implement a method from a supertype
+      @Override
+      ^
+  1 error
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+
+BUILD FAILED in 11s
+/testbed/raft/src/main/java/org/apache/kafka/raft/CandidateState.java:130: error: method does not override or implement a method from a supertype
+    @Override
+    ^
+1 error
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':raft:compileJava'.
+> Compilation failed; see the compiler output below.
+  /testbed/raft/src/main/java/org/apache/kafka/raft/CandidateState.java:130: error: method does not override or implement a method from a supertype
+      @Override
+      ^
+  1 error
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+
+BUILD FAILED in 11s

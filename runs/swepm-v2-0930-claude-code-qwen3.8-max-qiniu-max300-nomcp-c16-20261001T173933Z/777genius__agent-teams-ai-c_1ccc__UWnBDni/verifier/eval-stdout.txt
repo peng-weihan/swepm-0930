@@ -1,0 +1,46 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+The next patch would create the file test/main/services/team/ChangeExtractorService.test.ts,
+which already exists!  Assuming -R.
+patching file test/main/services/team/ChangeExtractorService.test.ts
+Hunk #1 FAILED at 1.
+Not deleting file test/main/services/team/ChangeExtractorService.test.ts as content differs from patch
+1 out of 1 hunk FAILED -- saving rejects to file test/main/services/team/ChangeExtractorService.test.ts.rej
+patching file test/main/services/team/TaskBoundaryParser.test.ts
+patching file test/main/services/team/TeamMcpConfigBuilder.test.ts
+patching file test/renderer/store/changeReviewSlice.test.ts
+patching file test/renderer/store/extensionsSlice.test.ts
+patching file test/renderer/utils/taskChangeRequest.test.ts
+patching file test/shared/utils/extensionNormalizers.test.ts
+
+ RUN  v3.2.4 /testbed
+
+ ✓ test/shared/utils/extensionNormalizers.test.ts (22 tests) 9ms
+ ✓ test/main/services/team/TaskBoundaryParser.test.ts (3 tests) 12ms
+ ✓ test/renderer/store/changeReviewSlice.test.ts (3 tests) 65ms
+ ❯ test/main/services/team/TeamMcpConfigBuilder.test.ts (5 tests | 1 failed) 79ms
+   ✓ TeamMcpConfigBuilder > prefers the source MCP entry when workspace source is available 7ms
+   × TeamMcpConfigBuilder > merges top-level user MCP with generated agent-teams config 64ms
+     → expected [ 'agent-teams' ] to deeply equal [ 'agent-teams', …(2) ]
+   ✓ TeamMcpConfigBuilder > does not inline project MCP config to preserve native Claude precedence 2ms
+   ✓ TeamMcpConfigBuilder > generated agent-teams server overrides same-named user MCP entry 2ms
+   ✓ TeamMcpConfigBuilder > ignores malformed user MCP file 2ms
+ ❯ test/main/services/team/ChangeExtractorService.test.ts (7 tests | 4 failed) 24ms
+   × ChangeExtractorService > getTaskChanges cache scoping > does not reuse an empty result cached for a different owner 13ms
+     → expected [] to have a length of 1 but got +0
+   ✓ ChangeExtractorService > getTaskChanges cache scoping > serves identical repeated scope requests from cache 2ms
+   ✓ ChangeExtractorService > getTaskChanges cache scoping > distinguishes cache entries by since timestamp 1ms
+   ✓ ChangeExtractorService > getTaskChanges cache scoping > distinguishes cache entries by intervals and status 1ms
+   × ChangeExtractorService > getTaskChanges cache scoping > does not serve summaryOnly results for detailed requests and vice versa 2ms
+     → Target cannot be null or undefined.
+   × ChangeExtractorService > Windows path equivalence in fallback aggregation > merges equivalent paths with different separators and drive-letter casing 2ms
+     → expected [] to have a length of 1 but got +0
+   × ChangeExtractorService > Windows path equivalence in fallback aggregation > merges mixed-case drive letters within a single log file 2ms
+     → expected [] to have a length of 1 but got +0
+ ✓ test/renderer/store/extensionsSlice.test.ts (15 tests) 97ms
+
+ Test Files  3 failed | 4 passed (7)
+      Tests  5 failed | 50 passed (55)
+   Start at  20:04:34
+   Duration  6.89s (transform 1.12s, setup 193ms, collect 2.34s, tests 286ms, environment 3.77s, prepare 5.55s)
+
+OMNIGRIL_EXIT_CODE=1

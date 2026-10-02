@@ -1,0 +1,100 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch tests/integrations/test_cli.py...
+Hunk #3 succeeded at 1179 (offset 155 lines).
+Hunk #4 succeeded at 1198 (offset 155 lines).
+Checking patch tests/integrations/test_integration_catalog.py...
+error: while searching for:
+        finally:
+            os.chdir(old)
+        assert result.exit_code != 0
+        assert "not the currently installed integration" in result.output
+
+    def test_upgrade_no_manifest(self, tmp_path):
+        """Upgrade with missing manifest suggests fresh install."""
+
+error: patch failed: tests/integrations/test_integration_catalog.py:670
+error: tests/integrations/test_integration_catalog.py: patch does not apply
+Checking patch tests/integrations/test_integration_state.py...
+error: tests/integrations/test_integration_state.py: already exists in working directory
+Checking patch tests/integrations/test_integration_subcommand.py...
+error: while searching for:
+            os.chdir(old_cwd)
+        assert result.exit_code == 0
+        assert "already installed" in result.output
+        assert "uninstall" in result.output
+
+    def test_install_different_when_one_exists(self, tmp_path):
+        project = _init_project(tmp_path, "copilot")
+
+error: patch failed: tests/integrations/test_integration_subcommand.py:116
+error: tests/integrations/test_integration_subcommand.py: patch does not apply
+Checking patch tests/integrations/test_registry.py...
+Checking patch tests/test_presets.py...
+patching file tests/integrations/test_cli.py
+Hunk #3 succeeded at 1179 (offset 155 lines).
+Hunk #4 succeeded at 1198 (offset 155 lines).
+patching file tests/integrations/test_integration_catalog.py
+Hunk #1 FAILED at 670.
+1 out of 1 hunk FAILED -- saving rejects to file tests/integrations/test_integration_catalog.py.rej
+The next patch would create the file tests/integrations/test_integration_state.py,
+which already exists!  Assuming -R.
+patching file tests/integrations/test_integration_state.py
+Hunk #1 FAILED at 1.
+Not deleting file tests/integrations/test_integration_state.py as content differs from patch
+1 out of 1 hunk FAILED -- saving rejects to file tests/integrations/test_integration_state.py.rej
+patching file tests/integrations/test_integration_subcommand.py
+Hunk #4 FAILED at 161.
+Hunk #5 FAILED at 172.
+Hunk #6 succeeded at 300 (offset 9 lines).
+Hunk #7 FAILED at 306.
+Hunk #8 succeeded at 336 (offset 9 lines).
+Hunk #9 succeeded at 490 (offset 9 lines).
+Hunk #10 FAILED at 506.
+Hunk #11 succeeded at 724 (offset 11 lines).
+4 out of 11 hunks FAILED -- saving rejects to file tests/integrations/test_integration_subcommand.py.rej
+patching file tests/integrations/test_registry.py
+patching file tests/test_presets.py
+   Building specify-cli @ file:///testbed
+      Built specify-cli @ file:///testbed
+Uninstalled 1 package in 4ms
+Installed 1 package in 3ms
+============================= test session starts ==============================
+platform linux -- Python 3.11.16, pytest-9.1.1, pluggy-1.6.0 -- /testbed/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /testbed
+configfile: pyproject.toml
+plugins: cov-7.1.0
+collecting ... collected 1395 items
+
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_integration_and_ai_mutually_exclusive PASSED [  0%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_unknown_integration_rejected PASSED [  0%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_integration_copilot_creates_files PASSED [  0%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_ai_copilot_auto_promotes PASSED [  0%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_ai_emits_deprecation_warning_with_integration_replacement PASSED [  0%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_ai_generic_warning_suggests_integration_options_equivalent PASSED [  0%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_ai_claude_here_preserves_preexisting_commands PASSED [  0%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_shared_infra_skips_existing_files_without_force PASSED [  0%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_shared_infra_overwrites_existing_files_with_force PASSED [  0%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_shared_infra_skip_warning_displayed PASSED [  0%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_shared_infra_warns_when_manifest_cannot_be_loaded PASSED [  0%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_shared_infra_warns_when_manifest_cannot_be_decoded PASSED [  0%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_shared_infra_refuses_symlinked_script_destination PASSED [  0%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_shared_infra_refuses_symlinked_template_destination PASSED [  1%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_shared_template_refresh_refuses_symlinked_destination PASSED [  1%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_shared_infra_refuses_symlinked_specify_directory_before_mkdir PASSED [  1%]
+tests/integrations/test_cli.py::TestInitIntegrationFlag::test_shared_infra_refuses_symlinked_shared_manifest FAILED [  1%]
+
+=================================== FAILURES ===================================
+_ TestInitIntegrationFlag.test_shared_infra_refuses_symlinked_shared_manifest __
+tests/integrations/test_cli.py:395: in test_shared_infra_refuses_symlinked_shared_manifest
+    with pytest.raises(ValueError, match="symlinked integration manifest"):
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'symlinked integration manifest'
+E     Actual message: 'Refusing to overwrite symlinked shared infrastructure path: .specify/integrations/speckit.manifest.json'
+=========================== short test summary info ============================
+FAILED tests/integrations/test_cli.py::TestInitIntegrationFlag::test_shared_infra_refuses_symlinked_shared_manifest - AssertionError: Regex pattern did not match.
+  Expected regex: 'symlinked integration manifest'
+  Actual message: 'Refusing to overwrite symlinked shared infrastructure path: .specify/integrations/speckit.manifest.json'
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+========================= 1 failed, 16 passed in 0.94s =========================
+OMNIGRIL_EXIT_CODE=1

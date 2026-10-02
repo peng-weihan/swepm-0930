@@ -1,0 +1,46 @@
+{
+  "instance_id": "litexlang__golitex-c_b6b21dc",
+  "overall_quality": "good",
+  "test_scope": "balanced",
+  "confidence": 0.92,
+  "gold_patch_assessment": "The gold patch comprehensively addresses every requirement in the issue: it introduces dedicated AST node types (ImaginaryUnit, RealPart, ImaginaryPart, ComplexAbs), removes C/I/RE/IMG/C_ABS from is_builtin_identifier_name() and builtin_symbol_ref(), adds is_keyword() checks to binding guards, updates all traversal/visitor code (well-definedness, free params, forall coverage, dependency collection, resolution, instantiation, equality), adds native parsing for i/re(...)/img(...)/C_abs(...), updates evaluator rejection, and updates Lean/Python extractors. Documentation and examples are also updated.",
+  "base_vs_gold_expectation": "The base code will definitively fail the test patch. The renamed test native_complex_ast_keywords_do_not_use_builtin_symbol_ids directly asserts that builtin_symbol_ref(name).is_none() and !is_builtin_identifier_name(name) for C/I/RE/IMG/C_ABS, but in the base code these functions return Some and true respectively. The contract test modifications (removing re/img/C_abs function-value declarations, adding re(z)/img(z)/C_abs(z) membership assertions) would also likely fail without the new AST nodes and verification rules. The gold patch makes all tests pass by implementing the required AST node changes and verification logic.",
+  "too_narrow_risks": [
+    "The test patch does not explicitly verify that i/re/img/C_abs parse as dedicated AST node kinds (e.g., ObjKind::ImaginaryUnit) - that unit test is in the gold patch itself, not the test patch, and lives in a different test module not matched by the 'complex_scalars' filter. A solution that removes builtin IDs but routes complex syntax through a different mechanism (e.g., special atoms) could potentially pass.",
+    "No test explicitly verifies the evaluator loop-body guard (the gold patch adds contains_native_complex_syntax() check inside the eval reduction loop), only the top-level eval rejection is tested."
+  ],
+  "too_broad_risks": [],
+  "implementation_coupling": [
+    "The first test checks public API functions (is_keyword, is_builtin_identifier_name, builtin_symbol_ref) which are part of the specification in the issue, not implementation details. This is appropriate coupling.",
+    "The contract test verifies observable verifier behavior (what facts are accepted/rejected), not internal AST representation. This is behavior-level testing."
+  ],
+  "environment_risks": [
+    "Rust/Cargo build is required; the Docker image should have the toolchain but a misconfigured image could cause build failures unrelated to the solution.",
+    "The 3600s verifier timeout is generous for cargo test but the initial cargo build --workspace could be slow on first run without cached artifacts."
+  ],
+  "mismatches": [],
+  "evidence": [
+    {
+      "file": "/testbed/src/symbol/symbol.rs:168-172",
+      "detail": "Base code has C=>48, I=>49, RE=>50, IMG=>51, C_ABS=>52 in builtin_symbol_ref(), which the test patch asserts should return None."
+    },
+    {
+      "file": "/testbed/src/common/keywords.rs:466-470",
+      "detail": "Base code includes C/I/RE/IMG/C_ABS in is_builtin_identifier_name(), which the test patch asserts should return false."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch modifies 2 of 8 tests: renames first test to check keywords-not-builtins, and updates contract test to remove first-class function declarations and add forall membership assertions."
+    },
+    {
+      "file": "/audit_tasks/litexlang__golitex-c_b6b21dc/tests/eval.sh",
+      "detail": "Runs cargo test --no-fail-fast complex_scalars, executing all 8 tests in the complex_scalars module covering keyword reservation, verifier contracts, negative cases, extensionality, LaTeX, Python extractor, and evaluator paths."
+    },
+    {
+      "file": "/testbed/src/main_test/lit_file_runner_tests/runtime_regression_tests/complex_scalars.rs",
+      "detail": "Existing tests (not modified by patch) cover additional requirements: reserved name binding positions, LaTeX notation, Python/evaluator rejection, extensionality, negative cases for real-only properties."
+    }
+  ],
+  "recommended_action": "keep",
+  "summary": "Well-constructed instance with a clear issue specification, a comprehensive gold patch touching ~30 files to refactor complex scalar representation from builtin identifiers to dedicated AST nodes, and balanced test coverage. The test patch reliably distinguishes base from gold through direct API assertions and verifier behavior checks. The 8 tests in the complex_scalars module collectively cover all major requirements: keyword/builtin identity, mathematical verification contracts, negative cases, extensionality, LaTeX output, Python extractor rejection, and evaluator rejection. Minor narrow risk: AST node kind verification lives in the gold patch's own unit test rather than the test patch, so an alternative internal representation could theoretically pass. Overall quality is good."
+}

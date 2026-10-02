@@ -1,0 +1,1 @@
+- [C test build/run environment](test_env_c_build.md) — zstd symlink + git safe.directory workarounds for /testbed C unit tests

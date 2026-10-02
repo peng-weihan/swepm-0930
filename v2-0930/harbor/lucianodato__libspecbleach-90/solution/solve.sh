@@ -1,0 +1,1521 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -2,6 +2,7 @@
+ 
+ [![build](https://github.com/lucianodato/libspecbleach/actions/workflows/build.yml/badge.svg)](https://github.com/lucianodato/libspecbleach/actions/workflows/build.yml)
+ [![codecov](https://codecov.io/gh/lucianodato/libspecbleach/branch/main/graph/badge.svg)](https://codecov.io/gh/lucianodato/libspecbleach)
++[![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/lucianodato/libspecbleach?utm_source=oss&utm_medium=github&utm_campaign=lucianodato%2Flibspecbleach&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
+ [![License: LGPL v2.1](https://img.shields.io/badge/License-LGPL%20v2.1-blue.svg)](https://www.gnu.org/licenses/lgpl-2.1)
+ 
+ C library for audio noise reduction and other spectral effects
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -45,6 +45,23 @@ if (current_arch == 'x86' or current_arch == 'x86_64') and current_os != 'darwin
+         '-fomit-frame-pointer',
+         '-fno-finite-math-only'
+     ])
++
++    if get_option('enable_avx')
++        lib_c_args += cc.get_supported_arguments(['-mavx'])
++    endif
++    if get_option('enable_avx2')
++        lib_c_args += cc.get_supported_arguments(['-mavx2'])
++    endif
++endif
++
++# macOS-specific x86_64 AVX support
++if (current_arch == 'x86' or current_arch == 'x86_64') and current_os == 'darwin'
++    if get_option('enable_avx')
++        lib_c_args += cc.get_supported_arguments(['-mavx'])
++    endif
++    if get_option('enable_avx2')
++        lib_c_args += cc.get_supported_arguments(['-mavx2'])
++    endif
+ endif
+ 
+ # ARM64 optimizations (NEON)
+diff --git a/meson_options.txt b/meson_options.txt
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -5,4 +5,6 @@ option('enable_sanitizers', type : 'boolean', value : false, description : 'Enab
+ option('sanitize_address', type : 'boolean', value : false, description : 'Enable AddressSanitizer')
+ option('sanitize_undefined', type : 'boolean', value : false, description : 'Enable UndefinedBehaviorSanitizer')
+ option('enable_tests', type : 'boolean', value : false, description : 'Enable building tests')
++option('enable_avx', type : 'boolean', value : true, description : 'Enable AVX optimizations if supported')
++option('enable_avx2', type : 'boolean', value : true, description : 'Enable AVX2 optimizations if supported')
+ option('static_deps', type : 'boolean', value : false, description : 'Link dependencies (fftw3, etc) statically')
+\ No newline at end of file
+diff --git a/src/meson.build b/src/meson.build
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -6,11 +6,28 @@ specbleach_sources = [shared_sources, processors_sources]
+ 
+ src_inc = include_directories('.')
+ 
++# Add AVX specific compilation
++has_avx_support = cc.has_argument('-mavx')
++lib_link_whole = []
++
++if has_avx_support and (current_arch == 'x86' or current_arch == 'x86_64')
++  avx_sources = files('shared/denoiser_logic/processing/nlm_filter_avx.c')
++  
++  libspecbleach_avx = static_library('specbleach_avx',
++    avx_sources,
++    c_args: lib_c_args + ['-mavx'],
++    include_directories: [inc, src_inc]
++  )
++  
++  lib_link_whole += libspecbleach_avx
++endif
++
+ # Build of the shared object
+ libspecbleach = library('specbleach',
+   sources: specbleach_sources,
+   c_args: lib_c_args,
+   link_args: lib_link_args,
++  link_whole: lib_link_whole,
+   dependencies: dep,
+   include_directories: [inc, src_inc],
+   version: meson.project_version(),
+diff --git a/src/processors/denoiser/spectral_denoiser.c b/src/processors/denoiser/spectral_denoiser.c
+--- a/src/processors/denoiser/spectral_denoiser.c
++++ b/src/processors/denoiser/spectral_denoiser.c
+@@ -147,8 +147,7 @@ SpectralProcessorHandle spectral_denoiser_initialize(
+     return NULL;
+   }
+ 
+-  self->noise_floor_manager = noise_floor_manager_initialize(
+-      self->fft_size, self->sample_rate, self->hop);
++  self->noise_floor_manager = noise_floor_manager_initialize(self->fft_size);
+ 
+   self->was_learning = false;
+   self->aggressiveness = 0.0f;
+diff --git a/src/processors/denoiser2d/spectral_2d_denoiser.c b/src/processors/denoiser2d/spectral_2d_denoiser.c
+--- a/src/processors/denoiser2d/spectral_2d_denoiser.c
++++ b/src/processors/denoiser2d/spectral_2d_denoiser.c
+@@ -224,8 +224,7 @@ SpectralProcessorHandle spectral_2d_denoiser_initialize(
+     return NULL;
+   }
+ 
+-  self->noise_floor_manager =
+-      noise_floor_manager_initialize(fft_size, sample_rate, self->hop);
++  self->noise_floor_manager = noise_floor_manager_initialize(fft_size);
+ 
+   if (!self->noise_floor_manager) {
+     spectral_2d_denoiser_free(self);
+diff --git a/src/shared/denoiser_logic/core/noise_floor_manager.c b/src/shared/denoiser_logic/core/noise_floor_manager.c
+--- a/src/shared/denoiser_logic/core/noise_floor_manager.c
++++ b/src/shared/denoiser_logic/core/noise_floor_manager.c
+@@ -28,18 +28,21 @@ struct NoiseFloorManager {
+   SpectralWhitening* whitening;
+   float* whitening_weights;
+   uint32_t real_spectrum_size;
++  uint32_t fft_size;
+ };
+ 
+-NoiseFloorManager* noise_floor_manager_initialize(const uint32_t fft_size,
+-                                                  const uint32_t sample_rate,
+-                                                  const uint32_t hop) {
++NoiseFloorManager* noise_floor_manager_initialize(const uint32_t fft_size) {
++  if (fft_size == 0U) {
++    return NULL;
++  }
+   NoiseFloorManager* self =
+       (NoiseFloorManager*)calloc(1U, sizeof(NoiseFloorManager));
+   if (!self) {
+     return NULL;
+   }
+ 
+   self->real_spectrum_size = (fft_size / 2U) + 1U;
++  self->fft_size = fft_size;
+ 
+   self->whitening = spectral_whitening_initialize(fft_size);
+   if (!self->whitening) {
+@@ -82,6 +85,12 @@ void noise_floor_manager_apply(NoiseFloorManager* self,
+     return;
+   }
+ 
++  if (real_spectrum_size != self->real_spectrum_size ||
++      fft_size != self->fft_size) {
++    real_spectrum_size = self->real_spectrum_size;
++    fft_size = self->fft_size;
++  }
++
+   if (reduction_amount >= 0.999f && tonal_reduction_amount >= 0.999f) {
+     // Transparency Guard: If both reduction paths are at 0dB (1.0f),
+     // we force unity gain to ensure BIT TRANSPARENCY and skip processing.
+diff --git a/src/shared/denoiser_logic/core/noise_floor_manager.h b/src/shared/denoiser_logic/core/noise_floor_manager.h
+--- a/src/shared/denoiser_logic/core/noise_floor_manager.h
++++ b/src/shared/denoiser_logic/core/noise_floor_manager.h
+@@ -18,17 +18,15 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#ifndef NO_FLOOR_MANAGER_H
+-#define NO_FLOOR_MANAGER_H
++#ifndef NOISE_FLOOR_MANAGER_H
++#define NOISE_FLOOR_MANAGER_H
+ 
+ #include <stdbool.h>
+ #include <stdint.h>
+ 
+ typedef struct NoiseFloorManager NoiseFloorManager;
+ 
+-NoiseFloorManager* noise_floor_manager_initialize(uint32_t fft_size,
+-                                                  uint32_t sample_rate,
+-                                                  uint32_t hop);
++NoiseFloorManager* noise_floor_manager_initialize(uint32_t fft_size);
+ 
+ void noise_floor_manager_free(NoiseFloorManager* self);
+ 
+diff --git a/src/shared/denoiser_logic/estimators/brandt_noise_estimator.c b/src/shared/denoiser_logic/estimators/brandt_noise_estimator.c
+--- a/src/shared/denoiser_logic/estimators/brandt_noise_estimator.c
++++ b/src/shared/denoiser_logic/estimators/brandt_noise_estimator.c
+@@ -139,7 +139,7 @@ static float calculate_ad_norm(const float* sorted, uint32_t q, float mu,
+   float mu_inv = 1.0f / mu;
+   float exp_b_mu = expf(-b * mu_inv);
+   float denom = 1.0f - exp_b_mu;
+-  if (fabsf(denom) < 1e-12f) {
++  if (fabsf(denom) < SPECTRAL_EPSILON) {
+     return 1.0f;
+   }
+ 
+diff --git a/src/shared/denoiser_logic/processing/nlm_filter.c b/src/shared/denoiser_logic/processing/nlm_filter.c
+--- a/src/shared/denoiser_logic/processing/nlm_filter.c
++++ b/src/shared/denoiser_logic/processing/nlm_filter.c
+@@ -24,61 +24,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ #include <string.h>
+ 
+ #include "shared/configurations.h"
+-#include "shared/denoiser_logic/processing/nlm_filter.h"
+-
+-struct NlmFilter {
+-  NlmFilterConfig config;
+-
+-  // Ring buffer for SNR frames
+-  float** frame_buffer;   // [time_buffer_size][spectrum_size]
+-  uint32_t buffer_head;   // Next write position
+-  uint32_t frames_filled; // Number of frames currently in buffer
+-
+-  // Target frame index (allows look-ahead)
+-  uint32_t target_frame_offset;
+-
+-  // Precomputed values
+-  float h_squared;
+-  float inv_h_squared; // Precomputed 1/h^2 for multiplication
+-  float distance_threshold_actual;
+-
+-  // Scratch buffer for processing (avoid realloc)
+-  float* weight_accum;
+-};
+-
+-// Helper: clamp index to valid range
+-static inline uint32_t clamp_index(int32_t idx, uint32_t max_val) {
+-  if (idx < 0) {
+-    return 0;
+-  }
+-  if ((uint32_t)idx >= max_val) {
+-    return max_val - 1;
+-  }
+-  return (uint32_t)idx;
+-}
+-
+-// Helper: get frame from ring buffer (handles wrap-around)
+-static inline float* get_frame(NlmFilter* self, int32_t relative_offset) {
+-  int32_t idx = (int32_t)self->buffer_head -
+-                (int32_t)self->config.search_range_time_future - 1 +
+-                relative_offset;
+-
+-  // Wrap around in ring buffer
+-  while (idx < 0) {
+-    idx += (int32_t)self->config.time_buffer_size;
+-  }
+-  idx %= (int32_t)self->config.time_buffer_size;
+-
+-  return self->frame_buffer[idx];
+-}
+-
+-#ifdef __ARM_NEON
+-#include <arm_neon.h>
+-#else
+-#ifdef __SSE__
+-#include <xmmintrin.h>
+-#endif
+-#endif
++#include "shared/denoiser_logic/processing/nlm_filter_internal.h"
++#include "shared/utils/simd_utils.h"
+ 
+ // Helper: compute squared Euclidean distance between two patches
+ // Optimized with SIMD for common patch sizes (4, 8)
+@@ -120,90 +67,15 @@ static float compute_patch_distance(NlmFilter* self, int32_t target_time,
+ 
+     if (safe_bounds && patch_size == 8) {
+       // Fast Path: Direct pointer access + SIMD for 8x8
+-      float* ptr_a = target_frame + (target_freq - half_patch);
+-      float* ptr_b = cand_frame + (candidate_freq - half_patch);
+-
+-#ifdef __ARM_NEON
+-      float32x4_t a1 = vld1q_f32(ptr_a);
+-      float32x4_t a2 = vld1q_f32(ptr_a + 4);
+-      float32x4_t b1 = vld1q_f32(ptr_b);
+-      float32x4_t b2 = vld1q_f32(ptr_b + 4);
+-
+-      float32x4_t d1 = vsubq_f32(a1, b1);
+-      float32x4_t d2 = vsubq_f32(a2, b2);
+-
+-      d1 = vmulq_f32(d1, d1);
+-      d2 = vmulq_f32(d2, d2);
+-
+-      float32x4_t sum = vaddq_f32(d1, d2);
+-      distance += vgetq_lane_f32(sum, 0) + vgetq_lane_f32(sum, 1) +
+-                  vgetq_lane_f32(sum, 2) + vgetq_lane_f32(sum, 3);
+-
+-#else
+-#ifdef __SSE__
+-      __m128 a1 = _mm_loadu_ps(ptr_a);
+-      __m128 a2 = _mm_loadu_ps(ptr_a + 4);
+-      __m128 b1 = _mm_loadu_ps(ptr_b);
+-      __m128 b2 = _mm_loadu_ps(ptr_b + 4);
+-
+-      __m128 d1 = _mm_sub_ps(a1, b1);
+-      __m128 d2 = _mm_sub_ps(a2, b2);
+-
+-      d1 = _mm_mul_ps(d1, d1);
+-      d2 = _mm_mul_ps(d2, d2);
+-
+-      __m128 sum = _mm_add_ps(d1, d2);
+-      // Horizontal add
+-      __m128 shuf = _mm_shuffle_ps(sum, sum, _MM_SHUFFLE(2, 3, 0, 1));
+-      __m128 sums = _mm_add_ps(sum, shuf);
+-      shuf = _mm_movehl_ps(shuf, sums);
+-      sums = _mm_add_ss(sums, shuf);
+-      float f;
+-      _mm_store_ss(&f, sums);
+-      distance += f;
+-
+-#else
+-      // Scalar Fallback for 8x8 safely
+-      for (int i = 0; i < 8; i++) {
+-        float diff = ptr_a[i] - ptr_b[i];
+-        distance += diff * diff;
+-      }
+-#endif
+-#endif
++      distance +=
++          sb_vec8_ssd(sb_load8(target_frame + (target_freq - half_patch)),
++                      sb_load8(cand_frame + (candidate_freq - half_patch)));
+ 
+     } else if (safe_bounds && patch_size == 4) {
+       // Fast Path for 4x4
+-      float* ptr_a = target_frame + (target_freq - half_patch);
+-      float* ptr_b = cand_frame + (candidate_freq - half_patch);
+-
+-#ifdef __ARM_NEON
+-      float32x4_t a = vld1q_f32(ptr_a);
+-      float32x4_t b = vld1q_f32(ptr_b);
+-      float32x4_t d = vsubq_f32(a, b);
+-      d = vmulq_f32(d, d);
+-      distance += vgetq_lane_f32(d, 0) + vgetq_lane_f32(d, 1) +
+-                  vgetq_lane_f32(d, 2) + vgetq_lane_f32(d, 3);
+-#else
+-#ifdef __SSE__
+-      __m128 a = _mm_loadu_ps(ptr_a);
+-      __m128 b = _mm_loadu_ps(ptr_b);
+-      __m128 d = _mm_sub_ps(a, b);
+-      d = _mm_mul_ps(d, d);
+-      // H-add
+-      __m128 shuf = _mm_shuffle_ps(d, d, _MM_SHUFFLE(2, 3, 0, 1));
+-      __m128 sums = _mm_add_ps(d, shuf);
+-      shuf = _mm_movehl_ps(shuf, sums);
+-      sums = _mm_add_ss(sums, shuf);
+-      float f;
+-      _mm_store_ss(&f, sums);
+-      distance += f;
+-#else
+-      for (int i = 0; i < 4; i++) {
+-        float diff = ptr_a[i] - ptr_b[i];
+-        distance += diff * diff;
+-      }
+-#endif
+-#endif
++      distance +=
++          sb_vec4_ssd(sb_load4(target_frame + (target_freq - half_patch)),
++                      sb_load4(cand_frame + (candidate_freq - half_patch)));
+ 
+     } else {
+       // Slow safe path with clamping
+@@ -303,6 +175,18 @@ NlmFilter* nlm_filter_initialize(NlmFilterConfig config) {
+     return NULL;
+   }
+ 
++  // Determine runtime processor
++  self->process_fn = nlm_filter_process_generic;
++
++#if defined(__x86_64__) || defined(__i386__)
++  // If compiled with AVX dynamically built, check at runtime
++  if (__builtin_cpu_supports("avx")) {
++    // Only map if AVX architecture isn't missing globally
++    // We statically declare this so if nlm_filter_avx is built, it's used
++    self->process_fn = nlm_filter_process_avx;
++  }
++#endif
++
+   return self;
+ }
+ 
+@@ -378,6 +262,22 @@ bool nlm_filter_process(NlmFilter* filter, float* smoothed_snr) {
+     return false;
+   }
+ 
++  // Dispatch to the correct implementation
++  return filter->process_fn(filter, smoothed_snr);
++}
++
++bool nlm_filter_process_generic(NlmFilter* filter, float* smoothed_snr) {
++  if (!filter || !smoothed_snr) {
++    return false;
++  }
++
++  // Need full buffer for processing
++  if (!nlm_filter_is_ready(filter)) {
++    return false;
++  }
++
++  sb_simd_state_t old_simd_state = sb_simd_enable_ftz_daz();
++
+   const uint32_t spectrum_size = filter->config.spectrum_size;
+   const uint32_t paste_size = filter->config.paste_block_size;
+   const uint32_t search_freq = filter->config.search_range_freq;
+@@ -407,6 +307,20 @@ bool nlm_filter_process(NlmFilter* filter, float* smoothed_snr) {
+       block_center = spectrum_size - 1;
+     }
+ 
++    uint32_t current_paste_limit = paste_size;
++    if (block_start + paste_size > spectrum_size) {
++      current_paste_limit = spectrum_size - block_start;
++    }
++
++    // Silence optimization: bypass search explosion if practically zero
++    float target_snr_sum = 0.0F;
++    for (uint32_t i = 0; i < current_paste_limit; i++) {
++      target_snr_sum += target_frame[block_start + i];
++    }
++    if (target_snr_sum < 1e-6F) {
++      continue;
++    }
++
+     float current_inv_h2 = filter->inv_h_squared;
+     float current_dist_threshold = filter->distance_threshold_actual;
+ 
+@@ -415,45 +329,26 @@ bool nlm_filter_process(NlmFilter* filter, float* smoothed_snr) {
+     // to avoid reloading it ~350 times in the inner loop.
+ 
+     // Storage for pre-loaded target patch (flattened 8x8)
+-#ifdef __ARM_NEON
+-    float32x4_t target_vecs[16]; // 16 vectors * 4 floats = 64 elements (8x8)
+-#else
+-#ifdef __SSE__
+-    __m128 target_vecs[16];
+-#else
+-    // No pre-load buffer needed for scalar fallback as we use
+-    // compute_patch_distance
+-#endif
+-#endif
++    sb_vec8_t target_vecs[8];
+ 
+     // Pre-load Target Patch
+     // Use nlm_filter 8x8 constraints directly for max speed
+     const uint32_t half_patch_size =
+         4; // Hardcoded for 8x8 optimized path checks
+ 
++    bool safe_block = (block_center >= half_patch_size) &&
++                      (block_center + half_patch_size <= spectrum_size);
++
+     if (filter->config.patch_size == 8) {
+       // Unroll loading for 8x8
+       for (int r = 0; r < 8; r++) {
+-        int32_t t_offset = (int32_t)r - (int32_t)half_patch_size;
+-        float* row_ptr =
+-            get_frame(filter, t_offset) + (block_center - half_patch_size);
+-
+-        bool safe_load =
+-            (block_center >= 4) && (block_center + 4 <= spectrum_size);
+-
+-        if (safe_load) {
+-#ifdef __ARM_NEON
+-          target_vecs[((size_t)r * 2)] = vld1q_f32(row_ptr);
+-          target_vecs[((size_t)r * 2) + 1] = vld1q_f32(row_ptr + 4);
+-#else
+-#ifdef __SSE__
+-          target_vecs[((size_t)r * 2)] = _mm_loadu_ps(row_ptr);
+-          target_vecs[((size_t)r * 2) + 1] = _mm_loadu_ps(row_ptr + 4);
+-#else
+-          // Scalar fallback: No pre-load needed, we read directly in
+-          // compute_patch_distance
+-#endif
+-#endif
++        if (safe_block) {
++          int32_t t_offset = (int32_t)r - (int32_t)half_patch_size;
++          float* row_ptr =
++              get_frame(filter, t_offset) + (block_center - half_patch_size);
++          target_vecs[r] = sb_load8(row_ptr);
++        } else {
++          target_vecs[r] = sb_set8(0.0f);
+         }
+       }
+     }
+@@ -469,67 +364,18 @@ bool nlm_filter_process(NlmFilter* filter, float* smoothed_snr) {
+         float distance = 0.0F;
+ 
+         // --- INLINED DISTANCE CALCULATION WITH REGISTER BLOCKING ---
+-        bool safe_bounds =
+-            (block_center >= 4) && (block_center + 4 <= spectrum_size) &&
+-            (cand_center >= 4) && (cand_center + 4 <= spectrum_size);
++        bool safe_bounds = safe_block && (cand_center >= half_patch_size) &&
++                           (cand_center + half_patch_size <= spectrum_size);
+ 
+         if (filter->config.patch_size == 8 && safe_bounds) {
+-          // 8x8 Optimized Path
+-#ifdef __ARM_NEON
+-          float32x4_t sum = vdupq_n_f32(0.0f);
+-
++          // Gather candidate row pointers
++          float* cand_row_ptrs[8];
+           for (int r = 0; r < 8; r++) {
+-            int32_t t_cand = dt + r - 4;
+-            float* cand_ptr = get_frame(filter, t_cand) + (cand_center - 4);
+-
+-            float32x4_t b1 = vld1q_f32(cand_ptr);
+-            float32x4_t b2 = vld1q_f32(cand_ptr + 4);
+-
+-            float32x4_t d1 = vsubq_f32(target_vecs[((size_t)r * 2)], b1);
+-            float32x4_t d2 = vsubq_f32(target_vecs[((size_t)r * 2) + 1], b2);
+-
+-            d1 = vmulq_f32(d1, d1);
+-            d2 = vmulq_f32(d2, d2);
+-
+-            sum = vaddq_f32(sum, d1);
+-            sum = vaddq_f32(sum, d2);
++            cand_row_ptrs[r] =
++                get_frame(filter, dt + r - 4) + (cand_center - 4);
+           }
+ 
+-          distance = vgetq_lane_f32(sum, 0) + vgetq_lane_f32(sum, 1) +
+-                     vgetq_lane_f32(sum, 2) + vgetq_lane_f32(sum, 3);
+-#else
+-#ifdef __SSE__
+-          __m128 sum = _mm_setzero_ps();
+-          for (int r = 0; r < 8; r++) {
+-            int32_t t_cand = dt + r - 4;
+-            float* cand_ptr = get_frame(filter, t_cand) + (cand_center - 4);
+-
+-            __m128 b1 = _mm_loadu_ps(cand_ptr);
+-            __m128 b2 = _mm_loadu_ps(cand_ptr + 4);
+-
+-            __m128 d1 = _mm_sub_ps(target_vecs[((size_t)r * 2)], b1);
+-            __m128 d2 = _mm_sub_ps(target_vecs[((size_t)r * 2) + 1], b2);
+-
+-            d1 = _mm_mul_ps(d1, d1);
+-            d2 = _mm_mul_ps(d2, d2);
+-
+-            sum = _mm_add_ps(sum, d1);
+-            sum = _mm_add_ps(sum, d2);
+-          }
+-          // Horizontal add
+-          __m128 shuf = _mm_shuffle_ps(sum, sum, _MM_SHUFFLE(2, 3, 0, 1));
+-          __m128 sums = _mm_add_ps(sum, shuf);
+-          shuf = _mm_movehl_ps(shuf, sums);
+-          sums = _mm_add_ss(sums, shuf);
+-          float f;
+-          _mm_store_ss(&f, sums);
+-          distance = f;
+-#else
+-          // Fallback if no SIMD defined but 8x8 requested
+-          distance =
+-              compute_patch_distance(filter, 0, block_center, dt, cand_center);
+-#endif
+-#endif
++          distance = sb_vec8_patch_ssd(target_vecs, cand_row_ptrs);
+         } else {
+           // Fallback for boundaries or non-8x8
+           distance =
+@@ -551,8 +397,7 @@ bool nlm_filter_process(NlmFilter* filter, float* smoothed_snr) {
+         float* cand_frame = get_frame(filter, dt);
+ 
+         // Apply weight to all bins in the paste block
+-        for (uint32_t i = 0;
+-             i < paste_size && (block_start + i) < spectrum_size; i++) {
++        for (uint32_t i = 0; i < current_paste_limit; i++) {
+           uint32_t target_bin = block_start + i;
+           uint32_t cand_bin =
+               clamp_index((int32_t)target_bin + df, spectrum_size);
+@@ -574,6 +419,8 @@ bool nlm_filter_process(NlmFilter* filter, float* smoothed_snr) {
+     }
+   }
+ 
++  sb_simd_restore_state(old_simd_state);
++
+   return true;
+ }
+ 
+diff --git a/src/shared/denoiser_logic/processing/nlm_filter_avx.c b/src/shared/denoiser_logic/processing/nlm_filter_avx.c
+new file mode 100644
+--- /dev/null
++++ b/src/shared/denoiser_logic/processing/nlm_filter_avx.c
+@@ -0,0 +1,206 @@
++/*
++libspecbleach - A spectral processing library
++
++Copyright 2022 Luciano Dato <lucianodato@gmail.com>
++
++This library is free software; you can redistribute it and/or
++modify it under the terms of the GNU Lesser General Public
++License as published by the Free Software Foundation; either
++version 2.1 of the License, or (at your option) any later version.
++
++This library is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++Lesser General Public License for more details.
++
++You should have received a copy of the GNU Lesser General Public
++License along with this library; if not, write to the Free Software
++Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
++*/
++
++// Compile this file only when AVX is enabled globally, or when dynamic dispatch
++// compilation flags enable AVX specifically for this translation unit.
++
++#include <float.h>
++#include <math.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "shared/configurations.h"
++#include "shared/denoiser_logic/processing/nlm_filter_internal.h"
++#include "shared/utils/simd_utils.h"
++
++static float compute_patch_distance_avx(NlmFilter* self, int32_t target_time,
++                                        uint32_t target_freq,
++                                        int32_t candidate_time,
++                                        uint32_t candidate_freq) {
++  float distance = 0.0F;
++  const uint32_t patch_size = self->config.patch_size;
++  const uint32_t half_patch = patch_size / 2;
++  const uint32_t spectrum_size = self->config.spectrum_size;
++
++  bool safe_bounds =
++      (target_freq >= half_patch) &&
++      (target_freq + patch_size - half_patch <= spectrum_size) &&
++      (candidate_freq >= half_patch) &&
++      (candidate_freq + patch_size - half_patch <= spectrum_size);
++
++  for (uint32_t dt = 0; dt < patch_size; dt++) {
++    int32_t t_target = target_time + (int32_t)dt - (int32_t)half_patch;
++    int32_t t_cand = candidate_time + (int32_t)dt - (int32_t)half_patch;
++
++    float* target_frame = get_frame(self, t_target);
++    float* cand_frame = get_frame(self, t_cand);
++
++    if (safe_bounds && patch_size == 8) {
++      distance +=
++          sb_vec8_ssd(sb_load8(target_frame + (target_freq - half_patch)),
++                      sb_load8(cand_frame + (candidate_freq - half_patch)));
++
++    } else if (safe_bounds && patch_size == 4) {
++      distance +=
++          sb_vec4_ssd(sb_load4(target_frame + (target_freq - half_patch)),
++                      sb_load4(cand_frame + (candidate_freq - half_patch)));
++
++    } else {
++      for (uint32_t df = 0; df < patch_size; df++) {
++        uint32_t f_target = clamp_index(
++            (int32_t)target_freq + (int32_t)df - (int32_t)half_patch,
++            spectrum_size);
++        uint32_t f_cand = clamp_index(
++            (int32_t)candidate_freq + (int32_t)df - (int32_t)half_patch,
++            spectrum_size);
++
++        float diff = target_frame[f_target] - cand_frame[f_cand];
++        distance += diff * diff;
++      }
++    }
++  }
++
++  return distance;
++}
++
++bool nlm_filter_process_avx(NlmFilter* filter, float* smoothed_snr) {
++  sb_simd_state_t old_simd_state = sb_simd_enable_ftz_daz();
++
++  const uint32_t spectrum_size = filter->config.spectrum_size;
++  const uint32_t paste_size = filter->config.paste_block_size;
++  const uint32_t search_freq = filter->config.search_range_freq;
++  const int32_t search_time_past =
++      (int32_t)filter->config.search_range_time_past;
++  const int32_t search_time_future =
++      (int32_t)filter->config.search_range_time_future;
++
++  float* target_frame = get_frame(filter, 0);
++
++  memset(smoothed_snr, 0, spectrum_size * sizeof(float));
++
++  float* weight_sum = filter->weight_accum;
++  memset(weight_sum, 0, spectrum_size * sizeof(float));
++
++  for (uint32_t block_start = 0; block_start < spectrum_size;
++       block_start += paste_size) {
++
++    uint32_t block_center = block_start + (paste_size / 2);
++    if (block_center >= spectrum_size) {
++      block_center = spectrum_size - 1;
++    }
++
++    uint32_t current_paste_limit = paste_size;
++    if (block_start + paste_size > spectrum_size) {
++      current_paste_limit = spectrum_size - block_start;
++    }
++
++    // Silence optimization: bypass search explosion if practically zero
++    float target_snr_sum = 0.0F;
++    for (uint32_t i = 0; i < current_paste_limit; i++) {
++      target_snr_sum += target_frame[block_start + i];
++    }
++    if (target_snr_sum < 1e-6F) {
++      continue;
++    }
++
++    float current_inv_h2 = filter->inv_h_squared;
++    float current_dist_threshold = filter->distance_threshold_actual;
++
++    sb_vec8_t target_vecs[8];
++
++    const uint32_t half_patch_size =
++        4; // Hardcoded for 8x8 optimized path checks
++
++    bool safe_block = (block_center >= half_patch_size) &&
++                      (block_center + half_patch_size <= spectrum_size);
++
++    if (filter->config.patch_size == 8) {
++      for (int r = 0; r < 8; r++) {
++        if (safe_block) {
++          int32_t t_offset = (int32_t)r - (int32_t)half_patch_size;
++          float* row_ptr =
++              get_frame(filter, t_offset) + (block_center - half_patch_size);
++          target_vecs[r] = sb_load8(row_ptr);
++        } else {
++          target_vecs[r] = sb_set8(0.0f);
++        }
++      }
++    }
++
++    for (int32_t dt = -search_time_past; dt <= search_time_future; dt++) {
++      for (int32_t df = -(int32_t)search_freq; df <= (int32_t)search_freq;
++           df++) {
++
++        uint32_t cand_center =
++            clamp_index((int32_t)block_center + df, spectrum_size);
++
++        float distance = 0.0F;
++
++        bool safe_bounds = safe_block && (cand_center >= half_patch_size) &&
++                           (cand_center + half_patch_size <= spectrum_size);
++
++        if (filter->config.patch_size == 8 && safe_bounds) {
++          float* cand_row_ptrs[8];
++          for (int r = 0; r < 8; r++) {
++            cand_row_ptrs[r] =
++                get_frame(filter, dt + r - 4) + (cand_center - 4);
++          }
++
++          distance = sb_vec8_patch_ssd(target_vecs, cand_row_ptrs);
++        } else {
++          distance = compute_patch_distance_avx(filter, 0, block_center, dt,
++                                                cand_center);
++        }
++
++        if (distance > current_dist_threshold) {
++          continue;
++        }
++
++        float weight = expf(-distance * current_inv_h2);
++        if (weight < NLM_MIN_WEIGHT) {
++          continue;
++        }
++
++        float* cand_frame = get_frame(filter, dt);
++
++        for (uint32_t i = 0; i < current_paste_limit; i++) {
++          uint32_t target_bin = block_start + i;
++          uint32_t cand_bin =
++              clamp_index((int32_t)target_bin + df, spectrum_size);
++
++          smoothed_snr[target_bin] += weight * cand_frame[cand_bin];
++          weight_sum[target_bin] += weight;
++        }
++      }
++    }
++  }
++
++  for (uint32_t k = 0; k < spectrum_size; k++) {
++    if (weight_sum[k] > NLM_MIN_WEIGHT) {
++      smoothed_snr[k] /= weight_sum[k];
++    } else {
++      smoothed_snr[k] = target_frame[k];
++    }
++  }
++
++  sb_simd_restore_state(old_simd_state);
++
++  return true;
++}
+diff --git a/src/shared/denoiser_logic/processing/nlm_filter_internal.h b/src/shared/denoiser_logic/processing/nlm_filter_internal.h
+new file mode 100644
+--- /dev/null
++++ b/src/shared/denoiser_logic/processing/nlm_filter_internal.h
+@@ -0,0 +1,86 @@
++/*
++libspecbleach - A spectral processing library
++
++Copyright 2022 Luciano Dato <lucianodato@gmail.com>
++
++This library is free software; you can redistribute it and/or
++modify it under the terms of the GNU Lesser General Public
++License as published by the Free Software Foundation; either
++version 2.1 of the License, or (at your option) any later version.
++
++This library is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++Lesser General Public License for more details.
++
++You should have received a copy of the GNU Lesser General Public
++License along with this library; if not, write to the Free Software
++Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
++*/
++
++#ifndef NLM_FILTER_INTERNAL_H
++#define NLM_FILTER_INTERNAL_H
++
++#include "shared/denoiser_logic/processing/nlm_filter.h"
++#include <stdint.h>
++
++typedef bool (*nlm_process_impl_fn)(NlmFilter* filter, float* smoothed_snr);
++
++struct NlmFilter {
++  NlmFilterConfig config;
++
++  // Ring buffer for SNR frames
++  float** frame_buffer;   // [time_buffer_size][spectrum_size]
++  uint32_t buffer_head;   // Next write position
++  uint32_t frames_filled; // Number of frames currently in buffer
++
++  // Target frame index (allows look-ahead)
++  uint32_t target_frame_offset;
++
++  // Precomputed values
++  float h_squared;
++  float inv_h_squared; // Precomputed 1/h^2 for multiplication
++  float distance_threshold_actual;
++
++  // Scratch buffer for processing (avoid realloc)
++  float* weight_accum;
++
++  // Function pointer for runtime architecture dispatch
++  nlm_process_impl_fn process_fn;
++};
++
++// Helper: clamp index to valid range
++static inline __attribute__((unused)) uint32_t clamp_index(int32_t idx,
++                                                           uint32_t max_val) {
++  if (idx < 0) {
++    return 0;
++  }
++  if ((uint32_t)idx >= max_val) {
++    return max_val - 1;
++  }
++  return (uint32_t)idx;
++}
++
++// Helper: get frame from ring buffer (handles wrap-around)
++static inline __attribute__((unused)) float* get_frame(
++    NlmFilter* self, int32_t relative_offset) {
++  int32_t idx = (int32_t)self->buffer_head -
++                (int32_t)self->config.search_range_time_future - 1 +
++                relative_offset;
++
++  // Wrap around in ring buffer
++  while (idx < 0) {
++    idx += (int32_t)self->config.time_buffer_size;
++  }
++  idx %= (int32_t)self->config.time_buffer_size;
++
++  return self->frame_buffer[idx];
++}
++
++// Generic implementation (SSE/NEON/Scalar)
++bool nlm_filter_process_generic(NlmFilter* filter, float* smoothed_snr);
++
++// AVX implementation
++bool nlm_filter_process_avx(NlmFilter* filter, float* smoothed_snr);
++
++#endif /* NLM_FILTER_INTERNAL_H */
+diff --git a/src/shared/utils/simd_utils.h b/src/shared/utils/simd_utils.h
+new file mode 100644
+--- /dev/null
++++ b/src/shared/utils/simd_utils.h
+@@ -0,0 +1,646 @@
++/*
++libspecbleach - A spectral processing library
++
++Copyright 2024 Luciano Dato <lucianodato@gmail.com>
++
++This library is free software; you can redistribute it and/or
++modify it under the terms of the GNU Lesser General Public
++License as published by the Free Software Foundation; either
++version 2.1 of the License, or (at your option) any later version.
++
++This library is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++Lesser General Public License for more details.
++
++You should have received a copy of the GNU Lesser General Public
++License along with this library; if not, write to the Free Software
++Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
++*/
++
++#ifndef SHARED_UTILS_SIMD_UTILS_H
++#define SHARED_UTILS_SIMD_UTILS_H
++
++#include <stdint.h>
++#include <string.h>
++
++#ifdef __ARM_NEON
++#include <arm_neon.h>
++#elif defined(__SSE__)
++#include <xmmintrin.h>
++#ifdef __AVX__
++#include <immintrin.h>
++#endif
++#ifdef __SSE4_1__
++#include <smmintrin.h>
++#endif
++#endif
++
++#ifdef __GNUC__
++#define SB_SIMD_INLINE static inline __attribute__((unused))
++#else
++#define SB_SIMD_INLINE static inline
++#endif
++
++/* ------------------------------------------------------------------------- */
++/* DENORMAL HANDLING (FTZ/DAZ)                                               */
++/* ------------------------------------------------------------------------- */
++
++#if defined(__ARM_NEON) && defined(__aarch64__)
++typedef uint64_t sb_simd_state_t;
++#else
++typedef uint32_t sb_simd_state_t;
++#endif
++
++/**
++ * Enables "Flush-to-Zero" and "Denormals-are-Zero" modes.
++ * returns the previous state to be restored later.
++ */
++
++#ifdef __SSE__
++#define SB_SIMD_MXCSR_FTZ (1U << 15)
++#define SB_SIMD_MXCSR_DAZ (1U << 6)
++#elif defined(__ARM_NEON) && defined(__aarch64__)
++#define SB_SIMD_FPCR_FZ (1U << 24)
++#endif
++
++SB_SIMD_INLINE sb_simd_state_t sb_simd_enable_ftz_daz(void) {
++  sb_simd_state_t old_state = 0;
++#ifdef __SSE__
++  old_state = _mm_getcsr();
++  _mm_setcsr(old_state | SB_SIMD_MXCSR_FTZ |
++             SB_SIMD_MXCSR_DAZ); // MXCSR: bits 15 (FTZ) and 6 (DAZ)
++#elif defined(__ARM_NEON) && defined(__aarch64__)
++  // On ARM64, we manipulate the FPCR (Floating-point Control Register)
++  // Bit 24 is FZ (Flush-to-zero)
++  __asm__ __volatile__("mrs %0, fpcr" : "=r"(old_state));
++  sb_simd_state_t new_state = old_state | SB_SIMD_FPCR_FZ;
++  __asm__ __volatile__("msr fpcr, %0" : : "r"(new_state));
++#endif
++  return old_state;
++}
++
++/**
++ * Restores a previously saved SIMD state.
++ */
++SB_SIMD_INLINE void sb_simd_restore_state(sb_simd_state_t state) {
++#ifdef __SSE__
++  _mm_setcsr(state);
++#elif defined(__ARM_NEON) && defined(__aarch64__)
++  __asm__ __volatile__("msr fpcr, %0" : : "r"(state));
++#else
++  (void)state;
++#endif
++}
++
++/* ------------------------------------------------------------------------- */
++/* 8-WIDE VECTOR ABSTRACTION (Ideal for 8x8 patches)                         */
++/* ------------------------------------------------------------------------- */
++
++#ifdef __AVX__
++typedef __m256 sb_vec8_t;
++#elif defined(__SSE__)
++typedef struct {
++  __m128 v1, v2;
++} sb_vec8_t;
++#elif defined(__ARM_NEON)
++typedef struct {
++  float32x4_t v1, v2;
++} sb_vec8_t;
++#else
++typedef struct {
++  float v[8];
++} sb_vec8_t;
++#endif
++
++/**
++ * Loads 8 unaligned floats into an 8-wide vector.
++ */
++SB_SIMD_INLINE sb_vec8_t sb_load8(const float* p) {
++#ifdef __AVX__
++  return _mm256_loadu_ps(p);
++#elif defined(__SSE__)
++  sb_vec8_t r;
++  r.v1 = _mm_loadu_ps(p);
++  r.v2 = _mm_loadu_ps(p + 4);
++  return r;
++#elif defined(__ARM_NEON)
++  sb_vec8_t r;
++  r.v1 = vld1q_f32(p);
++  r.v2 = vld1q_f32(p + 4);
++  return r;
++#else
++  sb_vec8_t r;
++  memcpy(r.v, p, 8 * sizeof(float));
++  return r;
++#endif
++}
++
++/**
++ * Computes Sum of Squared Differences (SSD) between two 8-wide vectors.
++ */
++SB_SIMD_INLINE float sb_vec8_ssd(sb_vec8_t a, sb_vec8_t b) {
++#ifdef __AVX__
++  __m256 d = _mm256_sub_ps(a, b);
++  d = _mm256_mul_ps(d, d);
++
++  // Horizontal Sum
++  __m128 low = _mm256_castps256_ps128(d);
++  __m128 high = _mm256_extractf128_ps(d, 1);
++  __m128 sum128 = _mm_add_ps(low, high);
++  __m128 shuf = _mm_shuffle_ps(sum128, sum128, _MM_SHUFFLE(2, 3, 0, 1));
++  __m128 sums = _mm_add_ps(sum128, shuf);
++  shuf = _mm_movehl_ps(shuf, sums);
++  sums = _mm_add_ss(sums, shuf);
++  float f;
++  _mm_store_ss(&f, sums);
++  return f;
++#elif defined(__SSE__)
++  __m128 d1 = _mm_sub_ps(a.v1, b.v1);
++  __m128 d2 = _mm_sub_ps(a.v2, b.v2);
++  d1 = _mm_mul_ps(d1, d1);
++  d2 = _mm_mul_ps(d2, d2);
++  __m128 sum = _mm_add_ps(d1, d2);
++
++  // Horizontal Sum
++  __m128 shuf = _mm_shuffle_ps(sum, sum, _MM_SHUFFLE(2, 3, 0, 1));
++  __m128 sums = _mm_add_ps(sum, shuf);
++  shuf = _mm_movehl_ps(shuf, sums);
++  sums = _mm_add_ss(sums, shuf);
++  float f;
++  _mm_store_ss(&f, sums);
++  return f;
++#elif defined(__ARM_NEON)
++  float32x4_t d1 = vsubq_f32(a.v1, b.v1);
++  float32x4_t d2 = vsubq_f32(a.v2, b.v2);
++  d1 = vmulq_f32(d1, d1);
++  d2 = vmulq_f32(d2, d2);
++  float32x4_t sum = vaddq_f32(d1, d2);
++  return vgetq_lane_f32(sum, 0) + vgetq_lane_f32(sum, 1) +
++         vgetq_lane_f32(sum, 2) + vgetq_lane_f32(sum, 3);
++#else
++  float ssd = 0.0f;
++  for (int i = 0; i < 8; i++) {
++    float d = a.v[i] - b.v[i];
++    ssd += d * d;
++  }
++  return ssd;
++#endif
++}
++
++/**
++ * Accumulates Sum of Squared Differences into an accumulator vector.
++ * Useful for loops like register blocking.
++ */
++#ifdef __AVX__
++typedef __m256 sb_acc8_t;
++#elif defined(__SSE__)
++typedef __m128 sb_acc8_t;
++#elif defined(__ARM_NEON)
++typedef float32x4_t sb_acc8_t;
++#else
++typedef float sb_acc8_t;
++#endif
++
++SB_SIMD_INLINE sb_acc8_t sb_acc8_zero(void) {
++#ifdef __AVX__
++  return _mm256_setzero_ps();
++#elif defined(__SSE__)
++  return _mm_setzero_ps();
++#elif defined(__ARM_NEON)
++  return vdupq_n_f32(0.0f);
++#else
++  return 0.0f;
++#endif
++}
++
++SB_SIMD_INLINE sb_acc8_t sb_acc8_add_ssd(sb_acc8_t acc, sb_vec8_t a,
++                                         sb_vec8_t b) {
++#ifdef __AVX__
++  __m256 d = _mm256_sub_ps(a, b);
++  return _mm256_add_ps(acc, _mm256_mul_ps(d, d));
++#elif defined(__SSE__)
++  __m128 d1 = _mm_sub_ps(a.v1, b.v1);
++  __m128 d2 = _mm_sub_ps(a.v2, b.v2);
++  return _mm_add_ps(acc, _mm_add_ps(_mm_mul_ps(d1, d1), _mm_mul_ps(d2, d2)));
++#elif defined(__ARM_NEON)
++  float32x4_t d1 = vsubq_f32(a.v1, b.v1);
++  float32x4_t d2 = vsubq_f32(a.v2, b.v2);
++  return vaddq_f32(acc, vaddq_f32(vmulq_f32(d1, d1), vmulq_f32(d2, d2)));
++#else
++  float ssd = 0.0f;
++  for (int i = 0; i < 8; i++) {
++    float d = a.v[i] - b.v[i];
++    ssd += d * d;
++  }
++  return acc + ssd;
++#endif
++}
++
++SB_SIMD_INLINE float sb_acc8_hsum(sb_acc8_t acc) {
++#ifdef __AVX__
++  __m128 low = _mm256_castps256_ps128(acc);
++  __m128 high = _mm256_extractf128_ps(acc, 1);
++  __m128 sum128 = _mm_add_ps(low, high);
++  __m128 shuf = _mm_shuffle_ps(sum128, sum128, _MM_SHUFFLE(2, 3, 0, 1));
++  __m128 sums = _mm_add_ps(sum128, shuf);
++  shuf = _mm_movehl_ps(shuf, sums);
++  sums = _mm_add_ss(sums, shuf);
++  float f;
++  _mm_store_ss(&f, sums);
++  return f;
++#elif defined(__SSE__)
++  __m128 shuf = _mm_shuffle_ps(acc, acc, _MM_SHUFFLE(2, 3, 0, 1));
++  __m128 sums = _mm_add_ps(acc, shuf);
++  shuf = _mm_movehl_ps(shuf, sums);
++  sums = _mm_add_ss(sums, shuf);
++  float f;
++  _mm_store_ss(&f, sums);
++  return f;
++#elif defined(__ARM_NEON)
++  return vgetq_lane_f32(acc, 0) + vgetq_lane_f32(acc, 1) +
++         vgetq_lane_f32(acc, 2) + vgetq_lane_f32(acc, 3);
++#else
++  return acc;
++#endif
++}
++
++/**
++ * Basic Arithmetic for 8-wide vectors
++ */
++SB_SIMD_INLINE sb_vec8_t sb_add8(sb_vec8_t a, sb_vec8_t b) {
++#ifdef __AVX__
++  return _mm256_add_ps(a, b);
++#elif defined(__SSE__)
++  sb_vec8_t r;
++  r.v1 = _mm_add_ps(a.v1, b.v1);
++  r.v2 = _mm_add_ps(a.v2, b.v2);
++  return r;
++#elif defined(__ARM_NEON)
++  sb_vec8_t r;
++  r.v1 = vaddq_f32(a.v1, b.v1);
++  r.v2 = vaddq_f32(a.v2, b.v2);
++  return r;
++#else
++  sb_vec8_t r;
++  for (int i = 0; i < 8; i++)
++    r.v[i] = a.v[i] + b.v[i];
++  return r;
++#endif
++}
++
++SB_SIMD_INLINE sb_vec8_t sb_sub8(sb_vec8_t a, sb_vec8_t b) {
++#ifdef __AVX__
++  return _mm256_sub_ps(a, b);
++#elif defined(__SSE__)
++  sb_vec8_t r;
++  r.v1 = _mm_sub_ps(a.v1, b.v1);
++  r.v2 = _mm_sub_ps(a.v2, b.v2);
++  return r;
++#elif defined(__ARM_NEON)
++  sb_vec8_t r;
++  r.v1 = vsubq_f32(a.v1, b.v1);
++  r.v2 = vsubq_f32(a.v2, b.v2);
++  return r;
++#else
++  sb_vec8_t r;
++  for (int i = 0; i < 8; i++)
++    r.v[i] = a.v[i] - b.v[i];
++  return r;
++#endif
++}
++
++SB_SIMD_INLINE sb_vec8_t sb_mul8(sb_vec8_t a, sb_vec8_t b) {
++#ifdef __AVX__
++  return _mm256_mul_ps(a, b);
++#elif defined(__SSE__)
++  sb_vec8_t r;
++  r.v1 = _mm_mul_ps(a.v1, b.v1);
++  r.v2 = _mm_mul_ps(a.v2, b.v2);
++  return r;
++#elif defined(__ARM_NEON)
++  sb_vec8_t r;
++  r.v1 = vmulq_f32(a.v1, b.v1);
++  r.v2 = vmulq_f32(a.v2, b.v2);
++  return r;
++#else
++  sb_vec8_t r;
++  for (int i = 0; i < 8; i++)
++    r.v[i] = a.v[i] * b.v[i];
++  return r;
++#endif
++}
++
++SB_SIMD_INLINE sb_vec8_t sb_div8(sb_vec8_t a, sb_vec8_t b) {
++#ifdef __AVX__
++  return _mm256_div_ps(a, b);
++#elif defined(__SSE__)
++  sb_vec8_t r;
++  r.v1 = _mm_div_ps(a.v1, b.v1);
++  r.v2 = _mm_div_ps(a.v2, b.v2);
++  return r;
++#elif defined(__ARM_NEON)
++#ifdef __aarch64__
++  sb_vec8_t r;
++  r.v1 = vdivq_f32(a.v1, b.v1);
++  r.v2 = vdivq_f32(a.v2, b.v2);
++  return r;
++#else
++  // NEON doesn't have a direct div instruction on ARMv7, use reciprocal or
++  // scalar
++  float ta1[4];
++  float tb1[4];
++  float tr1[4];
++  float ta2[4];
++  float tb2[4];
++  float tr2[4];
++  vst1q_f32(ta1, a.v1);
++  vst1q_f32(tb1, b.v1);
++  vst1q_f32(ta2, a.v2);
++  vst1q_f32(tb2, b.v2);
++  for (int i = 0; i < 4; i++) {
++    tr1[i] = ta1[i] / tb1[i];
++    tr2[i] = ta2[i] / tb2[i];
++  }
++  sb_vec8_t r;
++  r.v1 = vld1q_f32(tr1);
++  r.v2 = vld1q_f32(tr2);
++  return r;
++#endif
++#else
++  sb_vec8_t r;
++  for (int i = 0; i < 8; i++)
++    r.v[i] = a.v[i] / b.v[i];
++  return r;
++#endif
++}
++
++SB_SIMD_INLINE sb_vec8_t sb_max8(sb_vec8_t a, sb_vec8_t b) {
++#ifdef __AVX__
++  return _mm256_max_ps(a, b);
++#elif defined(__SSE__)
++  sb_vec8_t r;
++  r.v1 = _mm_max_ps(a.v1, b.v1);
++  r.v2 = _mm_max_ps(a.v2, b.v2);
++  return r;
++#elif defined(__ARM_NEON)
++  sb_vec8_t r;
++  r.v1 = vmaxq_f32(a.v1, b.v1);
++  r.v2 = vmaxq_f32(a.v2, b.v2);
++  return r;
++#else
++  sb_vec8_t r;
++  for (int i = 0; i < 8; i++)
++    r.v[i] = (a.v[i] > b.v[i]) ? a.v[i] : b.v[i];
++  return r;
++#endif
++}
++
++SB_SIMD_INLINE void sb_store8(float* p, sb_vec8_t v) {
++#ifdef __AVX__
++  _mm256_storeu_ps(p, v);
++#elif defined(__SSE__)
++  _mm_storeu_ps(p, v.v1);
++  _mm_storeu_ps(p + 4, v.v2);
++#elif defined(__ARM_NEON)
++  vst1q_f32(p, v.v1);
++  vst1q_f32(p + 4, v.v2);
++#else
++  memcpy(p, v.v, 8 * sizeof(float));
++#endif
++}
++
++SB_SIMD_INLINE sb_vec8_t sb_set8(float f) {
++#ifdef __AVX__
++  return _mm256_set1_ps(f);
++#elif defined(__SSE__)
++  sb_vec8_t r;
++  r.v1 = _mm_set1_ps(f);
++  r.v2 = r.v1;
++  return r;
++#elif defined(__ARM_NEON)
++  sb_vec8_t r;
++  r.v1 = vdupq_n_f32(f);
++  r.v2 = r.v1;
++  return r;
++#else
++  sb_vec8_t r;
++  for (int i = 0; i < 8; i++)
++    r.v[i] = f;
++  return r;
++#endif
++}
++
++/* ------------------------------------------------------------------------- */
++/* 4-WIDE VECTOR ABSTRACTION                                                 */
++/* ------------------------------------------------------------------------- */
++
++#if defined(__SSE__) || defined(__AVX__)
++typedef __m128 sb_vec4_t;
++#elif defined(__ARM_NEON)
++typedef float32x4_t sb_vec4_t;
++#else
++typedef struct {
++  float v[4];
++} sb_vec4_t;
++#endif
++
++SB_SIMD_INLINE sb_vec4_t sb_load4(const float* p) {
++#if defined(__SSE__) || defined(__AVX__)
++  return _mm_loadu_ps(p);
++#elif defined(__ARM_NEON)
++  return vld1q_f32(p);
++#else
++  sb_vec4_t r;
++  memcpy(r.v, p, 4 * sizeof(float));
++  return r;
++#endif
++}
++
++SB_SIMD_INLINE float sb_vec4_ssd(sb_vec4_t a, sb_vec4_t b) {
++#if defined(__SSE__) || defined(__AVX__)
++  __m128 d = _mm_sub_ps(a, b);
++  d = _mm_mul_ps(d, d);
++  __m128 shuf = _mm_shuffle_ps(d, d, _MM_SHUFFLE(2, 3, 0, 1));
++  __m128 sums = _mm_add_ps(d, shuf);
++  shuf = _mm_movehl_ps(shuf, sums);
++  sums = _mm_add_ss(sums, shuf);
++  float f;
++  _mm_store_ss(&f, sums);
++  return f;
++#elif defined(__ARM_NEON)
++  float32x4_t d = vsubq_f32(a, b);
++  d = vmulq_f32(d, d);
++  return vgetq_lane_f32(d, 0) + vgetq_lane_f32(d, 1) + vgetq_lane_f32(d, 2) +
++         vgetq_lane_f32(d, 3);
++#else
++  float ssd = 0.0f;
++  for (int i = 0; i < 4; i++) {
++    float d = a.v[i] - b.v[i];
++    ssd += d * d;
++  }
++  return ssd;
++#endif
++}
++
++/**
++ * 4-Wide Arithmetic
++ */
++SB_SIMD_INLINE sb_vec4_t sb_add4(sb_vec4_t a, sb_vec4_t b) {
++#if defined(__SSE__) || defined(__AVX__)
++  return _mm_add_ps(a, b);
++#elif defined(__ARM_NEON)
++  return vaddq_f32(a, b);
++#else
++  sb_vec4_t r;
++  for (int i = 0; i < 4; i++)
++    r.v[i] = a.v[i] + b.v[i];
++  return r;
++#endif
++}
++
++SB_SIMD_INLINE sb_vec4_t sb_sub4(sb_vec4_t a, sb_vec4_t b) {
++#if defined(__SSE__) || defined(__AVX__)
++  return _mm_sub_ps(a, b);
++#elif defined(__ARM_NEON)
++  return vsubq_f32(a, b);
++#else
++  sb_vec4_t r;
++  for (int i = 0; i < 4; i++)
++    r.v[i] = a.v[i] - b.v[i];
++  return r;
++#endif
++}
++
++SB_SIMD_INLINE sb_vec4_t sb_mul4(sb_vec4_t a, sb_vec4_t b) {
++#if defined(__SSE__) || defined(__AVX__)
++  return _mm_mul_ps(a, b);
++#elif defined(__ARM_NEON)
++  return vmulq_f32(a, b);
++#else
++  sb_vec4_t r;
++  for (int i = 0; i < 4; i++)
++    r.v[i] = a.v[i] * b.v[i];
++  return r;
++#endif
++}
++
++SB_SIMD_INLINE sb_vec4_t sb_set4(float f) {
++#if defined(__SSE__) || defined(__AVX__)
++  return _mm_set1_ps(f);
++#elif defined(__ARM_NEON)
++  return vdupq_n_f32(f);
++#else
++  sb_vec4_t r;
++  for (int i = 0; i < 4; i++)
++    r.v[i] = f;
++  return r;
++#endif
++}
++
++SB_SIMD_INLINE void sb_store4(float* p, sb_vec4_t v) {
++#if defined(__SSE__) || defined(__AVX__)
++  _mm_storeu_ps(p, v);
++#elif defined(__ARM_NEON)
++  vst1q_f32(p, v);
++#else
++  memcpy(p, v.v, 4 * sizeof(float));
++#endif
++}
++
++/**
++ * 8-Wide Bitwise/Logic (for masks)
++ */
++SB_SIMD_INLINE sb_vec8_t sb_gt8(sb_vec8_t a, sb_vec8_t b) {
++#ifdef __AVX__
++  return _mm256_cmp_ps(a, b, _CMP_GT_OQ);
++#elif defined(__SSE__)
++  sb_vec8_t r;
++  r.v1 = _mm_cmpgt_ps(a.v1, b.v1);
++  r.v2 = _mm_cmpgt_ps(a.v2, b.v2);
++  return r;
++#elif defined(__ARM_NEON)
++  sb_vec8_t r;
++  r.v1 = (float32x4_t)vcgtq_f32(a.v1, b.v1);
++  r.v2 = (float32x4_t)vcgtq_f32(a.v2, b.v2);
++  return r;
++#else
++  sb_vec8_t r;
++  for (int i = 0; i < 8; i++)
++    r.v[i] = (a.v[i] > b.v[i]) ? 1.0f : 0.0f;
++  return r;
++#endif
++}
++
++/**
++ * Selects elements from 'a' or 'b' based on 'mask'.
++ * Contract: 'mask' must be a comparison bitmask (all-bits-1 for true,
++ * all-bits-0 for false) or a value where non-zero lanes mean true.
++ * This function normalizes the mask so that all backends behave identically.
++ */
++SB_SIMD_INLINE sb_vec8_t sb_sel8(sb_vec8_t mask, sb_vec8_t a, sb_vec8_t b) {
++  // Normalize mask: any non-zero value becomes a full-bit mask (all 1s)
++#ifdef __AVX__
++  sb_vec8_t zero = _mm256_set1_ps(0.0f);
++  sb_vec8_t normalized_mask = _mm256_cmp_ps(mask, zero, _CMP_NEQ_UQ);
++  return _mm256_blendv_ps(b, a, normalized_mask);
++#elif defined(__SSE__)
++  sb_vec8_t zero;
++  zero.v1 = _mm_setzero_ps();
++  zero.v2 = _mm_setzero_ps();
++  sb_vec8_t normalized_mask;
++  normalized_mask.v1 = _mm_cmpneq_ps(mask.v1, zero.v1);
++  normalized_mask.v2 = _mm_cmpneq_ps(mask.v2, zero.v2);
++
++// SSE4.1 blendv_ps or manual bitwise
++#ifdef __SSE4_1__
++  return (sb_vec8_t){_mm_blendv_ps(b.v1, a.v1, normalized_mask.v1),
++                     _mm_blendv_ps(b.v2, a.v2, normalized_mask.v2)};
++#else
++  __m128 res1 = _mm_or_ps(_mm_and_ps(normalized_mask.v1, a.v1),
++                          _mm_andnot_ps(normalized_mask.v1, b.v1));
++  __m128 res2 = _mm_or_ps(_mm_and_ps(normalized_mask.v2, a.v2),
++                          _mm_andnot_ps(normalized_mask.v2, b.v2));
++  return (sb_vec8_t){res1, res2};
++#endif
++#elif defined(__ARM_NEON)
++  sb_vec8_t zero;
++  zero.v1 = vdupq_n_f32(0.0f);
++  zero.v2 = vdupq_n_f32(0.0f);
++  sb_vec8_t normalized_mask;
++  normalized_mask.v1 = (float32x4_t)vmvnq_u32(vceqq_f32(mask.v1, zero.v1));
++  normalized_mask.v2 = (float32x4_t)vmvnq_u32(vceqq_f32(mask.v2, zero.v2));
++
++  return (sb_vec8_t){vbslq_f32((uint32x4_t)normalized_mask.v1, a.v1, b.v1),
++                     vbslq_f32((uint32x4_t)normalized_mask.v2, a.v2, b.v2)};
++#else
++  sb_vec8_t r;
++  for (int i = 0; i < 8; i++)
++    r.v[i] = (mask.v[i] != 0.0f) ? a.v[i] : b.v[i];
++  return r;
++#endif
++}
++
++/**
++ * Computes the Sum of Squared Differences (SSD) for an 8x8 patch block.
++ * Target vectors are provided as an array of 8 pre-loaded sb_vec8_t registers.
++ * Candidate pointers are loaded from row_ptrs[8] to compare against the target.
++ */
++SB_SIMD_INLINE float sb_vec8_patch_ssd(const sb_vec8_t* target_vecs,
++                                       float* const* cand_row_ptrs) {
++  sb_acc8_t sum = sb_acc8_zero();
++
++  // Unroll 8 row comparisons
++  sum = sb_acc8_add_ssd(sum, target_vecs[0], sb_load8(cand_row_ptrs[0]));
++  sum = sb_acc8_add_ssd(sum, target_vecs[1], sb_load8(cand_row_ptrs[1]));
++  sum = sb_acc8_add_ssd(sum, target_vecs[2], sb_load8(cand_row_ptrs[2]));
++  sum = sb_acc8_add_ssd(sum, target_vecs[3], sb_load8(cand_row_ptrs[3]));
++  sum = sb_acc8_add_ssd(sum, target_vecs[4], sb_load8(cand_row_ptrs[4]));
++  sum = sb_acc8_add_ssd(sum, target_vecs[5], sb_load8(cand_row_ptrs[5]));
++  sum = sb_acc8_add_ssd(sum, target_vecs[6], sb_load8(cand_row_ptrs[6]));
++  sum = sb_acc8_add_ssd(sum, target_vecs[7], sb_load8(cand_row_ptrs[7]));
++
++  return sb_acc8_hsum(sum);
++}
++
++#endif // SHARED_UTILS_SIMD_UTILS_H
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

@@ -1,0 +1,29 @@
+Checking patch src/function/table/system/test_vector_types.cpp...
+error: while searching for:
+		}
+		case PhysicalType::LIST: {
+			D_ASSERT(type.id() != LogicalTypeId::MAP);
+			auto data = FlatVector::GetData<list_entry_t>(result);
+			data[0].offset = 0;
+			data[0].length = 2;
+			data[1].offset = 2;
+
+error: patch failed: src/function/table/system/test_vector_types.cpp:187
+error: src/function/table/system/test_vector_types.cpp: patch does not apply
+Checking patch test/api/test_scalar_function_select_hook.cpp...
+Checking patch test/api/udf_function/udf_functions_to_test.hpp...
+error: while searching for:
+	switch (GetTypeId<TYPE>()) {
+	case PhysicalType::VARCHAR: {
+		result.SetVectorType(VectorType::FLAT_VECTOR);
+		auto result_data = FlatVector::GetData<string_t>(result);
+		auto ldata = FlatVector::GetData<string_t>(input.data[0]);
+		auto &validity = FlatVector::Validity(input.data[0]);
+
+
+error: patch failed: test/api/udf_function/udf_functions_to_test.hpp:135
+error: test/api/udf_function/udf_functions_to_test.hpp: patch does not apply
+Checking patch test/appender/test_appender.cpp...
+Checking patch test/extension/loadable_extension_demo.cpp...
+Checking patch test/sql/parallelism/interquery/concurrent_attach_detach.cpp...
+make: *** [Makefile:393: release] Error 1

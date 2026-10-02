@@ -1,0 +1,31 @@
+Running command: test -x /usr/local/bin/codex-code-mode-host && codex --version
+Command outputs captured
+Running command: mkdir -p "$CODEX_HOME" /opt/swepm-runtime/secrets /logs/agent
+Command outputs captured
+Codex auth: using auth.json from [REDACTED]
+Running command: ln -sf /opt/swepm-runtime/secrets/auth.json "$CODEX_HOME/auth.json"
+
+Command outputs captured
+Running command: if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi; codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-6-luna --json --enable unified_exec -c model_reasoning_effort=high -- 'The launcher core API currently exposes `InstanceSelection`, an enum that mixes the instance name with whether it is a client or server. This needs to be replaced by a clearer `Instance` type that can represent the same information while preserving all existing behavior for paths, selection, launching, configuration, mods, logs, and server/client list handling.
+
+Introduce and use `ql_core::Instance` as the public instance identifier throughout the workspace instead of `ql_core::InstanceSelection`. `Instance` should carry the instance name and an `InstanceKind`, where `InstanceKind` distinguishes `Client` and `Server` and is serializable/deserializable using snake_case values. Public APIs that previously accepted or returned `InstanceSelection` should accept or return `Instance` instead, including launch-related APIs, jarmod APIs, JSON read/save helpers, mod manager APIs, launcher state/messages, process/log maps, and test-facing types such as process exit results.
+
+The new API should provide convenient constructors and accessors equivalent to the old behavior. `Instance::client(name)` must create a client instance, `Instance::server(name)` must create a server instance, and `Instance::new(name, kind)` must create an instance of the specified kind. `get_name()`, `is_server()`, and `get_pair()` should continue to expose the selected name and server flag. Client instances must resolve launcher-specific data under `QuantumLauncher/instances/<NAME>/` and game data under `QuantumLauncher/instances/<NAME>/.minecraft/`. Server instances must resolve both launcher-specific and game data under `QuantumLauncher/servers/<NAME>/`.
+
+`InstanceKind` should expose whether it represents a server and should be usable anywhere the launcher needs to choose the root list directory. Client lists must come from the launcher `instances` directory and server lists from the `servers` directory. Reloading directory watchers, sidebar updates, remembered selection handling, and “selected instance no longer exists” behavior must continue to work for both clients and servers, but should track the selected item’s kind rather than assuming remembered selections are always clients.
+
+Configuration creation should accept an `InstanceKind` rather than a raw `is_server` boolean where appropriate, while still writing the existing `is_server` field according to the kind. Persisted selected instances should restore both the selected name and selected kind, defaulting to client behavior when older configuration data does not contain a kind.
+
+All affected code should compile with the renamed/refactored API. Existing test and integration code should be able to create client instances with `ql_core::Instance::client(name)`, call launch APIs using shared instance names, and receive process exit results containing `ql_core::Instance` rather than `ql_core::InstanceSelection`.
+' 2>&1 </dev/null | tee /logs/agent/codex.txt
+Command outputs captured
+Running command: mkdir -p /logs/agent
+if [ -d "$CODEX_HOME/sessions" ]; then
+  rm -rf /logs/agent/sessions
+  cp -R "$CODEX_HOME/sessions" /logs/agent/sessions
+fi
+Command outputs captured
+Running command: rm -rf /opt/swepm-runtime/secrets "$CODEX_HOME"
+Command outputs captured
+Wrote Codex trajectory to /data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-workdir-codex-gpt-6-luna-high-nomcp-c16-20261002T065111Z/Mrmayman__quantumlauncher-c_fb34__scuXAXX/agent/trajectory.json
+Collecting main service artifacts

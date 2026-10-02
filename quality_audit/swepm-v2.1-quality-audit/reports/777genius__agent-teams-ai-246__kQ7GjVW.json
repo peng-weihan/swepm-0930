@@ -1,0 +1,58 @@
+{
+  "instance_id": "777genius__agent-teams-ai-246",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.72,
+  "gold_patch_assessment": "The gold patch (44 files changed, ~3300 lines) addresses all items from the issue: MCP tool schema extensions (taskRefs, filePath, mcpPolicy, limitContext, waitTimeoutMs), idempotency key trimming via new canonicalizeRuntimeIdempotencyKey, runtime bootstrap liveness generalization (renaming OpenCode-specific fields to generic runtime bootstrap), stale provisioning run guards, loadAllLaunchParams resilience to malformed localStorage entries, and README/package.json metadata updates. The patch is coherent and complete relative to the issue.",
+  "base_vs_gold_expectation": "The test patch modifies existing test files to use renamed interfaces and new fields that only exist after the gold patch is applied (e.g., confirmedRuntimeBootstrapAlive instead of confirmedOpenCodeRuntimeAlive). New test files import new modules (RuntimeIdempotencyKey, RuntimeDeliveryJournal structures) created by the gold patch. Therefore the tests should fail on the unpatched base (compilation errors from missing fields/modules) and pass with the gold patch applied. This is the expected pass/fail behavior.",
+  "too_narrow_risks": [
+    "No tests for README content changes (Roadmap renamed to Ideas, terminal commands marked supported, installation text updated).",
+    "No tests for mcp-server/package.json repository URL and directory field changes.",
+    "The loadAllLaunchParams malformed entry test (teamSlice.test.ts) only checks one malformed entry scenario; no test for multiple malformed entries or edge cases like null/undefined localStorage values."
+  ],
+  "too_broad_risks": [
+    "The test suite runs 29 test files across many subsystems, including heavy provisioning harness tests with ~20 new helper/fixture files. Many of these test provisioning infrastructure that is refactored in the test patch itself (new harness builder, fixtures, fake stores) rather than testing the issue requirements.",
+    "Several test files in the provisioning harness (fixtureIsolation, pathSafety, storePorts, workspace testCases, builderTestContext, fakeFacades, fakeLogger, etc.) are new infrastructure that goes beyond verifying the stated issue requirements and could reject valid alternative implementations that structure their test harness differently.",
+    "The 1-hour verifier timeout and 2-hour agent timeout are very generous but the build step (pnpm --filter agent-teams-mcp build) plus 29 test files with maxWorkers=1 could be slow."
+  ],
+  "implementation_coupling": [
+    "Tests reference renamed interface fields (confirmedRuntimeBootstrapAlive, confirmedRuntimeBootstrapDiagnostic, confirmedRuntimeBootstrapDiagnosticSeverity) that are specific to the gold patch's renaming choices. An alternative that keeps different field names but implements the same behavior would fail.",
+    "Tests import canonicalizeRuntimeIdempotencyKey from the exact path the gold patch creates (runtime-control/domain/RuntimeIdempotencyKey). An alternative that implements trimming inline or in a different module would fail.",
+    "Tests check the exact default diagnostic string 'bootstrap confirmed; runtime host/session evidence present.' which is a DEFAULT_RUNTIME_BOOTSTRAP_DIAGNOSTIC constant in the gold patch.",
+    "The RuntimeDeliveryJournal tests import a new RuntimeDeliveryJournalKeyInput interface and buildRuntimeDeliveryJournalKey function structure that are gold-patch-specific internal design choices.",
+    "The stale run guard tests (TeamProvisioningMemberLifecycleStaleRun.test.ts) test internal use-case composition that matches the gold patch's architecture."
+  ],
+  "environment_risks": [
+    "The eval.sh pre-test step runs 'pnpm --filter agent-teams-mcp build' which must succeed before tests run. If the MCP build fails (e.g., missing dependencies, tsup issues), all tests will fail regardless of the solution's correctness.",
+    "vitest is invoked via 'pnpm exec vitest' which requires the correct node_modules state. The docker image must have all dependencies pre-installed.",
+    "maxWorkers=1 constraint means tests run sequentially; combined with 29 test files, this could approach timeout limits."
+  ],
+  "mismatches": [
+    "The issue mentions 'package metadata and user-facing documentation should reflect the current repository and feature set' but the test suite has zero tests for README.md or package.json content. These requirements are untested.",
+    "The test patch creates substantial new test infrastructure (20+ new files in provisioningHarness/) that goes well beyond what the issue description requires, suggesting the test patch was extracted from the same development branch rather than being independently authored to verify the issue requirements."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/777genius__agent-teams-ai-246/instruction.md",
+      "detail": "Issue describes 7 distinct feature areas spanning MCP schemas, idempotency normalization, runtime bootstrap generalization, stale run guards, localStorage resilience, and metadata updates."
+    },
+    {
+      "file": "/audit_tasks/777genius__agent-teams-ai-246/solution/solve.sh",
+      "detail": "Gold patch modifies 44 files in a single coherent commit. Includes new file RuntimeIdempotencyKey.ts and schemas.ts."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch is 10837 lines, modifies 23 existing test files and creates 25 new files. Heavy provisioning harness refactoring included."
+    },
+    {
+      "file": "/testbed/src/main/services/team/runtime-projection/RuntimeProjectionSnapshotLiveness.ts",
+      "detail": "Base repo uses confirmedOpenCodeRuntimeAlive/confirmedOpenCodeRuntimeAdapterAlive; gold patch renames to confirmedRuntimeBootstrapAlive. Tests use the new names, creating tight coupling."
+    },
+    {
+      "file": "/audit_tasks/777genius__agent-teams-ai-246/tests/eval.sh",
+      "detail": "Runs 29 test files with maxWorkers=1, includes pre-build step for MCP server. Uses OMNIGRIL_EXIT_CODE protocol for result reporting."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "This is a large, multi-concern refactoring instance with 44 files in the gold patch and a 10837-line test patch. While the gold patch correctly addresses all stated requirements and the test/base pass/fail behavior is structurally sound, the tests have significant coupling to the gold implementation's internal design choices (renamed interfaces, specific module paths, exact diagnostic strings, internal function signatures). The test patch also includes substantial test infrastructure refactoring beyond what's needed to verify the issue, making it too broad. Additionally, README/package.json metadata changes (a stated requirement) have zero test coverage. An alternative implementation that achieves the same observable behavior through different internal structure would likely fail these tests. Recommend revising tests to reduce implementation coupling and add coverage for untested requirements."
+}

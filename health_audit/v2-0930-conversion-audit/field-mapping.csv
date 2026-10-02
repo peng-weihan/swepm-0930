@@ -1,0 +1,22 @@
+source_field,destination,evidence,status
+instance_id,task directory + metadata.instance_id,82/82 match,preserved
+repo,metadata.repository,82/82 match,preserved
+language,metadata.language + resource limits,82/82 match; limits are harness choices,preserved
+base_commit,metadata.base_commit; image provides repository state,82/82 image HEAD matches; two images contain preexisting tracked environment changes,preserved and validated
+environment_setup_commit,not separately emitted,82/82 equals base_commit; no separate setup needed in supplied records,no observed loss
+image_name,environment.docker_image and Dockerfile FROM,82/82 exact; image IDs/digests captured in image-probe-results.json,preserved
+working_dir,environment.workdir,82/82 /testbed after fix; old images defaulted elsewhere for 62/82,fixed
+problem_statement,instruction.md,82/82 match after terminal newline normalization,preserved
+patch,solution/solve.sh heredoc,82/82 match; strict git apply used for oracle,preserved
+test_patch,not separately emitted; relies on image or embedded eval patch,"72 external:69 present/exact,3 missing;10 embedded semantically account for source patch",delivery gap
+hints_text,not emitted,82/82 empty,no observed loss
+created_at,not emitted,provenance only,metadata omission
+pull_number,not emitted,provenance only;34 nonempty,metadata omission
+_original_problem_statement,not emitted,26 historical pre-rewrite statements; current problem_statement preserved,intentional historical metadata omission
+_problem_statement_rewrite,not emitted,17 rewrite metadata records; not runtime setup,metadata omission
+_specbuild,not emitted,24 provenance/validation records and upstream host paths; top-level image/eval preserved,metadata omission
+_swe_factory,not emitted,2 upstream build metadata records; no additional runnable setup field,metadata omission
+_swe_factory_quality_audit,not emitted,2 upstream audit records,metadata omission
+eval.instance_id,join validation,82/82 matches; mismatches raise,preserved
+eval.eval_script,tests/eval.sh,82/82 match after terminal newline normalization,preserved
+eval.setup_scripts,reject if nonempty,82/82 empty dictionaries; unsupported future nonempty input fails loudly,no silent omission

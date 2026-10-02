@@ -1,0 +1,111 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+
+> @google/gemini-cli@0.34.0-nightly.20260304.28af4e127 build
+> node scripts/build.js
+
+
+> @google/gemini-cli@0.34.0-nightly.20260304.28af4e127 generate
+> node scripts/generate-git-commit-info.js
+
+
+> @google/gemini-cli-a2a-server@0.34.0-nightly.20260304.28af4e127 build
+> node ../../scripts/build_package.js
+
+Successfully copied files.
+
+> @google/gemini-cli@0.34.0-nightly.20260304.28af4e127 build
+> node ../../scripts/build_package.js
+
+src/ui/components/ExitPlanModeDialog.test.tsx(13,25): error TS2307: Cannot find module '../key/keyMatchers.js' or its corresponding type declarations.
+src/ui/components/ExitPlanModeDialog.test.tsx(409,19): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type 'KeyMatchers'.
+src/ui/components/InputPrompt.test.tsx(47,45): error TS2307: Cannot find module '../key/keyMatchers.js' or its corresponding type declarations.
+src/ui/hooks/useSuspend.test.ts(32,31): error TS2307: Cannot find module '../key/keybindingUtils.js' or its corresponding type declarations.
+src/ui/hooks/useSuspend.test.ts(33,25): error TS2307: Cannot find module '../key/keyBindings.js' or its corresponding type declarations.
+src/ui/key/keyBindings.test.ts(8,39): error TS2307: Cannot find module './keyBindings.js' or its corresponding type declarations.
+src/ui/key/keyBindings.test.ts(15,8): error TS2307: Cannot find module './keyBindings.js' or its corresponding type declarations.
+src/ui/key/keyMatchers.test.ts(12,8): error TS2307: Cannot find module './keyMatchers.js' or its corresponding type declarations.
+src/ui/key/keyMatchers.test.ts(13,39): error TS2307: Cannot find module './keyBindings.js' or its corresponding type declarations.
+src/ui/key/keyMatchers.test.ts(14,48): error TS2307: Cannot find module './keyBindings.js' or its corresponding type declarations.
+src/ui/key/keybindingUtils.test.ts(8,49): error TS2307: Cannot find module './keybindingUtils.js' or its corresponding type declarations.
+src/ui/key/keybindingUtils.test.ts(9,37): error TS2307: Cannot find module './keyBindings.js' or its corresponding type declarations.
+src/utils/devtoolsService.ts(64,28): error TS2307: Cannot find module '@google/gemini-cli-devtools' or its corresponding type declarations.
+
+> @google/gemini-cli-core@0.34.0-nightly.20260304.28af4e127 build
+> node ../../scripts/build_package.js
+
+Successfully copied files.
+Copied documentation to dist/docs
+
+> @google/gemini-cli-devtools@0.34.0-nightly.20260304.28af4e127 build
+> npm run build:client && tsc -p tsconfig.build.json
+
+
+> @google/gemini-cli-devtools@0.34.0-nightly.20260304.28af4e127 build:client
+> node esbuild.client.js
+
+
+> @google/gemini-cli-sdk@0.34.0-nightly.20260304.28af4e127 build
+> node ../../scripts/build_package.js
+
+Successfully copied files.
+
+> @google/gemini-cli-test-utils@0.34.0-nightly.20260304.28af4e127 build
+> node ../../scripts/build_package.js
+
+Successfully copied files.
+
+> gemini-cli-vscode-ide-companion@0.34.0-nightly.20260304.28af4e127 build
+> npm run build:dev
+
+
+> gemini-cli-vscode-ide-companion@0.34.0-nightly.20260304.28af4e127 build:dev
+> npm run check-types && npm run lint && node esbuild.js
+
+
+> gemini-cli-vscode-ide-companion@0.34.0-nightly.20260304.28af4e127 check-types
+> tsc --noEmit
+
+
+> gemini-cli-vscode-ide-companion@0.34.0-nightly.20260304.28af4e127 lint
+> eslint src
+
+[watch] build started
+[watch] build finished
+
+> @google/gemini-cli@0.34.0-nightly.20260304.28af4e127 test
+> vitest run src/ui/key/keyBindings.test.ts src/ui/key/keyMatchers.test.ts src/ui/key/keybindingUtils.test.ts src/ui/hooks/useSuspend.test.ts src/ui/hooks/useTabbedNavigation.test.ts src/ui/components/InputPrompt.test.tsx src/ui/components/ExitPlanModeDialog.test.tsx --reporter=verbose
+
+
+ RUN  v3.2.4 /testbed/packages/cli
+      Coverage enabled with v8
+
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > keyboard navigation > moves to next tab on Right arrow 42ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > keyboard navigation > moves to previous tab on Left arrow 8ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > keyboard navigation > moves to next tab on Tab key 5ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > keyboard navigation > moves to previous tab on Shift+Tab key 5ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > keyboard navigation > does not navigate when isNavigationBlocked returns true 5ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > initialization > returns initial index of 0 by default 5ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > initialization > returns specified initial index 45ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > initialization > clamps initial index to valid range 7ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > goToNextTab > advances to next tab 4ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > goToNextTab > stops at last tab when wrapAround is false 5ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > goToNextTab > wraps to first tab when wrapAround is true 5ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > goToPrevTab > moves to previous tab 5ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > goToPrevTab > stops at first tab when wrapAround is false 8ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > goToPrevTab > wraps to last tab when wrapAround is true 7ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > setCurrentIndex > sets index directly 7ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > setCurrentIndex > ignores out-of-bounds index 69ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > isNavigationBlocked > blocks navigation when callback returns true 4ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > isNavigationBlocked > allows navigation when callback returns false 4ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > onTabChange callback > calls onTabChange when tab changes via goToNextTab 5ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > onTabChange callback > calls onTabChange when tab changes via setCurrentIndex 4ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > onTabChange callback > does not call onTabChange when tab does not change 4ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > isFirstTab and isLastTab > returns correct boundary flags based on position 12ms
+ ✓ src/ui/hooks/useTabbedNavigation.test.ts > useTabbedNavigation > tabCount changes > reinitializes when tabCount changes 7ms
+
+ Test Files  6 failed | 1 passed (7)
+      Tests  23 passed (23)
+   Start at  18:03:54
+   Duration  15.25s (transform 4.02s, setup 30.74s, collect 1.67s, tests 272ms, environment 1ms, prepare 4.30s)
+
+OMNIGRIL_EXIT_CODE=1

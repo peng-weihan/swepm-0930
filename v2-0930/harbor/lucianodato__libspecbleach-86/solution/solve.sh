@@ -1,0 +1,3757 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/meson.build b/meson.build
+--- a/meson.build
++++ b/meson.build
+@@ -91,7 +91,7 @@ subdir('include')
+ subdir('src')
+ 
+ # Export dependency for parent projects
+-libspecbleach_dep = declare_dependency(include_directories: inc,
++libspecbleach_dep = declare_dependency(include_directories: [inc, src_inc],
+   link_with: libspecbleach)
+ 
+ # Examples building
+diff --git a/src/meson.build b/src/meson.build
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -4,13 +4,15 @@ subdir('processors')
+ 
+ specbleach_sources = [shared_sources, processors_sources]
+ 
++src_inc = include_directories('.')
++
+ # Build of the shared object
+ libspecbleach = library('specbleach',
+   sources: specbleach_sources,
+   c_args: lib_c_args,
+   link_args: lib_link_args,
+   dependencies: dep,
+-  include_directories: inc,
++  include_directories: [inc, src_inc],
+   version: meson.project_version(),
+   soversion: '0',
+   install: true)
+diff --git a/src/processors/denoiser/spectral_denoiser.c b/src/processors/denoiser/spectral_denoiser.c
+--- a/src/processors/denoiser/spectral_denoiser.c
++++ b/src/processors/denoiser/spectral_denoiser.c
+@@ -20,20 +20,21 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ 
+ #include "spectral_denoiser.h"
+ #include "shared/configurations.h"
+-#include "shared/gain_estimation/gain_estimators.h"
+-#include "shared/gain_estimation/suppression_engine.h"
+-#include "shared/noise_estimation/adaptive_noise_estimator.h"
+-#include "shared/noise_estimation/noise_estimator.h"
+-#include "shared/noise_estimation/tonal_reducer.h"
+-#include "shared/post_estimation/masking_veto.h"
+-#include "shared/post_estimation/noise_floor_manager.h"
+-#include "shared/pre_estimation/critical_bands.h"
+-#include "shared/pre_estimation/spectral_smoother.h"
+-#include "shared/utils/denoise_mixer.h"
++#include "shared/denoiser_logic/core/denoise_mixer.h"
++#include "shared/denoiser_logic/core/denoiser_core.h"
++#include "shared/denoiser_logic/core/noise_floor_manager.h"
++#include "shared/denoiser_logic/core/noise_profile.h"
++#include "shared/denoiser_logic/estimators/adaptive_noise_estimator.h"
++#include "shared/denoiser_logic/estimators/noise_estimator.h"
++#include "shared/denoiser_logic/processing/gain_calculator.h"
++#include "shared/denoiser_logic/processing/masking_veto.h"
++#include "shared/denoiser_logic/processing/suppression_engine.h"
++#include "shared/denoiser_logic/processing/tonal_reducer.h"
++#include "shared/utils/critical_bands.h"
+ #include "shared/utils/spectral_features.h"
++#include "shared/utils/spectral_smoother.h"
+ #include "shared/utils/spectral_utils.h"
+ #include <float.h>
+-#include <math.h>
+ #include <stdlib.h>
+ #include <string.h>
+ 
+@@ -57,7 +58,7 @@ typedef struct SbSpectralDenoiser {
+   SpectrumType spectrum_type;
+   CriticalBandType band_type;
+   DenoiserParameters denoise_parameters;
+-  GainEstimationType gain_estimation_type;
++  GainCalculationType gain_calculation_type;
+   TimeSmoothingType time_smoothing_type;
+   NoiseEstimatorType noise_estimator_type;
+ 
+@@ -96,12 +97,12 @@ SpectralProcessorHandle spectral_denoiser_initialize(
+   self->real_spectrum_size = (self->fft_size / 2U) + 1U;
+   self->hop = self->fft_size / overlap_factor;
+   self->sample_rate = sample_rate;
+-  self->spectrum_type = SPECTRAL_TYPE_GENERAL;
+-  self->band_type = CRITICAL_BANDS_TYPE;
++  self->spectrum_type = SPECTRAL_TYPE_1D;
++  self->band_type = CRITICAL_BANDS_TYPE_1D;
+   self->default_oversubtraction = DEFAULT_OVERSUBTRACTION;
+   self->default_undersubtraction = DEFAULT_UNDERSUBTRACTION;
+-  self->gain_estimation_type = GAIN_ESTIMATION_TYPE;
+-  self->time_smoothing_type = TIME_SMOOTHING_TYPE;
++  self->gain_calculation_type = GAIN_ESTIMATION_TYPE_1D;
++  self->time_smoothing_type = FIXED;
+ 
+   self->gain_spectrum = (float*)calloc(self->fft_size, sizeof(float));
+   if (!self->gain_spectrum) {
+@@ -186,9 +187,10 @@ SpectralProcessorHandle spectral_denoiser_initialize(
+   self->denoise_parameters.tonal_reduction = 0.0f;
+ 
+   self->masking_veto = masking_veto_initialize(
+-      self->fft_size, self->sample_rate, self->spectrum_type);
++      self->fft_size, self->sample_rate, self->band_type, self->spectrum_type);
+   self->suppression_engine =
+-      suppression_engine_initialize(self->real_spectrum_size);
++      suppression_engine_initialize(self->real_spectrum_size, self->sample_rate,
++                                    self->band_type, self->spectrum_type);
+ 
+   if (!self->noise_floor_manager || !self->masking_veto ||
+       !self->suppression_engine) {
+@@ -298,139 +300,89 @@ bool spectral_denoiser_run(SpectralProcessorHandle instance,
+ 
+   SbSpectralDenoiser* self = (SbSpectralDenoiser*)instance;
+ 
++  // 1. Preparation: Get reference spectrum and handle learning mode
+   float* reference_spectrum =
+       get_spectral_feature(self->spectral_features, fft_spectrum,
+                            self->fft_size, self->spectrum_type);
+ 
+-  if (self->denoise_parameters.learn_noise > 0) {
+-    // Learn all modes simultaneously
+-    for (int mode = ROLLING_MEAN; mode <= MINIMUM; mode++) {
+-      noise_estimation_run(self->noise_estimator, (NoiseEstimatorType)mode,
+-                           reference_spectrum);
+-    }
+-    self->was_learning = true;
++  if (denoiser_core_handle_learning_mode(
++          self->noise_estimator, reference_spectrum,
++          self->denoise_parameters.learn_noise, &self->was_learning)) {
+     return true;
+   }
+ 
+-  if (self->was_learning) {
+-    // User just stopped learning -> Finalize all captures
+-    for (int mode = ROLLING_MEAN; mode <= MINIMUM; mode++) {
+-      noise_estimation_finalize(self->noise_estimator,
+-                                (NoiseEstimatorType)mode);
+-    }
+-    self->was_learning = false;
+-  }
+-
+-  // --- Denoising Path ---
+-
+-  if (self->denoise_parameters.adaptive_noise && self->adaptive_estimator) {
+-    // ... (Adaptive logic remains similar but uses morphed profile as base)
+-    // Check for state transitions
+-    bool state_changed = !self->last_adaptive_state;
+-    bool mode_changed = fabsf(self->aggressiveness -
+-                              self->denoise_parameters.aggressiveness) > 0.01f;
+-
+-    if (state_changed || mode_changed) {
+-      // Calculate morphed base profile
+-      get_morphed_profile(self->manual_noise_floor,
+-                          get_noise_profile(self->noise_profile, ROLLING_MEAN),
+-                          get_noise_profile(self->noise_profile, MEDIAN),
+-                          get_noise_profile(self->noise_profile, MAX),
+-                          get_noise_profile(self->noise_profile, MINIMUM),
+-                          self->real_spectrum_size,
+-                          self->denoise_parameters.aggressiveness);
++  // 2. Noise Estimation: Update noise profile (Adaptive or Manual)
++  DenoiserCoreProfileParams profile_params = {
++      .adaptive_enabled = self->denoise_parameters.adaptive_noise,
++      .spectrum_size = self->real_spectrum_size,
++      .aggressiveness = &self->aggressiveness,
++      .param_aggressiveness = self->denoise_parameters.aggressiveness,
++      .last_adaptive_state = &self->last_adaptive_state,
++      .adaptive_estimator = self->adaptive_estimator,
++      .noise_profile = self->noise_profile,
++      .manual_noise_floor = self->manual_noise_floor,
++      .noise_spectrum = self->noise_spectrum,
++  };
++  denoiser_core_update_noise_profile(profile_params, reference_spectrum);
+ 
+-      adaptive_estimator_update_seed(self->adaptive_estimator,
+-                                     self->manual_noise_floor);
++  // 3. Denoising Stage: Calculate gains and apply psychoacoustic constraints
+ 
+-      self->last_adaptive_state = 1;
+-      self->aggressiveness = self->denoise_parameters.aggressiveness;
+-    }
++  // Preservation of 'noisy' reference before temporal smoothing for Veto
++  // comparison
++  memcpy(self->noisy_reference, reference_spectrum,
++         self->real_spectrum_size * sizeof(float));
+ 
+-    // Run adaptive estimator
+-    adaptive_estimator_run(self->adaptive_estimator, reference_spectrum,
+-                           self->noise_spectrum);
+-
+-    // Apply morphed profile as a floor
+-    adaptive_estimator_apply_floor(self->adaptive_estimator,
+-                                   self->manual_noise_floor);
+-    for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
+-      if (self->noise_spectrum[k] < self->manual_noise_floor[k]) {
+-        self->noise_spectrum[k] = self->manual_noise_floor[k];
+-      }
+-    }
++  // 3.1. Calculate SNR-dependent oversubtraction factors (Alpha/Beta)
++  SuppressionParameters suppression_params = {
++      .type = SUPPRESSION_BEROUTI_PER_BIN,
++      .strength = self->denoise_parameters.suppression_strength,
++      .undersubtraction = 0.0F};
++  suppression_engine_calculate(self->suppression_engine, reference_spectrum,
++                               self->noise_spectrum, suppression_params,
++                               self->alpha, self->beta);
+ 
+-    // Smooth the morphed/refined floor every frame to eliminate
+-    // residual musical noise in specific steering modes (e.g. Median)
+-    smooth_spectrum(self->noise_spectrum, self->real_spectrum_size, 0.5f);
+-  } else {
+-    // Manual Denoising Mode
+-    self->last_adaptive_state = 0;
+-
+-    // Use morphed profile
+-    get_morphed_profile(self->noise_spectrum,
+-                        get_noise_profile(self->noise_profile, ROLLING_MEAN),
+-                        get_noise_profile(self->noise_profile, MEDIAN),
+-                        get_noise_profile(self->noise_profile, MAX),
+-                        get_noise_profile(self->noise_profile, MINIMUM),
+-                        self->real_spectrum_size,
+-                        self->denoise_parameters.aggressiveness);
+-  }
+-
+-  // --- Common Processing Path ---
+-
+-  // 2. Calculate SNR-dependent oversubtraction factors (Alpha/Beta)
+-  // The SuppressionEngine implement Berouti-style scaling.
+-  // The Veto engine will later moderate this based on audibility/transients.
+-  suppression_engine_calculate(
+-      self->suppression_engine, reference_spectrum, self->noise_spectrum,
+-      self->denoise_parameters.suppression_strength, self->alpha, self->beta);
+-
+-  // 3. Detect tonal components and boost alpha at tonal bins.
+-  // Runs before the masking veto so the veto can protect signal harmonics.
++  // 3.2. Detect tonal components and boost alpha at tonal bins
+   tonal_reducer_run(self->tonal_reducer, self->noise_spectrum,
+                     get_noise_profile(self->noise_profile, MAX),
+                     get_noise_profile(self->noise_profile, MEDIAN), self->alpha,
+                     self->denoise_parameters.tonal_reduction);
+ 
+-  // Preserve 'noisy' reference before temporal smoothing for Veto comparison
+-  memcpy(self->noisy_reference, reference_spectrum,
+-         self->real_spectrum_size * sizeof(float));
+-
++  // 3.3. Apply temporal smoothing to the input spectrum
+   TimeSmoothingParameters spectral_smoothing_parameters =
+       (TimeSmoothingParameters){
+           .smoothing = self->denoise_parameters.smoothing_factor,
+       };
+   spectral_smoothing_run(self->spectrum_smoothing,
+                          spectral_smoothing_parameters, reference_spectrum);
+ 
+-  // Apply Structural Veto to rescue transients and moderate artifacts
++  // 3.4. Apply Structural Veto to rescue transients and moderate artifacts
+   masking_veto_apply(self->masking_veto, reference_spectrum,
+                      self->noisy_reference, self->noise_spectrum, self->alpha,
+-                     1.0F, self->denoise_parameters.masking_depth,
++                     ALPHA_MIN, self->denoise_parameters.masking_depth,
+                      self->denoise_parameters.masking_elasticity);
+ 
+-  estimate_gains(self->real_spectrum_size, self->fft_size, reference_spectrum,
+-                 self->noise_spectrum, self->gain_spectrum, self->alpha,
+-                 self->beta, self->gain_estimation_type);
+-
+-  // Apply noise floor management
+-  noise_floor_manager_apply(self->noise_floor_manager, self->real_spectrum_size,
+-                            self->fft_size, self->gain_spectrum,
+-                            self->noise_spectrum,
+-                            self->denoise_parameters.reduction_amount,
+-                            self->denoise_parameters.tonal_reduction,
+-                            tonal_reducer_get_mask(self->tonal_reducer),
+-                            self->denoise_parameters.whitening_factor);
+-
+-  DenoiseMixerParameters mixer_parameters = (DenoiseMixerParameters){
+-      .noise_level = self->denoise_parameters.reduction_amount,
++  // 3.5. Final Gain Calculation
++  calculate_gains(self->real_spectrum_size, self->fft_size, reference_spectrum,
++                  self->noise_spectrum, self->gain_spectrum, self->alpha,
++                  self->beta, self->gain_calculation_type);
++
++  // 4. Post-Processing: Final gain management and mixing
++  DenoiserCorePostProcessParams post_params = {
++      .fft_size = self->fft_size,
++      .real_spectrum_size = self->real_spectrum_size,
++      .reduction_amount = self->denoise_parameters.reduction_amount,
++      .tonal_reduction = self->denoise_parameters.tonal_reduction,
++      .whitening_factor = self->denoise_parameters.whitening_factor,
++      .mixer_whitening_factor = self->denoise_parameters.whitening_factor,
+       .residual_listen = self->denoise_parameters.residual_listen,
+-      .whitening_amount = self->denoise_parameters.whitening_factor,
++      .noise_floor_manager = self->noise_floor_manager,
++      .tonal_reducer = self->tonal_reducer,
++      .mixer = self->mixer,
++      .gain_spectrum = self->gain_spectrum,
++      .noise_spectrum = self->noise_spectrum,
++      .fft_spectrum = fft_spectrum,
+   };
+-
+-  denoise_mixer_run(self->mixer, fft_spectrum, self->gain_spectrum,
+-                    mixer_parameters);
++  denoiser_core_apply_post_processing(post_params);
+ 
+   return true;
+ }
+diff --git a/src/processors/denoiser/spectral_denoiser.h b/src/processors/denoiser/spectral_denoiser.h
+--- a/src/processors/denoiser/spectral_denoiser.h
++++ b/src/processors/denoiser/spectral_denoiser.h
+@@ -21,7 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ #ifndef SPECTRAL_DENOISER_H
+ #define SPECTRAL_DENOISER_H
+ 
+-#include "shared/noise_estimation/noise_profile.h"
++#include "shared/denoiser_logic/core/noise_profile.h"
+ #include "shared/spectral_processor.h"
+ #include <stdbool.h>
+ #include <stdint.h>
+diff --git a/src/processors/denoiser2d/spectral_2d_denoiser.c b/src/processors/denoiser2d/spectral_2d_denoiser.c
+--- a/src/processors/denoiser2d/spectral_2d_denoiser.c
++++ b/src/processors/denoiser2d/spectral_2d_denoiser.c
+@@ -20,19 +20,20 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ 
+ #include "spectral_2d_denoiser.h"
+ #include "shared/configurations.h"
+-#include "shared/gain_estimation/gain_estimators.h"
+-#include "shared/gain_estimation/suppression_engine.h"
+-#include "shared/noise_estimation/adaptive_noise_estimator.h"
+-#include "shared/noise_estimation/noise_estimator.h"
+-#include "shared/noise_estimation/tonal_reducer.h"
+-#include "shared/post_estimation/masking_veto.h"
+-#include "shared/post_estimation/nlm_filter.h"
+-#include "shared/post_estimation/noise_floor_manager.h"
+-#include "shared/utils/denoise_mixer.h"
+-#include "shared/utils/spectral_features.h"
++#include "shared/denoiser_logic/core/denoise_mixer.h"
++#include "shared/denoiser_logic/core/denoiser_core.h"
++#include "shared/denoiser_logic/core/noise_floor_manager.h"
++#include "shared/denoiser_logic/core/noise_profile.h"
++#include "shared/denoiser_logic/estimators/adaptive_noise_estimator.h"
++#include "shared/denoiser_logic/estimators/noise_estimator.h"
++#include "shared/denoiser_logic/processing/gain_calculator.h"
++#include "shared/denoiser_logic/processing/masking_veto.h"
++#include "shared/denoiser_logic/processing/nlm_filter.h"
++#include "shared/denoiser_logic/processing/suppression_engine.h"
++#include "shared/denoiser_logic/processing/tonal_reducer.h"
++#include "shared/utils/spectral_circular_buffer.h"
+ #include "shared/utils/spectral_utils.h"
+ #include <float.h>
+-#include <math.h>
+ #include <stdlib.h>
+ #include <string.h>
+ 
+@@ -53,14 +54,14 @@ typedef struct Spectral2DDenoiser {
+   float* manual_noise_floor; // Manual profile floor
+   TonalReducer* tonal_reducer;
+ 
+-  // Delay buffer for audio alignment
+-  float* spectral_delay_buffer;
+-  float* noise_delay_buffer;
+-  float* magnitude_delay_buffer;
+-  uint32_t delay_buffer_write_index;
++  // Reusable circular buffer for aligned temporal analysis
++  SbSpectralCircularBuffer* circular_buffer;
++  uint32_t layer_fft;
++  uint32_t layer_noise;
++  uint32_t layer_magnitude;
+ 
+   SpectrumType spectrum_type;
+-  GainEstimationType gain_estimation_type;
++  GainCalculationType gain_calculation_type;
+ 
+   NoiseProfile* noise_profile;
+   NoiseEstimator* noise_estimator;
+@@ -78,6 +79,8 @@ typedef struct Spectral2DDenoiser {
+   bool was_learning;
+ } Spectral2DDenoiser;
+ 
++// Header-only helpers or declarations would go here
++
+ SpectralProcessorHandle spectral_2d_denoiser_initialize(
+     const uint32_t sample_rate, const uint32_t fft_size,
+     const uint32_t overlap_factor, NoiseProfile* noise_profile) {
+@@ -97,8 +100,8 @@ SpectralProcessorHandle spectral_2d_denoiser_initialize(
+   self->real_spectrum_size = (fft_size / 2U) + 1U;
+   self->sample_rate = sample_rate;
+   self->hop = fft_size / overlap_factor;
+-  self->spectrum_type = SPECTRAL_TYPE_GENERAL;
+-  self->gain_estimation_type = GAIN_ESTIMATION_TYPE;
++  self->spectrum_type = SPECTRAL_TYPE_2D;
++  self->gain_calculation_type = GAIN_ESTIMATION_TYPE_2D;
+   self->noise_profile = noise_profile;
+ 
+   // Allocate buffers
+@@ -156,32 +159,26 @@ SpectralProcessorHandle spectral_2d_denoiser_initialize(
+     return NULL;
+   }
+ 
+-  // Allocate spectral delay buffer
+-  // We need to store full FFT frames (packed complex)
+-  // Assuming fft_size floats is sufficient for the packed format used by STFT
+-  // processor
+-  self->spectral_delay_buffer =
+-      (float*)calloc((size_t)DELAY_BUFFER_FRAMES * fft_size, sizeof(float));
+-  if (!self->spectral_delay_buffer) {
++  // Initialize circular buffer
++  self->circular_buffer = spectral_circular_buffer_create(DELAY_BUFFER_FRAMES);
++  if (!self->circular_buffer) {
+     spectral_2d_denoiser_free(self);
+     return NULL;
+   }
+ 
+-  self->noise_delay_buffer = (float*)calloc(
+-      (size_t)DELAY_BUFFER_FRAMES * self->real_spectrum_size, sizeof(float));
+-  if (!self->noise_delay_buffer) {
+-    spectral_2d_denoiser_free(self);
+-    return NULL;
+-  }
++  self->layer_fft =
++      spectral_circular_buffer_add_layer(self->circular_buffer, self->fft_size);
++  self->layer_magnitude = spectral_circular_buffer_add_layer(
++      self->circular_buffer, self->real_spectrum_size);
++  self->layer_noise = spectral_circular_buffer_add_layer(
++      self->circular_buffer, self->real_spectrum_size);
+ 
+-  self->magnitude_delay_buffer = (float*)calloc(
+-      (size_t)DELAY_BUFFER_FRAMES * self->real_spectrum_size, sizeof(float));
+-  if (!self->magnitude_delay_buffer) {
++  if (self->layer_fft == 0xFFFFFFFF || self->layer_magnitude == 0xFFFFFFFF ||
++      self->layer_noise == 0xFFFFFFFF) {
+     spectral_2d_denoiser_free(self);
+     return NULL;
+   }
+ 
+-  self->delay_buffer_write_index = 0;
+   self->was_learning = false;
+   self->aggressiveness = 0.0f;
+   self->parameters.tonal_reduction = 0.0f;
+@@ -220,10 +217,12 @@ SpectralProcessorHandle spectral_2d_denoiser_initialize(
+     return NULL;
+   }
+ 
+-  self->masking_veto = masking_veto_initialize(
+-      self->fft_size, self->sample_rate, self->spectrum_type);
+-  self->suppression_engine =
+-      suppression_engine_initialize(self->real_spectrum_size);
++  self->masking_veto =
++      masking_veto_initialize(self->fft_size, self->sample_rate,
++                              CRITICAL_BANDS_TYPE_2D, self->spectrum_type);
++  self->suppression_engine = suppression_engine_initialize(
++      self->real_spectrum_size, self->sample_rate, CRITICAL_BANDS_TYPE_2D,
++      self->spectrum_type);
+ 
+   if (!self->masking_veto || !self->suppression_engine) {
+     spectral_2d_denoiser_free(self);
+@@ -286,11 +285,17 @@ void spectral_2d_denoiser_free(SpectralProcessorHandle instance) {
+   free(self->noise_spectrum);
+   free(self->alpha);
+   free(self->beta);
+-  free(self->spectral_delay_buffer);
+-  free(self->noise_delay_buffer);
+-  free(self->magnitude_delay_buffer);
+-  free(self->manual_noise_floor);
+-  tonal_reducer_free(self->tonal_reducer);
++  if (self->manual_noise_floor) {
++    free(self->manual_noise_floor);
++  }
++
++  if (self->circular_buffer) {
++    spectral_circular_buffer_free(self->circular_buffer);
++  }
++
++  if (self->tonal_reducer) {
++    tonal_reducer_free(self->tonal_reducer);
++  }
+ 
+   free(self);
+ }
+@@ -340,203 +345,125 @@ bool spectral_2d_denoiser_run(SpectralProcessorHandle instance,
+ 
+   Spectral2DDenoiser* self = (Spectral2DDenoiser*)instance;
+ 
+-  // Get reference spectrum (power or magnitude)
++  // 1. Preparation: Get reference spectrum and handle learning mode
+   float* reference_spectrum =
+       get_spectral_feature(self->spectral_features, fft_spectrum,
+                            self->fft_size, self->spectrum_type);
+ 
+-  if (self->parameters.learn_noise > 0) {
+-    // Learning mode: update noise profile for all modes
+-    for (int mode = ROLLING_MEAN; mode <= MINIMUM; mode++) {
+-      noise_estimation_run(self->noise_estimator, (NoiseEstimatorType)mode,
+-                           reference_spectrum);
+-    }
+-    self->was_learning = true;
++  if (denoiser_core_handle_learning_mode(
++          self->noise_estimator, reference_spectrum,
++          self->parameters.learn_noise, &self->was_learning)) {
+     return true;
+   }
+ 
+-  if (self->was_learning) {
+-    // User just stopped learning -> Finalize all captures
+-    for (int mode = ROLLING_MEAN; mode <= MINIMUM; mode++) {
+-      noise_estimation_finalize(self->noise_estimator,
+-                                (NoiseEstimatorType)mode);
+-    }
+-    self->was_learning = false;
+-  }
+-
+-  // --- Denoising mode: use NLM for 2D smoothing ---
+-
+-  // 1. Store current spectral frame in delay buffer
+-  memcpy(&self->spectral_delay_buffer[(size_t)self->delay_buffer_write_index *
+-                                      self->fft_size],
+-         fft_spectrum, self->fft_size * sizeof(float));
+-
+-  // Store current magnitude frame in delay buffer for Veto alignment
+-  memcpy(&self->magnitude_delay_buffer[(size_t)self->delay_buffer_write_index *
+-                                       self->real_spectrum_size],
+-         reference_spectrum, self->real_spectrum_size * sizeof(float));
+-
+-  // 2. Determine which noise profile to use
+-  if (self->parameters.adaptive_noise && self->adaptive_estimator) {
+-    // Check for state transitions
+-    bool state_changed = !self->last_adaptive_state;
+-    bool mode_changed =
+-        fabsf(self->aggressiveness - self->parameters.aggressiveness) > 0.01f;
+-
+-    if (state_changed || mode_changed) {
+-      // Calculate morphed base profile
+-      get_morphed_profile(self->manual_noise_floor,
+-                          get_noise_profile(self->noise_profile, ROLLING_MEAN),
+-                          get_noise_profile(self->noise_profile, MEDIAN),
+-                          get_noise_profile(self->noise_profile, MAX),
+-                          get_noise_profile(self->noise_profile, MINIMUM),
+-                          self->real_spectrum_size,
+-                          self->parameters.aggressiveness);
+-
+-      // Re-seed the adaptive estimator to the new chosen base profile
+-      adaptive_estimator_update_seed(self->adaptive_estimator,
+-                                     self->manual_noise_floor);
+-
+-      self->last_adaptive_state = 1;
+-      self->aggressiveness = self->parameters.aggressiveness;
+-    }
++  // 2. Noise Estimation: Update noise profile (Adaptive or Manual)
++  DenoiserCoreProfileParams profile_params = {
++      .adaptive_enabled = self->parameters.adaptive_noise,
++      .spectrum_size = self->real_spectrum_size,
++      .aggressiveness = &self->aggressiveness,
++      .param_aggressiveness = self->parameters.aggressiveness,
++      .last_adaptive_state = &self->last_adaptive_state,
++      .adaptive_estimator = self->adaptive_estimator,
++      .noise_profile = self->noise_profile,
++      .manual_noise_floor = self->manual_noise_floor,
++      .noise_spectrum = self->noise_spectrum,
++  };
++  denoiser_core_update_noise_profile(profile_params, reference_spectrum);
+ 
+-    // Run adaptive estimator
+-    adaptive_estimator_run(self->adaptive_estimator, reference_spectrum,
+-                           self->noise_spectrum);
++  // 2.1 Align internal state and output to the delayed frame (temporal
++  // plumbing)
++  float* delayed_noise = NULL;
++  float* delayed_magnitude_spectrum = NULL;
+ 
+-    // Apply manual profile as a floor to the internal state and output
+-    adaptive_estimator_apply_floor(self->adaptive_estimator,
+-                                   self->manual_noise_floor);
++  // 2.1.1 Push current spectra to circular buffer
++  spectral_circular_buffer_push(self->circular_buffer, self->layer_fft,
++                                fft_spectrum);
++  spectral_circular_buffer_push(self->circular_buffer, self->layer_magnitude,
++                                reference_spectrum);
++  spectral_circular_buffer_push(self->circular_buffer, self->layer_noise,
++                                self->noise_spectrum);
+ 
+-    for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
+-      if (self->noise_spectrum[k] < self->manual_noise_floor[k]) {
+-        self->noise_spectrum[k] = self->manual_noise_floor[k];
+-      }
+-    }
+-  } else {
+-    // Manual mode: use morphed profile
+-    self->last_adaptive_state = 0;
++  // 2.1.2 Retrieve aligned (delayed) frames
++  const uint32_t delay_frames = nlm_filter_get_latency_frames(self->nlm_filter);
+ 
+-    get_morphed_profile(self->noise_spectrum,
+-                        get_noise_profile(self->noise_profile, ROLLING_MEAN),
+-                        get_noise_profile(self->noise_profile, MEDIAN),
+-                        get_noise_profile(self->noise_profile, MAX),
+-                        get_noise_profile(self->noise_profile, MINIMUM),
+-                        self->real_spectrum_size,
+-                        self->parameters.aggressiveness);
+-  }
++  float* delayed_spectrum = spectral_circular_buffer_retrieve(
++      self->circular_buffer, self->layer_fft, delay_frames);
+ 
+-  // 3. Store the noise spectrum in the delay buffer to match NLM latency
+-  memcpy(&self->noise_delay_buffer[(size_t)self->delay_buffer_write_index *
+-                                   self->real_spectrum_size],
+-         self->noise_spectrum, self->real_spectrum_size * sizeof(float));
++  delayed_noise = spectral_circular_buffer_retrieve(
++      self->circular_buffer, self->layer_noise, delay_frames);
+ 
+-  // 4. Compute SNR for NLM using the CURRENT adaptive noise (Whitening)
+-  for (uint32_t k = 0; k < self->real_spectrum_size; k++) {
+-    float denom = self->noise_spectrum[k] > FLT_MIN ? self->noise_spectrum[k]
+-                                                    : SPECTRAL_EPSILON;
+-    self->snr_frame[k] = reference_spectrum[k] / denom;
+-  }
++  delayed_magnitude_spectrum = spectral_circular_buffer_retrieve(
++      self->circular_buffer, self->layer_magnitude, delay_frames);
++
++  // 2.1.3 Align output to the delayed frame by default (Passthrough)
++  memcpy(fft_spectrum, delayed_spectrum, self->fft_size * sizeof(float));
++
++  // 3. Denoising Stage: Calculate gains and apply psychoacoustic constraints
+ 
+-  // 5. Push frame to NLM filter
++  // 3.1 Compute SNR for NLM using the CURRENT noise
++  nlm_filter_calculate_snr(self->nlm_filter, reference_spectrum,
++                           self->noise_spectrum, self->snr_frame);
++
++  // 3.2 Push frame to NLM filter
+   nlm_filter_push_frame(self->nlm_filter, self->snr_frame);
+ 
+-  // 6. Process if NLM buffer is ready
+-  if (nlm_filter_is_ready(self->nlm_filter)) {
+-    // Determine retrieve index for aligned data
+-    uint32_t read_index = (self->delay_buffer_write_index +
+-                           DELAY_BUFFER_FRAMES - NLM_SEARCH_RANGE_TIME_FUTURE) %
+-                          DELAY_BUFFER_FRAMES;
+-
+-    float* delayed_spectrum =
+-        &self->spectral_delay_buffer[(size_t)read_index * self->fft_size];
+-    float* delayed_noise = &self->noise_delay_buffer[(size_t)read_index *
+-                                                     self->real_spectrum_size];
+-    float* delayed_magnitude_spectrum =
+-        &self->magnitude_delay_buffer[(size_t)read_index *
+-                                      self->real_spectrum_size];
+-
+-    // Copy delayed noise to self->noise_spectrum for subsequent
+-    // processing without modifying the delay buffer in-place
+-    memcpy(self->noise_spectrum, delayed_noise,
+-           self->real_spectrum_size * sizeof(float));
+-
+-    // Moderating the NLM reduction via Masking Veto
+-    if (nlm_filter_process(self->nlm_filter, self->smoothed_snr)) {
+-      // 1. Convert smoothed SNR back to spectral domain to get the "cleaner"
+-      // signal estimation. We use this as the masker to avoid the trap where
+-      // the noisy signal masks itself.
+-      float* smoothed_magnitude = self->snr_frame; // Reuse buffer
+-      for (uint32_t k = 0; k < self->real_spectrum_size; k++) {
+-        float denom = self->noise_spectrum[k] > FLT_MIN
+-                          ? self->noise_spectrum[k]
+-                          : SPECTRAL_EPSILON;
+-        smoothed_magnitude[k] = self->smoothed_snr[k] * denom;
+-      }
+-
+-      // 2. Calculate SNR-dependent oversubtraction factors (Alpha/Beta)
+-      suppression_engine_calculate(
+-          self->suppression_engine, smoothed_magnitude, self->noise_spectrum,
+-          self->parameters.suppression_strength, self->alpha, self->beta);
+-
+-      // 3. Detect tonal components and boost alpha at tonal bins.
+-      // Runs before the masking veto so the veto can protect signal harmonics.
+-      tonal_reducer_run(self->tonal_reducer, self->noise_spectrum,
+-                        get_noise_profile(self->noise_profile, MAX),
+-                        get_noise_profile(self->noise_profile, MEDIAN),
+-                        self->alpha, self->parameters.tonal_reduction);
+-
+-      // 4. Apply the psychoacoustic veto in CONJUNCTION with NLM results.
+-      masking_veto_apply(self->masking_veto, smoothed_magnitude,
+-                         delayed_magnitude_spectrum, self->noise_spectrum,
+-                         self->alpha, 1.0F,
+-                         self->parameters.nlm_masking_protection,
+-                         self->parameters.masking_elasticity);
+-
+-      estimate_gains(self->real_spectrum_size, self->fft_size,
+-                     smoothed_magnitude, self->noise_spectrum,
+-                     self->gain_spectrum, self->alpha, self->beta,
+-                     self->gain_estimation_type);
+-
+-      // Apply noise floor management
+-      noise_floor_manager_apply(
+-          self->noise_floor_manager, self->real_spectrum_size, self->fft_size,
+-          self->gain_spectrum, self->noise_spectrum,
+-          self->parameters.reduction_amount, self->parameters.tonal_reduction,
+-          tonal_reducer_get_mask(self->tonal_reducer),
+-          self->parameters.whitening_factor);
+-
+-      // Mix results
+-      DenoiseMixerParameters mixer_params = {
+-          .noise_level = self->parameters.reduction_amount,
+-          .residual_listen = self->parameters.residual_listen,
+-          .whitening_amount = 0.0F,
+-      };
+-
+-      // Copy delayed spectrum to output first
+-      memcpy(fft_spectrum, delayed_spectrum, self->fft_size * sizeof(float));
+-
+-      // Apply mix
+-      denoise_mixer_run(self->mixer, fft_spectrum, self->gain_spectrum,
+-                        mixer_params);
+-    } else {
+-      // NLM process failed unexpectedly
+-      memcpy(fft_spectrum, delayed_spectrum, self->fft_size * sizeof(float));
+-    }
+-  } else {
+-    // If NLM not ready yet (startup latency), output the delayed spectrum
+-    uint32_t read_index = (self->delay_buffer_write_index +
+-                           DELAY_BUFFER_FRAMES - NLM_SEARCH_RANGE_TIME_FUTURE) %
+-                          DELAY_BUFFER_FRAMES;
+-    float* delayed_spectrum =
+-        &self->spectral_delay_buffer[(size_t)read_index * self->fft_size];
+-    memcpy(fft_spectrum, delayed_spectrum, self->fft_size * sizeof(float));
+-  }
+-
+-  // Advance delay buffer write index
+-  self->delay_buffer_write_index =
+-      (self->delay_buffer_write_index + 1) % DELAY_BUFFER_FRAMES;
++  // 3.3. Process NLM filter (internally handles buffering readiness)
++  if (nlm_filter_process(self->nlm_filter, self->smoothed_snr)) {
++    // 3.3.1 Convert smoothed SNR back to spectral domain
++    // We reuse self->snr_frame as a temp buffer for smoothed_magnitude
++    float* smoothed_magnitude = self->snr_frame;
++    nlm_filter_reconstruct_magnitude(self->nlm_filter, self->smoothed_snr,
++                                     delayed_noise, smoothed_magnitude);
++
++    // 3.3.2 Calculate SNR-dependent oversubtraction factors (Alpha/Beta)
++    SuppressionParameters suppression_params = {
++        .type = SUPPRESSION_BEROUTI_PER_BIN,
++        .strength = self->parameters.suppression_strength,
++        .undersubtraction = 0.0F};
++    suppression_engine_calculate(self->suppression_engine, smoothed_magnitude,
++                                 delayed_noise, suppression_params, self->alpha,
++                                 self->beta);
++
++    // 3.3.3 Detect tonal components and boost alpha at tonal bins
++    tonal_reducer_run(self->tonal_reducer, delayed_noise,
++                      get_noise_profile(self->noise_profile, MAX),
++                      get_noise_profile(self->noise_profile, MEDIAN),
++                      self->alpha, self->parameters.tonal_reduction);
++
++    // 3.3.4 Apply psychoacoustic veto to preserve transients and moderate
++    // artifacts
++    masking_veto_apply(self->masking_veto, smoothed_magnitude,
++                       delayed_magnitude_spectrum, delayed_noise, self->alpha,
++                       ALPHA_MIN, self->parameters.nlm_masking_protection,
++                       self->parameters.masking_elasticity);
++
++    // 3.3.5 Final Gain Calculation
++    calculate_gains(self->real_spectrum_size, self->fft_size,
++                    smoothed_magnitude, delayed_noise, self->gain_spectrum,
++                    self->alpha, self->beta, self->gain_calculation_type);
++
++    // 4. Post-Processing: Final gain management and mixing
++    DenoiserCorePostProcessParams post_params = {
++        .fft_size = self->fft_size,
++        .real_spectrum_size = self->real_spectrum_size,
++        .reduction_amount = self->parameters.reduction_amount,
++        .tonal_reduction = self->parameters.tonal_reduction,
++        .whitening_factor = self->parameters.whitening_factor,
++        .mixer_whitening_factor = self->parameters.whitening_factor,
++        .residual_listen = self->parameters.residual_listen,
++        .noise_floor_manager = self->noise_floor_manager,
++        .tonal_reducer = self->tonal_reducer,
++        .mixer = self->mixer,
++        .gain_spectrum = self->gain_spectrum,
++        .noise_spectrum = delayed_noise,
++        .fft_spectrum = fft_spectrum,
++    };
++
++    denoiser_core_apply_post_processing(post_params);
++  }
++
++  // Finalize: Advance circular buffer write index
++  spectral_circular_buffer_advance(self->circular_buffer);
+ 
+   return true;
+ }
+diff --git a/src/processors/denoiser2d/spectral_2d_denoiser.h b/src/processors/denoiser2d/spectral_2d_denoiser.h
+--- a/src/processors/denoiser2d/spectral_2d_denoiser.h
++++ b/src/processors/denoiser2d/spectral_2d_denoiser.h
+@@ -21,7 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ #ifndef SPECTRAL_2D_DENOISER_H
+ #define SPECTRAL_2D_DENOISER_H
+ 
+-#include "shared/noise_estimation/noise_profile.h"
++#include "shared/denoiser_logic/core/noise_profile.h"
+ #include "shared/spectral_processor.h"
+ #include <stdbool.h>
+ #include <stdint.h>
+diff --git a/src/processors/specbleach_2d_denoiser.c b/src/processors/specbleach_2d_denoiser.c
+--- a/src/processors/specbleach_2d_denoiser.c
++++ b/src/processors/specbleach_2d_denoiser.c
+@@ -21,8 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ #include "specbleach_2d_denoiser.h"
+ #include "denoiser2d/spectral_2d_denoiser.h"
+ #include "shared/configurations.h"
+-#include "shared/noise_estimation/noise_estimator.h"
+-#include "shared/noise_estimation/noise_profile.h"
++#include "shared/denoiser_logic/core/noise_profile.h"
+ #include "shared/stft/stft_processor.h"
+ #include "shared/utils/general_utils.h"
+ #include <stdlib.h>
+@@ -52,17 +51,16 @@ SpectralBleachHandle specbleach_2d_initialize(const uint32_t sample_rate,
+   self->sample_rate = sample_rate;
+ 
+   self->stft_processor = stft_processor_initialize(
+-      sample_rate, frame_size, OVERLAP_FACTOR_GENERAL,
+-      PADDING_CONFIGURATION_GENERAL, ZEROPADDING_AMOUNT_GENERAL,
+-      INPUT_WINDOW_TYPE_GENERAL, OUTPUT_WINDOW_TYPE_GENERAL);
++      sample_rate, frame_size, OVERLAP_FACTOR_2D, PADDING_CONFIGURATION_2D,
++      ZEROPADDING_AMOUNT_2D, INPUT_WINDOW_TYPE_2D, OUTPUT_WINDOW_TYPE_2D);
+ 
+   if (!self->stft_processor) {
+     specbleach_2d_free(self);
+     return NULL;
+   }
+ 
+   const uint32_t fft_size = get_stft_fft_size(self->stft_processor);
+-  self->hop = fft_size / OVERLAP_FACTOR_GENERAL;
++  self->hop = fft_size / OVERLAP_FACTOR_2D;
+ 
+   self->noise_profile = noise_profile_initialize(fft_size);
+   if (!self->noise_profile) {
+@@ -71,7 +69,7 @@ SpectralBleachHandle specbleach_2d_initialize(const uint32_t sample_rate,
+   }
+ 
+   self->spectral_2d_denoiser = spectral_2d_denoiser_initialize(
+-      sample_rate, fft_size, OVERLAP_FACTOR_GENERAL, self->noise_profile);
++      sample_rate, fft_size, OVERLAP_FACTOR_2D, self->noise_profile);
+ 
+   if (!self->spectral_2d_denoiser) {
+     specbleach_2d_free(self);
+diff --git a/src/processors/specbleach_denoiser.c b/src/processors/specbleach_denoiser.c
+--- a/src/processors/specbleach_denoiser.c
++++ b/src/processors/specbleach_denoiser.c
+@@ -21,8 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ #include "specbleach_denoiser.h"
+ #include "denoiser/spectral_denoiser.h"
+ #include "shared/configurations.h"
+-#include "shared/noise_estimation/noise_estimator.h"
+-#include "shared/noise_estimation/noise_profile.h"
++#include "shared/denoiser_logic/core/noise_profile.h"
+ #include "shared/stft/stft_processor.h"
+ #include "shared/utils/general_utils.h"
+ #include <stdlib.h>
+@@ -52,9 +51,8 @@ SpectralBleachHandle specbleach_initialize(const uint32_t sample_rate,
+   self->sample_rate = sample_rate;
+ 
+   self->stft_processor = stft_processor_initialize(
+-      sample_rate, frame_size, OVERLAP_FACTOR_GENERAL,
+-      PADDING_CONFIGURATION_GENERAL, ZEROPADDING_AMOUNT_GENERAL,
+-      INPUT_WINDOW_TYPE_GENERAL, OUTPUT_WINDOW_TYPE_GENERAL);
++      sample_rate, frame_size, OVERLAP_FACTOR_1D, PADDING_CONFIGURATION_1D,
++      ZEROPADDING_AMOUNT_1D, INPUT_WINDOW_TYPE_1D, OUTPUT_WINDOW_TYPE_1D);
+ 
+   if (!self->stft_processor) {
+     specbleach_free(self);
+@@ -73,7 +71,7 @@ SpectralBleachHandle specbleach_initialize(const uint32_t sample_rate,
+   }
+ 
+   self->spectral_denoiser = spectral_denoiser_initialize(
+-      self->sample_rate, fft_size, OVERLAP_FACTOR_GENERAL, self->noise_profile);
++      self->sample_rate, fft_size, OVERLAP_FACTOR_1D, self->noise_profile);
+ 
+   if (!self->spectral_denoiser) {
+     specbleach_free(self);
+diff --git a/src/shared/configurations.h b/src/shared/configurations.h
+--- a/src/shared/configurations.h
++++ b/src/shared/configurations.h
+@@ -50,15 +50,14 @@ _Static_assert(sizeof(uint32_t) == 4, "uint32_t must be exactly 32 bits");
+ /* ------------------- Shared Modules configurations ------------------- */
+ /* --------------------------------------------------------------------- */
+ 
++#define SPECTRAL_EPSILON (1e-12F)
++#define MAX_SPECTRAL_CIRCULAR_BUFFER_LAYERS 8
++
+ // Absolute hearing thresholds
+ #define REFERENCE_SINE_WAVE_FREQ (1000.F)
+ #define REFERENCE_LEVEL (90.F)
+ #define SINE_AMPLITUDE (1.F)
+ 
+-// Spectral Whitening
+-#define WHITENING_DECAY_RATE (1000.F)
+-#define WHITENING_FLOOR (0.01F)
+-
+ // Masking Thresholds
+ #define BIAS false
+ #define HIGH_FREQ_BIAS 20.F
+@@ -71,12 +70,6 @@ _Static_assert(sizeof(uint32_t) == 4, "uint32_t must be exactly 32 bits");
+ // clang-format on
+ #endif
+ 
+-// Postfilter SNR Threshold
+-#define POSTFILTER_SCALE (10.0F)
+-#define PRESERVE_MINIMUM_GAIN (true)
+-#define SPECTRAL_EPSILON (1e-12F)
+-#define POSTFILTER_MIN_GAIN_DB (-15.0F)
+-
+ // Gain Estimators
+ #define GSS_EXPONENT                                                           \
+   2.0F // 2 Power Subtraction / 1 Magnitude Subtraxtion / 0.5 Spectral
+@@ -86,34 +79,13 @@ _Static_assert(sizeof(uint32_t) == 4, "uint32_t must be exactly 32 bits");
+ #define ALPHA_MAX (4.F)
+ #define ALPHA_MAX_TONAL (10.F)
+ #define ALPHA_MIN (1.F)
+-#define BETA_MAX (0.01F)
+-#define BETA_MIN (0.F)
+ #define DEFAULT_OVERSUBTRACTION (ALPHA_MIN)
+-#define DEFAULT_UNDERSUBTRACTION (BETA_MAX)
+-#define NOISE_SCALING_LOWER_SNR (0.F)
+-#define NOISE_SCALING_HIGHER_SNR (20.F)
++#define DEFAULT_UNDERSUBTRACTION (0.01F)
+ #define SUPPRESSION_LOWER_SNR_DB (-5.0F)
+ #define SUPPRESSION_HIGHER_SNR_DB (20.0F)
+-#define ELASTIC_PROTECTION_FACTOR (0.2F)
+ 
+ // Adaptive Estimator
+-#define N_SMOOTH (0.7F)
+-#define BETA_AT (0.8F)
+-#define GAMMA (0.998F)
+-#define ALPHA_P (0.2F)
+-#define ALPHA_D (0.85F)
+-
+-#define CROSSOVER_POINT1 (1000.F)
+-#define CROSSOVER_POINT2 (3000.F)
+-#define BAND_1_LEVEL (2.F)
+-#define BAND_2_LEVEL (2.F)
+-#define BAND_3_LEVEL (5.F)
+-
+ #define ESTIMATOR_SILENCE_THRESHOLD (1e-10F) // Roughly -100dB in power
+-#define ESTIMATOR_BIAS_EPSILON (1e-6F) // Precision for bias correction calc
+-#define ESTIMATOR_MIN_HISTORY_FRAMES                                           \
+-  5U // Minimum frames for history-based tracking
+-#define ESTIMATOR_MIN_DURATION_MS 0.1F // Safety floor for duration calcs
+ 
+ // Martin (2001) Constants
+ #define MARTIN_WINDOW_LEN 96  // Total window length (frames)
+@@ -136,77 +108,35 @@ _Static_assert(sizeof(uint32_t) == 4, "uint32_t must be exactly 32 bits");
+ #define BRANDT_DEFAULT_PERCENTILE 0.5f
+ #define BRANDT_MIN_CONFIDENCE                                                  \
+   0.90f // Lowered from 0.98 for better learning speed
++#define BRANDT_ESTIMATOR_BIAS_EPSILON                                          \
++  (1e-6F) // Precision for bias correction calc
++#define BRANDT_ESTIMATOR_MIN_HISTORY_FRAMES                                    \
++  5U // Minimum frames for history-based tracking
++#define BRANDT_ESTIMATOR_MIN_DURATION_MS 0.1F // Safety floor for duration calcs
+ 
+ // Tonal Detector Constants
+ #define PEAK_THRESHOLD 1.41f        // ~3dB above neighbor background
+ #define STATIONARITY_THRESHOLD 2.5f // Ratio of Max/Median spread
+-
+-// Frequency-adaptive breakpoints
+ #define LOW_FREQ_HZ 200.0f
+ #define MID_FREQ_HZ 1000.0f
+-
+-// Background radius scaling (half-window size)
+ #define BG_RADIUS_LOW 15
+ #define BG_RADIUS_HIGH 7
+-
+-// Sideband spread scaling
+-#define SIDEBAND_LOW 4
+-#define SIDEBAND_HIGH 2
+-
+-// Threshold relaxation at low frequencies
+ #define THRESHOLD_FACTOR_LOW 0.85f
+ #define THRESHOLD_FACTOR_HIGH 1.0f
+-
+-// Maximum neighbor array size (2 * BG_RADIUS_LOW)
+ #define MAX_NEIGHBORS 30
+ 
+-/* --------------------------------------------------------------- */
+-/* ------------------- Denoiser configurations ------------------- */
+-/* --------------------------------------------------------------- */
+-
+-// STFT configurations - Frame size in milliseconds
+-#define OVERLAP_FACTOR_GENERAL 4
+-#define INPUT_WINDOW_TYPE_GENERAL HANN_WINDOW
+-#define OUTPUT_WINDOW_TYPE_GENERAL HANN_WINDOW
+-
+-// Fft configuration
+-#define PADDING_CONFIGURATION_GENERAL FIXED_AMOUNT
+-#define ZEROPADDING_AMOUNT_GENERAL 800 // Zero-pad for low-freq resolution
+-
+-// Spectral Type
+-#define SPECTRAL_TYPE_GENERAL POWER_SPECTRUM
+-
+-// Transient protection
++// Transient Detector Constants
+ #define UPPER_LIMIT (5.F)
+ #define DEFAULT_TRANSIENT_THRESHOLD (2.F)
+ 
+-// Masking
+-#define CRITICAL_BANDS_TYPE OPUS_SCALE
+-
+-// Noise Estimator
++// Noise Estimator Constants
+ #define MIN_NUMBER_OF_WINDOWS_NOISE_AVERAGED 5
+ #define NUMBER_OF_MEDIAN_SPECTRUM 25
+ #define NOISE_ESTIMATION_INTERPOLATION_THRESHOLD (1e-9F)
+ #define NOISE_ESTIMATION_SMOOTHING_FACTOR (0.5F)
++#define ADAPTIVE_NOISE_FLOOR_SMOOTHING (0.5F)
+ 
+-// Noise Scaling strategy
+-#define NOISE_SCALING_TYPE_GENERAL MASKING_THRESHOLDS
+-#define GAIN_ESTIMATION_TYPE WIENER
+-
+-// Time Smoothing
+-#define TIME_SMOOTHING_TYPE FIXED
+-
+-// Postfilter
+-#define POSTFILTER_ENABLED_GENERAL true
+-
+-// Whitening
+-#define WHITENING_ENABLED_GENERAL true
+-
+-/* ------------------------------------------------------------------ */
+-/* ------------------- 2D Denoiser configurations ------------------- */
+-/* ------------------------------------------------------------------ */
+-
+-// NLM Parameters (Lukin Algorithm B)
++// NLM (Lukin Algorithm B) Parameters
+ #define NLM_PATCH_SIZE 8U
+ #define NLM_PASTE_BLOCK_SIZE 4U
+ #define NLM_SEARCH_RANGE_FREQ 8U
+@@ -216,4 +146,44 @@ _Static_assert(sizeof(uint32_t) == 4, "uint32_t must be exactly 32 bits");
+ #define DELAY_BUFFER_FRAMES (NLM_SEARCH_RANGE_TIME_PAST + 1U)
+ #define NLM_MIN_WEIGHT 1e-10F
+ 
++/* --------------------------------------------------------------- */
++/* ------------------- 1D Denoiser configurations ---------------- */
++/* --------------------------------------------------------------- */
++
++// STFT configurations
++#define OVERLAP_FACTOR_1D 4
++#define INPUT_WINDOW_TYPE_1D HANN_WINDOW
++#define OUTPUT_WINDOW_TYPE_1D HANN_WINDOW
++
++// Fft configuration
++#define PADDING_CONFIGURATION_1D FIXED_AMOUNT
++#define ZEROPADDING_AMOUNT_1D 800
++
++// Spectral Type
++#define SPECTRAL_TYPE_1D POWER_SPECTRUM
++
++// Noise Scaling strategy
++#define CRITICAL_BANDS_TYPE_1D OPUS_SCALE
++#define GAIN_ESTIMATION_TYPE_1D WIENER
++
++/* ------------------------------------------------------------------ */
++/* ------------------- 2D Denoiser configurations ------------------- */
++/* ------------------------------------------------------------------ */
++
++// STFT configurations
++#define OVERLAP_FACTOR_2D 4
++#define INPUT_WINDOW_TYPE_2D HANN_WINDOW
++#define OUTPUT_WINDOW_TYPE_2D HANN_WINDOW
++
++// Fft configuration
++#define PADDING_CONFIGURATION_2D FIXED_AMOUNT
++#define ZEROPADDING_AMOUNT_2D 800
++
++// Spectral Type
++#define SPECTRAL_TYPE_2D POWER_SPECTRUM
++
++// Noise Scaling strategy
++#define CRITICAL_BANDS_TYPE_2D OPUS_SCALE
++#define GAIN_ESTIMATION_TYPE_2D WIENER
++
+ #endif // ifndef
+diff --git a/src/shared/utils/denoise_mixer.c b/src/shared/denoiser_logic/core/denoise_mixer.c
+rename from src/shared/utils/denoise_mixer.c
+rename to src/shared/denoiser_logic/core/denoise_mixer.c
+--- a/src/shared/utils/denoise_mixer.c
++++ b/src/shared/denoiser_logic/core/denoise_mixer.c
+@@ -18,7 +18,7 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#include "denoise_mixer.h"
++#include "shared/denoiser_logic/core/denoise_mixer.h"
+ #include <stdlib.h>
+ #include <string.h>
+ 
+diff --git a/src/shared/utils/denoise_mixer.h b/src/shared/denoiser_logic/core/denoise_mixer.h
+rename from src/shared/utils/denoise_mixer.h
+rename to src/shared/denoiser_logic/core/denoise_mixer.h
+--- a/src/shared/utils/denoise_mixer.h
++++ b/src/shared/denoiser_logic/core/denoise_mixer.h
+
+diff --git a/src/shared/denoiser_logic/core/denoiser_core.c b/src/shared/denoiser_logic/core/denoiser_core.c
+new file mode 100644
+--- /dev/null
++++ b/src/shared/denoiser_logic/core/denoiser_core.c
+@@ -0,0 +1,124 @@
++/*
++libspecbleach - A spectral processing library
++
++Copyright 2022 Luciano Dato <lucianodato@gmail.com>
++
++This library is free software; you can redistribute it and/or
++modify it under the terms of the GNU Lesser General Public
++License as published by the Free Software Foundation; either
++version 2.1 of the License, or (at your option) any later version.
++
++This library is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++Lesser General Public License for more details.
++
++You should have received a copy of the GNU Lesser General Public
++License along with this library; if not, write to the Free Software
++Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
++*/
++
++#include "shared/denoiser_logic/core/denoiser_core.h"
++#include "shared/denoiser_logic/core/denoise_mixer.h"
++#include "shared/denoiser_logic/core/noise_floor_manager.h"
++#include "shared/denoiser_logic/core/noise_profile.h"
++#include "shared/denoiser_logic/estimators/adaptive_noise_estimator.h"
++#include "shared/denoiser_logic/estimators/noise_estimator.h"
++#include "shared/denoiser_logic/processing/tonal_reducer.h"
++#include "shared/utils/spectral_utils.h"
++#include <float.h>
++#include <math.h>
++
++bool denoiser_core_handle_learning_mode(NoiseEstimator* noise_estimator,
++                                        float* reference_spectrum,
++                                        int learn_noise_flag,
++                                        bool* was_learning) {
++  if (learn_noise_flag > 0) {
++    // Learn all modes simultaneously
++    for (int mode = ROLLING_MEAN; mode <= MINIMUM; mode++) {
++      noise_estimation_run(noise_estimator, (NoiseEstimatorType)mode,
++                           reference_spectrum);
++    }
++    *was_learning = true;
++    return true;
++  }
++
++  if (*was_learning) {
++    // User just stopped learning -> Finalize all captures
++    for (int mode = ROLLING_MEAN; mode <= MINIMUM; mode++) {
++      noise_estimation_finalize(noise_estimator, (NoiseEstimatorType)mode);
++    }
++    *was_learning = false;
++  }
++
++  return false;
++}
++
++void denoiser_core_update_noise_profile(DenoiserCoreProfileParams params,
++                                        const float* reference_spectrum) {
++  if (params.adaptive_enabled && params.adaptive_estimator) {
++    // Adaptive Denoising Mode
++    int state_changed = *params.last_adaptive_state == 0;
++    bool mode_changed =
++        fabsf(*params.aggressiveness - params.param_aggressiveness) > 0.01f;
++
++    if (state_changed || mode_changed) {
++      // Calculate morphed base profile
++      get_morphed_profile(params.manual_noise_floor,
++                          get_noise_profile(params.noise_profile, ROLLING_MEAN),
++                          get_noise_profile(params.noise_profile, MEDIAN),
++                          get_noise_profile(params.noise_profile, MAX),
++                          get_noise_profile(params.noise_profile, MINIMUM),
++                          params.spectrum_size, params.param_aggressiveness);
++
++      adaptive_estimator_update_seed(params.adaptive_estimator,
++                                     params.manual_noise_floor);
++
++      *params.last_adaptive_state = 1;
++    }
++
++    // Run adaptive estimator (handles smoothing and aggressiveness tracking)
++    adaptive_estimator_run(params.adaptive_estimator, reference_spectrum,
++                           params.noise_spectrum, params.aggressiveness,
++                           params.param_aggressiveness);
++
++    // Apply morphed profile as a floor
++    adaptive_estimator_apply_floor(params.adaptive_estimator,
++                                   params.manual_noise_floor);
++    for (uint32_t k = 0U; k < params.spectrum_size; k++) {
++      if (params.noise_spectrum[k] < params.manual_noise_floor[k]) {
++        params.noise_spectrum[k] = params.manual_noise_floor[k];
++      }
++    }
++
++  } else {
++    // Manual Denoising Mode
++    *params.last_adaptive_state = 0;
++
++    // Use morphed profile
++    get_morphed_profile(params.noise_spectrum,
++                        get_noise_profile(params.noise_profile, ROLLING_MEAN),
++                        get_noise_profile(params.noise_profile, MEDIAN),
++                        get_noise_profile(params.noise_profile, MAX),
++                        get_noise_profile(params.noise_profile, MINIMUM),
++                        params.spectrum_size, params.param_aggressiveness);
++  }
++}
++
++void denoiser_core_apply_post_processing(DenoiserCorePostProcessParams params) {
++  // Apply noise floor management
++  noise_floor_manager_apply(
++      params.noise_floor_manager, params.real_spectrum_size, params.fft_size,
++      params.gain_spectrum, params.noise_spectrum, params.reduction_amount,
++      params.tonal_reduction, tonal_reducer_get_mask(params.tonal_reducer),
++      params.whitening_factor);
++
++  DenoiseMixerParameters mixer_parameters = (DenoiseMixerParameters){
++      .noise_level = params.reduction_amount,
++      .residual_listen = params.residual_listen,
++      .whitening_amount = params.mixer_whitening_factor,
++  };
++
++  denoise_mixer_run(params.mixer, params.fft_spectrum, params.gain_spectrum,
++                    mixer_parameters);
++}
+diff --git a/src/shared/denoiser_logic/core/denoiser_core.h b/src/shared/denoiser_logic/core/denoiser_core.h
+new file mode 100644
+--- /dev/null
++++ b/src/shared/denoiser_logic/core/denoiser_core.h
+@@ -0,0 +1,104 @@
++/*
++libspecbleach - A spectral processing library
++
++Copyright 2022 Luciano Dato <lucianodato@gmail.com>
++
++This library is free software; you can redistribute it and/or
++modify it under the terms of the GNU Lesser General Public
++License as published by the Free Software Foundation; either
++version 2.1 of the License, or (at your option) any later version.
++
++This library is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++Lesser General Public License for more details.
++
++You should have received a copy of the GNU Lesser General Public
++License along with this library; if not, write to the Free Software
++Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
++*/
++
++#ifndef SHARED_DENOISER_CORE_H
++#define SHARED_DENOISER_CORE_H
++
++#include "shared/denoiser_logic/core/denoise_mixer.h"
++#include "shared/denoiser_logic/core/noise_floor_manager.h"
++#include "shared/denoiser_logic/core/noise_profile.h"
++#include "shared/denoiser_logic/estimators/adaptive_noise_estimator.h"
++#include "shared/denoiser_logic/estimators/noise_estimator.h"
++#include "shared/denoiser_logic/processing/tonal_reducer.h"
++
++// Core parameters needed for updating noise profile
++typedef struct DenoiserCoreProfileParams {
++  bool adaptive_enabled;
++  uint32_t spectrum_size;
++  float* aggressiveness;
++  float param_aggressiveness;
++  int* last_adaptive_state; // Pointer to state variable in parent struct
++
++  // Components
++  AdaptiveNoiseEstimator* adaptive_estimator;
++  NoiseProfile* noise_profile;
++  float* manual_noise_floor;
++  float* noise_spectrum; // Output buffer
++} DenoiserCoreProfileParams;
++
++// Core parameters for post-processing and mixing
++typedef struct DenoiserCorePostProcessParams {
++  uint32_t fft_size;
++  uint32_t real_spectrum_size;
++  float reduction_amount;
++  float tonal_reduction;
++  float whitening_factor;
++  float mixer_whitening_factor;
++  bool residual_listen;
++
++  // Components
++  NoiseFloorManager* noise_floor_manager;
++  TonalReducer* tonal_reducer;
++  DenoiseMixer* mixer;
++
++  // Buffers
++  float* gain_spectrum;
++  float* noise_spectrum;
++  float* fft_spectrum; // Input/Output spectrum (modified in place)
++} DenoiserCorePostProcessParams;
++
++/**
++ * @brief Handles the learning mode logic.
++ *
++ * @param noise_estimator The noise estimator instance.
++ * @param reference_spectrum The current frame's power spectrum.
++ * @param learn_noise_flag Whether learning mode is actively requested (>0).
++ * @param was_learning Pointer to the state variable tracking if learning was
++ * active.
++ * @return true if learning was processed (caller should return early), false
++ * otherwise.
++ */
++bool denoiser_core_handle_learning_mode(NoiseEstimator* noise_estimator,
++                                        float* reference_spectrum,
++                                        int learn_noise_flag,
++                                        bool* was_learning);
++
++/**
++ * @brief Updates the noise profile based on adaptive or manual mode settings.
++ *
++ * This function encapsulates the logic for switching between manual and
++ * adaptive modes, handling state transitions, morphing the base profile, and
++ * running the adaptive estimator.
++ *
++ * @param params Struct containing all necessary improved parameters and
++ * component pointers.
++ */
++void denoiser_core_update_noise_profile(DenoiserCoreProfileParams params,
++                                        const float* reference_spectrum);
++
++/**
++ * @brief Applies post-processing steps: Noise Floor Management and Mixing.
++ *
++ * @param params Struct containing all necessary parameters and component
++ * pointers.
++ */
++void denoiser_core_apply_post_processing(DenoiserCorePostProcessParams params);
++
++#endif
+diff --git a/src/shared/post_estimation/noise_floor_manager.c b/src/shared/denoiser_logic/core/noise_floor_manager.c
+rename from src/shared/post_estimation/noise_floor_manager.c
+rename to src/shared/denoiser_logic/core/noise_floor_manager.c
+--- a/src/shared/post_estimation/noise_floor_manager.c
++++ b/src/shared/denoiser_logic/core/noise_floor_manager.c
+@@ -18,8 +18,8 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#include "noise_floor_manager.h"
+-#include "spectral_whitening.h"
++#include "shared/denoiser_logic/core/noise_floor_manager.h"
++#include "shared/denoiser_logic/processing/spectral_whitening.h"
+ #include <math.h>
+ #include <stdlib.h>
+ #include <string.h>
+diff --git a/src/shared/post_estimation/noise_floor_manager.h b/src/shared/denoiser_logic/core/noise_floor_manager.h
+rename from src/shared/post_estimation/noise_floor_manager.h
+rename to src/shared/denoiser_logic/core/noise_floor_manager.h
+--- a/src/shared/post_estimation/noise_floor_manager.h
++++ b/src/shared/denoiser_logic/core/noise_floor_manager.h
+
+diff --git a/src/shared/noise_estimation/noise_profile.c b/src/shared/denoiser_logic/core/noise_profile.c
+rename from src/shared/noise_estimation/noise_profile.c
+rename to src/shared/denoiser_logic/core/noise_profile.c
+--- a/src/shared/noise_estimation/noise_profile.c
++++ b/src/shared/denoiser_logic/core/noise_profile.c
+@@ -18,9 +18,9 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#include "noise_profile.h"
+-#include "../configurations.h"
+-#include "../utils/spectral_utils.h"
++#include "shared/denoiser_logic/core/noise_profile.h"
++#include "shared/configurations.h"
++#include "shared/utils/spectral_utils.h"
+ #include <stdlib.h>
+ #include <string.h>
+ 
+diff --git a/src/shared/noise_estimation/noise_profile.h b/src/shared/denoiser_logic/core/noise_profile.h
+rename from src/shared/noise_estimation/noise_profile.h
+rename to src/shared/denoiser_logic/core/noise_profile.h
+--- a/src/shared/noise_estimation/noise_profile.h
++++ b/src/shared/denoiser_logic/core/noise_profile.h
+@@ -18,8 +18,8 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#ifndef NOISE_PROFILE_H
+-#define NOISE_PROFILE_H
++#ifndef SHARED_DENOISER_LOGIC_NOISE_PROFILE_H
++#define SHARED_DENOISER_LOGIC_NOISE_PROFILE_H
+ 
+ #include <stdbool.h>
+ #include <stdint.h>
+@@ -41,4 +41,4 @@ void set_noise_profile_available(NoiseProfile* self, int mode);
+ bool reset_noise_profile(NoiseProfile* self);
+ bool is_noise_estimation_available(NoiseProfile* self, int mode);
+ 
+-#endif
++#endif // SHARED_DENOISER_LOGIC_NOISE_PROFILE_H
+diff --git a/src/shared/noise_estimation/adaptive_noise_estimator.c b/src/shared/denoiser_logic/estimators/adaptive_noise_estimator.c
+rename from src/shared/noise_estimation/adaptive_noise_estimator.c
+rename to src/shared/denoiser_logic/estimators/adaptive_noise_estimator.c
+--- a/src/shared/noise_estimation/adaptive_noise_estimator.c
++++ b/src/shared/denoiser_logic/estimators/adaptive_noise_estimator.c
+@@ -18,15 +18,17 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#include "adaptive_noise_estimator.h"
+-#include "../configurations.h"
+-#include "brandt_noise_estimator.h"
+-#include "martin_noise_estimator.h"
+-#include "spp_mmse_noise_estimator.h"
++/* removed old path include */
++#include "shared/denoiser_logic/estimators/adaptive_noise_estimator.h"
++#include "shared/configurations.h"
++#include "shared/denoiser_logic/estimators/brandt_noise_estimator.h"
++#include "shared/denoiser_logic/estimators/martin_noise_estimator.h"
++#include "shared/denoiser_logic/estimators/spp_mmse_noise_estimator.h"
+ #include <stdlib.h>
+ 
+ struct AdaptiveNoiseEstimator {
+   AdaptiveNoiseEstimationMethod method;
++  uint32_t spectrum_size;
+   void* internal_estimator;
+ };
+ 
+@@ -39,6 +41,7 @@ static AdaptiveNoiseEstimator* create_spp_mmse_estimator(
+   }
+ 
+   self->method = SPP_MMSE_METHOD;
++  self->spectrum_size = noise_spectrum_size;
+   self->internal_estimator = spp_mmse_noise_estimator_initialize(
+       noise_spectrum_size, sample_rate, fft_size);
+ 
+@@ -59,6 +62,7 @@ static AdaptiveNoiseEstimator* create_brandt_estimator(
+   }
+ 
+   self->method = BRANDT_METHOD;
++  self->spectrum_size = noise_spectrum_size;
+   // Default parameters: 5000ms history (extremely robust for music)
+   self->internal_estimator = brandt_noise_estimator_initialize(
+       noise_spectrum_size, BRANDT_DEFAULT_HISTORY_MS, sample_rate, fft_size);
+@@ -80,6 +84,7 @@ static AdaptiveNoiseEstimator* create_martin_estimator(
+   }
+ 
+   self->method = MARTIN_METHOD;
++  self->spectrum_size = noise_spectrum_size;
+   self->internal_estimator = martin_noise_estimator_initialize(
+       noise_spectrum_size, sample_rate, fft_size);
+ 
+@@ -149,21 +154,39 @@ void adaptive_estimator_free(AdaptiveNoiseEstimator* self) {
+ }
+ 
+ bool adaptive_estimator_run(AdaptiveNoiseEstimator* self, const float* spectrum,
+-                            float* noise_spectrum) {
++                            float* noise_spectrum, float* aggressiveness,
++                            float param_aggressiveness) {
+   if (!self) {
+     return false;
+   }
+ 
++  bool success = false;
+   if (self->method == SPP_MMSE_METHOD) {
+-    return spp_mmse_noise_estimator_run(
++    success = spp_mmse_noise_estimator_run(
+         (SppMmseNoiseEstimator*)self->internal_estimator, spectrum,
+         noise_spectrum);
++  } else if (self->method == MARTIN_METHOD) {
++    success = run_martin(self, spectrum, noise_spectrum);
++  } else {
++    success = run_brandt(self, spectrum, noise_spectrum);
+   }
+-  if (self->method == MARTIN_METHOD) {
+-    return run_martin(self, spectrum, noise_spectrum);
++
++  if (success) {
++    // Update internal aggressiveness state
++    if (aggressiveness) {
++      *aggressiveness = param_aggressiveness;
++    }
++
++    // Refine the estimator output: heal spectral gaps before smoothing
++    interpolate_spectrum_gaps(noise_spectrum, self->spectrum_size,
++                              NOISE_ESTIMATION_INTERPOLATION_THRESHOLD);
++
++    // Smooth the estimator output to eliminate residual musical noise
++    smooth_spectrum(noise_spectrum, self->spectrum_size,
++                    ADAPTIVE_NOISE_FLOOR_SMOOTHING);
+   }
+ 
+-  return run_brandt(self, spectrum, noise_spectrum);
++  return success;
+ }
+ 
+ void adaptive_estimator_set_state(AdaptiveNoiseEstimator* self,
+diff --git a/src/shared/noise_estimation/adaptive_noise_estimator.h b/src/shared/denoiser_logic/estimators/adaptive_noise_estimator.h
+rename from src/shared/noise_estimation/adaptive_noise_estimator.h
+rename to src/shared/denoiser_logic/estimators/adaptive_noise_estimator.h
+--- a/src/shared/noise_estimation/adaptive_noise_estimator.h
++++ b/src/shared/denoiser_logic/estimators/adaptive_noise_estimator.h
+@@ -46,7 +46,8 @@ void adaptive_estimator_free(AdaptiveNoiseEstimator* self);
+ 
+ // Run the estimator (dispatches to appropriate internal method)
+ bool adaptive_estimator_run(AdaptiveNoiseEstimator* self, const float* spectrum,
+-                            float* noise_spectrum);
++                            float* noise_spectrum, float* aggressiveness,
++                            float param_aggressiveness);
+ 
+ // Set the internal state of the estimator from an existing noise profile
+ void adaptive_estimator_set_state(AdaptiveNoiseEstimator* self,
+diff --git a/src/shared/noise_estimation/brandt_noise_estimator.c b/src/shared/denoiser_logic/estimators/brandt_noise_estimator.c
+rename from src/shared/noise_estimation/brandt_noise_estimator.c
+rename to src/shared/denoiser_logic/estimators/brandt_noise_estimator.c
+--- a/src/shared/noise_estimation/brandt_noise_estimator.c
++++ b/src/shared/denoiser_logic/estimators/brandt_noise_estimator.c
+@@ -18,8 +18,8 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#include "brandt_noise_estimator.h"
+-#include "../configurations.h"
++#include "shared/denoiser_logic/estimators/brandt_noise_estimator.h"
++#include "shared/configurations.h"
+ #include <math.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -48,7 +48,7 @@ static float calculate_correction_factor(float p) {
+   }
+   float term = (1.0f - p) / p * logf(1.0f - p);
+   float denominator = 1.0f + term;
+-  if (fabsf(denominator) < ESTIMATOR_BIAS_EPSILON) {
++  if (fabsf(denominator) < BRANDT_ESTIMATOR_BIAS_EPSILON) {
+     return 1.0f; // Avoid division by zero
+   }
+   return 1.0f / denominator;
+@@ -81,13 +81,13 @@ BrandtNoiseEstimator* brandt_noise_estimator_initialize(
+   // parameters. If exact duration needed, we might need hop_size.
+   // Assuming standard 50% overlap for calculation roughly:
+   float frame_duration = ms_per_frame * 0.5f; // Rough approximation of step
+-  if (frame_duration < ESTIMATOR_MIN_DURATION_MS) {
+-    frame_duration = ESTIMATOR_MIN_DURATION_MS;
++  if (frame_duration < BRANDT_ESTIMATOR_MIN_DURATION_MS) {
++    frame_duration = BRANDT_ESTIMATOR_MIN_DURATION_MS;
+   }
+ 
+   self->history_size = (uint32_t)(history_duration_ms / frame_duration);
+-  if (self->history_size < ESTIMATOR_MIN_HISTORY_FRAMES) {
+-    self->history_size = ESTIMATOR_MIN_HISTORY_FRAMES; // Minimum history
++  if (self->history_size < BRANDT_ESTIMATOR_MIN_HISTORY_FRAMES) {
++    self->history_size = BRANDT_ESTIMATOR_MIN_HISTORY_FRAMES; // Minimum history
+   }
+ 
+   self->trim_count = (uint32_t)((float)self->history_size * percentile);
+diff --git a/src/shared/noise_estimation/brandt_noise_estimator.h b/src/shared/denoiser_logic/estimators/brandt_noise_estimator.h
+rename from src/shared/noise_estimation/brandt_noise_estimator.h
+rename to src/shared/denoiser_logic/estimators/brandt_noise_estimator.h
+--- a/src/shared/noise_estimation/brandt_noise_estimator.h
++++ b/src/shared/denoiser_logic/estimators/brandt_noise_estimator.h
+
+diff --git a/src/shared/noise_estimation/martin_noise_estimator.c b/src/shared/denoiser_logic/estimators/martin_noise_estimator.c
+rename from src/shared/noise_estimation/martin_noise_estimator.c
+rename to src/shared/denoiser_logic/estimators/martin_noise_estimator.c
+--- a/src/shared/noise_estimation/martin_noise_estimator.c
++++ b/src/shared/denoiser_logic/estimators/martin_noise_estimator.c
+@@ -18,8 +18,8 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#include "martin_noise_estimator.h"
+-#include "../configurations.h"
++#include "shared/denoiser_logic/estimators/martin_noise_estimator.h"
++#include "shared/configurations.h"
+ #include <float.h>
+ #include <math.h>
+ #include <stdlib.h>
+diff --git a/src/shared/noise_estimation/martin_noise_estimator.h b/src/shared/denoiser_logic/estimators/martin_noise_estimator.h
+rename from src/shared/noise_estimation/martin_noise_estimator.h
+rename to src/shared/denoiser_logic/estimators/martin_noise_estimator.h
+--- a/src/shared/noise_estimation/martin_noise_estimator.h
++++ b/src/shared/denoiser_logic/estimators/martin_noise_estimator.h
+
+diff --git a/src/shared/noise_estimation/noise_estimator.c b/src/shared/denoiser_logic/estimators/noise_estimator.c
+rename from src/shared/noise_estimation/noise_estimator.c
+rename to src/shared/denoiser_logic/estimators/noise_estimator.c
+--- a/src/shared/noise_estimation/noise_estimator.c
++++ b/src/shared/denoiser_logic/estimators/noise_estimator.c
+@@ -18,17 +18,19 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#include "noise_estimator.h"
+-#include "../configurations.h"
+-#include "../utils/spectral_trailing_buffer.h"
+-#include "../utils/spectral_utils.h"
++#include "shared/denoiser_logic/estimators/noise_estimator.h"
++#include "shared/configurations.h"
++#include "shared/denoiser_logic/core/noise_profile.h"
++#include "shared/utils/spectral_circular_buffer.h"
++#include "shared/utils/spectral_utils.h"
+ #include <stdlib.h>
+ #include <string.h>
+ 
+ struct NoiseEstimator {
+   uint32_t fft_size;
+   uint32_t real_spectrum_size;
+-  SpectralTrailingBuffer* median_buffer;
++  SbSpectralCircularBuffer* median_buffer;
++  uint32_t layer_median;
+ 
+   NoiseProfile* noise_profile;
+ };
+@@ -45,8 +47,16 @@ NoiseEstimator* noise_estimation_initialize(const uint32_t fft_size,
+   self->real_spectrum_size = (self->fft_size / 2U) + 1U;
+ 
+   self->noise_profile = noise_profile;
+-  self->median_buffer = spectral_trailing_buffer_initialize(
+-      self->real_spectrum_size, NUMBER_OF_MEDIAN_SPECTRUM);
++  self->median_buffer =
++      spectral_circular_buffer_create(NUMBER_OF_MEDIAN_SPECTRUM);
++
++  if (!self->median_buffer) {
++    noise_estimation_free(self);
++    return NULL;
++  }
++
++  self->layer_median = spectral_circular_buffer_add_layer(
++      self->median_buffer, self->real_spectrum_size);
+ 
+   if (!self->median_buffer) {
+     noise_estimation_free(self);
+@@ -63,7 +73,9 @@ void noise_estimation_free(NoiseEstimator* self) {
+ 
+   // Don't free noise profile used as reference here
+ 
+-  spectral_trailing_buffer_free(self->median_buffer);
++  if (self->median_buffer) {
++    spectral_circular_buffer_free(self->median_buffer);
++  }
+ 
+   free(self);
+ }
+@@ -86,16 +98,32 @@ bool noise_estimation_run(NoiseEstimator* self,
+                                 self->real_spectrum_size);
+       increment_block_count(self->noise_profile, noise_estimator_type);
+       break;
+-    case MEDIAN:
+-      spectral_trailing_buffer_push_back(self->median_buffer, signal_spectrum);
++    case MEDIAN: {
++      spectral_circular_buffer_push(self->median_buffer, self->layer_median,
++                                    signal_spectrum);
++      spectral_circular_buffer_advance(self->median_buffer);
++
++      const uint32_t blocks = NUMBER_OF_MEDIAN_SPECTRUM;
++      const float* history_frames[blocks];
++
++      // Retrieve history (0 = most recent, blocks-1 = oldest)
++      for (uint32_t i = 0; i < blocks; i++) {
++        // We retrieve with delay 'i + 1' because 'advance' was already called
++        // so current write index is at +1 relative to the frame we just pushed.
++        // wait, usually we push then advance.
++        // Retrieve(delay=1) gets the frame we just pushed.
++        history_frames[i] = spectral_circular_buffer_retrieve(
++            self->median_buffer, self->layer_median, i + 1);
++      }
++
+       bool is_valid_median = get_rolling_median_spectrum(
+-          noise_profile, get_trailing_spectral_buffer(self->median_buffer),
+-          get_spectrum_buffer_size(self->median_buffer),
+-          get_spectrum_size(self->median_buffer));
++          noise_profile, history_frames, blocks, self->real_spectrum_size);
++
+       if (is_valid_median) {
+         set_noise_profile_available(self->noise_profile, noise_estimator_type);
+       }
+       break;
++    }
+     case MAX:
+       (void)max_spectrum(noise_profile, signal_spectrum,
+                          self->real_spectrum_size);
+diff --git a/src/shared/noise_estimation/noise_estimator.h b/src/shared/denoiser_logic/estimators/noise_estimator.h
+rename from src/shared/noise_estimation/noise_estimator.h
+rename to src/shared/denoiser_logic/estimators/noise_estimator.h
+--- a/src/shared/noise_estimation/noise_estimator.h
++++ b/src/shared/denoiser_logic/estimators/noise_estimator.h
+@@ -18,10 +18,10 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#ifndef NOISE_ESTIMATOR_H
+-#define NOISE_ESTIMATOR_H
++#ifndef SHARED_DENOISER_LOGIC_NOISE_ESTIMATOR_H
++#define SHARED_DENOISER_LOGIC_NOISE_ESTIMATOR_H
+ 
+-#include "noise_profile.h"
++#include "shared/denoiser_logic/core/noise_profile.h"
+ #include <stdbool.h>
+ #include <stdint.h>
+ 
+@@ -44,4 +44,4 @@ bool noise_estimation_run(NoiseEstimator* self,
+ void noise_estimation_finalize(NoiseEstimator* self,
+                                NoiseEstimatorType noise_estimator_type);
+ 
+-#endif
++#endif // SHARED_DENOISER_LOGIC_NOISE_ESTIMATOR_H
+diff --git a/src/shared/noise_estimation/spp_mmse_noise_estimator.c b/src/shared/denoiser_logic/estimators/spp_mmse_noise_estimator.c
+rename from src/shared/noise_estimation/spp_mmse_noise_estimator.c
+rename to src/shared/denoiser_logic/estimators/spp_mmse_noise_estimator.c
+--- a/src/shared/noise_estimation/spp_mmse_noise_estimator.c
++++ b/src/shared/denoiser_logic/estimators/spp_mmse_noise_estimator.c
+@@ -18,8 +18,8 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#include "spp_mmse_noise_estimator.h"
+-#include "../configurations.h"
++#include "shared/denoiser_logic/estimators/spp_mmse_noise_estimator.h"
++#include "shared/configurations.h"
+ #include <float.h>
+ #include <math.h>
+ #include <stdlib.h>
+diff --git a/src/shared/noise_estimation/spp_mmse_noise_estimator.h b/src/shared/denoiser_logic/estimators/spp_mmse_noise_estimator.h
+rename from src/shared/noise_estimation/spp_mmse_noise_estimator.h
+rename to src/shared/denoiser_logic/estimators/spp_mmse_noise_estimator.h
+--- a/src/shared/noise_estimation/spp_mmse_noise_estimator.h
++++ b/src/shared/denoiser_logic/estimators/spp_mmse_noise_estimator.h
+
+diff --git a/src/shared/denoiser_logic/meson.build b/src/shared/denoiser_logic/meson.build
+new file mode 100644
+--- /dev/null
++++ b/src/shared/denoiser_logic/meson.build
+@@ -0,0 +1,17 @@
++shared_sources += files([
++  'core/denoiser_core.c',
++  'core/denoise_mixer.c',
++  'core/noise_profile.c',
++  'core/noise_floor_manager.c',
++  'estimators/noise_estimator.c',
++  'estimators/adaptive_noise_estimator.c',
++  'estimators/brandt_noise_estimator.c',
++  'estimators/martin_noise_estimator.c',
++  'estimators/spp_mmse_noise_estimator.c',
++  'processing/suppression_engine.c',
++  'processing/tonal_reducer.c',
++  'processing/spectral_whitening.c',
++  'processing/nlm_filter.c',
++  'processing/gain_calculator.c',
++  'processing/masking_veto.c',
++])
+diff --git a/src/shared/gain_estimation/gain_estimators.c b/src/shared/denoiser_logic/processing/gain_calculator.c
+rename from src/shared/gain_estimation/gain_estimators.c
+rename to src/shared/denoiser_logic/processing/gain_calculator.c
+--- a/src/shared/gain_estimation/gain_estimators.c
++++ b/src/shared/denoiser_logic/processing/gain_calculator.c
+@@ -18,21 +18,20 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#include "gain_estimators.h"
+-#include "../configurations.h"
+-#include "../utils/general_utils.h"
++#include "shared/denoiser_logic/processing/gain_calculator.h"
++#include "shared/configurations.h"
+ #include <float.h>
+ #include <math.h>
+-#include <stddef.h>
+ 
+ static void wiener_subtraction(const uint32_t real_spectrum_size,
+                                const uint32_t fft_size, const float* spectrum,
+-                               const float* noise_spectrum,
++                               const float* noise_spectrum, const float* alpha,
+                                float* gain_spectrum) {
+   for (uint32_t k = 0U; k < real_spectrum_size; k++) {
+-    if (noise_spectrum[k] > FLT_MIN) {
+-      if (spectrum[k] > noise_spectrum[k]) {
+-        gain_spectrum[k] = (spectrum[k] - (noise_spectrum[k])) / spectrum[k];
++    float scaled_noise = noise_spectrum[k] * alpha[k];
++    if (scaled_noise > FLT_MIN) {
++      if (spectrum[k] > scaled_noise) {
++        gain_spectrum[k] = (spectrum[k] - (scaled_noise)) / spectrum[k];
+       } else {
+         gain_spectrum[k] = 0.F;
+       }
+@@ -48,10 +47,12 @@ static void wiener_subtraction(const uint32_t real_spectrum_size,
+ 
+ static void spectral_gating(const uint32_t real_spectrum_size,
+                             const uint32_t fft_size, const float* spectrum,
+-                            const float* noise_spectrum, float* gain_spectrum) {
++                            const float* noise_spectrum, const float* alpha,
++                            float* gain_spectrum) {
+   for (uint32_t k = 0U; k < real_spectrum_size; k++) {
+-    if (noise_spectrum[k] > FLT_MIN) {
+-      if (spectrum[k] >= noise_spectrum[k]) {
++    float scaled_noise = noise_spectrum[k] * alpha[k];
++    if (scaled_noise > FLT_MIN) {
++      if (spectrum[k] >= scaled_noise) {
+         gain_spectrum[k] = 1.F;
+       } else {
+         gain_spectrum[k] = 0.F;
+@@ -96,27 +97,18 @@ static void generalized_spectral_subtraction(
+   }
+ }
+ 
+-static void scale_noise_profile(uint32_t real_spectrum_size,
+-                                float* noise_spectrum, const float* alpha) {
+-  for (uint32_t k = 0U; k < real_spectrum_size; k++) {
+-    noise_spectrum[k] *= alpha[k];
+-  }
+-}
+-
+-void estimate_gains(uint32_t real_spectrum_size, uint32_t fft_size,
+-                    const float* spectrum, float* noise_spectrum,
+-                    float* gain_spectrum, const float* alpha, const float* beta,
+-                    GainEstimationType type) {
++void calculate_gains(uint32_t real_spectrum_size, uint32_t fft_size,
++                     const float* spectrum, const float* noise_spectrum,
++                     float* gain_spectrum, const float* alpha,
++                     const float* beta, GainCalculationType type) {
+   switch (type) {
+     case GATES:
+-      scale_noise_profile(real_spectrum_size, noise_spectrum, alpha);
+       spectral_gating(real_spectrum_size, fft_size, spectrum, noise_spectrum,
+-                      gain_spectrum);
++                      alpha, gain_spectrum);
+       break;
+     case WIENER:
+-      scale_noise_profile(real_spectrum_size, noise_spectrum, alpha);
+       wiener_subtraction(real_spectrum_size, fft_size, spectrum, noise_spectrum,
+-                         gain_spectrum);
++                         alpha, gain_spectrum);
+       break;
+     case GENERALIZED_SPECTRALSUBTRACTION:
+       generalized_spectral_subtraction(real_spectrum_size, fft_size, spectrum,
+diff --git a/src/shared/gain_estimation/gain_estimators.h b/src/shared/denoiser_logic/processing/gain_calculator.h
+rename from src/shared/gain_estimation/gain_estimators.h
+rename to src/shared/denoiser_logic/processing/gain_calculator.h
+--- a/src/shared/gain_estimation/gain_estimators.h
++++ b/src/shared/denoiser_logic/processing/gain_calculator.h
+@@ -18,21 +18,21 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#ifndef GAIN_ESTIMATORS_H
+-#define GAIN_ESTIMATORS_H
++#ifndef GAIN_CALCULATOR_H
++#define GAIN_CALCULATOR_H
+ 
+ #include <stdbool.h>
+ #include <stdint.h>
+ 
+-typedef enum GainEstimationType {
++typedef enum GainCalculationType {
+   WIENER = 0,
+   GATES = 1,
+   GENERALIZED_SPECTRALSUBTRACTION = 2,
+-} GainEstimationType;
++} GainCalculationType;
+ 
+-void estimate_gains(uint32_t real_spectrum_size, uint32_t fft_size,
+-                    const float* spectrum, float* noise_spectrum,
+-                    float* gain_spectrum, const float* alpha, const float* beta,
+-                    GainEstimationType type);
++void calculate_gains(uint32_t real_spectrum_size, uint32_t fft_size,
++                     const float* spectrum, const float* noise_spectrum,
++                     float* gain_spectrum, const float* alpha,
++                     const float* beta, GainCalculationType type);
+ 
+-#endif
++#endif // GAIN_CALCULATOR_H
+diff --git a/src/shared/post_estimation/masking_veto.c b/src/shared/denoiser_logic/processing/masking_veto.c
+rename from src/shared/post_estimation/masking_veto.c
+rename to src/shared/denoiser_logic/processing/masking_veto.c
+--- a/src/shared/post_estimation/masking_veto.c
++++ b/src/shared/denoiser_logic/processing/masking_veto.c
+@@ -18,11 +18,13 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#include "masking_veto.h"
+-#include "../configurations.h"
+-#include "../pre_estimation/masking_estimator.h"
++#include "shared/denoiser_logic/processing/masking_veto.h"
++#include "shared/configurations.h"
++#include "shared/utils/masking_estimator.h"
++#include "shared/utils/spectral_features.h"
+ #include <float.h>
+ #include <math.h>
++#include <stdbool.h>
+ #include <stdlib.h>
+ 
+ struct MaskingVeto {
+@@ -33,15 +35,16 @@ struct MaskingVeto {
+ };
+ 
+ MaskingVeto* masking_veto_initialize(uint32_t fft_size, uint32_t sample_rate,
++                                     CriticalBandType critical_band_type,
+                                      SpectrumType spectrum_type) {
+   MaskingVeto* self = (MaskingVeto*)calloc(1U, sizeof(MaskingVeto));
+   if (!self) {
+     return NULL;
+   }
+ 
+   self->real_spectrum_size = (fft_size / 2U) + 1U;
+-  self->masking_estimator =
+-      masking_estimation_initialize(fft_size, sample_rate, spectrum_type);
++  self->masking_estimator = masking_estimation_initialize(
++      fft_size, sample_rate, critical_band_type, spectrum_type);
+ 
+   if (!self->masking_estimator) {
+     masking_veto_free(self);
+diff --git a/src/shared/post_estimation/masking_veto.h b/src/shared/denoiser_logic/processing/masking_veto.h
+rename from src/shared/post_estimation/masking_veto.h
+rename to src/shared/denoiser_logic/processing/masking_veto.h
+--- a/src/shared/post_estimation/masking_veto.h
++++ b/src/shared/denoiser_logic/processing/masking_veto.h
+@@ -18,10 +18,11 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#ifndef MASKING_VETO_H
+-#define MASKING_VETO_H
++#ifndef SHARED_DENOISER_LOGIC_MASKING_VETO_H
++#define SHARED_DENOISER_LOGIC_MASKING_VETO_H
+ 
+-#include "../utils/spectral_features.h"
++#include "shared/utils/critical_bands.h"
++#include "shared/utils/spectral_features.h"
+ #include <stdbool.h>
+ #include <stdint.h>
+ 
+@@ -44,6 +45,7 @@ typedef struct MaskingVeto MaskingVeto;
+  * @return Initialized MaskingVeto instance or NULL on failure
+  */
+ MaskingVeto* masking_veto_initialize(uint32_t fft_size, uint32_t sample_rate,
++                                     CriticalBandType critical_band_type,
+                                      SpectrumType spectrum_type);
+ 
+ /**
+@@ -67,4 +69,4 @@ void masking_veto_apply(MaskingVeto* self, const float* smoothed_spectrum,
+                         const float* noise_spectrum, float* alpha,
+                         float floor_alpha, float depth, float elasticity);
+ 
+-#endif
++#endif // SHARED_DENOISER_LOGIC_MASKING_VETO_H
+diff --git a/src/shared/post_estimation/nlm_filter.c b/src/shared/denoiser_logic/processing/nlm_filter.c
+rename from src/shared/post_estimation/nlm_filter.c
+rename to src/shared/denoiser_logic/processing/nlm_filter.c
+--- a/src/shared/post_estimation/nlm_filter.c
++++ b/src/shared/denoiser_logic/processing/nlm_filter.c
+@@ -18,12 +18,13 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
++#include <float.h>
+ #include <math.h>
+ #include <stdlib.h>
+ #include <string.h>
+ 
+-#include "../configurations.h"
+-#include "nlm_filter.h"
++#include "shared/configurations.h"
++#include "shared/denoiser_logic/processing/nlm_filter.h"
+ 
+ struct NlmFilter {
+   NlmFilterConfig config;
+@@ -598,3 +599,36 @@ uint32_t nlm_filter_get_latency_frames(NlmFilter* filter) {
+   // Latency is the number of look-ahead frames
+   return filter->config.search_range_time_future;
+ }
++
++void nlm_filter_calculate_snr(NlmFilter* filter,
++                              const float* reference_spectrum,
++                              const float* noise_spectrum, float* snr_frame) {
++  if (!filter || !reference_spectrum || !noise_spectrum || !snr_frame) {
++    return;
++  }
++
++  const uint32_t spectrum_size = filter->config.spectrum_size;
++
++  for (uint32_t k = 0; k < spectrum_size; k++) {
++    float denom =
++        noise_spectrum[k] > FLT_MIN ? noise_spectrum[k] : SPECTRAL_EPSILON;
++    snr_frame[k] = reference_spectrum[k] / denom;
++  }
++}
++
++void nlm_filter_reconstruct_magnitude(NlmFilter* filter,
++                                      const float* smoothed_snr,
++                                      const float* noise_spectrum,
++                                      float* magnitude_spectrum) {
++  if (!filter || !smoothed_snr || !noise_spectrum || !magnitude_spectrum) {
++    return;
++  }
++
++  const uint32_t spectrum_size = filter->config.spectrum_size;
++
++  for (uint32_t k = 0; k < spectrum_size; k++) {
++    float denom =
++        noise_spectrum[k] > FLT_MIN ? noise_spectrum[k] : SPECTRAL_EPSILON;
++    magnitude_spectrum[k] = smoothed_snr[k] * denom;
++  }
++}
+diff --git a/src/shared/post_estimation/nlm_filter.h b/src/shared/denoiser_logic/processing/nlm_filter.h
+rename from src/shared/post_estimation/nlm_filter.h
+rename to src/shared/denoiser_logic/processing/nlm_filter.h
+--- a/src/shared/post_estimation/nlm_filter.h
++++ b/src/shared/denoiser_logic/processing/nlm_filter.h
+@@ -108,4 +108,29 @@ void nlm_filter_reset(NlmFilter* filter);
+  */
+ uint32_t nlm_filter_get_latency_frames(NlmFilter* filter);
+ 
++/**
++ * Calculate the SNR frame from reference and noise spectra.
++ * snr[k] = reference[k] / noise[k] (with epsilon safety)
++ * @param filter Pointer to filter
++ * @param reference_spectrum Input signal spectrum
++ * @param noise_spectrum Noise profile spectrum
++ * @param snr_frame Output SNR frame
++ */
++void nlm_filter_calculate_snr(NlmFilter* filter,
++                              const float* reference_spectrum,
++                              const float* noise_spectrum, float* snr_frame);
++
++/**
++ * Reconstruct the magnitude spectrum from smoothed SNR and noise.
++ * magnitude[k] = smoothed_snr[k] * noise[k] (with epsilon safety)
++ * @param filter Pointer to filter
++ * @param smoothed_snr Input smoothed SNR
++ * @param noise_spectrum Noise profile spectrum
++ * @param magnitude_spectrum Output reconstructed magnitude
++ */
++void nlm_filter_reconstruct_magnitude(NlmFilter* filter,
++                                      const float* smoothed_snr,
++                                      const float* noise_spectrum,
++                                      float* magnitude_spectrum);
++
+ #endif /* NLM_FILTER_H */
+diff --git a/src/shared/post_estimation/spectral_whitening.c b/src/shared/denoiser_logic/processing/spectral_whitening.c
+rename from src/shared/post_estimation/spectral_whitening.c
+rename to src/shared/denoiser_logic/processing/spectral_whitening.c
+--- a/src/shared/post_estimation/spectral_whitening.c
++++ b/src/shared/denoiser_logic/processing/spectral_whitening.c
+@@ -18,9 +18,9 @@ License along with this library; if not, write to the Free Software
+ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+-#include "spectral_whitening.h"
+-#include "../configurations.h"
+-#include "../utils/spectral_utils.h"
++#include "shared/denoiser_logic/processing/spectral_whitening.h"
++#include "shared/configurations.h"
++#include "shared/utils/spectral_utils.h"
+ #include <math.h>
+ #include <stdlib.h>
+ #include <string.h>
+diff --git a/src/shared/post_estimation/spectral_whitening.h b/src/shared/denoiser_logic/processing/spectral_whitening.h
+rename from src/shared/post_estimation/spectral_whitening.h
+rename to src/shared/denoiser_logic/processing/spectral_whitening.h
+--- a/src/shared/post_estimation/spectral_whitening.h
++++ b/src/shared/denoiser_logic/processing/spectral_whitening.h
+
+diff --git a/src/shared/denoiser_logic/processing/suppression_engine.c b/src/shared/denoiser_logic/processing/suppression_engine.c
+new file mode 100644
+--- /dev/null
++++ b/src/shared/denoiser_logic/processing/suppression_engine.c
+@@ -0,0 +1,274 @@
++/*
++libspecbleach - A spectral processing library
++
++Copyright 2022-2026 Luciano Dato <lucianodato@gmail.com>
++
++This library is free software; you can redistribute it and/or
++modify it under the terms of the GNU Lesser General Public
++License as published by the Free Software Foundation; either
++version 2.1 of the License, or (at your option) any later version.
++
++This library is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++Lesser General Public License for more details.
++
++You should have received a copy of the GNU Lesser General Public
++License along with this library; if not, write to the Free Software
++Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
++*/
++
++#include "shared/denoiser_logic/processing/suppression_engine.h"
++#include "shared/configurations.h"
++#include "shared/utils/critical_bands.h"
++#include "shared/utils/masking_estimator.h"
++#include <float.h>
++#include <math.h>
++#include <stdlib.h>
++
++struct SuppressionEngine {
++  uint32_t real_spectrum_size;
++  uint32_t sample_rate;
++
++  CriticalBands* critical_bands;
++  MaskingEstimator* masking_estimation;
++
++  float* masking_thresholds;
++  float* clean_signal_estimation;
++  float* critical_bands_noise_profile;
++  float* critical_bands_reference_spectrum;
++
++  uint32_t number_critical_bands;
++};
++
++SuppressionEngine* suppression_engine_initialize(
++    uint32_t real_spectrum_size, uint32_t sample_rate,
++    CriticalBandType critical_band_type, SpectrumType spectrum_type) {
++
++  SuppressionEngine* self =
++      (SuppressionEngine*)calloc(1U, sizeof(SuppressionEngine));
++  if (!self) {
++    return NULL;
++  }
++
++  self->real_spectrum_size = real_spectrum_size;
++  self->sample_rate = sample_rate;
++  uint32_t fft_size = (real_spectrum_size - 1U) * 2U;
++
++  self->critical_bands =
++      critical_bands_initialize(sample_rate, fft_size, critical_band_type);
++  self->masking_estimation = masking_estimation_initialize(
++      fft_size, sample_rate, critical_band_type, spectrum_type);
++
++  if (!self->critical_bands || !self->masking_estimation) {
++    suppression_engine_free(self);
++    return NULL;
++  }
++
++  self->number_critical_bands =
++      get_number_of_critical_bands(self->critical_bands);
++
++  self->critical_bands_noise_profile =
++      (float*)calloc(self->number_critical_bands, sizeof(float));
++  self->critical_bands_reference_spectrum =
++      (float*)calloc(self->number_critical_bands, sizeof(float));
++
++  self->masking_thresholds = (float*)calloc(real_spectrum_size, sizeof(float));
++  self->clean_signal_estimation =
++      (float*)calloc(real_spectrum_size, sizeof(float));
++
++  if (!self->critical_bands_noise_profile ||
++      !self->critical_bands_reference_spectrum || !self->masking_thresholds ||
++      !self->clean_signal_estimation) {
++    suppression_engine_free(self);
++    return NULL;
++  }
++
++  return self;
++}
++
++void suppression_engine_free(SuppressionEngine* self) {
++  if (!self) {
++    return;
++  }
++
++  critical_bands_free(self->critical_bands);
++  masking_estimation_free(self->masking_estimation);
++
++  free(self->critical_bands_noise_profile);
++  free(self->critical_bands_reference_spectrum);
++  free(self->masking_thresholds);
++  free(self->clean_signal_estimation);
++
++  free(self);
++}
++
++static void calculate_berouti_per_bin(SuppressionEngine* self,
++                                      const float* reference_spectrum,
++                                      const float* noise_spectrum,
++                                      float strength, float* alpha,
++                                      float* beta) {
++  const float alpha_max_user = ALPHA_MIN + (strength * (ALPHA_MAX - ALPHA_MIN));
++  const float snr_range_db =
++      SUPPRESSION_HIGHER_SNR_DB - SUPPRESSION_LOWER_SNR_DB;
++
++  for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
++    const float snr_db = 10.0F * log10f(reference_spectrum[k] /
++                                        (noise_spectrum[k] + SPECTRAL_EPSILON));
++
++    if (snr_db <= SUPPRESSION_LOWER_SNR_DB) {
++      alpha[k] = alpha_max_user;
++    } else if (snr_db >= SUPPRESSION_HIGHER_SNR_DB) {
++      alpha[k] = ALPHA_MIN;
++    } else {
++      const float normalized_snr =
++          (snr_db - SUPPRESSION_LOWER_SNR_DB) / snr_range_db;
++      alpha[k] =
++          alpha_max_user - (normalized_snr * (alpha_max_user - ALPHA_MIN));
++    }
++    beta[k] = 0.0F;
++  }
++}
++
++static void calculate_global_snr(SuppressionEngine* self, const float* spectrum,
++                                 const float* noise_spectrum,
++                                 SuppressionParameters parameters, float* alpha,
++                                 float* beta) {
++  float noisy_spectrum_sum = 0.F;
++  float noise_spectrum_sum = 0.F;
++
++  for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
++    noisy_spectrum_sum += spectrum[k];
++    noise_spectrum_sum += noise_spectrum[k];
++  }
++
++  const float snr_db = 10.F * log10f(noisy_spectrum_sum /
++                                     (noise_spectrum_sum + SPECTRAL_EPSILON));
++
++  float oversubtraction_factor;
++
++  if (snr_db <= 0.F) {
++    oversubtraction_factor = parameters.strength;
++  } else if (snr_db >= 20.F) {
++    oversubtraction_factor = ALPHA_MIN;
++  } else {
++    const float normalized_snr = snr_db / 20.F;
++    oversubtraction_factor = ((1.F - normalized_snr) * parameters.strength) +
++                             (normalized_snr * ALPHA_MIN);
++  }
++
++  for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
++    alpha[k] = oversubtraction_factor;
++    beta[k] = parameters.undersubtraction;
++  }
++}
++
++static void calculate_critical_bands_snr(SuppressionEngine* self,
++                                         const float* spectrum,
++                                         const float* noise_spectrum,
++                                         SuppressionParameters parameters,
++                                         float* alpha, float* beta) {
++  compute_critical_bands_spectrum(self->critical_bands, noise_spectrum,
++                                  self->critical_bands_noise_profile);
++  compute_critical_bands_spectrum(self->critical_bands, spectrum,
++                                  self->critical_bands_reference_spectrum);
++
++  for (uint32_t j = 0U; j < self->number_critical_bands; j++) {
++    const CriticalBandIndexes band_indexes =
++        get_band_indexes(self->critical_bands, j);
++
++    const float snr_db =
++        10.F *
++        log10f(self->critical_bands_reference_spectrum[j] /
++               (self->critical_bands_noise_profile[j] + SPECTRAL_EPSILON));
++
++    float oversubtraction_factor;
++
++    if (snr_db <= 0.F) {
++      oversubtraction_factor = parameters.strength;
++    } else if (snr_db >= 20.F) {
++      oversubtraction_factor = ALPHA_MIN;
++    } else {
++      const float normalized_snr = snr_db / 20.F;
++      oversubtraction_factor = ((1.F - normalized_snr) * parameters.strength) +
++                               (normalized_snr * ALPHA_MIN);
++    }
++
++    for (uint32_t k = band_indexes.start_position;
++         k < band_indexes.end_position; k++) {
++      alpha[k] = oversubtraction_factor;
++      beta[k] = parameters.undersubtraction;
++    }
++  }
++}
++
++static void calculate_masking_thresholds(SuppressionEngine* self,
++                                         const float* spectrum,
++                                         const float* noise_spectrum,
++                                         SuppressionParameters parameters,
++                                         float* alpha, float* beta) {
++  for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
++    self->clean_signal_estimation[k] =
++        fmaxf(spectrum[k] - noise_spectrum[k], 0.F);
++  }
++
++  compute_masking_thresholds(self->masking_estimation,
++                             self->clean_signal_estimation,
++                             self->masking_thresholds);
++
++  for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
++    const float nmr_db =
++        10.F * log10f(noise_spectrum[k] /
++                      (self->masking_thresholds[k] + SPECTRAL_EPSILON));
++
++    if (nmr_db <= 0.F) {
++      alpha[k] = ALPHA_MIN +
++                 ((parameters.strength - ALPHA_MIN) * 0.1F); // Conservative
++      beta[k] = 0.0f;
++    } else if (nmr_db >= 20.F) {
++      alpha[k] = parameters.strength;
++      beta[k] = parameters.undersubtraction;
++    } else {
++      const float normalized_nmr = nmr_db / 20.F;
++      alpha[k] = ((1.F - normalized_nmr) * ALPHA_MIN) +
++                 (normalized_nmr * parameters.strength);
++      beta[k] = ((1.F - normalized_nmr) * 0.0f) +
++                (normalized_nmr * parameters.undersubtraction);
++    }
++  }
++}
++
++void suppression_engine_calculate(SuppressionEngine* self,
++                                  const float* reference_spectrum,
++                                  const float* noise_spectrum,
++                                  SuppressionParameters parameters,
++                                  float* alpha, float* beta) {
++  if (!self || !reference_spectrum || !noise_spectrum || !alpha || !beta) {
++    return;
++  }
++
++  switch (parameters.type) {
++    case SUPPRESSION_BEROUTI_PER_BIN:
++      calculate_berouti_per_bin(self, reference_spectrum, noise_spectrum,
++                                parameters.strength, alpha, beta);
++      break;
++    case SUPPRESSION_GLOBAL_SNR:
++      calculate_global_snr(self, reference_spectrum, noise_spectrum, parameters,
++                           alpha, beta);
++      break;
++    case SUPPRESSION_CRITICAL_BANDS_SNR:
++      calculate_critical_bands_snr(self, reference_spectrum, noise_spectrum,
++                                   parameters, alpha, beta);
++      break;
++    case SUPPRESSION_MASKING_THRESHOLDS:
++      calculate_masking_thresholds(self, reference_spectrum, noise_spectrum,
++                                   parameters, alpha, beta);
++      break;
++    case SUPPRESSION_NONE:
++      for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
++        alpha[k] = ALPHA_MIN;
++        beta[k] = 0.0F;
++      }
++      break;
++  }
++}
+diff --git a/src/shared/gain_estimation/suppression_engine.h b/src/shared/denoiser_logic/processing/suppression_engine.h
+rename from src/shared/gain_estimation/suppression_engine.h
+rename to src/shared/denoiser_logic/processing/suppression_engine.h
+--- a/src/shared/gain_estimation/suppression_engine.h
++++ b/src/shared/denoiser_logic/processing/suppression_engine.h
+@@ -25,22 +25,45 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ 
+ /**
+  * @file suppression_engine.h
+- * @brief SNR-dependent oversubtraction (Alpha) calculation engine.
++ * @brief SNR-dependent and psychoacoustic oversubtraction (Alpha) calculation
++ * engine.
+  *
+- * This module implements a Berouti-style oversubtraction factor calculation
+- * where the suppression aggressiveness (Alpha) is determined per-bin based on
+- * the local signal-to-noise ratio. This allows for aggressive cleaning of
+- * noisy components while preserving high-SNR signal details.
++ * This module implements various oversubtraction factor calculation strategies,
++ * including Berouti-style per-bin SNR scaling, global SNR scaling,
++ * critical band SNR scaling, and NMR-based psychoacoustic scaling.
+  */
+ 
++#include "shared/utils/critical_bands.h"
++#include "shared/utils/spectral_features.h"
++
++typedef enum SuppressionType {
++  SUPPRESSION_BEROUTI_PER_BIN = 0,    // Per-bin SNR-dependent oversubtraction
++  SUPPRESSION_GLOBAL_SNR = 1,         // Global SNR-based scaling
++  SUPPRESSION_CRITICAL_BANDS_SNR = 2, // Critical band SNR-based scaling
++  SUPPRESSION_MASKING_THRESHOLDS =
++      3, // NMR-based scaling using psychoacoustic model
++  SUPPRESSION_NONE = 4
++} SuppressionType;
++
++typedef struct SuppressionParameters {
++  SuppressionType type;
++  float strength;         // Maps to oversubtraction depth (0.0 to 1.0)
++  float undersubtraction; // Maps to beta factor (0.0 to 1.0)
++} SuppressionParameters;
++
+ typedef struct SuppressionEngine SuppressionEngine;
+ 
+ /**
+  * Initialize a SuppressionEngine instance.
+  * @param real_spectrum_size Size of the real spectrum ((fft_size/2)+1)
++ * @param sample_rate Sample rate of the audio
++ * @param critical_band_type Type of critical bands to use
++ * @param spectrum_type Type of spectral representation
+  * @return Initialized instance or NULL on failure
+  */
+-SuppressionEngine* suppression_engine_initialize(uint32_t real_spectrum_size);
++SuppressionEngine* suppression_engine_initialize(
++    uint32_t real_spectrum_size, uint32_t sample_rate,
++    CriticalBandType critical_band_type, SpectrumType spectrum_type);
+ 
+ /**
+  * Free a SuppressionEngine instance.
+@@ -50,19 +73,19 @@ void suppression_engine_free(SuppressionEngine* self);
+ 
+ /**
+  * Calculate per-bin oversubtraction (alpha) and undersubtraction (beta)
+- * factors.
++ * factors based on the selected strategy.
+  *
+  * @param self SuppressionEngine instance
+  * @param reference_spectrum Current spectral magnitude/power
+  * @param noise_spectrum Estimated noise profile
+- * @param suppression_strength Global aggressiveness factor (0.0 to 1.0)
++ * @param parameters Suppression configuration
+  * @param alpha [Out] Calculated oversubtraction factors
+  * @param beta [Out] Calculated undersubtraction factors
+  */
+ void suppression_engine_calculate(SuppressionEngine* self,
+                                   const float* reference_spectrum,
+                                   const float* noise_spectrum,
+-                                  float suppression_strength, float* alpha,
+-                                  float* beta);
++                                  SuppressionParameters parameters,
++                                  float* alpha, float* beta);
+ 
+ #endif
+diff --git a/src/shared/noise_estimation/tonal_reducer.c b/src/shared/denoiser_logic/processing/tonal_reducer.c
+rename from src/shared/noise_estimation/tonal_reducer.c
+rename to src/shared/denoiser_logic/processing/tonal_reducer.c
+--- a/src/shared/noise_estimation/tonal_reducer.c
++++ b/src/shared/denoiser_logic/processing/tonal_reducer.c
+@@ -2,7 +2,7 @@
+ libspecbleach - A spectral processing library
+ */
+ 
+-#include "tonal_reducer.h"
++#include "shared/denoiser_logic/processing/tonal_reducer.h"
+ #include "shared/configurations.h"
+ #include "shared/utils/tonal_detector.h"
+ #include <math.h>
+diff --git a/src/shared/noise_estimation/tonal_reducer.h b/src/shared/denoiser_logic/processing/tonal_reducer.h
+rename from src/shared/noise_estimation/tonal_reducer.h
+rename to src/shared/denoiser_logic/processing/tonal_reducer.h
+--- a/src/shared/noise_estimation/tonal_reducer.h
++++ b/src/shared/denoiser_logic/processing/tonal_reducer.h
+
+diff --git a/src/shared/gain_estimation/meson.build b/src/shared/gain_estimation/meson.build
+deleted file mode 100644
+--- a/src/shared/gain_estimation/meson.build
++++ /dev/null
+@@ -1,4 +0,0 @@
+-shared_sources += files(
+-    'gain_estimators.c',
+-    'suppression_engine.c',
+-)
+\ No newline at end of file
+diff --git a/src/shared/gain_estimation/suppression_engine.c b/src/shared/gain_estimation/suppression_engine.c
+deleted file mode 100644
+--- a/src/shared/gain_estimation/suppression_engine.c
++++ /dev/null
+@@ -1,87 +0,0 @@
+-/*
+-libspecbleach - A spectral processing library
+-
+-Copyright 2022-2026 Luciano Dato <lucianodato@gmail.com>
+-
+-This library is free software; you can redistribute it and/or
+-modify it under the terms of the GNU Lesser General Public
+-License as published by the Free Software Foundation; either
+-version 2.1 of the License, or (at your option) any later version.
+-
+-This library is distributed in the hope that it will be useful,
+-but WITHOUT ANY WARRANTY; without even the implied warranty of
+-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-Lesser General Public License for more details.
+-
+-You should have received a copy of the GNU Lesser General Public
+-License along with this library; if not, write to the Free Software
+-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+-*/
+-
+-#include "suppression_engine.h"
+-#include "../configurations.h"
+-#include <math.h>
+-#include <stdlib.h>
+-
+-struct SuppressionEngine {
+-  uint32_t real_spectrum_size;
+-};
+-
+-SuppressionEngine* suppression_engine_initialize(uint32_t real_spectrum_size) {
+-  SuppressionEngine* self =
+-      (SuppressionEngine*)calloc(1U, sizeof(SuppressionEngine));
+-  if (!self) {
+-    return NULL;
+-  }
+-
+-  self->real_spectrum_size = real_spectrum_size;
+-  return self;
+-}
+-
+-void suppression_engine_free(SuppressionEngine* self) {
+-  if (self) {
+-    free(self);
+-  }
+-}
+-
+-void suppression_engine_calculate(SuppressionEngine* self,
+-                                  const float* reference_spectrum,
+-                                  const float* noise_spectrum,
+-                                  float suppression_strength, float* alpha,
+-                                  float* beta) {
+-  if (!self || !reference_spectrum || !noise_spectrum || !alpha || !beta) {
+-    return;
+-  }
+-
+-  /*
+-   * Berouti-style SNR-dependent oversubtraction.
+-   * Alpha (Oversubtraction) decreases as SNR increases.
+-   * suppression_strength scales the maximum Alpha.
+-   */
+-
+-  const float alpha_max_user =
+-      ALPHA_MIN + (suppression_strength * (ALPHA_MAX - ALPHA_MIN));
+-  const float snr_range_db =
+-      SUPPRESSION_HIGHER_SNR_DB - SUPPRESSION_LOWER_SNR_DB;
+-
+-  for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
+-    const float snr_db = 10.0F * log10f(reference_spectrum[k] /
+-                                        (noise_spectrum[k] + SPECTRAL_EPSILON));
+-
+-    if (snr_db <= SUPPRESSION_LOWER_SNR_DB) {
+-      alpha[k] = alpha_max_user;
+-    } else if (snr_db >= SUPPRESSION_HIGHER_SNR_DB) {
+-      alpha[k] = ALPHA_MIN;
+-    } else {
+-      // Linear interpolation between alpha_max_user and ALPHA_MIN
+-      const float normalized_snr =
+-          (snr_db - SUPPRESSION_LOWER_SNR_DB) / snr_range_db;
+-      alpha[k] =
+-          alpha_max_user - (normalized_snr * (alpha_max_user - ALPHA_MIN));
+-    }
+-
+-    /* Beta (Undersubtraction) is kept minimal as we use a dedicated noise floor
+-     * manager */
+-    beta[k] = 0.0F;
+-  }
+-}
+diff --git a/src/shared/meson.build b/src/shared/meson.build
+--- a/src/shared/meson.build
++++ b/src/shared/meson.build
+@@ -1,7 +1,4 @@
+ shared_sources = []
+-subdir('gain_estimation')
+-subdir('noise_estimation')
+-subdir('post_estimation')
+-subdir('pre_estimation')
++subdir('denoiser_logic')
+ subdir('stft')
+ subdir('utils')
+\ No newline at end of file
+diff --git a/src/shared/noise_estimation/meson.build b/src/shared/noise_estimation/meson.build
+deleted file mode 100644
+--- a/src/shared/noise_estimation/meson.build
++++ /dev/null
+@@ -1,9 +0,0 @@
+-shared_sources += files(
+-    'adaptive_noise_estimator.c',
+-    'noise_estimator.c',
+-    'noise_profile.c',
+-    'spp_mmse_noise_estimator.c',
+-    'brandt_noise_estimator.c',
+-    'martin_noise_estimator.c',
+-    'tonal_reducer.c',
+-)
+\ No newline at end of file
+diff --git a/src/shared/post_estimation/meson.build b/src/shared/post_estimation/meson.build
+deleted file mode 100644
+--- a/src/shared/post_estimation/meson.build
++++ /dev/null
+@@ -1,7 +0,0 @@
+-shared_sources += files(
+-    'noise_floor_manager.c',
+-    'spectral_whitening.c',
+-    'postfilter.c',
+-    'nlm_filter.c',
+-    'masking_veto.c',
+-)
+diff --git a/src/shared/post_estimation/postfilter.c b/src/shared/post_estimation/postfilter.c
+deleted file mode 100644
+--- a/src/shared/post_estimation/postfilter.c
++++ /dev/null
+@@ -1,174 +0,0 @@
+-/*
+-libspecbleach - A spectral processing library
+-
+-Copyright 2022 Luciano Dato <lucianodato@gmail.com>
+-
+-This library is free software; you can redistribute it and/or
+-modify it under the terms of the GNU Lesser General Public
+-License as published by the Free Software Foundation; either
+-version 2.1 of the License, or (at your option) any later version.
+-
+-This library is distributed in the hope that it will be useful,
+-but WITHOUT ANY WARRANTY; without even the implied warranty of
+-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-Lesser General Public License for more details.
+-
+-You should have received a copy of the GNU Lesser General Public
+-License along with this library; if not, write to the Free Software
+-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+-*/
+-
+-#include "postfilter.h"
+-#include "../configurations.h"
+-#include <math.h>
+-#include <stdlib.h>
+-#include <string.h>
+-
+-struct PostFilter {
+-  float* intermediate_gains;
+-
+-  uint32_t fft_size;
+-  uint32_t real_spectrum_size;
+-  bool preserve_minimum;
+-  float default_postfilter_scale;
+-  float min_gain_coefficient;
+-};
+-
+-PostFilter* postfilter_initialize(const uint32_t fft_size) {
+-  PostFilter* self = (PostFilter*)calloc(1U, sizeof(PostFilter));
+-  if (!self) {
+-    return NULL;
+-  }
+-
+-  self->fft_size = fft_size;
+-  self->real_spectrum_size = (self->fft_size / 2U) + 1U;
+-  self->preserve_minimum = (bool)PRESERVE_MINIMUM_GAIN;
+-  self->default_postfilter_scale = POSTFILTER_SCALE;
+-  self->min_gain_coefficient = powf(10.F, (float)POSTFILTER_MIN_GAIN_DB / 20.F);
+-
+-  self->intermediate_gains =
+-      (float*)calloc(self->real_spectrum_size, sizeof(float));
+-  if (!self->intermediate_gains) {
+-    free(self);
+-    return NULL;
+-  }
+-
+-  return self;
+-}
+-
+-void postfilter_free(PostFilter* self) {
+-  if (!self) {
+-    return;
+-  }
+-  free(self->intermediate_gains);
+-  free(self);
+-}
+-
+-static uint32_t get_adaptive_window_size(const PostFilter* self,
+-                                         const float* spectrum,
+-                                         const float snr_threshold,
+-                                         const float* gain_spectrum) {
+-  float clean_energy = 0.F;
+-  float noisy_energy = 0.F;
+-
+-  for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
+-    const float noisy = spectrum[k];
+-    const float clean = noisy * gain_spectrum[k];
+-    clean_energy += clean * clean;
+-    noisy_energy += noisy * noisy;
+-  }
+-
+-  if (noisy_energy <= SPECTRAL_EPSILON) {
+-    return 1U;
+-  }
+-
+-  const float zeta = clean_energy / noisy_energy;
+-  const float zeta_t = (zeta >= snr_threshold) ? 1.F : zeta;
+-
+-  if (zeta_t >= 1.F) {
+-    return 1U;
+-  }
+-
+-  const float n = (2.F * roundf(self->default_postfilter_scale *
+-                                (1.F - (zeta_t / snr_threshold)))) +
+-                  1.F;
+-
+-  return (uint32_t)n;
+-}
+-
+-static void moving_average(const float* in, float* out, uint32_t size,
+-                           uint32_t n) {
+-  if (n <= 1U || n > size) {
+-    memcpy(out, in, size * sizeof(float));
+-    return;
+-  }
+-
+-  const uint32_t half = n / 2U;
+-  double current_sum = 0.0;
+-
+-  // Initial window sum (boundary handling: use clamping for start)
+-  for (int i = -(int)half; i <= (int)half; i++) {
+-    int idx = i;
+-    if (idx < 0) {
+-      idx = 0;
+-    }
+-    if (idx >= (int)size) {
+-      idx = (int)size - 1;
+-    }
+-    current_sum += (double)in[idx];
+-  }
+-
+-  for (uint32_t i = 0U; i < size; i++) {
+-    out[i] = (float)(current_sum / (double)n);
+-
+-    if (i + 1U < size) {
+-      // Move window: subtract oldest, add newest
+-      int old_idx = (int)i - (int)half;
+-      int new_idx = (int)i + (int)half + 1;
+-
+-      if (old_idx < 0) {
+-        old_idx = 0;
+-      }
+-      if (new_idx >= (int)size) {
+-        new_idx = (int)size - 1;
+-      }
+-
+-      current_sum -= (double)in[old_idx];
+-      current_sum += (double)in[new_idx];
+-    }
+-  }
+-}
+-
+-bool postfilter_apply(PostFilter* self, const float* spectrum,
+-                      float* gain_spectrum,
+-                      const PostFiltersParameters parameters) {
+-  if (!self || !spectrum || !gain_spectrum) {
+-    return false;
+-  }
+-
+-  const uint32_t n = get_adaptive_window_size(
+-      self, spectrum, parameters.snr_threshold, gain_spectrum);
+-
+-  if (n > 1U) {
+-    moving_average(gain_spectrum, self->intermediate_gains,
+-                   self->real_spectrum_size, n);
+-
+-    if (self->preserve_minimum) {
+-      for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
+-        gain_spectrum[k] = fminf(gain_spectrum[k], self->intermediate_gains[k]);
+-      }
+-    } else {
+-      memcpy(gain_spectrum, self->intermediate_gains,
+-             self->real_spectrum_size * sizeof(float));
+-    }
+-  }
+-
+-  // Apply gain floor
+-  for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
+-    if (gain_spectrum[k] < parameters.gain_floor) {
+-      gain_spectrum[k] = parameters.gain_floor;
+-    }
+-  }
+-
+-  return true;
+-}
+diff --git a/src/shared/post_estimation/postfilter.h b/src/shared/post_estimation/postfilter.h
+deleted file mode 100644
+--- a/src/shared/post_estimation/postfilter.h
++++ /dev/null
+@@ -1,39 +0,0 @@
+-/*
+-libspecbleach - A spectral processing library
+-
+-Copyright 2022 Luciano Dato <lucianodato@gmail.com>
+-
+-This library is free software; you can redistribute it and/or
+-modify it under the terms of the GNU Lesser General Public
+-License as published by the Free Software Foundation; either
+-version 2.1 of the License, or (at your option) any later version.
+-
+-This library is distributed in the hope that it will be useful,
+-but WITHOUT ANY WARRANTY; without even the implied warranty of
+-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-Lesser General Public License for more details.
+-
+-You should have received a copy of the GNU Lesser General Public
+-License along with this library; if not, write to the Free Software
+-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+-*/
+-
+-#ifndef POSTFILTER_H
+-#define POSTFILTER_H
+-
+-#include <stdbool.h>
+-#include <stdint.h>
+-
+-typedef struct PostFilter PostFilter;
+-
+-typedef struct PostFiltersParameters {
+-  float snr_threshold;
+-  float gain_floor;
+-} PostFiltersParameters;
+-
+-PostFilter* postfilter_initialize(uint32_t fft_size);
+-void postfilter_free(PostFilter* self);
+-bool postfilter_apply(PostFilter* self, const float* spectrum,
+-                      float* gain_spectrum, PostFiltersParameters parameters);
+-
+-#endif
+diff --git a/src/shared/pre_estimation/meson.build b/src/shared/pre_estimation/meson.build
+deleted file mode 100644
+--- a/src/shared/pre_estimation/meson.build
++++ /dev/null
+@@ -1,8 +0,0 @@
+-shared_sources += files(
+-    'absolute_hearing_thresholds.c',
+-    'masking_estimator.c',
+-    'critical_bands.c',
+-    'noise_scaling_criterias.c',
+-    'transient_detector.c',
+-    'spectral_smoother.c',
+-)
+\ No newline at end of file
+diff --git a/src/shared/pre_estimation/noise_scaling_criterias.c b/src/shared/pre_estimation/noise_scaling_criterias.c
+deleted file mode 100644
+--- a/src/shared/pre_estimation/noise_scaling_criterias.c
++++ /dev/null
+@@ -1,294 +0,0 @@
+-/*
+-libspecbleach - A spectral processing library
+-
+-Copyright 2022 Luciano Dato <lucianodato@gmail.com>
+-
+-This library is free software; you can redistribute it and/or
+-modify it under the terms of the GNU Lesser General Public
+-License as published by the Free Software Foundation; either
+-version 2.1 of the License, or (at your option) any later version.
+-
+-This library is distributed in the hope that it will be useful,
+-but WITHOUT ANY WARRANTY; without even the implied warranty of
+-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-Lesser General Public License for more details.
+-
+-You should have received a copy of the GNU Lesser General Public
+-License along with this library; if not, write to the Free Software
+-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+-*/
+-
+-#include "noise_scaling_criterias.h"
+-#include "../configurations.h"
+-#include "../utils/spectral_utils.h"
+-#include "critical_bands.h"
+-#include "masking_estimator.h"
+-#include <float.h>
+-#include <math.h>
+-#include <stdlib.h>
+-
+-static void a_posteriori_snr_critical_bands(NoiseScalingCriterias* self,
+-                                            const float* spectrum,
+-                                            const float* noise_spectrum,
+-                                            float* alpha, float* beta,
+-                                            NoiseScalingParameters parameters);
+-static void a_posteriori_snr(NoiseScalingCriterias* self, const float* spectrum,
+-                             const float* noise_spectrum, float* alpha,
+-                             float* beta, NoiseScalingParameters parameters);
+-static void masking_thresholds(NoiseScalingCriterias* self,
+-                               const float* spectrum,
+-                               const float* noise_spectrum, float* alpha,
+-                               float* beta, NoiseScalingParameters parameters);
+-
+-struct NoiseScalingCriterias {
+-  NoiseScalingType noise_scaling_type;
+-  uint32_t fft_size;
+-  uint32_t real_spectrum_size;
+-  uint32_t sample_rate;
+-  SpectrumType spectrum_type;
+-  uint32_t number_critical_bands;
+-  float lower_snr;
+-  float higher_snr;
+-  float alpha_minimun;
+-  float beta_minimun;
+-  CriticalBandIndexes band_indexes;
+-  CriticalBandType critical_band_type;
+-
+-  float* masking_thresholds;
+-  float* clean_signal_estimation;
+-  float* critical_bands_noise_profile;
+-  float* critical_bands_reference_spectrum;
+-
+-  MaskingEstimator* masking_estimation;
+-  CriticalBands* critical_bands;
+-};
+-
+-NoiseScalingCriterias* noise_scaling_criterias_initialize(
+-    const uint32_t fft_size, const CriticalBandType critical_band_type,
+-    const uint32_t sample_rate, SpectrumType spectrum_type) {
+-
+-  NoiseScalingCriterias* self =
+-      (NoiseScalingCriterias*)calloc(1U, sizeof(NoiseScalingCriterias));
+-
+-  if (!self) {
+-    return NULL;
+-  }
+-
+-  self->fft_size = fft_size;
+-  self->real_spectrum_size = (self->fft_size / 2U) + 1U;
+-  self->critical_band_type = critical_band_type;
+-  self->sample_rate = sample_rate;
+-  self->spectrum_type = spectrum_type;
+-  self->lower_snr = NOISE_SCALING_LOWER_SNR;
+-  self->higher_snr = NOISE_SCALING_HIGHER_SNR;
+-  self->alpha_minimun = ALPHA_MIN;
+-  self->beta_minimun = BETA_MIN;
+-
+-  self->critical_bands = critical_bands_initialize(
+-      self->sample_rate, self->fft_size, self->critical_band_type);
+-  self->masking_estimation = masking_estimation_initialize(
+-      self->fft_size, self->sample_rate, self->spectrum_type);
+-
+-  if (!self->critical_bands || !self->masking_estimation) {
+-    noise_scaling_criterias_free(self);
+-    return NULL;
+-  }
+-
+-  self->number_critical_bands =
+-      get_number_of_critical_bands(self->critical_bands);
+-
+-  self->critical_bands_noise_profile =
+-      (float*)calloc(self->number_critical_bands, sizeof(float));
+-  self->critical_bands_reference_spectrum =
+-      (float*)calloc(self->number_critical_bands, sizeof(float));
+-
+-  self->masking_thresholds =
+-      (float*)calloc(self->real_spectrum_size, sizeof(float));
+-  self->clean_signal_estimation =
+-      (float*)calloc(self->real_spectrum_size, sizeof(float));
+-
+-  if (!self->critical_bands_noise_profile ||
+-      !self->critical_bands_reference_spectrum || !self->masking_thresholds ||
+-      !self->clean_signal_estimation) {
+-    noise_scaling_criterias_free(self);
+-    return NULL;
+-  }
+-
+-  return self;
+-}
+-
+-void noise_scaling_criterias_free(NoiseScalingCriterias* self) {
+-  if (!self) {
+-    return;
+-  }
+-  critical_bands_free(self->critical_bands);
+-  masking_estimation_free(self->masking_estimation);
+-
+-  free(self->clean_signal_estimation);
+-  free(self->masking_thresholds);
+-  free(self->critical_bands_noise_profile);
+-  free(self->critical_bands_reference_spectrum);
+-
+-  free(self);
+-}
+-
+-bool apply_noise_scaling_criteria(NoiseScalingCriterias* self,
+-                                  const float* spectrum,
+-                                  const float* noise_spectrum, float* alpha,
+-                                  float* beta,
+-                                  NoiseScalingParameters parameters) {
+-  if (!spectrum || !noise_spectrum) {
+-    return false;
+-  }
+-
+-  switch ((NoiseScalingType)parameters.scaling_type) {
+-    case A_POSTERIORI_SNR:
+-      a_posteriori_snr(self, spectrum, noise_spectrum, alpha, beta, parameters);
+-      break;
+-    case A_POSTERIORI_SNR_CRITICAL_BANDS:
+-      a_posteriori_snr_critical_bands(self, spectrum, noise_spectrum, alpha,
+-                                      beta, parameters);
+-      break;
+-    case MASKING_THRESHOLDS:
+-      masking_thresholds(self, spectrum, noise_spectrum, alpha, beta,
+-                         parameters);
+-      break;
+-
+-    case NO_SCALING:
+-      for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
+-        alpha[k] = self->alpha_minimun;
+-        beta[k] = self->beta_minimun;
+-      }
+-      break;
+-
+-    default:
+-      break;
+-  }
+-
+-  return true;
+-}
+-
+-static void a_posteriori_snr_critical_bands(NoiseScalingCriterias* self,
+-                                            const float* spectrum,
+-                                            const float* noise_spectrum,
+-                                            float* alpha, float* beta,
+-                                            NoiseScalingParameters parameters) {
+-
+-  compute_critical_bands_spectrum(self->critical_bands, noise_spectrum,
+-                                  self->critical_bands_noise_profile);
+-  compute_critical_bands_spectrum(self->critical_bands, spectrum,
+-                                  self->critical_bands_reference_spectrum);
+-
+-  float oversubtraction_factor;
+-  float undersubtraction_factor;
+-
+-  for (uint32_t j = 0U; j < self->number_critical_bands; j++) {
+-
+-    self->band_indexes = get_band_indexes(self->critical_bands, j);
+-
+-    const float snr_db =
+-        10.F *
+-        log10f(self->critical_bands_reference_spectrum[j] /
+-               (self->critical_bands_noise_profile[j] + SPECTRAL_EPSILON));
+-
+-    if (snr_db <= 0.F) {
+-      oversubtraction_factor = parameters.oversubtraction;
+-      undersubtraction_factor = parameters.undersubtraction;
+-    } else if (snr_db >= 20.F) {
+-      oversubtraction_factor = self->alpha_minimun;
+-      undersubtraction_factor = self->beta_minimun;
+-    } else {
+-      const float normalized_snr = snr_db / 20.F;
+-      oversubtraction_factor =
+-          ((1.F - normalized_snr) * parameters.oversubtraction) +
+-          (normalized_snr * self->alpha_minimun);
+-      undersubtraction_factor =
+-          ((1.F - normalized_snr) * parameters.undersubtraction) +
+-          (normalized_snr * self->beta_minimun);
+-    }
+-
+-    for (uint32_t k = self->band_indexes.start_position;
+-         k < self->band_indexes.end_position; k++) {
+-      alpha[k] = oversubtraction_factor;
+-      beta[k] = undersubtraction_factor;
+-    }
+-  }
+-}
+-
+-static void a_posteriori_snr(NoiseScalingCriterias* self, const float* spectrum,
+-                             const float* noise_spectrum, float* alpha,
+-                             float* beta, NoiseScalingParameters parameters) {
+-  float noisy_spectrum_sum = 0.F;
+-  float noise_spectrum_sum = 0.F;
+-
+-  for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
+-    noisy_spectrum_sum += spectrum[k];
+-    noise_spectrum_sum += noise_spectrum[k];
+-  }
+-
+-  const float snr_db = 10.F * log10f(noisy_spectrum_sum /
+-                                     (noise_spectrum_sum + SPECTRAL_EPSILON));
+-
+-  float oversubtraction_factor;
+-  float undersubtraction_factor;
+-
+-  if (snr_db <= 0.F) {
+-    oversubtraction_factor = parameters.oversubtraction;
+-    undersubtraction_factor = parameters.undersubtraction;
+-  } else if (snr_db >= 20.F) {
+-    oversubtraction_factor = self->alpha_minimun;
+-    undersubtraction_factor = self->beta_minimun;
+-  } else {
+-    const float normalized_snr = snr_db / 20.F;
+-    oversubtraction_factor =
+-        ((1.F - normalized_snr) * parameters.oversubtraction) +
+-        (normalized_snr * self->alpha_minimun);
+-    undersubtraction_factor =
+-        ((1.F - normalized_snr) * parameters.undersubtraction) +
+-        (normalized_snr * self->beta_minimun);
+-  }
+-
+-  for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
+-    alpha[k] = oversubtraction_factor;
+-    beta[k] = undersubtraction_factor;
+-  }
+-}
+-
+-static void masking_thresholds(NoiseScalingCriterias* self,
+-                               const float* spectrum,
+-                               const float* noise_spectrum, float* alpha,
+-                               float* beta, NoiseScalingParameters parameters) {
+-
+-  for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
+-    self->clean_signal_estimation[k] =
+-        fmaxf(spectrum[k] - noise_spectrum[k], 0.F);
+-  }
+-
+-  compute_masking_thresholds(self->masking_estimation,
+-                             self->clean_signal_estimation,
+-                             self->masking_thresholds);
+-
+-  for (uint32_t k = 0U; k < self->real_spectrum_size; k++) {
+-    const float nmr_db =
+-        10.F * log10f(noise_spectrum[k] /
+-                      (self->masking_thresholds[k] + SPECTRAL_EPSILON));
+-
+-    if (nmr_db <= 0.F) {
+-      // Elastic Protection: allow configured influence of oversubtraction even
+-      // if masked
+-      alpha[k] = self->alpha_minimun +
+-                 ((parameters.oversubtraction - self->alpha_minimun) *
+-                  ELASTIC_PROTECTION_FACTOR);
+-      beta[k] = self->beta_minimun;
+-    } else if (nmr_db >= 20.F) {
+-      alpha[k] = parameters.oversubtraction;
+-      beta[k] = parameters.undersubtraction;
+-    } else {
+-      const float normalized_nmr = nmr_db / 20.F;
+-      alpha[k] = ((1.F - normalized_nmr) * self->alpha_minimun) +
+-                 (normalized_nmr * parameters.oversubtraction);
+-      beta[k] = ((1.F - normalized_nmr) * self->beta_minimun) +
+-                (normalized_nmr * parameters.undersubtraction);
+-    }
+-  }
+-}
+diff --git a/src/shared/pre_estimation/noise_scaling_criterias.h b/src/shared/pre_estimation/noise_scaling_criterias.h
+deleted file mode 100644
+--- a/src/shared/pre_estimation/noise_scaling_criterias.h
++++ /dev/null
+@@ -1,54 +0,0 @@
+-/*
+-libspecbleach - A spectral processing library
+-
+-Copyright 2022 Luciano Dato <lucianodato@gmail.com>
+-
+-This library is free software; you can redistribute it and/or
+-modify it under the terms of the GNU Lesser General Public
+-License as published by the Free Software Foundation; either
+-version 2.1 of the License, or (at your option) any later version.
+-
+-This library is distributed in the hope that it will be useful,
+-but WITHOUT ANY WARRANTY; without even the implied warranty of
+-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-Lesser General Public License for more details.
+-
+-You should have received a copy of the GNU Lesser General Public
+-License along with this library; if not, write to the Free Software
+-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+-*/
+-
+-#ifndef NOISE_SCALING_CRITERIAS_H
+-#define NOISE_SCALING_CRITERIAS_H
+-
+-#include "../utils/spectral_features.h"
+-#include "critical_bands.h"
+-#include <stdbool.h>
+-#include <stdint.h>
+-
+-typedef enum NoiseScalingType {
+-  A_POSTERIORI_SNR = 0,
+-  A_POSTERIORI_SNR_CRITICAL_BANDS = 1,
+-  MASKING_THRESHOLDS = 2,
+-  NO_SCALING = 3,
+-} NoiseScalingType;
+-
+-typedef struct NoiseScalingParameters {
+-  float undersubtraction;
+-  float oversubtraction;
+-  int scaling_type;
+-} NoiseScalingParameters;
+-
+-typedef struct NoiseScalingCriterias NoiseScalingCriterias;
+-
+-NoiseScalingCriterias* noise_scaling_criterias_initialize(
+-    uint32_t fft_size, CriticalBandType critical_band_type,
+-    uint32_t sample_rate, SpectrumType spectrum_type);
+-void noise_scaling_criterias_free(NoiseScalingCriterias* self);
+-bool apply_noise_scaling_criteria(NoiseScalingCriterias* self,
+-                                  const float* spectrum,
+-                                  const float* noise_spectrum, float* alpha,
+-                                  float* beta,
+-                                  NoiseScalingParameters parameters);
+-
+-#endif
+diff --git a/src/shared/pre_estimation/absolute_hearing_thresholds.c b/src/shared/utils/absolute_hearing_thresholds.c
+rename from src/shared/pre_estimation/absolute_hearing_thresholds.c
+rename to src/shared/utils/absolute_hearing_thresholds.c
+--- a/src/shared/pre_estimation/absolute_hearing_thresholds.c
++++ b/src/shared/utils/absolute_hearing_thresholds.c
+@@ -21,7 +21,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ #include "absolute_hearing_thresholds.h"
+ #include "../configurations.h"
+ #include "../stft/fft_transform.h"
+-#include "../utils/spectral_utils.h"
++#include "spectral_utils.h"
+ #include <math.h>
+ #include <stdlib.h>
+ #include <string.h>
+diff --git a/src/shared/pre_estimation/absolute_hearing_thresholds.h b/src/shared/utils/absolute_hearing_thresholds.h
+rename from src/shared/pre_estimation/absolute_hearing_thresholds.h
+rename to src/shared/utils/absolute_hearing_thresholds.h
+--- a/src/shared/pre_estimation/absolute_hearing_thresholds.h
++++ b/src/shared/utils/absolute_hearing_thresholds.h
+
+diff --git a/src/shared/pre_estimation/critical_bands.c b/src/shared/utils/critical_bands.c
+rename from src/shared/pre_estimation/critical_bands.c
+rename to src/shared/utils/critical_bands.c
+--- a/src/shared/pre_estimation/critical_bands.c
++++ b/src/shared/utils/critical_bands.c
+@@ -19,7 +19,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ */
+ 
+ #include "critical_bands.h"
+-#include "../utils/spectral_utils.h"
++#include "spectral_utils.h"
+ #include <stdlib.h>
+ #include <string.h>
+ 
+diff --git a/src/shared/pre_estimation/critical_bands.h b/src/shared/utils/critical_bands.h
+rename from src/shared/pre_estimation/critical_bands.h
+rename to src/shared/utils/critical_bands.h
+--- a/src/shared/pre_estimation/critical_bands.h
++++ b/src/shared/utils/critical_bands.h
+
+diff --git a/src/shared/pre_estimation/masking_estimator.c b/src/shared/utils/masking_estimator.c
+rename from src/shared/pre_estimation/masking_estimator.c
+rename to src/shared/utils/masking_estimator.c
+--- a/src/shared/pre_estimation/masking_estimator.c
++++ b/src/shared/utils/masking_estimator.c
+@@ -21,8 +21,8 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ #include "masking_estimator.h"
+ #include "../configurations.h"
+ #include "../utils/spectral_utils.h"
+-#include "absolute_hearing_thresholds.h"
+-#include "critical_bands.h"
++#include "shared/utils/absolute_hearing_thresholds.h"
++#include "shared/utils/critical_bands.h"
+ #include <math.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -52,9 +52,9 @@ struct MaskingEstimator {
+   bool use_absolute_threshold;
+ };
+ 
+-MaskingEstimator* masking_estimation_initialize(const uint32_t fft_size,
+-                                                const uint32_t sample_rate,
+-                                                SpectrumType spectrum_type) {
++MaskingEstimator* masking_estimation_initialize(
++    const uint32_t fft_size, const uint32_t sample_rate,
++    CriticalBandType critical_band_type, SpectrumType spectrum_type) {
+ 
+   MaskingEstimator* self =
+       (MaskingEstimator*)calloc(1U, sizeof(MaskingEstimator));
+@@ -68,7 +68,7 @@ MaskingEstimator* masking_estimation_initialize(const uint32_t fft_size,
+   self->sample_rate = sample_rate;
+ 
+   self->critical_bands = critical_bands_initialize(
+-      self->sample_rate, self->fft_size, CRITICAL_BANDS_TYPE);
++      self->sample_rate, self->fft_size, critical_band_type);
+   if (!self->critical_bands) {
+     masking_estimation_free(self);
+     return NULL;
+diff --git a/src/shared/pre_estimation/masking_estimator.h b/src/shared/utils/masking_estimator.h
+rename from src/shared/pre_estimation/masking_estimator.h
+rename to src/shared/utils/masking_estimator.h
+--- a/src/shared/pre_estimation/masking_estimator.h
++++ b/src/shared/utils/masking_estimator.h
+@@ -21,15 +21,16 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ #ifndef MASKING_ESTIMATOR_H
+ #define MASKING_ESTIMATOR_H
+ 
+-#include "../utils/spectral_features.h"
++#include "shared/utils/critical_bands.h"
++#include "shared/utils/spectral_features.h"
+ #include <stdbool.h>
+ #include <stdint.h>
+ 
+ typedef struct MaskingEstimator MaskingEstimator;
+ 
+-MaskingEstimator* masking_estimation_initialize(uint32_t fft_size,
+-                                                uint32_t sample_rate,
+-                                                SpectrumType spectrum_type);
++MaskingEstimator* masking_estimation_initialize(
++    uint32_t fft_size, uint32_t sample_rate,
++    CriticalBandType critical_band_type, SpectrumType spectrum_type);
+ void masking_estimation_free(MaskingEstimator* self);
+ bool compute_masking_thresholds(MaskingEstimator* self, const float* spectrum,
+                                 float* masking_thresholds);
+diff --git a/src/shared/utils/meson.build b/src/shared/utils/meson.build
+--- a/src/shared/utils/meson.build
++++ b/src/shared/utils/meson.build
+@@ -1,8 +1,13 @@
+ shared_sources += files(
+     'general_utils.c',
+-    'denoise_mixer.c',
+     'spectral_features.c',
+     'spectral_utils.c',
+-    'spectral_trailing_buffer.c',
++
+     'tonal_detector.c',
++    'absolute_hearing_thresholds.c',
++    'critical_bands.c',
++    'transient_detector.c',
++    'spectral_smoother.c',
++    'masking_estimator.c',
++    'spectral_circular_buffer.c',
+ )
+\ No newline at end of file
+diff --git a/src/shared/utils/spectral_circular_buffer.c b/src/shared/utils/spectral_circular_buffer.c
+new file mode 100644
+--- /dev/null
++++ b/src/shared/utils/spectral_circular_buffer.c
+@@ -0,0 +1,120 @@
++/*
++libspecbleach - A spectral processing library
++
++Copyright 2022 Luciano Dato <lucianodato@gmail.com>
++
++This library is free software; you can redistribute it and/or
++modify it under the terms of the GNU Lesser General Public
++License as published by the Free Software Foundation; either
++version 2.1 of the License, or (at your option) any later version.
++
++This library is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++Lesser General Public License for more details.
++
++You should have received a copy of the GNU Lesser General Public
++License along with this library; if not, write to the Free Software
++Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
++*/
++
++#include "spectral_circular_buffer.h"
++#include "shared/configurations.h"
++#include <stdlib.h>
++#include <string.h>
++
++typedef struct SbCircularLayer {
++  float* buffer;
++  uint32_t size;
++} SbCircularLayer;
++
++struct SbSpectralCircularBuffer {
++  SbCircularLayer layers[MAX_SPECTRAL_CIRCULAR_BUFFER_LAYERS];
++  uint32_t num_layers;
++  uint32_t num_frames;
++  uint32_t write_index;
++};
++
++SbSpectralCircularBuffer* spectral_circular_buffer_create(uint32_t num_frames) {
++  if (num_frames == 0) {
++    return NULL;
++  }
++
++  SbSpectralCircularBuffer* self =
++      (SbSpectralCircularBuffer*)calloc(1U, sizeof(SbSpectralCircularBuffer));
++  if (!self) {
++    return NULL;
++  }
++
++  self->num_frames = num_frames;
++  self->write_index = 0;
++  self->num_layers = 0;
++
++  return self;
++}
++
++uint32_t spectral_circular_buffer_add_layer(SbSpectralCircularBuffer* self,
++                                            uint32_t layer_size) {
++  if (!self || self->num_layers >= MAX_SPECTRAL_CIRCULAR_BUFFER_LAYERS ||
++      layer_size == 0) {
++    return 0xFFFFFFFF;
++  }
++
++  uint32_t layer_id = self->num_layers++;
++  self->layers[layer_id].size = layer_size;
++  self->layers[layer_id].buffer =
++      (float*)calloc((size_t)self->num_frames * layer_size, sizeof(float));
++
++  if (!self->layers[layer_id].buffer) {
++    self->num_layers--;
++    return 0xFFFFFFFF;
++  }
++
++  return layer_id;
++}
++
++void spectral_circular_buffer_push(SbSpectralCircularBuffer* self,
++                                   uint32_t layer_id, const float* data) {
++  if (!self || layer_id >= self->num_layers || !data) {
++    return;
++  }
++
++  memcpy(&self->layers[layer_id]
++              .buffer[(size_t)self->write_index * self->layers[layer_id].size],
++         data, self->layers[layer_id].size * sizeof(float));
++}
++
++float* spectral_circular_buffer_retrieve(SbSpectralCircularBuffer* self,
++                                         uint32_t layer_id, uint32_t delay) {
++  if (!self || layer_id >= self->num_layers) {
++    return NULL;
++  }
++
++  uint32_t read_index =
++      (self->write_index + self->num_frames - delay) % self->num_frames;
++
++  return &self->layers[layer_id]
++              .buffer[(size_t)read_index * self->layers[layer_id].size];
++}
++
++void spectral_circular_buffer_advance(SbSpectralCircularBuffer* self) {
++  if (!self) {
++    return;
++  }
++
++  self->write_index = (self->write_index + 1) % self->num_frames;
++}
++
++void spectral_circular_buffer_free(SbSpectralCircularBuffer* self) {
++  if (!self) {
++    return;
++  }
++
++  for (uint32_t i = 0; i < self->num_layers; i++) {
++    if (self->layers[i].buffer) {
++      free(self->layers[i].buffer);
++    }
++  }
++
++  free(self);
++}
+diff --git a/src/shared/utils/spectral_circular_buffer.h b/src/shared/utils/spectral_circular_buffer.h
+new file mode 100644
+--- /dev/null
++++ b/src/shared/utils/spectral_circular_buffer.h
+@@ -0,0 +1,94 @@
++/*
++libspecbleach - A spectral processing library
++
++Copyright 2022 Luciano Dato <lucianodato@gmail.com>
++
++This library is free software; you can redistribute it and/or
++modify it under the terms of the GNU Lesser General Public
++License as published by the Free Software Foundation; either
++version 2.1 of the License, or (at your option) any later version.
++
++This library is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++Lesser General Public License for more details.
++
++You should have received a copy of the GNU Lesser General Public
++License along with this library; if not, write to the Free Software
++Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
++*/
++
++#ifndef SHARED_UTILS_SPECTRAL_CIRCULAR_BUFFER_H
++#define SHARED_UTILS_SPECTRAL_CIRCULAR_BUFFER_H
++
++#include <stdbool.h>
++#include <stdint.h>
++
++/**
++ * @brief Opaque handle for a spectral circular buffer.
++ *
++ * A spectral circular buffer manages one or more buffers (layers) synchronized
++ * by a common time index, allowing for temporal alignment of spectral data.
++ */
++typedef struct SbSpectralCircularBuffer SbSpectralCircularBuffer;
++
++/**
++ * @brief Initialize a spectral circular buffer with a fixed number of frames.
++ *
++ * @param num_frames Total number of frames in the buffer.
++ * @return SbSpectralCircularBuffer* Pointer to the initialized buffer, or NULL
++ * if allocation fails.
++ */
++SbSpectralCircularBuffer* spectral_circular_buffer_create(uint32_t num_frames);
++
++/**
++ * @brief Add a data layer to the circular buffer.
++ *
++ * Each layer represents a specific type of spectral data (e.g., FFT, magnitude,
++ * noise). All layers share the same ring buffer index.
++ *
++ * @param self The circular buffer instance.
++ * @param layer_size Size of each frame in this layer (in floats).
++ * @return uint32_t The ID of the added layer, or 0xFFFFFFFF on failure.
++ */
++uint32_t spectral_circular_buffer_add_layer(SbSpectralCircularBuffer* self,
++                                            uint32_t layer_size);
++
++/**
++ * @brief Push a frame of data into a specific layer.
++ *
++ * @param self The circular buffer instance.
++ * @param layer_id ID of the layer to push into.
++ * @param data Data frame to store.
++ */
++void spectral_circular_buffer_push(SbSpectralCircularBuffer* self,
++                                   uint32_t layer_id, const float* data);
++
++/**
++ * @brief Retrieve a pointer to a delayed frame from a layer.
++ *
++ * @param self The circular buffer instance.
++ * @param layer_id ID of the layer to retrieve from.
++ * @param delay Frames of delay (from current write position).
++ * @return float* Pointer to the delayed data, or NULL if layer_id is invalid.
++ */
++float* spectral_circular_buffer_retrieve(SbSpectralCircularBuffer* self,
++                                         uint32_t layer_id, uint32_t delay);
++
++/**
++ * @brief Advance the write index of the circular buffer.
++ *
++ * Should be called once per processing loop, after pushing all required layer
++ * frames.
++ * @param self The circular buffer instance.
++ */
++void spectral_circular_buffer_advance(SbSpectralCircularBuffer* self);
++
++/**
++ * @brief Destroy the circular buffer and free all associated memory.
++ *
++ * @param self The circular buffer instance.
++ */
++void spectral_circular_buffer_free(SbSpectralCircularBuffer* self);
++
++#endif // SHARED_UTILS_SPECTRAL_CIRCULAR_BUFFER_H
+diff --git a/src/shared/pre_estimation/spectral_smoother.c b/src/shared/utils/spectral_smoother.c
+rename from src/shared/pre_estimation/spectral_smoother.c
+rename to src/shared/utils/spectral_smoother.c
+--- a/src/shared/pre_estimation/spectral_smoother.c
++++ b/src/shared/utils/spectral_smoother.c
+@@ -20,7 +20,6 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ 
+ #include "spectral_smoother.h"
+ #include "transient_detector.h"
+-#include <math.h>
+ #include <stdlib.h>
+ #include <string.h>
+ 
+diff --git a/src/shared/pre_estimation/spectral_smoother.h b/src/shared/utils/spectral_smoother.h
+rename from src/shared/pre_estimation/spectral_smoother.h
+rename to src/shared/utils/spectral_smoother.h
+--- a/src/shared/pre_estimation/spectral_smoother.h
++++ b/src/shared/utils/spectral_smoother.h
+
+diff --git a/src/shared/utils/spectral_trailing_buffer.c b/src/shared/utils/spectral_trailing_buffer.c
+deleted file mode 100644
+--- a/src/shared/utils/spectral_trailing_buffer.c
++++ /dev/null
+@@ -1,90 +0,0 @@
+-/*
+-libspecbleach - A spectral processing library
+-
+-Copyright 2022 Luciano Dato <lucianodato@gmail.com>
+-
+-This library is free software; you can redistribute it and/or
+-modify it under the terms of the GNU Lesser General Public
+-License as published by the Free Software Foundation; either
+-version 2.1 of the License, or (at your option) any later version.
+-
+-This library is distributed in the hope that it will be useful,
+-but WITHOUT ANY WARRANTY; without even the implied warranty of
+-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-Lesser General Public License for more details.
+-
+-You should have received a copy of the GNU Lesser General Public
+-License along with this library; if not, write to the Free Software
+-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+-*/
+-
+-#include "spectral_trailing_buffer.h"
+-#include <math.h>
+-#include <stdlib.h>
+-#include <string.h>
+-
+-struct SpectralTrailingBuffer {
+-  uint32_t real_spectrum_size;
+-  uint32_t buffer_size;
+-
+-  float* buffer;
+-};
+-
+-SpectralTrailingBuffer* spectral_trailing_buffer_initialize(
+-    const uint32_t real_spectrum_size, const uint32_t buffer_size) {
+-  SpectralTrailingBuffer* self =
+-      (SpectralTrailingBuffer*)calloc(1U, sizeof(SpectralTrailingBuffer));
+-  if (!self) {
+-    return NULL;
+-  }
+-
+-  self->real_spectrum_size = real_spectrum_size;
+-  self->buffer_size = buffer_size;
+-
+-  self->buffer = (float*)calloc(
+-      ((size_t)self->real_spectrum_size * (size_t)self->buffer_size),
+-      sizeof(float));
+-
+-  if (!self->buffer) {
+-    spectral_trailing_buffer_free(self);
+-    return NULL;
+-  }
+-
+-  return self;
+-}
+-
+-void spectral_trailing_buffer_free(SpectralTrailingBuffer* self) {
+-  if (!self) {
+-    return;
+-  }
+-  free(self->buffer);
+-
+-  free(self);
+-}
+-
+-bool spectral_trailing_buffer_push_back(SpectralTrailingBuffer* self,
+-                                        const float* input_spectrum) {
+-  if (!input_spectrum) {
+-    return false;
+-  }
+-
+-  memmove(self->buffer, &self->buffer[self->real_spectrum_size],
+-          sizeof(float) * self->real_spectrum_size * (self->buffer_size - 1U));
+-  memcpy(&self->buffer[(size_t)self->real_spectrum_size *
+-                       (size_t)(self->buffer_size - 1U)],
+-         input_spectrum, sizeof(float) * self->real_spectrum_size);
+-
+-  return true;
+-}
+-
+-float* get_trailing_spectral_buffer(SpectralTrailingBuffer* self) {
+-  return self->buffer;
+-}
+-
+-uint32_t get_spectrum_buffer_size(SpectralTrailingBuffer* self) {
+-  return self->buffer_size;
+-}
+-
+-uint32_t get_spectrum_size(SpectralTrailingBuffer* self) {
+-  return self->real_spectrum_size;
+-}
+diff --git a/src/shared/utils/spectral_trailing_buffer.h b/src/shared/utils/spectral_trailing_buffer.h
+deleted file mode 100644
+--- a/src/shared/utils/spectral_trailing_buffer.h
++++ /dev/null
+@@ -1,38 +0,0 @@
+-/*
+-libspecbleach - A spectral processing library
+-
+-Copyright 2022 Luciano Dato <lucianodato@gmail.com>
+-
+-This library is free software; you can redistribute it and/or
+-modify it under the terms of the GNU Lesser General Public
+-License as published by the Free Software Foundation; either
+-version 2.1 of the License, or (at your option) any later version.
+-
+-This library is distributed in the hope that it will be useful,
+-but WITHOUT ANY WARRANTY; without even the implied warranty of
+-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+-Lesser General Public License for more details.
+-
+-You should have received a copy of the GNU Lesser General Public
+-License along with this library; if not, write to the Free Software
+-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+-*/
+-
+-#ifndef SPECTRAL_TRAILING_BUFFER_H
+-#define SPECTRAL_TRAILING_BUFFER_H
+-
+-#include <stdbool.h>
+-#include <stdint.h>
+-
+-typedef struct SpectralTrailingBuffer SpectralTrailingBuffer;
+-
+-SpectralTrailingBuffer* spectral_trailing_buffer_initialize(
+-    uint32_t real_spectrum_size, uint32_t buffer_size);
+-void spectral_trailing_buffer_free(SpectralTrailingBuffer* self);
+-bool spectral_trailing_buffer_push_back(SpectralTrailingBuffer* self,
+-                                        const float* input_spectrum);
+-float* get_trailing_spectral_buffer(SpectralTrailingBuffer* self);
+-uint32_t get_spectrum_buffer_size(SpectralTrailingBuffer* self);
+-uint32_t get_spectrum_size(SpectralTrailingBuffer* self);
+-
+-#endif
+diff --git a/src/shared/utils/spectral_utils.c b/src/shared/utils/spectral_utils.c
+--- a/src/shared/utils/spectral_utils.c
++++ b/src/shared/utils/spectral_utils.c
+@@ -251,18 +251,25 @@ static float find_median(const float* array, uint32_t array_size) {
+ }
+ 
+ bool get_rolling_median_spectrum(float* median_spectrum,
+-                                 const float* current_spectrum_buffer,
++                                 const float** input_spectra,
+                                  const uint32_t number_of_blocks,
+                                  const uint32_t spectrum_size) {
+-  if (!median_spectrum || !current_spectrum_buffer || spectrum_size == 0U) {
++  if (!median_spectrum || !input_spectra || spectrum_size == 0U) {
+     return false;
+   }
+ 
++  // Optimize for small block counts to avoid VLA if possible, but keep simple
++  // for now Note: VLA usage is generally discouraged in strict C
++  // standards/security contexts, but this matches existing pattern.
+   float tmp_buffer[number_of_blocks];
+ 
+   for (uint32_t i = 0U; i < spectrum_size; i++) {
+     for (uint32_t j = 0U; j < number_of_blocks; j++) {
+-      tmp_buffer[j] = current_spectrum_buffer[(j * spectrum_size) + i];
++      if (input_spectra[j]) {
++        tmp_buffer[j] = input_spectra[j][i];
++      } else {
++        tmp_buffer[j] = 0.0f; // Safety fallback
++      }
+     }
+ 
+     // Sorting array
+diff --git a/src/shared/utils/spectral_utils.h b/src/shared/utils/spectral_utils.h
+--- a/src/shared/utils/spectral_utils.h
++++ b/src/shared/utils/spectral_utils.h
+@@ -70,8 +70,18 @@ bool get_rolling_mean_spectrum(float* averaged_spectrum,
+                                const float* current_spectrum,
+                                uint32_t number_of_blocks,
+                                uint32_t spectrum_size);
++/**
++ * @brief Computes the rolling median spectrum from a history of frames.
++ *
++ * @param median_spectrum Output buffer for the median spectrum.
++ * @param input_spectra Array of pointers to input spectra history (size:
++ * number_of_blocks).
++ * @param number_of_blocks Number of historical frames to consider.
++ * @param spectrum_size Size of each spectrum (in floats).
++ * @return true if successful, false otherwise.
++ */
+ bool get_rolling_median_spectrum(float* median_spectrum,
+-                                 const float* current_spectrum_buffer,
++                                 const float** input_spectra,
+                                  uint32_t number_of_blocks,
+                                  uint32_t spectrum_size);
+ void smooth_spectrum(float* spectrum, uint32_t size, float smoothing_factor);
+diff --git a/src/shared/pre_estimation/transient_detector.c b/src/shared/utils/transient_detector.c
+rename from src/shared/pre_estimation/transient_detector.c
+rename to src/shared/utils/transient_detector.c
+--- a/src/shared/pre_estimation/transient_detector.c
++++ b/src/shared/utils/transient_detector.c
+@@ -20,7 +20,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ 
+ #include "transient_detector.h"
+ #include "../configurations.h"
+-#include "../utils/spectral_utils.h"
++#include "spectral_utils.h"
+ #include <math.h>
+ #include <stdlib.h>
+ #include <string.h>
+diff --git a/src/shared/pre_estimation/transient_detector.h b/src/shared/utils/transient_detector.h
+rename from src/shared/pre_estimation/transient_detector.h
+rename to src/shared/utils/transient_detector.h
+--- a/src/shared/pre_estimation/transient_detector.h
++++ b/src/shared/utils/transient_detector.h
+
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

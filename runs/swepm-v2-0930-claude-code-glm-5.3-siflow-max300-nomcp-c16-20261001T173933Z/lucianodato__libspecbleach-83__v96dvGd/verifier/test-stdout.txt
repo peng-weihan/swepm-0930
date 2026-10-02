@@ -1,0 +1,640 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch tests/test_audio_file_regression.c...
+error: while searching for:
+// Canonical parameters used in generate_reference_files.sh
+static const SpectralBleachDenoiserParameters CANONICAL_DENOISER_PARAMS = {
+    .residual_listen = false,
+    .learn_noise = 1,          // Learn all modes
+    .noise_reduction_mode = 3, // Use maximum profile
+    .reduction_amount = 20.0f,
+    .smoothing_factor = 0.0f,
+    .whitening_factor = 50.0f,
+
+error: patch failed: tests/test_audio_file_regression.c:26
+error: tests/test_audio_file_regression.c: patch does not apply
+Checking patch tests/test_audio_regression.c...
+error: while searching for:
+
+  SpectralBleachDenoiserParameters parameters =
+      (SpectralBleachDenoiserParameters){
+          .learn_noise = 1,          // Learn all modes
+          .noise_reduction_mode = 1, // Use average when processing
+          .reduction_amount = 20.0f,
+          .smoothing_factor = 0.0f,
+          .masking_depth = 0.5f,
+
+error: patch failed: tests/test_audio_regression.c:70
+error: tests/test_audio_regression.c: patch does not apply
+Checking patch tests/test_integration.c...
+error: while searching for:
+// Include the public API
+#include "specbleach_2d_denoiser.h"
+
+#include "specbleach_denoiser.h"
+
+// Function prototypes
+
+error: patch failed: tests/test_integration.c:14
+error: tests/test_integration.c: patch does not apply
+Checking patch tests/test_noise_floor_manager.c...
+error: while searching for:
+  printf("Testing Noise Floor Manager apply...\n");
+
+  uint32_t fft_size = 1024;
+  uint32_t real_size = fft_size / 2 + 1;
+  NoiseFloorManager* nfm = noise_floor_manager_initialize(fft_size, 44100, 256);
+
+  float* gain_spectrum = (float*)calloc(fft_size, sizeof(float));
+  float* noise_profile = (float*)calloc(real_size, sizeof(float));
+
+  for (uint32_t k = 0; k < fft_size; k++)
+    gain_spectrum[k] = 0.5f;
+  for (uint32_t k = 0; k < real_size; k++)
+    noise_profile[k] = 1.0f;
+
+  // Coverage: NULL inputs
+  noise_floor_manager_apply(NULL, real_size, fft_size, gain_spectrum,
+                            noise_profile, 0.1f, 0.5f);
+  noise_floor_manager_apply(nfm, real_size, fft_size, NULL, noise_profile, 0.1f,
+                            0.5f);
+  noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum, NULL, 0.1f,
+                            0.5f);
+
+  // Test with large reduction amount
+  noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum,
+                            noise_profile, 2.0f, 0.5f);
+  TEST_FLOAT_CLOSE(gain_spectrum[0], 1.0f, 0.001f); // Should be capped at 1.0
+
+  // Test standard application
+  for (uint32_t k = 0; k < fft_size; k++)
+    gain_spectrum[k] = 0.1f;
+  noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum,
+                            noise_profile, 0.1f, 0.5f);
+
+  free(gain_spectrum);
+  free(noise_profile);
+
+error: patch failed: tests/test_noise_floor_manager.c:35
+error: tests/test_noise_floor_manager.c: patch does not apply
+Checking patch tests/test_noise_profile.c...
+error: while searching for:
+  // Test invalid mode handling
+  TEST_ASSERT(is_noise_estimation_available(np, 0) == false,
+              "Mode 0 should be invalid");
+  TEST_ASSERT(is_noise_estimation_available(np, 4) == false,
+              "Mode 4 should be invalid");
+  TEST_ASSERT(get_noise_profile(np, 0) == NULL, "Mode 0 should return NULL");
+  TEST_ASSERT(get_noise_profile(np, 4) == NULL, "Mode 4 should return NULL");
+  TEST_ASSERT(get_noise_profile_blocks_averaged(np, 0) == 0,
+              "Mode 0 should return 0 blocks");
+
+  // Initially no profiles should be available
+  for (int mode = 1; mode <= 3; mode++) {
+    TEST_ASSERT(is_noise_estimation_available(np, mode) == false,
+                "Profile should not be available initially");
+    TEST_ASSERT(get_noise_profile_blocks_averaged(np, mode) == 0,
+                "Should have 0 blocks averaged initially");
+  }
+
+
+error: patch failed: tests/test_noise_profile.c:44
+error: tests/test_noise_profile.c: patch does not apply
+Checking patch tests/test_specbleach_2d_denoiser.c...
+error: while searching for:
+
+#include "specbleach_2d_denoiser.h"
+
+#define TEST_ASSERT(condition, message)                                        \
+  do {                                                                         \
+    if (!(condition)) {                                                        \
+
+error: patch failed: tests/test_specbleach_2d_denoiser.c:8
+error: tests/test_specbleach_2d_denoiser.c: patch does not apply
+Checking patch tests/test_specbleach_denoiser.c...
+error: while searching for:
+
+#include "specbleach_denoiser.h"
+
+#define TEST_ASSERT(condition, message)                                        \
+  do {                                                                         \
+    if (!(condition)) {                                                        \
+
+error: patch failed: tests/test_specbleach_denoiser.c:9
+error: tests/test_specbleach_denoiser.c: patch does not apply
+patching file tests/test_audio_file_regression.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_audio_regression.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_integration.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_noise_floor_manager.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_noise_profile.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_specbleach_2d_denoiser.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_specbleach_denoiser.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+Directory already configured.
+
+Just run your build command (e.g. ninja) and Meson will regenerate as necessary.
+If ninja fails, run "ninja reconfigure" or "meson --reconfigure"
+to force Meson to regenerate.
+
+If build failures persist, run "meson setup --wipe" to rebuild from scratch
+using the same options as passed when configuring the build.
+To change option values, run "meson configure" instead.
+ninja: Entering directory `/testbed/build'
+[1/14] cc -Itests/test_specbleach_2d_denoiser.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o -MF tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o.d -o tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o -c ../tests/test_specbleach_2d_denoiser.c
+FAILED: tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o 
+cc -Itests/test_specbleach_2d_denoiser.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o -MF tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o.d -o tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o -c ../tests/test_specbleach_2d_denoiser.c
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_null_handling’:
+../tests/test_specbleach_2d_denoiser.c:54:15: warning: implicit declaration of function ‘specbleach_2d_get_noise_profile_blocks_averaged’; did you mean ‘specbleach_2d_get_noise_profile_for_mode’? [-Wimplicit-function-declaration]
+   54 |   TEST_ASSERT(specbleach_2d_get_noise_profile_blocks_averaged(NULL) == 0,
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:13:11: note: in definition of macro ‘TEST_ASSERT’
+   13 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:56:15: warning: implicit declaration of function ‘specbleach_2d_get_noise_profile’; did you mean ‘specbleach_2d_reset_noise_profile’? [-Wimplicit-function-declaration]
+   56 |   TEST_ASSERT(specbleach_2d_get_noise_profile(NULL) == NULL,
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:13:11: note: in definition of macro ‘TEST_ASSERT’
+   13 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:56:53: warning: comparison between pointer and integer
+   56 |   TEST_ASSERT(specbleach_2d_get_noise_profile(NULL) == NULL,
+      |                                                     ^~
+../tests/test_specbleach_2d_denoiser.c:13:11: note: in definition of macro ‘TEST_ASSERT’
+   13 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:59:15: warning: implicit declaration of function ‘specbleach_2d_load_noise_profile’; did you mean ‘specbleach_2d_reset_noise_profile’? [-Wimplicit-function-declaration]
+   59 |   TEST_ASSERT(specbleach_2d_load_noise_profile(NULL, NULL, 0, 0) == false,
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:13:11: note: in definition of macro ‘TEST_ASSERT’
+   13 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:66:15: warning: implicit declaration of function ‘specbleach_2d_noise_profile_available’; did you mean ‘specbleach_2d_noise_profile_available_for_mode’? [-Wimplicit-function-declaration]
+   66 |   TEST_ASSERT(specbleach_2d_noise_profile_available(NULL) == false,
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:13:11: note: in definition of macro ‘TEST_ASSERT’
+   13 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_noise_profile_api’:
+../tests/test_specbleach_2d_denoiser.c:79:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘noise_reduction_mode’
+   79 |       .noise_reduction_mode = 1, // ROLLING_MEAN
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:106:22: warning: initialization of ‘float *’ from ‘int’ makes pointer from integer without a cast [-Wint-conversion]
+  106 |   float* retrieved = specbleach_2d_get_noise_profile(h);
+      |                      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:126:7: warning: implicit declaration of function ‘specbleach_2d_get_noise_profile_blocks_averaged_for_mode’; did you mean ‘specbleach_2d_get_noise_profile_block_count_for_mode’? [-Wimplicit-function-declaration]
+  126 |       specbleach_2d_get_noise_profile_blocks_averaged_for_mode(h, 1) == 5,
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:13:11: note: in definition of macro ‘TEST_ASSERT’
+   13 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_2d_parameter_switching’:
+../tests/test_specbleach_2d_denoiser.c:168:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  168 |       .noise_reduction_mode = 1,
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:191:11: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  191 |     params.noise_reduction_mode = mode;
+      |           ^
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_process_loop’:
+../tests/test_specbleach_2d_denoiser.c:233:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  233 |       .noise_reduction_mode = 1,
+      |        ^~~~~~~~~~~~~~~~~~~~
+[2/14] cc -Itests/test_noise_floor_manager.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o -MF tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o.d -o tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o -c ../tests/test_noise_floor_manager.c
+FAILED: tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o 
+cc -Itests/test_noise_floor_manager.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o -MF tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o.d -o tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o -c ../tests/test_noise_floor_manager.c
+../tests/test_noise_floor_manager.c: In function ‘test_noise_floor_manager_apply’:
+../tests/test_noise_floor_manager.c:50:3: error: too few arguments to function ‘noise_floor_manager_apply’
+   50 |   noise_floor_manager_apply(NULL, real_size, fft_size, gain_spectrum,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:52:3: error: too few arguments to function ‘noise_floor_manager_apply’
+   52 |   noise_floor_manager_apply(nfm, real_size, fft_size, NULL, noise_profile, 0.1f,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:54:3: error: too few arguments to function ‘noise_floor_manager_apply’
+   54 |   noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum, NULL, 0.1f,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:58:3: error: too few arguments to function ‘noise_floor_manager_apply’
+   58 |   noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:65:3: error: too few arguments to function ‘noise_floor_manager_apply’
+   65 |   noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+[3/14] cc -Itests/test_audio_regression.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_audio_regression.p/test_audio_regression.c.o -MF tests/test_audio_regression.p/test_audio_regression.c.o.d -o tests/test_audio_regression.p/test_audio_regression.c.o -c ../tests/test_audio_regression.c
+FAILED: tests/test_audio_regression.p/test_audio_regression.c.o 
+cc -Itests/test_audio_regression.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_audio_regression.p/test_audio_regression.c.o -MF tests/test_audio_regression.p/test_audio_regression.c.o.d -o tests/test_audio_regression.p/test_audio_regression.c.o -c ../tests/test_audio_regression.c
+../tests/test_audio_regression.c: In function ‘process_audio’:
+../tests/test_audio_regression.c:74:12: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+   74 |           .noise_reduction_mode = 1, // Use average when processing
+      |            ^~~~~~~~~~~~~~~~~~~~
+../tests/test_audio_regression.c:80:30: warning: initialized field overwritten [-Woverride-init]
+   80 |           .residual_listen = false,
+      |                              ^~~~~
+../tests/test_audio_regression.c:80:30: note: (near initialization for ‘(anonymous).residual_listen’)
+[4/14] cc -Itests/test_integration.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_integration.p/test_integration.c.o -MF tests/test_integration.p/test_integration.c.o.d -o tests/test_integration.p/test_integration.c.o -c ../tests/test_integration.c
+FAILED: tests/test_integration.p/test_integration.c.o 
+cc -Itests/test_integration.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_integration.p/test_integration.c.o -MF tests/test_integration.p/test_integration.c.o.d -o tests/test_integration.p/test_integration.c.o -c ../tests/test_integration.c
+../tests/test_integration.c: In function ‘test_spectral_denoiser’:
+../tests/test_integration.c:91:12: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+   91 |           .noise_reduction_mode = 1, // Use average when processing
+      |            ^~~~~~~~~~~~~~~~~~~~
+../tests/test_integration.c:97:30: warning: initialized field overwritten [-Woverride-init]
+   97 |           .residual_listen = false,
+      |                              ^~~~~
+../tests/test_integration.c:97:30: note: (near initialization for ‘(anonymous).residual_listen’)
+../tests/test_integration.c: In function ‘test_2d_denoiser’:
+../tests/test_integration.c:313:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  313 |       .noise_reduction_mode = 1, // Use average profile
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_integration.c:317:26: warning: initialized field overwritten [-Woverride-init]
+  317 |       .residual_listen = false,
+      |                          ^~~~~
+../tests/test_integration.c:317:26: note: (near initialization for ‘parameters.residual_listen’)
+../tests/test_integration.c:326:15: warning: implicit declaration of function ‘specbleach_2d_noise_profile_available’; did you mean ‘specbleach_2d_noise_profile_available_for_mode’? [-Wimplicit-function-declaration]
+  326 |   TEST_ASSERT(specbleach_2d_noise_profile_available(handle),
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_integration.c:29:11: note: in definition of macro ‘TEST_ASSERT’
+   29 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_integration.c:359:20: warning: implicit declaration of function ‘specbleach_2d_get_noise_profile’; did you mean ‘specbleach_2d_reset_noise_profile’? [-Wimplicit-function-declaration]
+  359 |   float* profile = specbleach_2d_get_noise_profile(handle);
+      |                    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                    specbleach_2d_reset_noise_profile
+../tests/test_integration.c:359:20: warning: initialization of ‘float *’ from ‘int’ makes pointer from integer without a cast [-Wint-conversion]
+[5/14] cc -Itests/test_specbleach_denoiser.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o -MF tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o.d -o tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o -c ../tests/test_specbleach_denoiser.c
+FAILED: tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o 
+cc -Itests/test_specbleach_denoiser.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o -MF tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o.d -o tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o -c ../tests/test_specbleach_denoiser.c
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_noise_profile_mode_functions’:
+../tests/test_specbleach_denoiser.c:32:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+   32 |       .noise_reduction_mode = 2, // Use mode 2
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:33:26: warning: initialized field overwritten [-Woverride-init]
+   33 |       .residual_listen = false,
+      |                          ^~~~~
+../tests/test_specbleach_denoiser.c:33:26: note: (near initialization for ‘params.residual_listen’)
+../tests/test_specbleach_denoiser.c:46:7: warning: implicit declaration of function ‘specbleach_get_noise_profile_blocks_averaged_for_mode’; did you mean ‘specbleach_get_noise_profile_block_count_for_mode’? [-Wimplicit-function-declaration]
+   46 |       specbleach_get_noise_profile_blocks_averaged_for_mode(NULL, 1) == 0,
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:14:11: note: in definition of macro ‘TEST_ASSERT’
+   14 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_load_noise_profile_with_mode’:
+../tests/test_specbleach_denoiser.c:96:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+   96 |       .noise_reduction_mode = 1,
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:97:26: warning: initialized field overwritten [-Woverride-init]
+   97 |       .residual_listen = false,
+      |                          ^~~~~
+../tests/test_specbleach_denoiser.c:97:26: note: (near initialization for ‘(anonymous).residual_listen’)
+../tests/test_specbleach_denoiser.c:121:15: warning: implicit declaration of function ‘specbleach_load_noise_profile’; did you mean ‘specbleach_reset_noise_profile’? [-Wimplicit-function-declaration]
+  121 |   TEST_ASSERT(specbleach_load_noise_profile(handle, test_profile, profile_size,
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:14:11: note: in definition of macro ‘TEST_ASSERT’
+   14 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_mode_switching’:
+../tests/test_specbleach_denoiser.c:179:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  179 |       .noise_reduction_mode = 1,
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:180:26: warning: initialized field overwritten [-Woverride-init]
+  180 |       .residual_listen = false,
+      |                          ^~~~~
+../tests/test_specbleach_denoiser.c:180:26: note: (near initialization for ‘(anonymous).residual_listen’)
+../tests/test_specbleach_denoiser.c:194:9: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  194 |   params.noise_reduction_mode = 2;
+      |         ^
+../tests/test_specbleach_denoiser.c:202:9: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  202 |   params.noise_reduction_mode = 3;
+      |         ^
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_reset_noise_profile’:
+../tests/test_specbleach_denoiser.c:265:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  265 |       .noise_reduction_mode = 1,
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:266:26: warning: initialized field overwritten [-Woverride-init]
+  266 |       .residual_listen = false,
+      |                          ^~~~~
+../tests/test_specbleach_denoiser.c:266:26: note: (near initialization for ‘params.residual_listen’)
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_run_features’:
+../tests/test_specbleach_denoiser.c:364:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  364 |       .noise_reduction_mode = 1,
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:365:26: warning: initialized field overwritten [-Woverride-init]
+  365 |       .residual_listen = false,
+      |                          ^~~~~
+../tests/test_specbleach_denoiser.c:365:26: note: (near initialization for ‘params.residual_listen’)
+../tests/test_specbleach_denoiser.c: In function ‘main’:
+../tests/test_specbleach_denoiser.c:404:3: warning: implicit declaration of function ‘specbleach_get_noise_profile’; did you mean ‘specbleach_reset_noise_profile’? [-Wimplicit-function-declaration]
+  404 |   specbleach_get_noise_profile(h);
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |   specbleach_reset_noise_profile
+../tests/test_specbleach_denoiser.c:407:3: warning: implicit declaration of function ‘specbleach_noise_profile_available’; did you mean ‘specbleach_noise_profile_available_for_mode’? [-Wimplicit-function-declaration]
+  407 |   specbleach_noise_profile_available(h);
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |   specbleach_noise_profile_available_for_mode
+../tests/test_specbleach_denoiser.c:412:50: warning: comparison between pointer and integer
+  412 |   TEST_ASSERT(specbleach_get_noise_profile(NULL) == NULL, "NULL profile");
+      |                                                  ^~
+../tests/test_specbleach_denoiser.c:14:11: note: in definition of macro ‘TEST_ASSERT’
+   14 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+[6/14] cc -Itests/test_audio_file_regression.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -isystem/usr/include/opus -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_audio_file_regression.p/test_audio_file_regression.c.o -MF tests/test_audio_file_regression.p/test_audio_file_regression.c.o.d -o tests/test_audio_file_regression.p/test_audio_file_regression.c.o -c ../tests/test_audio_file_regression.c
+FAILED: tests/test_audio_file_regression.p/test_audio_file_regression.c.o 
+cc -Itests/test_audio_file_regression.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -isystem/usr/include/opus -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_audio_file_regression.p/test_audio_file_regression.c.o -MF tests/test_audio_file_regression.p/test_audio_file_regression.c.o.d -o tests/test_audio_file_regression.p/test_audio_file_regression.c.o -c ../tests/test_audio_file_regression.c
+../tests/test_audio_file_regression.c:30:6: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+   30 |     .noise_reduction_mode = 3, // Use maximum profile
+      |      ^~~~~~~~~~~~~~~~~~~~
+../tests/test_audio_file_regression.c:30:29: warning: initialized field overwritten [-Woverride-init]
+   30 |     .noise_reduction_mode = 3, // Use maximum profile
+      |                             ^
+../tests/test_audio_file_regression.c:30:29: note: (near initialization for ‘CANONICAL_DENOISER_PARAMS.residual_listen’)
+[7/14] cc -Itests/test_noise_profile.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_noise_profile.p/test_noise_profile.c.o -MF tests/test_noise_profile.p/test_noise_profile.c.o.d -o tests/test_noise_profile.p/test_noise_profile.c.o -c ../tests/test_noise_profile.c
+../tests/test_noise_profile.c: In function ‘test_noise_profile_operations’:
+../tests/test_noise_profile.c:51:15: warning: implicit declaration of function ‘get_noise_profile_blocks_averaged’; did you mean ‘get_noise_profile_block_count’? [-Wimplicit-function-declaration]
+   51 |   TEST_ASSERT(get_noise_profile_blocks_averaged(np, 0) == 0,
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_profile.c:14:11: note: in definition of macro ‘TEST_ASSERT’
+   14 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_noise_profile.c: In function ‘test_noise_profile_increment_blocks’:
+../tests/test_noise_profile.c:115:17: warning: implicit declaration of function ‘increment_blocks_averaged’; did you mean ‘increment_block_count’? [-Wimplicit-function-declaration]
+  115 |     TEST_ASSERT(increment_blocks_averaged(np, 1) == true,
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_profile.c:14:11: note: in definition of macro ‘TEST_ASSERT’
+   14 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_noise_profile.c:117:58: warning: comparison of integer expressions of different signedness: ‘int’ and ‘unsigned int’ [-Wsign-compare]
+  117 |     TEST_ASSERT(get_noise_profile_blocks_averaged(np, 1) == (uint32_t)i,
+      |                                                          ^~
+../tests/test_noise_profile.c:14:11: note: in definition of macro ‘TEST_ASSERT’
+   14 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+ninja: build stopped: subcommand failed.
+ninja: Entering directory `/testbed/build'
+[1/13] Compiling C object tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o
+FAILED: tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o 
+cc -Itests/test_specbleach_2d_denoiser.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o -MF tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o.d -o tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o -c ../tests/test_specbleach_2d_denoiser.c
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_null_handling’:
+../tests/test_specbleach_2d_denoiser.c:54:15: warning: implicit declaration of function ‘specbleach_2d_get_noise_profile_blocks_averaged’; did you mean ‘specbleach_2d_get_noise_profile_for_mode’? [-Wimplicit-function-declaration]
+   54 |   TEST_ASSERT(specbleach_2d_get_noise_profile_blocks_averaged(NULL) == 0,
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:13:11: note: in definition of macro ‘TEST_ASSERT’
+   13 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:56:15: warning: implicit declaration of function ‘specbleach_2d_get_noise_profile’; did you mean ‘specbleach_2d_reset_noise_profile’? [-Wimplicit-function-declaration]
+   56 |   TEST_ASSERT(specbleach_2d_get_noise_profile(NULL) == NULL,
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:13:11: note: in definition of macro ‘TEST_ASSERT’
+   13 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:56:53: warning: comparison between pointer and integer
+   56 |   TEST_ASSERT(specbleach_2d_get_noise_profile(NULL) == NULL,
+      |                                                     ^~
+../tests/test_specbleach_2d_denoiser.c:13:11: note: in definition of macro ‘TEST_ASSERT’
+   13 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:59:15: warning: implicit declaration of function ‘specbleach_2d_load_noise_profile’; did you mean ‘specbleach_2d_reset_noise_profile’? [-Wimplicit-function-declaration]
+   59 |   TEST_ASSERT(specbleach_2d_load_noise_profile(NULL, NULL, 0, 0) == false,
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:13:11: note: in definition of macro ‘TEST_ASSERT’
+   13 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:66:15: warning: implicit declaration of function ‘specbleach_2d_noise_profile_available’; did you mean ‘specbleach_2d_noise_profile_available_for_mode’? [-Wimplicit-function-declaration]
+   66 |   TEST_ASSERT(specbleach_2d_noise_profile_available(NULL) == false,
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:13:11: note: in definition of macro ‘TEST_ASSERT’
+   13 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_noise_profile_api’:
+../tests/test_specbleach_2d_denoiser.c:79:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘noise_reduction_mode’
+   79 |       .noise_reduction_mode = 1, // ROLLING_MEAN
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:106:22: warning: initialization of ‘float *’ from ‘int’ makes pointer from integer without a cast [-Wint-conversion]
+  106 |   float* retrieved = specbleach_2d_get_noise_profile(h);
+      |                      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:126:7: warning: implicit declaration of function ‘specbleach_2d_get_noise_profile_blocks_averaged_for_mode’; did you mean ‘specbleach_2d_get_noise_profile_block_count_for_mode’? [-Wimplicit-function-declaration]
+  126 |       specbleach_2d_get_noise_profile_blocks_averaged_for_mode(h, 1) == 5,
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:13:11: note: in definition of macro ‘TEST_ASSERT’
+   13 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_2d_parameter_switching’:
+../tests/test_specbleach_2d_denoiser.c:168:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  168 |       .noise_reduction_mode = 1,
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:191:11: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  191 |     params.noise_reduction_mode = mode;
+      |           ^
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_process_loop’:
+../tests/test_specbleach_2d_denoiser.c:233:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  233 |       .noise_reduction_mode = 1,
+      |        ^~~~~~~~~~~~~~~~~~~~
+[2/13] Compiling C object tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o
+FAILED: tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o 
+cc -Itests/test_noise_floor_manager.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o -MF tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o.d -o tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o -c ../tests/test_noise_floor_manager.c
+../tests/test_noise_floor_manager.c: In function ‘test_noise_floor_manager_apply’:
+../tests/test_noise_floor_manager.c:50:3: error: too few arguments to function ‘noise_floor_manager_apply’
+   50 |   noise_floor_manager_apply(NULL, real_size, fft_size, gain_spectrum,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:52:3: error: too few arguments to function ‘noise_floor_manager_apply’
+   52 |   noise_floor_manager_apply(nfm, real_size, fft_size, NULL, noise_profile, 0.1f,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:54:3: error: too few arguments to function ‘noise_floor_manager_apply’
+   54 |   noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum, NULL, 0.1f,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:58:3: error: too few arguments to function ‘noise_floor_manager_apply’
+   58 |   noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:65:3: error: too few arguments to function ‘noise_floor_manager_apply’
+   65 |   noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+[3/13] Compiling C object tests/test_audio_file_regression.p/test_audio_file_regression.c.o
+FAILED: tests/test_audio_file_regression.p/test_audio_file_regression.c.o 
+cc -Itests/test_audio_file_regression.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -isystem/usr/include/opus -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_audio_file_regression.p/test_audio_file_regression.c.o -MF tests/test_audio_file_regression.p/test_audio_file_regression.c.o.d -o tests/test_audio_file_regression.p/test_audio_file_regression.c.o -c ../tests/test_audio_file_regression.c
+../tests/test_audio_file_regression.c:30:6: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+   30 |     .noise_reduction_mode = 3, // Use maximum profile
+      |      ^~~~~~~~~~~~~~~~~~~~
+../tests/test_audio_file_regression.c:30:29: warning: initialized field overwritten [-Woverride-init]
+   30 |     .noise_reduction_mode = 3, // Use maximum profile
+      |                             ^
+../tests/test_audio_file_regression.c:30:29: note: (near initialization for ‘CANONICAL_DENOISER_PARAMS.residual_listen’)
+[4/13] Compiling C object tests/test_audio_regression.p/test_audio_regression.c.o
+FAILED: tests/test_audio_regression.p/test_audio_regression.c.o 
+cc -Itests/test_audio_regression.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_audio_regression.p/test_audio_regression.c.o -MF tests/test_audio_regression.p/test_audio_regression.c.o.d -o tests/test_audio_regression.p/test_audio_regression.c.o -c ../tests/test_audio_regression.c
+../tests/test_audio_regression.c: In function ‘process_audio’:
+../tests/test_audio_regression.c:74:12: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+   74 |           .noise_reduction_mode = 1, // Use average when processing
+      |            ^~~~~~~~~~~~~~~~~~~~
+../tests/test_audio_regression.c:80:30: warning: initialized field overwritten [-Woverride-init]
+   80 |           .residual_listen = false,
+      |                              ^~~~~
+../tests/test_audio_regression.c:80:30: note: (near initialization for ‘(anonymous).residual_listen’)
+[5/13] Compiling C object tests/test_integration.p/test_integration.c.o
+FAILED: tests/test_integration.p/test_integration.c.o 
+cc -Itests/test_integration.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_integration.p/test_integration.c.o -MF tests/test_integration.p/test_integration.c.o.d -o tests/test_integration.p/test_integration.c.o -c ../tests/test_integration.c
+../tests/test_integration.c: In function ‘test_spectral_denoiser’:
+../tests/test_integration.c:91:12: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+   91 |           .noise_reduction_mode = 1, // Use average when processing
+      |            ^~~~~~~~~~~~~~~~~~~~
+../tests/test_integration.c:97:30: warning: initialized field overwritten [-Woverride-init]
+   97 |           .residual_listen = false,
+      |                              ^~~~~
+../tests/test_integration.c:97:30: note: (near initialization for ‘(anonymous).residual_listen’)
+../tests/test_integration.c: In function ‘test_2d_denoiser’:
+../tests/test_integration.c:313:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  313 |       .noise_reduction_mode = 1, // Use average profile
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_integration.c:317:26: warning: initialized field overwritten [-Woverride-init]
+  317 |       .residual_listen = false,
+      |                          ^~~~~
+../tests/test_integration.c:317:26: note: (near initialization for ‘parameters.residual_listen’)
+../tests/test_integration.c:326:15: warning: implicit declaration of function ‘specbleach_2d_noise_profile_available’; did you mean ‘specbleach_2d_noise_profile_available_for_mode’? [-Wimplicit-function-declaration]
+  326 |   TEST_ASSERT(specbleach_2d_noise_profile_available(handle),
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_integration.c:29:11: note: in definition of macro ‘TEST_ASSERT’
+   29 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_integration.c:359:20: warning: implicit declaration of function ‘specbleach_2d_get_noise_profile’; did you mean ‘specbleach_2d_reset_noise_profile’? [-Wimplicit-function-declaration]
+  359 |   float* profile = specbleach_2d_get_noise_profile(handle);
+      |                    ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                    specbleach_2d_reset_noise_profile
+../tests/test_integration.c:359:20: warning: initialization of ‘float *’ from ‘int’ makes pointer from integer without a cast [-Wint-conversion]
+[6/13] Compiling C object tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o
+FAILED: tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o 
+cc -Itests/test_specbleach_denoiser.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o -MF tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o.d -o tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o -c ../tests/test_specbleach_denoiser.c
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_noise_profile_mode_functions’:
+../tests/test_specbleach_denoiser.c:32:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+   32 |       .noise_reduction_mode = 2, // Use mode 2
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:33:26: warning: initialized field overwritten [-Woverride-init]
+   33 |       .residual_listen = false,
+      |                          ^~~~~
+../tests/test_specbleach_denoiser.c:33:26: note: (near initialization for ‘params.residual_listen’)
+../tests/test_specbleach_denoiser.c:46:7: warning: implicit declaration of function ‘specbleach_get_noise_profile_blocks_averaged_for_mode’; did you mean ‘specbleach_get_noise_profile_block_count_for_mode’? [-Wimplicit-function-declaration]
+   46 |       specbleach_get_noise_profile_blocks_averaged_for_mode(NULL, 1) == 0,
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:14:11: note: in definition of macro ‘TEST_ASSERT’
+   14 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_load_noise_profile_with_mode’:
+../tests/test_specbleach_denoiser.c:96:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+   96 |       .noise_reduction_mode = 1,
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:97:26: warning: initialized field overwritten [-Woverride-init]
+   97 |       .residual_listen = false,
+      |                          ^~~~~
+../tests/test_specbleach_denoiser.c:97:26: note: (near initialization for ‘(anonymous).residual_listen’)
+../tests/test_specbleach_denoiser.c:121:15: warning: implicit declaration of function ‘specbleach_load_noise_profile’; did you mean ‘specbleach_reset_noise_profile’? [-Wimplicit-function-declaration]
+  121 |   TEST_ASSERT(specbleach_load_noise_profile(handle, test_profile, profile_size,
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:14:11: note: in definition of macro ‘TEST_ASSERT’
+   14 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_mode_switching’:
+../tests/test_specbleach_denoiser.c:179:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  179 |       .noise_reduction_mode = 1,
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:180:26: warning: initialized field overwritten [-Woverride-init]
+  180 |       .residual_listen = false,
+      |                          ^~~~~
+../tests/test_specbleach_denoiser.c:180:26: note: (near initialization for ‘(anonymous).residual_listen’)
+../tests/test_specbleach_denoiser.c:194:9: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  194 |   params.noise_reduction_mode = 2;
+      |         ^
+../tests/test_specbleach_denoiser.c:202:9: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  202 |   params.noise_reduction_mode = 3;
+      |         ^
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_reset_noise_profile’:
+../tests/test_specbleach_denoiser.c:265:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  265 |       .noise_reduction_mode = 1,
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:266:26: warning: initialized field overwritten [-Woverride-init]
+  266 |       .residual_listen = false,
+      |                          ^~~~~
+../tests/test_specbleach_denoiser.c:266:26: note: (near initialization for ‘params.residual_listen’)
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_run_features’:
+../tests/test_specbleach_denoiser.c:364:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘noise_reduction_mode’
+  364 |       .noise_reduction_mode = 1,
+      |        ^~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:365:26: warning: initialized field overwritten [-Woverride-init]
+  365 |       .residual_listen = false,
+      |                          ^~~~~
+../tests/test_specbleach_denoiser.c:365:26: note: (near initialization for ‘params.residual_listen’)
+../tests/test_specbleach_denoiser.c: In function ‘main’:
+../tests/test_specbleach_denoiser.c:404:3: warning: implicit declaration of function ‘specbleach_get_noise_profile’; did you mean ‘specbleach_reset_noise_profile’? [-Wimplicit-function-declaration]
+  404 |   specbleach_get_noise_profile(h);
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |   specbleach_reset_noise_profile
+../tests/test_specbleach_denoiser.c:407:3: warning: implicit declaration of function ‘specbleach_noise_profile_available’; did you mean ‘specbleach_noise_profile_available_for_mode’? [-Wimplicit-function-declaration]
+  407 |   specbleach_noise_profile_available(h);
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |   specbleach_noise_profile_available_for_mode
+../tests/test_specbleach_denoiser.c:412:50: warning: comparison between pointer and integer
+  412 |   TEST_ASSERT(specbleach_get_noise_profile(NULL) == NULL, "NULL profile");
+      |                                                  ^~
+../tests/test_specbleach_denoiser.c:14:11: note: in definition of macro ‘TEST_ASSERT’
+   14 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+[7/13] Linking target tests/test_noise_profile
+FAILED: tests/test_noise_profile 
+cc  -o tests/test_noise_profile tests/test_noise_profile.p/test_noise_profile.c.o -Wl,--as-needed -Wl,--no-undefined '-Wl,-rpath,$ORIGIN/../src' -Wl,-rpath-link,/testbed/build/src -Wl,--start-group src/libspecbleach.so.0.2.1 -lm -Wl,--end-group
+/usr/bin/ld: tests/test_noise_profile.p/test_noise_profile.c.o: in function `test_noise_profile_operations':
+/testbed/build/../tests/test_noise_profile.c:51: undefined reference to `get_noise_profile_blocks_averaged'
+/usr/bin/ld: /testbed/build/../tests/test_noise_profile.c:58: undefined reference to `get_noise_profile_blocks_averaged'
+/usr/bin/ld: tests/test_noise_profile.p/test_noise_profile.c.o: in function `test_noise_profile_set_and_get':
+/testbed/build/../tests/test_noise_profile.c:85: undefined reference to `get_noise_profile_blocks_averaged'
+/usr/bin/ld: tests/test_noise_profile.p/test_noise_profile.c.o: in function `test_noise_profile_increment_blocks':
+/testbed/build/../tests/test_noise_profile.c:115: undefined reference to `increment_blocks_averaged'
+/usr/bin/ld: /testbed/build/../tests/test_noise_profile.c:117: undefined reference to `get_noise_profile_blocks_averaged'
+/usr/bin/ld: /testbed/build/../tests/test_noise_profile.c:127: undefined reference to `increment_blocks_averaged'
+/usr/bin/ld: tests/test_noise_profile.p/test_noise_profile.c.o: in function `test_noise_profile_reset':
+/testbed/build/../tests/test_noise_profile.c:161: undefined reference to `get_noise_profile_blocks_averaged'
+/usr/bin/ld: tests/test_noise_profile.p/test_noise_profile.c.o: in function `test_noise_profile_multiple_modes':
+/testbed/build/../tests/test_noise_profile.c:207: undefined reference to `get_noise_profile_blocks_averaged'
+/usr/bin/ld: /testbed/build/../tests/test_noise_profile.c:209: undefined reference to `get_noise_profile_blocks_averaged'
+/usr/bin/ld: /testbed/build/../tests/test_noise_profile.c:211: undefined reference to `get_noise_profile_blocks_averaged'
+collect2: error: ld returned 1 exit status
+ninja: build stopped: subcommand failed.
+Could not rebuild /testbed/build
+OMNIGRIL_EXIT_CODE=125

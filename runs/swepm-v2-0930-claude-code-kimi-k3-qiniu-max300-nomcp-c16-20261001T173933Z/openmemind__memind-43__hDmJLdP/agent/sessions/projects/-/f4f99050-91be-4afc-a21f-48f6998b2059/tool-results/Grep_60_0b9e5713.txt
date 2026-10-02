@@ -1,0 +1,122 @@
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:48:    void setUp() {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:60:    void pageEndpointReturnsMemoryThreads() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:61:        mockMvc.perform(get("/admin/v1/memory-threads"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:63:                .andExpect(jsonPath("$.code").value("success"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:64:                .andExpect(jsonPath("$.data.total").value(1))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:65:                .andExpect(jsonPath("$.data.list[0].threadKey").value("topic:concept:travel"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:66:                .andExpect(jsonPath("$.data.list[0].threadId").doesNotExist());
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:73:    void detailEndpointUsesThreadKeyAsTheOnlyPublicIdentifier() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:74:        mockMvc.perform(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:79:                .andExpect(jsonPath("$.code").value("success"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:80:                .andExpect(jsonPath("$.data.threadKey").value("topic:concept:travel"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:81:                .andExpect(jsonPath("$.data.threadId").doesNotExist());
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:85:    void threadMembersEndpointUsesThreadKeyAndDoesNotExposeThreadId() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:86:        mockMvc.perform(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:91:                .andExpect(jsonPath("$.code").value("success"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:92:                .andExpect(jsonPath("$.data[0].threadKey").value("topic:concept:travel"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:93:                .andExpect(jsonPath("$.data[0].itemId").value(301))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:94:                .andExpect(jsonPath("$.data[0].role").value("core"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:95:                .andExpect(jsonPath("$.data[0].threadId").doesNotExist());
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:99:    void statusEndpointIsMemoryScoped() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:100:        mockMvc.perform(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:105:                .andExpect(jsonPath("$.code").value("success"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:106:                .andExpect(jsonPath("$.data.projectionState").value("available"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:107:                .andExpect(jsonPath("$.data.pendingCount").value(0));
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:111:    void rebuildEndpointRequiresMemoryScope() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:112:        mockMvc.perform(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:117:                .andExpect(jsonPath("$.code").value("success"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:118:                .andExpect(jsonPath("$.data").value(1));
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:122:    void rebuildEndpointRejectsGlobalBackfillRequests() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memorythread/AdminMemoryThreadControllerTest.java:123:        mockMvc.perform(post("/admin/v1/memory-threads/rebuild"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:45:    void setUp() {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:56:    void getReturnsVersionAndGroupedConfig() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:57:        mockMvc.perform(get("/admin/v1/config/memory-options"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:59:                .andExpect(jsonPath("$.code").value("success"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:60:                .andExpect(jsonPath("$.timestamp").isNotEmpty())
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:61:                .andExpect(jsonPath("$.data.version").value(3))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:63:                        jsonPath("$.data.config.extraction[0].key")
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:68:    void putDelegatesUpdateAndReturnsUpdatedSnapshot() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:69:        mockMvc.perform(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:74:                .andExpect(jsonPath("$.code").value("success"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:75:                .andExpect(jsonPath("$.timestamp").isNotEmpty())
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:76:                .andExpect(jsonPath("$.data.version").value(4))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:77:                .andExpect(jsonPath("$.data.config.extraction[0].value").value("PT45S"));
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:91:    void getAndPutExposeSemanticSourceWindowSize() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:92:        mockMvc.perform(get("/admin/v1/config/memory-options"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:95:                        jsonPath(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:99:        mockMvc.perform(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:107:                        jsonPath(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:118:    void putReturnsConflictWhenExpectedVersionIsStale() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:122:        mockMvc.perform(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:127:                .andExpect(jsonPath("$.code").value("conflict"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:128:                .andExpect(jsonPath("$.timestamp").isNotEmpty())
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java:129:                .andExpect(jsonPath("$.traceId").isNotEmpty());
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:53:    void setUp() {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:66:    void pageUsesDefaultPaginationAndReturnsPagePayload() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:67:        mockMvc.perform(get("/admin/v1/items"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:69:                .andExpect(jsonPath("$.code").value("success"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:70:                .andExpect(jsonPath("$.timestamp").isNotEmpty())
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:71:                .andExpect(jsonPath("$.data.current").value(1))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:72:                .andExpect(jsonPath("$.data.total").value(1))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:73:                .andExpect(jsonPath("$.data.list[0].itemId").value(101));
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:80:    void deleteRequiresIds() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:81:        mockMvc.perform(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:86:                .andExpect(jsonPath("$.code").value("bad_request"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:87:                .andExpect(jsonPath("$.timestamp").isNotEmpty())
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:88:                .andExpect(jsonPath("$.traceId").isNotEmpty());
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:92:    void deleteReturnsAffectedMemoryIds() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:93:        mockMvc.perform(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:100:                .andExpect(jsonPath("$.code").value("success"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:101:                .andExpect(jsonPath("$.timestamp").isNotEmpty())
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:102:                .andExpect(jsonPath("$.data.deletedCount").value(1))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:103:                .andExpect(jsonPath("$.data.affectedMemoryIds[0]").value("u1:a1"));
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:107:    void missingItemReturnsNotFound() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:110:        mockMvc.perform(get("/admin/v1/items/101"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:112:                .andExpect(jsonPath("$.code").value("not_found"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:113:                .andExpect(jsonPath("$.timestamp").isNotEmpty())
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:114:                .andExpect(jsonPath("$.traceId").isNotEmpty());
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:118:    void memoryThreadsReturnAllThreadsForItem() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:119:        mockMvc.perform(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:124:                .andExpect(jsonPath("$.code").value("success"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:125:                .andExpect(jsonPath("$.timestamp").isNotEmpty())
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:126:                .andExpect(jsonPath("$.data.length()").value(2))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:127:                .andExpect(jsonPath("$.data[0].threadKey").value("topic:concept:travel"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:128:                .andExpect(jsonPath("$.data[0].threadId").doesNotExist())
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/item/AdminItemControllerTest.java:130:                        jsonPath("$.data[1].threadKey")
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:51:    void setUp() {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:63:    void conversationListDefaultsToPendingAndReturnsPagePayload() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:64:        mockMvc.perform(get("/admin/v1/buffers/conversations"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:66:                .andExpect(jsonPath("$.code").value("success"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:67:                .andExpect(jsonPath("$.data.current").value(1))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:68:                .andExpect(jsonPath("$.data.list[0].sessionId").value("s1"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:69:                .andExpect(jsonPath("$.data.list[0].extracted").value(false));
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:77:    void conversationDetailReturnsRow() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:78:        mockMvc.perform(get("/admin/v1/buffers/conversations/1"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:80:                .andExpect(jsonPath("$.code").value("success"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:81:                .andExpect(jsonPath("$.data.id").value(1))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:82:                .andExpect(jsonPath("$.data.content").value("hello"));
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:86:    void insightListDefaultsToUnbuiltAndReturnsPagePayload() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:87:        mockMvc.perform(get("/admin/v1/buffers/insights"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:89:                .andExpect(jsonPath("$.code").value("success"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:90:                .andExpect(jsonPath("$.data.current").value(1))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:91:                .andExpect(jsonPath("$.data.list[0].insightTypeName").value("preference"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:92:                .andExpect(jsonPath("$.data.list[0].built").value(false));
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:98:    void insightGroupsReturnAggregates() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:99:        mockMvc.perform(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:104:                .andExpect(jsonPath("$.code").value("success"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:105:                .andExpect(jsonPath("$.data[0].memoryId").value("u1:a1"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:106:                .andExpect(jsonPath("$.data[0].groupName").value("project"))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:107:                .andExpect(jsonPath("$.data[0].unbuilt").value(2));
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:111:    void markConversationExtractedRequiresIds() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:112:        mockMvc.perform(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:117:                .andExpect(jsonPath("$.code").value("bad_request"));
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:121:    void markConversationExtractedReturnsUpdateResult() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:122:        mockMvc.perform(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:127:                .andExpect(jsonPath("$.data.updatedCount").value(2))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:128:                .andExpect(jsonPath("$.data.affectedMemoryIds[0]").value("u1:a1"));
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:132:    void deleteConversationRowsReturnsBatchDeleteResult() throws Exception {
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:133:        mockMvc.perform(
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:138:                .andExpect(jsonPath("$.data.deletedCount").value(2))
+memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/buffer/AdminBufferControllerTest.java:139:                .andExpect(jsonPath("$.data.affectedMemoryIds[0]").value("u1:a1"));
+
+[Showing results with pagination = limit: 120]

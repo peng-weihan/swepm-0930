@@ -1,0 +1,67 @@
+{
+  "instance_id": "cmu-phil__tetrad-c_d0e10cd",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.82,
+  "gold_patch_assessment": "The gold patch modifies ~45 production source files to replace local java.util.Random instances with RandomUtil calls, removes Random parameters from public APIs, switches the underlying RNG in RandomUtil from Well44497b to Apache Commons RNG XoRoShiRo128++, adds new convenience methods to RandomUtil, and adds a new Maven dependency. It directly addresses the stated issue of centralizing randomness. However, it leaves ~15 files with 'new Random()' unmodified, and it goes beyond the issue scope by changing the underlying RNG algorithm (the issue only asks for centralization, not a new RNG engine).",
+  "base_vs_gold_expectation": "The base code should be correctly REJECTED: the test patch updates API call sites to use new method signatures (e.g., removing Random parameters). On the base code, these updated calls won't compile because the old method signatures still accept Random parameters. The gold patch + test patch should PASS: the gold patch changes method signatures, and the test patch updates callers to match. Together they compile and test assertions match the XoRoShiRo128++ output.",
+  "too_narrow_risks": [
+    "Test assertions are purely numeric value checks (e.g., assertEquals(0.82, aa, 0.1)) that verify a specific random sequence, not the behavioral requirement of centralized randomness.",
+    "No test checks that RandomUtil is actually used as the RNG source (e.g., no test that mocking/resetting RandomUtil's seed produces reproducible results).",
+    "15 production files with 'new Random()' are not addressed by either gold or test patch, yet the issue requests comprehensive centralization.",
+    "TestIcaLingD.test1() is entirely commented out rather than adapted, reducing coverage of a seed-dependent algorithm test."
+  ],
+  "too_broad_risks": [
+    "eval.sh runs the ENTIRE tetrad-lib test suite (137 test files) rather than targeted tests, so any pre-existing flaky test causes a false negative.",
+    "1-hour timeout for a full Maven build+test of a large Java project may be tight, especially under resource constraints.",
+    "Test assertions hardcode numeric values (e.g., histogram min/max, covariance matrix entries) that are coupled to the specific XoRoShiRo128++ RNG — any valid alternative RNG implementation would fail."
+  ],
+  "implementation_coupling": [
+    "Test assertion values (TestAndersonDarling: 0.82, TestCovarianceMatrix: 0.065/0.03/0.443, TestHistogram: 4.709/-6.78, TestSemIm: 2.98, etc.) are derived from the gold patch's specific XoRoShiRo128++ RNG output. A correct solution using a different RNG algorithm centralized through RandomUtil would produce different values and fail.",
+    "The test patch removes the 'public Random rng' field from Kci.java and specific method parameters from IndTestBlocksTs.java — these are exact structural changes matching the gold implementation rather than testing observable behavior.",
+    "The test patch changes API call patterns (e.g., im.sample(50) instead of im.sample(50, new Random(123))) that only compile if the gold patch's exact method signature changes were applied."
+  ],
+  "environment_risks": [
+    "The test patch already exists at /tmp/test.patch in the Docker image — if a different version is expected at runtime or the file gets clobbered, evaluation breaks silently.",
+    "Full Maven test suite depends on transient resources (network for dependency resolution is likely cached but not guaranteed); the 24GB memory / 4 CPU allocation may be insufficient for parallel test execution.",
+    "The new commons-rng-simple 1.6 dependency added by the gold patch must resolve from Maven cache; if not pre-cached in the Docker image, network access is needed."
+  ],
+  "mismatches": [
+    "Task metadata says category='debugging' but this is clearly a refactoring/centralization task, not a bug fix.",
+    "The issue statement says to update stochastic behavior 'throughout the library and GUI', but the verifier only tests tetrad-lib (not tetrad-gui). The gold patch modifies 6 GUI files that are never tested.",
+    "The issue says 'The goal is not to preserve the exact sequences produced by java.util.Random' but the test patch enforces exact numeric values from a specific RNG (XoRoShiRo128++), contradicting the issue's flexibility language.",
+    "The test patch modifies 10 production source files (Kci.java, IndTestBlocksTs.java, NonlinearityTests.java, etc.) that contain 'new Random()' — these are files a candidate SHOULD refactor. If a candidate correctly modifies these files, the test patch will conflict when applied on top, likely causing a false negative."
+  ],
+  "evidence": [
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch modifies 10 src/main/java production files (Kci.java, IndTestBlocksTs.java, NonlinearityTests.java, etc.) and 15 src/test/java test files. The production file modifications do the same RandomUtil refactoring work a candidate should do."
+    },
+    {
+      "file": "/audit_tasks/cmu-phil__tetrad-c_d0e10cd/tests/eval.sh",
+      "detail": "Line 41: 'git apply -p1 -v /tmp/test.patch || patch --batch --fuzz=5 -p1 -i /tmp/test.patch' — test patch applied on top of candidate solution with fuzz fallback. If candidate already modified files the test patch touches, conflicts are likely."
+    },
+    {
+      "file": "/audit_tasks/cmu-phil__tetrad-c_d0e10cd/tests/eval.sh",
+      "detail": "Line 47: 'mvn -B -ntp -pl tetrad-lib -am test' — runs ALL tetrad-lib tests, not targeted tests for the refactoring."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 735-909: TestIcaLingD.test1() entirely commented out (90 lines) instead of being updated, because the seed-dependent test is incompatible with the new RNG."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 595-684: Multiple test files have hardcoded numeric assertions changed to specific values (e.g., TestAndersonDarling: 1.93→0.82, TestCovarianceMatrix: .089→.065, TestHistogram: 3.65→4.709) that only match XoRoShiRo128++ output."
+    },
+    {
+      "file": "/audit_tasks/cmu-phil__tetrad-c_d0e10cd/task.toml",
+      "detail": "category = 'debugging' — incorrect; this is a refactoring task."
+    },
+    {
+      "file": "/audit_tasks/cmu-phil__tetrad-c_d0e10cd/instruction.md",
+      "detail": "States 'The goal is not to preserve the exact sequences produced by java.util.Random' — yet test assertions enforce exact numeric sequences from a specific RNG."
+    }
+  ],
+  "recommended_action": "revise_instance",
+  "summary": "This instance has a fundamental conflict: the test patch modifies 10 production source files (Kci.java, IndTestBlocksTs.java, NonlinearityTests.java, etc.) that contain 'new Random()' calls a candidate should refactor. If a candidate correctly refactors these files, the test patch will conflict when applied on top, producing false negatives. Additionally, test assertions are tightly coupled to the gold patch's specific RNG engine (XoRoShiRo128++), contradicting the issue's statement that exact random sequences need not be preserved. The full test suite run (137 test files) is overly broad, and 15 files with 'new Random()' are left unaddressed by both patches despite the issue requesting comprehensive centralization. The task is miscategorized as 'debugging' rather than 'refactoring'. Recommend revising the instance to: (1) move production code changes out of the test patch into the gold patch or a separate setup step, (2) use behavioral assertions rather than hardcoded RNG-specific values, and (3) run targeted tests rather than the full suite."
+}

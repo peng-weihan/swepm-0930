@@ -1,0 +1,1683 @@
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/common/ApiResult.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.common;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import java.time.Instant;
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public record ApiResult<T>(String code, String message, T data, Instant timestamp, String traceId) {
+
+    public static final String OK_CODE = "200";
+    public static final String SUCCESS_CODE = "success";
+
+    public static ApiResult<Void> ok() {
+        return new ApiResult<>(OK_CODE, null, null, Instant.now(), null);
+    }
+
+    public static <T> ApiResult<T> success(T data) {
+        return new ApiResult<>(SUCCESS_CODE, null, data, Instant.now(), null);
+    }
+
+    public static <T> ApiResult<T> failure(String code, String message, T data, String traceId) {
+        return new ApiResult<>(code, message, data, Instant.now(), traceId);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/common/BatchDeleteResult.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.common;
+
+import java.util.List;
+
+public record BatchDeleteResult(int deletedCount, List<String> affectedMemoryIds) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/common/PageResult.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.common;
+
+import java.util.List;
+
+public record PageResult<T>(long total, List<T> list, long current) {
+
+    public static <T> PageResult<T> from(PageResponse<T> pageResponse) {
+        return new PageResult<>(pageResponse.total(), pageResponse.items(), pageResponse.pageNo());
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/common/AdminUpdateResult.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.common;
+
+import java.util.List;
+
+public record AdminUpdateResult(int updatedCount, List<String> affectedMemoryIds) {
+
+    public AdminUpdateResult {
+        affectedMemoryIds = affectedMemoryIds == null ? List.of() : List.copyOf(affectedMemoryIds);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/common/PageResponse.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.common;
+
+import java.util.List;
+
+public record PageResponse<T>(int pageNo, int pageSize, long total, List<T> items) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/dashboard/view/AdminDashboardView.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.dashboard.view;
+
+import java.util.List;
+
+public record AdminDashboardView(
+        Totals totals,
+        Backlog backlog,
+        Activity activity,
+        Breakdown breakdown,
+        HealthSignals healthSignals) {
+
+    public record Totals(
+            long rawData,
+            long items,
+            long insights,
+            long memoryThreads,
+            long graphEntities,
+            long itemLinks) {}
+
+    public record Backlog(
+            long conversationPending,
+            long insightUnbuilt,
+            long insightUngrouped,
+            long threadOutboxPending,
+            long threadOutboxFailed,
+            long graphBatchRepairRequired) {}
+
+    public record Activity(
+            int days,
+            List<DailyCount> rawDataCreated,
+            List<DailyCount> itemsCreated,
+            List<DailyCount> insightsCreated) {}
+
+    public record DailyCount(String date, long count) {}
+
+    public record Breakdown(
+            List<NamedCount> sourceClients,
+            List<NamedCount> rawDataTypes,
+            List<NamedCount> itemTypes,
+            List<NamedCount> insightTypes,
+            List<NamedCount> graphLinkTypes) {}
+
+    public record NamedCount(String name, long count) {}
+
+    public record StateCount(String state, long count) {}
+
+    public record HealthSignals(
+            boolean graphEnabled,
+            boolean retrievalGraphAssistEnabled,
+            List<StateCount> threadProjectionStates) {}
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/itemgraph/view/AdminGraphEntityDeleteResult.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.itemgraph.view;
+
+import java.util.List;
+
+public record AdminGraphEntityDeleteResult(
+        int deletedCount,
+        List<String> affectedMemoryIds,
+        int deletedAliases,
+        int deletedMentions,
+        int deletedCooccurrences,
+        long possiblyStaleEntityOverlapLinks) {
+
+    public AdminGraphEntityDeleteResult {
+        affectedMemoryIds = affectedMemoryIds == null ? List.of() : List.copyOf(affectedMemoryIds);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/itemgraph/view/GraphEntityDetailView.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.itemgraph.view;
+
+import java.util.List;
+
+public record GraphEntityDetailView(
+        ItemGraphViews.EntityView entity,
+        List<ItemGraphViews.AliasView> aliases,
+        long mentionCount,
+        List<Long> topMentionedItemIds,
+        List<ItemGraphViews.CooccurrenceView> topCooccurrences,
+        long entityOverlapItemLinkCount) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/itemgraph/view/ItemGraphViews.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.itemgraph.view;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+
+public final class ItemGraphViews {
+
+    private ItemGraphViews() {}
+
+    public record NamedCount(String name, long count) {}
+
+    public record SummaryView(
+            long entityCount,
+            long aliasCount,
+            long mentionCount,
+            long itemLinkCount,
+            long cooccurrenceCount,
+            List<NamedCount> graphBatchCountByState,
+            List<NamedCount> itemLinkCountByType,
+            List<NamedCount> entityCountByType) {}
+
+    public record EntityView(
+            Integer id,
+            String memoryId,
+            String userId,
+            String agentId,
+            String entityKey,
+            String displayName,
+            String entityType,
+            Map<String, Object> metadata,
+            Instant createdAt,
+            Instant updatedAt) {}
+
+    public record AliasView(
+            Integer id,
+            String memoryId,
+            String userId,
+            String agentId,
+            String entityKey,
+            String entityType,
+            String normalizedAlias,
+            Integer evidenceCount,
+            Map<String, Object> metadata,
+            Instant createdAt,
+            Instant updatedAt) {}
+
+    public record MentionView(
+            Integer id,
+            String memoryId,
+            String userId,
+            String agentId,
+            Long itemId,
+            String entityKey,
+            Float confidence,
+            Map<String, Object> metadata,
+            Instant createdAt,
+            Instant updatedAt) {}
+
+    public record ItemLinkView(
+            Integer id,
+            String memoryId,
+            String userId,
+            String agentId,
+            Long sourceItemId,
+            Long targetItemId,
+            String linkType,
+            String relationCode,
+            String evidenceSource,
+            Double strength,
+            Map<String, Object> metadata,
+            Instant createdAt,
+            Instant updatedAt) {}
+
+    public record CooccurrenceView(
+            Integer id,
+            String memoryId,
+            String userId,
+            String agentId,
+            String leftEntityKey,
+            String rightEntityKey,
+            Integer cooccurrenceCount,
+            Map<String, Object> metadata,
+            Instant createdAt,
+            Instant updatedAt) {}
+
+    public record BatchView(
+            Integer id,
+            String memoryId,
+            String userId,
+            String agentId,
+            String extractionBatchId,
+            String state,
+            String errorMessage,
+            Boolean retryPromotionSupported,
+            Instant createdAt,
+            Instant updatedAt) {}
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/itemgraph/request/GraphEntityDeleteRequest.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.itemgraph.request;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import java.util.List;
+
+public record GraphEntityDeleteRequest(
+        @NotBlank String memoryId, @NotEmpty List<@NotBlank String> entityKeys) {
+
+    public GraphEntityDeleteRequest {
+        entityKeys = entityKeys == null ? List.of() : List.copyOf(entityKeys);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/itemgraph/request/GraphIdsRequest.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.itemgraph.request;
+
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import java.util.List;
+
+public record GraphIdsRequest(@NotEmpty List<@NotNull Integer> ids) {
+
+    public GraphIdsRequest {
+        ids = ids == null ? List.of() : List.copyOf(ids);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/itemgraph/query/ItemGraphPageQueries.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.itemgraph.query;
+
+public final class ItemGraphPageQueries {
+
+    private ItemGraphPageQueries() {}
+
+    public record EntityPageQuery(
+            int pageNo, int pageSize, String memoryId, String entityType, String q) {}
+
+    public record AliasPageQuery(
+            int pageNo, int pageSize, String memoryId, String entityKey, String q) {}
+
+    public record MentionPageQuery(
+            int pageNo, int pageSize, String memoryId, Long itemId, String entityKey) {}
+
+    public record ItemLinkPageQuery(
+            int pageNo,
+            int pageSize,
+            String memoryId,
+            Long itemId,
+            String linkType,
+            String evidenceSource) {}
+
+    public record CooccurrencePageQuery(
+            int pageNo, int pageSize, String memoryId, String entityKey) {}
+
+    public record BatchPageQuery(int pageNo, int pageSize, String memoryId, String state) {}
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/insight/view/AdminInsightView.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.insight.view;
+
+import com.openmemind.ai.memory.core.data.InsightPoint;
+import java.time.Instant;
+import java.util.List;
+
+public record AdminInsightView(
+        Long insightId,
+        String userId,
+        String agentId,
+        String memoryId,
+        String type,
+        String scope,
+        String name,
+        List<String> categories,
+        String content,
+        List<InsightPoint> points,
+        String groupName,
+        Instant lastReasonedAt,
+        List<Float> summaryEmbedding,
+        String tier,
+        Long parentInsightId,
+        List<Long> childInsightIds,
+        Integer version,
+        Instant createdAt,
+        Instant updatedAt) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/insight/request/InsightDeleteRequest.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.insight.request;
+
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import java.util.List;
+
+public record InsightDeleteRequest(@NotEmpty List<@NotNull Long> insightIds) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/insight/query/InsightPageQuery.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.insight.query;
+
+import java.util.List;
+
+public record InsightPageQuery(
+        int pageNo,
+        int pageSize,
+        String userId,
+        String agentId,
+        String scope,
+        String type,
+        String tier,
+        List<String> orderBy) {
+
+    public static InsightPageQuery of(
+            int pageNo,
+            int pageSize,
+            String userId,
+            String agentId,
+            String scope,
+            String type,
+            String tier) {
+        return new InsightPageQuery(
+                pageNo,
+                pageSize,
+                userId,
+                agentId,
+                scope,
+                type,
+                tier,
+                List.of("last_reasoned_at DESC", "created_at DESC", "biz_id DESC"));
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/rawdata/view/AdminRawDataView.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.rawdata.view;
+
+import java.time.Instant;
+import java.util.Map;
+
+public record AdminRawDataView(
+        String rawDataId,
+        String userId,
+        String agentId,
+        String memoryId,
+        String type,
+        String sourceClient,
+        String contentId,
+        Map<String, Object> segment,
+        String caption,
+        String captionVectorId,
+        Map<String, Object> metadata,
+        Instant startTime,
+        Instant endTime,
+        Instant createdAt,
+        Instant updatedAt) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/rawdata/request/RawDataDeleteRequest.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.rawdata.request;
+
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import java.util.List;
+
+public record RawDataDeleteRequest(@NotEmpty List<@NotBlank String> rawDataIds) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/rawdata/query/RawDataPageQuery.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.rawdata.query;
+
+import java.time.Instant;
+import java.util.List;
+
+public record RawDataPageQuery(
+        int pageNo,
+        int pageSize,
+        String userId,
+        String agentId,
+        Instant startTimeFrom,
+        Instant startTimeTo,
+        List<String> orderBy) {
+
+    public static RawDataPageQuery of(
+            int pageNo,
+            int pageSize,
+            String userId,
+            String agentId,
+            Instant startTimeFrom,
+            Instant startTimeTo) {
+        return new RawDataPageQuery(
+                pageNo,
+                pageSize,
+                userId,
+                agentId,
+                startTimeFrom,
+                startTimeTo,
+                List.of("start_time DESC", "created_at DESC"));
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/rawdata/response/RawDataDeleteResult.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.rawdata.response;
+
+import java.util.List;
+
+public record RawDataDeleteResult(
+        int deletedRawDataCount,
+        int deletedItemCount,
+        List<String> affectedMemoryIds,
+        boolean insightCleanupRequired) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/buffer/view/ConversationBufferView.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.buffer.view;
+
+import java.time.Instant;
+
+public record ConversationBufferView(
+        Long id,
+        String sessionId,
+        String userId,
+        String agentId,
+        String memoryId,
+        String role,
+        String content,
+        String userName,
+        String sourceClient,
+        Instant timestamp,
+        Boolean extracted,
+        Instant createdAt,
+        Instant updatedAt) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/buffer/view/InsightBufferView.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.buffer.view;
+
+import java.time.Instant;
+
+public record InsightBufferView(
+        Integer id,
+        String userId,
+        String agentId,
+        String memoryId,
+        String insightTypeName,
+        Long itemId,
+        String groupName,
+        Boolean built,
+        Instant createdAt,
+        Instant updatedAt) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/buffer/view/InsightBufferGroupView.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.buffer.view;
+
+public record InsightBufferGroupView(
+        String memoryId,
+        String insightTypeName,
+        String groupName,
+        long total,
+        long unbuilt,
+        long built) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/buffer/request/AdminIdsRequest.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.buffer.request;
+
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import java.util.List;
+
+public record AdminIdsRequest(@NotEmpty List<@NotNull Integer> ids) {
+
+    public AdminIdsRequest {
+        ids = ids == null ? List.of() : List.copyOf(ids);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/buffer/request/InsightBufferBuiltUpdateRequest.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.buffer.request;
+
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import java.util.List;
+
+public record InsightBufferBuiltUpdateRequest(
+        @NotEmpty List<@NotNull Integer> ids, @NotNull Boolean built) {
+
+    public InsightBufferBuiltUpdateRequest {
+        ids = ids == null ? List.of() : List.copyOf(ids);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/buffer/request/InsightBufferGroupUpdateRequest.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.buffer.request;
+
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import java.util.List;
+
+public record InsightBufferGroupUpdateRequest(
+        @NotEmpty List<@NotNull Integer> ids, String groupName) {
+
+    public InsightBufferGroupUpdateRequest {
+        ids = ids == null ? List.of() : List.copyOf(ids);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/buffer/request/AdminLongIdsRequest.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.buffer.request;
+
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import java.util.List;
+
+public record AdminLongIdsRequest(@NotEmpty List<@NotNull Long> ids) {
+
+    public AdminLongIdsRequest {
+        ids = ids == null ? List.of() : List.copyOf(ids);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/buffer/query/ConversationBufferPageQuery.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.buffer.query;
+
+public record ConversationBufferPageQuery(
+        int pageNo, int pageSize, String memoryId, String sessionId, String state) {
+
+    public static ConversationBufferPageQuery of(
+            int pageNo, int pageSize, String memoryId, String sessionId, String state) {
+        return new ConversationBufferPageQuery(
+                pageNo, pageSize, memoryId, sessionId, state == null ? "pending" : state);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/buffer/query/InsightBufferPageQuery.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.buffer.query;
+
+public record InsightBufferPageQuery(
+        int pageNo, int pageSize, String memoryId, String insightTypeName, String state) {
+
+    public static InsightBufferPageQuery of(
+            int pageNo, int pageSize, String memoryId, String insightTypeName, String state) {
+        return new InsightBufferPageQuery(
+                pageNo, pageSize, memoryId, insightTypeName, state == null ? "unbuilt" : state);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/item/view/AdminItemView.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.item.view;
+
+import java.time.Instant;
+import java.util.Map;
+
+public record AdminItemView(
+        Long itemId,
+        String userId,
+        String agentId,
+        String memoryId,
+        String content,
+        String scope,
+        String category,
+        String vectorId,
+        String rawDataId,
+        String contentHash,
+        Instant occurredAt,
+        Instant observedAt,
+        Map<String, Object> metadata,
+        String type,
+        String rawDataType,
+        String sourceClient,
+        Instant createdAt,
+        Instant updatedAt) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/item/request/ItemDeleteRequest.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.item.request;
+
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import java.util.List;
+
+public record ItemDeleteRequest(@NotEmpty List<@NotNull Long> itemIds) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/item/query/ItemPageQuery.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.item.query;
+
+import java.util.List;
+
+public record ItemPageQuery(
+        int pageNo,
+        int pageSize,
+        String userId,
+        String agentId,
+        String scope,
+        String category,
+        String type,
+        String rawDataId,
+        List<String> orderBy) {
+
+    public static ItemPageQuery of(
+            int pageNo,
+            int pageSize,
+            String userId,
+            String agentId,
+            String scope,
+            String category,
+            String type,
+            String rawDataId) {
+        return new ItemPageQuery(
+                pageNo,
+                pageSize,
+                userId,
+                agentId,
+                scope,
+                category,
+                type,
+                rawDataId,
+                List.of("observed_at DESC", "created_at DESC", "biz_id DESC"));
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/memory/request/ExtractMemoryRequest.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.memory.request;
+
+import com.openmemind.ai.memory.core.extraction.rawdata.content.RawContent;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+public record ExtractMemoryRequest(
+        @NotBlank String userId,
+        @NotBlank String agentId,
+        @NotNull RawContent rawContent,
+        String sourceClient) {
+
+    public ExtractMemoryRequest(String userId, String agentId, RawContent rawContent) {
+        this(userId, agentId, rawContent, null);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/memory/request/RetrieveMemoryRequest.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.memory.request;
+
+import com.openmemind.ai.memory.core.retrieval.RetrievalConfig;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+public record RetrieveMemoryRequest(
+        @NotBlank String userId,
+        @NotBlank String agentId,
+        @NotBlank String query,
+        @NotNull RetrievalConfig.Strategy strategy,
+        Boolean trace) {
+
+    public RetrieveMemoryRequest(
+            String userId, String agentId, String query, RetrievalConfig.Strategy strategy) {
+        this(userId, agentId, query, strategy, null);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/memory/request/AddMessageRequest.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.memory.request;
+
+import com.openmemind.ai.memory.core.extraction.rawdata.content.conversation.message.Message;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+public record AddMessageRequest(
+        @NotBlank String userId,
+        @NotBlank String agentId,
+        @NotNull Message message,
+        String sourceClient) {
+
+    public AddMessageRequest(String userId, String agentId, Message message) {
+        this(userId, agentId, message, null);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/memory/request/CommitMemoryRequest.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.memory.request;
+
+import jakarta.validation.constraints.NotBlank;
+
+public record CommitMemoryRequest(
+        @NotBlank String userId, @NotBlank String agentId, String sourceClient) {
+
+    public CommitMemoryRequest(String userId, String agentId) {
+        this(userId, agentId, null);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/memory/response/AddMessageResponse.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.memory.response;
+
+public record AddMessageResponse(boolean triggered, ExtractMemoryResponse result) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/memory/response/OpenMemoryHealthResponse.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.memory.response;
+
+public record OpenMemoryHealthResponse(String status, String service) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/memory/response/RetrievalTraceView.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.memory.response;
+
+import com.openmemind.ai.memory.core.retrieval.trace.RetrievalCandidateTrace;
+import com.openmemind.ai.memory.core.retrieval.trace.RetrievalFinalTrace;
+import com.openmemind.ai.memory.core.retrieval.trace.RetrievalMergeTrace;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+
+public record RetrievalTraceView(
+        String traceId,
+        Instant startedAt,
+        Instant completedAt,
+        boolean truncated,
+        List<StageView> stages,
+        MergeView merge,
+        FinalView finalResults) {
+
+    public record StageView(
+            String stage,
+            String tier,
+            String method,
+            String status,
+            Integer inputCount,
+            Integer candidateCount,
+            Integer resultCount,
+            boolean degraded,
+            boolean skipped,
+            Instant startedAt,
+            Long durationMillis,
+            Map<String, Object> attributes,
+            List<RetrievalCandidateTrace> candidates) {}
+
+    public record MergeView(
+            int inputCount,
+            int outputCount,
+            int deduplicatedCount,
+            int sourceCount,
+            String status) {
+        public static MergeView from(RetrievalMergeTrace trace) {
+            return trace == null
+                    ? null
+                    : new MergeView(
+                            trace.inputCount(),
+                            trace.outputCount(),
+                            trace.deduplicatedCount(),
+                            trace.sourceCount(),
+                            trace.status());
+        }
+    }
+
+    public record FinalView(
+            String strategy,
+            String status,
+            int itemCount,
+            int insightCount,
+            int rawDataCount,
+            int evidenceCount) {
+        public static FinalView from(RetrievalFinalTrace trace) {
+            return trace == null
+                    ? null
+                    : new FinalView(
+                            trace.strategy(),
+                            trace.status(),
+                            trace.itemCount(),
+                            trace.insightCount(),
+                            trace.rawDataCount(),
+                            trace.evidenceCount());
+        }
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/memory/response/RetrieveMemoryResponse.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.memory.response;
+
+import java.time.Instant;
+import java.util.List;
+
+public record RetrieveMemoryResponse(
+        List<RetrievedItemView> items,
+        List<RetrievedInsightView> insights,
+        List<RetrievedRawDataView> rawData,
+        List<String> evidences,
+        String strategy,
+        String query,
+        RetrievalTraceView trace) {
+
+    public RetrieveMemoryResponse(
+            List<RetrievedItemView> items,
+            List<RetrievedInsightView> insights,
+            List<RetrievedRawDataView> rawData,
+            List<String> evidences,
+            String strategy,
+            String query) {
+        this(items, insights, rawData, evidences, strategy, query, null);
+    }
+
+    public record RetrievedItemView(
+            String id, String text, float vectorScore, double finalScore, Instant occurredAt) {}
+
+    public record RetrievedInsightView(String id, String text, String tier) {}
+
+    public record RetrievedRawDataView(
+            String rawDataId, String caption, double maxScore, List<String> itemIds) {}
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/memory/response/ExtractMemoryResponse.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.memory.response;
+
+import java.util.List;
+
+public record ExtractMemoryResponse(
+        String status,
+        List<String> rawDataIds,
+        List<Long> itemIds,
+        List<Long> insightIds,
+        boolean insightPending,
+        Long durationMillis,
+        String errorMessage) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/config/view/MemoryOptionItemView.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.config.view;
+
+import java.util.Map;
+
+public record MemoryOptionItemView(
+        String key,
+        Object value,
+        String description,
+        String type,
+        Object defaultValue,
+        Map<String, Object> constraints) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/config/model/ServerRuntimeConfigDO.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.config.model;
+
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import com.openmemind.ai.memory.plugin.store.mybatis.dataobject.BaseDO;
+
+@TableName(value = "memind_server_runtime_config", autoResultMap = true)
+public class ServerRuntimeConfigDO extends BaseDO {
+
+    @TableId(type = IdType.AUTO)
+    private Long id;
+
+    private String configKey;
+    private Long configVersion;
+    private String configJson;
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getConfigKey() {
+        return configKey;
+    }
+
+    public void setConfigKey(String configKey) {
+        this.configKey = configKey;
+    }
+
+    public Long getConfigVersion() {
+        return configVersion;
+    }
+
+    public void setConfigVersion(Long configVersion) {
+        this.configVersion = configVersion;
+    }
+
+    public String getConfigJson() {
+        return configJson;
+    }
+
+    public void setConfigJson(String configJson) {
+        this.configJson = configJson;
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/config/request/MemoryOptionsPutRequest.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.config.request;
+
+import com.openmemind.ai.memory.server.domain.config.view.MemoryOptionItemView;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import java.util.List;
+import java.util.Map;
+
+public record MemoryOptionsPutRequest(
+        @NotNull Long expectedVersion, @NotEmpty Map<String, List<MemoryOptionItemView>> config) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/config/response/MemoryOptionsGetResponse.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.config.response;
+
+import com.openmemind.ai.memory.server.domain.config.view.MemoryOptionItemView;
+import java.util.List;
+import java.util.Map;
+
+public record MemoryOptionsGetResponse(
+        long version, Map<String, List<MemoryOptionItemView>> config) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/config/response/MemoryOptionsSnapshot.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.config.response;
+
+import com.openmemind.ai.memory.server.domain.config.view.MemoryOptionItemView;
+import java.util.List;
+import java.util.Map;
+
+public record MemoryOptionsSnapshot(long version, Map<String, List<MemoryOptionItemView>> config) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/memorythread/view/AdminMemoryThreadStatusView.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.memorythread.view;
+
+import com.openmemind.ai.memory.core.data.MemoryThreadRuntimeStatus;
+import java.time.Instant;
+
+public record AdminMemoryThreadStatusView(
+        String projectionState,
+        long pendingCount,
+        long failedCount,
+        boolean rebuildInProgress,
+        Long lastProcessedItemId,
+        String materializationPolicyVersion,
+        Instant updatedAt,
+        String invalidationReason) {
+
+    public static AdminMemoryThreadStatusView from(MemoryThreadRuntimeStatus status) {
+        return new AdminMemoryThreadStatusView(
+                normalizeLabel(
+                        status.projectionState() != null ? status.projectionState().name() : null),
+                status.pendingCount(),
+                status.failedCount(),
+                status.rebuildInProgress(),
+                status.lastProcessedItemId(),
+                status.materializationPolicyVersion(),
+                status.updatedAt(),
+                status.invalidationReason());
+    }
+
+    private static String normalizeLabel(String value) {
+        return value == null ? null : value.toLowerCase(java.util.Locale.ROOT);
+    }
+}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/memorythread/view/AdminMemoryThreadView.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.memorythread.view;
+
+import java.time.Instant;
+import java.util.Map;
+
+public record AdminMemoryThreadView(
+        String userId,
+        String agentId,
+        String memoryId,
+        String threadKey,
+        String threadType,
+        String anchorKind,
+        String anchorKey,
+        String displayLabel,
+        String lifecycleStatus,
+        String objectState,
+        String headline,
+        Map<String, Object> snapshotJson,
+        int snapshotVersion,
+        Instant openedAt,
+        Instant lastEventAt,
+        Instant lastMeaningfulUpdateAt,
+        Instant closedAt,
+        long eventCount,
+        long memberCount,
+        Instant createdAt,
+        Instant updatedAt) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/memorythread/view/AdminMemoryThreadItemView.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.memorythread.view;
+
+import java.time.Instant;
+
+public record AdminMemoryThreadItemView(
+        String userId,
+        String agentId,
+        String memoryId,
+        String threadKey,
+        Long itemId,
+        String role,
+        boolean primary,
+        double relevanceWeight,
+        Instant createdAt,
+        Instant updatedAt) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/memorythread/view/AdminItemMemoryThreadView.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.memorythread.view;
+
+import java.time.Instant;
+
+public record AdminItemMemoryThreadView(
+        String userId,
+        String agentId,
+        String memoryId,
+        String threadKey,
+        String threadType,
+        String anchorKind,
+        String anchorKey,
+        String displayLabel,
+        String lifecycleStatus,
+        String objectState,
+        String headline,
+        Long itemId,
+        String role,
+        boolean primary,
+        double relevanceWeight,
+        Instant createdAt,
+        Instant updatedAt) {}
+=== /testbed/memind-server/src/main/java/com/openmemind/ai/memory/server/domain/memorythread/query/MemoryThreadPageQuery.java ===
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package com.openmemind.ai.memory.server.domain.memorythread.query;
+
+import java.util.List;
+
+public record MemoryThreadPageQuery(
+        int pageNo,
+        int pageSize,
+        String userId,
+        String agentId,
+        String status,
+        List<String> orderBy) {
+
+    public static MemoryThreadPageQuery of(
+            int pageNo, int pageSize, String userId, String agentId, String status) {
+        return new MemoryThreadPageQuery(
+                pageNo,
+                pageSize,
+                userId,
+                agentId,
+                status,
+                List.of("last_event_at DESC", "updated_at DESC", "id DESC"));
+    }
+}

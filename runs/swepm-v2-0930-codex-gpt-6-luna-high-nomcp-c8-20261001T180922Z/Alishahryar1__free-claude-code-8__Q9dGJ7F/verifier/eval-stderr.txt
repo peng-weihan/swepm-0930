@@ -1,0 +1,311 @@
+Checking patch tests/api/test_openai_responses.py...
+error: while searching for:
+from fastapi.testclient import TestClient
+
+from api.app import create_app
+from core.anthropic.sse import format_sse_event
+from core.anthropic.stream_contracts import parse_sse_text
+
+
+class FakeProvider:
+
+error: patch failed: tests/api/test_openai_responses.py:7
+error: tests/api/test_openai_responses.py: patch does not apply
+Checking patch tests/api/test_safe_logging.py...
+error: while searching for:
+from api.models.anthropic import Message, MessagesRequest
+from api.request_pipeline import ApiRequestPipeline
+from config.settings import Settings
+from core.anthropic.sse import SSEBuilder
+
+
+def test_create_message_skips_full_payload_debug_log_by_default():
+
+error: patch failed: tests/api/test_safe_logging.py:11
+error: tests/api/test_safe_logging.py: patch does not apply
+Checking patch tests/contracts/test_import_boundaries.py...
+Checking patch tests/contracts/test_stream_contracts.py...
+error: while searching for:
+"""Stream/SSE contract tests. Strict transcript *ordering* is covered here for
+``SSEBuilder`` output; for transport-integrated ordering, add messaging or API
+integration tests.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterable
+
+from core.anthropic import ContentType, HeuristicToolParser, SSEBuilder, ThinkTagParser
+from core.anthropic.sse import format_sse_event
+from core.anthropic.stream_contracts import (
+    assert_anthropic_stream_contract,
+    event_names,
+    parse_sse_text,
+    text_content,
+    thinking_content,
+)
+
+
+def test_interleaved_thinking_text_blocks_are_valid() -> None:
+
+error: patch failed: tests/contracts/test_stream_contracts.py:1
+error: tests/contracts/test_stream_contracts.py: patch does not apply
+Checking patch tests/core/anthropic/test_stream_recovery.py...
+error: while searching for:
+
+import httpx
+
+from core.anthropic.stream_recovery import (
+    EARLY_TRANSPARENT_MAX_RETRIES,
+    EARLY_TRANSPARENT_TOTAL_ATTEMPTS,
+    MIDSTREAM_RECOVERY_ATTEMPTS,
+    RecoveryHoldbackBuffer,
+    ToolSchema,
+    accept_tool_json_repair,
+    continuation_suffix,
+    is_retryable_stream_error,
+)
+from core.anthropic.stream_recovery_session import (
+    StreamFailureAction,
+    StreamRecoverySession,
+)
+
+
+def test_early_transparent_retry_total_attempts_is_five() -> None:
+
+error: patch failed: tests/core/anthropic/test_stream_recovery.py:2
+error: tests/core/anthropic/test_stream_recovery.py: patch does not apply
+Checking patch tests/core/openai_responses/test_sse.py...
+error: while searching for:
+
+import pytest
+
+from core.anthropic.sse import format_sse_event
+from core.anthropic.stream_contracts import parse_sse_text
+from core.openai_responses import OpenAIResponsesAdapter
+
+_ADAPTER = OpenAIResponsesAdapter()
+
+error: patch failed: tests/core/openai_responses/test_sse.py:5
+error: tests/core/openai_responses/test_sse.py: patch does not apply
+Checking patch tests/messaging/test_stream_transcript_contract.py...
+error: while searching for:
+
+from __future__ import annotations
+
+from core.anthropic import SSEBuilder
+from core.anthropic.stream_contracts import (
+    assert_anthropic_stream_contract,
+    has_tool_use,
+
+error: patch failed: tests/messaging/test_stream_transcript_contract.py:2
+error: tests/messaging/test_stream_transcript_contract.py: patch does not apply
+Checking patch tests/providers/test_anthropic_messages.py...
+error: while searching for:
+import pytest
+
+from config.constants import ANTHROPIC_DEFAULT_MAX_OUTPUT_TOKENS
+from core.anthropic.sse import format_sse_event
+from core.anthropic.stream_contracts import event_index, parse_sse_text
+from providers.base import ProviderConfig
+from providers.transports.anthropic_messages import AnthropicMessagesTransport
+from providers.transports.anthropic_messages.recovery import AnthropicMessagesRecovery
+
+error: patch failed: tests/providers/test_anthropic_messages.py:7
+error: tests/providers/test_anthropic_messages.py: patch does not apply
+Checking patch tests/providers/test_anthropic_messages_429_retry.py...
+Checking patch tests/providers/test_llamacpp.py...
+Checking patch tests/providers/test_lmstudio.py...
+Checking patch tests/providers/test_ollama.py...
+Checking patch tests/providers/test_sse_builder.py...
+error: while searching for:
+"""Tests for core.anthropic.sse."""
+
+from typing import Any, cast
+from unittest.mock import patch
+
+import pytest
+
+from core.anthropic import ContentBlockManager, SSEBuilder, map_stop_reason
+from core.anthropic.sse import ToolCallState
+from core.anthropic.stream_contracts import parse_sse_text
+
+
+def _parse_sse(sse_str: str) -> dict:
+    """Parse an SSE event string into its data payload."""
+    events = parse_sse_text(sse_str)
+    if len(events) != 1:
+        raise ValueError(f"expected 1 SSE event, got {len(events)} in {sse_str!r}")
+    return events[0].data
+
+
+class TestMapStopReason:
+    """Tests for map_stop_reason function."""
+
+    @pytest.mark.parametrize(
+        "openai_reason,expected",
+        [
+            ("stop", "end_turn"),
+            ("length", "max_tokens"),
+            ("tool_calls", "tool_use"),
+            ("content_filter", "end_turn"),
+            (None, "end_turn"),
+            ("unknown_value", "end_turn"),
+            ("", "end_turn"),
+        ],
+        ids=[
+            "stop",
+            "length",
+            "tool_calls",
+            "content_filter",
+            "none",
+            "unknown",
+            "empty_string",
+        ],
+    )
+    def test_map_stop_reason(self, openai_reason, expected):
+        assert map_stop_reason(openai_reason) == expected
+
+
+class TestContentBlockManager:
+    """Tests for ContentBlockManager."""
+
+    def test_allocate_index_increments(self):
+        mgr = ContentBlockManager()
+        assert mgr.allocate_index() == 0
+        assert mgr.allocate_index() == 1
+        assert mgr.allocate_index() == 2
+
+    def test_initial_state(self):
+        mgr = ContentBlockManager()
+        assert mgr.thinking_index == -1
+        assert mgr.text_index == -1
+        assert mgr.thinking_started is False
+        assert mgr.text_started is False
+        assert mgr.tool_states == {}
+
+    def test_flush_task_arg_buffers_logs_digest_not_secret(self, caplog):
+        """Invalid Task JSON warnings must not echo argument prefixes (secrets)."""
+        mgr = ContentBlockManager()
+        mgr.tool_states[0] = ToolCallState(
+            block_index=0, tool_id="call_x", name="Task", started=True
+        )
+        mgr.tool_states[
+            0
+        ].task_arg_buffer = (
+            '{"api_key": "[REDACTED_TOKEN]"}not_valid_json'
+        )
+        with caplog.at_level("WARNING"):
+            out = mgr.flush_task_arg_buffers()
+        assert out == [(0, "{}")]
+        text = " | ".join(r.message for r in caplog.records)
+        assert "[REDACTED_TOKEN]" not in text
+        assert "buffer_sha256_prefix=" in text
+
+
+class TestSSEBuilderMessageLifecycle:
+    """Tests for message_start, message_delta, message_stop."""
+
+    def test_message_start(self):
+        builder = SSEBuilder("msg_123", "test-model", input_tokens=50)
+        sse = builder.message_start()
+
+        assert "event: message_start" in sse
+        data = _parse_sse(sse)
+        assert data["type"] == "message_start"
+        msg = data["message"]
+        assert msg["id"] == "msg_123"
+        assert msg["model"] == "test-model"
+        assert msg["role"] == "assistant"
+        assert msg["content"] == []
+        assert msg["usage"]["input_tokens"] == 50
+        assert msg["usage"]["output_tokens"] == 1
+
+    def test_message_delta(self):
+        builder = SSEBuilder("msg_1", "model")
+        sse = builder.message_delta("end_turn", 42)
+
+        assert "event: message_delta" in sse
+        data = _parse_sse(sse)
+        assert data["type"] == "message_delta"
+        assert data["delta"]["stop_reason"] == "end_turn"
+        assert data["usage"]["output_tokens"] == 42
+
+    def test_message_start_coerces_non_int_input_tokens(self):
+        builder = SSEBuilder("msg_1", "model", input_tokens=0)
+        builder.input_tokens = cast(Any, "not_an_int")
+        sse = builder.message_start()
+        data = _parse_sse(sse)
+        assert data["message"]["usage"]["input_tokens"] == 0
+        assert data["message"]["usage"]["output_tokens"] == 1
+
+    def test_message_delta_coerces_none_output_tokens(
+error: patch failed: tests/providers/test_sse_builder.py:1
+error: tests/providers/test_sse_builder.py: patch does not apply
+Checking patch tests/providers/test_stream_ledger.py...
+Checking patch tests/providers/test_streaming_errors.py...
+error: while searching for:
+class TestProcessToolCall:
+    """Tests for OpenAI tool-call assembly."""
+
+    def test_tool_call_with_id(self):
+        """Tool call with id starts a tool block."""
+        provider = _make_provider()
+        from core.anthropic import SSEBuilder
+
+        sse = SSEBuilder("msg_test", "test-model")
+        tc = {
+            "index": 0,
+            "id": "call_123",
+
+error: patch failed: tests/providers/test_streaming_errors.py:786
+error: tests/providers/test_streaming_errors.py: patch does not apply
+Checking patch tests/providers/test_subagent_interception.py...
+error: while searching for:
+import pytest
+
+from config.nim import NimSettings
+from core.anthropic import ContentBlockManager
+from providers.base import ProviderConfig
+from providers.nvidia_nim import NvidiaNimProvider
+from providers.transports.openai_chat.tool_calls import OpenAIToolCallAssembler
+
+error: patch failed: tests/providers/test_subagent_interception.py:4
+error: tests/providers/test_subagent_interception.py: patch does not apply
+Checking patch tests/providers/test_wafer.py...
+/testbed/.venv/lib/python3.14/site-packages/_pytest/unraisableexception.py:67: PytestUnraisableExceptionWarning: Exception ignored on calling weakref callback <function WeakSet.__init__.<locals>._remove at 0x7fb30cf15dd0>: None
+
+Traceback (most recent call last):
+  File "/root/.local/share/uv/python/cpython-3.14.0-linux-x86_64-gnu/lib/python3.14/_weakrefset.py", line 16, in _remove
+    self = selfref()
+KeyboardInterrupt
+
+
+  warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+/testbed/.venv/lib/python3.14/site-packages/_pytest/unraisableexception.py:67: PytestUnraisableExceptionWarning: Exception ignored on calling weakref callback <function WeakSet.__init__.<locals>._remove at 0x7f590545ddd0>: None
+
+Traceback (most recent call last):
+  File "/root/.local/share/uv/python/cpython-3.14.0-linux-x86_64-gnu/lib/python3.14/_weakrefset.py", line 16, in _remove
+    self = selfref()
+KeyboardInterrupt
+
+
+  warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+/testbed/.venv/lib/python3.14/site-packages/_pytest/unraisableexception.py:67: PytestUnraisableExceptionWarning: Exception ignored on calling weakref callback <function WeakSet.__init__.<locals>._remove at 0x7f56523e4300>: None
+
+Traceback (most recent call last):
+  File "/root/.local/share/uv/python/cpython-3.14.0-linux-x86_64-gnu/lib/python3.14/_weakrefset.py", line 16, in _remove
+    self = selfref()
+KeyboardInterrupt
+
+
+  warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))
+/testbed/.venv/lib/python3.14/site-packages/_pytest/unraisableexception.py:67: PytestUnraisableExceptionWarning: Exception ignored on calling weakref callback <function WeakSet.__init__.<locals>._remove at 0x7fb6384b4300>: None
+
+Traceback (most recent call last):
+  File "/root/.local/share/uv/python/cpython-3.14.0-linux-x86_64-gnu/lib/python3.14/_weakrefset.py", line 16, in _remove
+    self = selfref()
+KeyboardInterrupt
+
+
+  warnings.warn(pytest.PytestUnraisableExceptionWarning(msg))

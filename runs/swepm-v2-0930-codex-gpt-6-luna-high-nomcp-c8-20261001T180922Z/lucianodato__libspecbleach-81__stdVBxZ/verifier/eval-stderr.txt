@@ -1,0 +1,102 @@
+Checking patch tests/meson.build...
+error: while searching for:
+test('adaptive_noise_estimator_null', test_adaptive_noise_estimator_null)
+test('nlm_filter', test_nlm_filter)
+
+test_louizou = executable('test_louizou',
+  sources: ['test_louizou_noise_estimator.c'],
+  dependencies: [libspecbleach_dep, m_dep],
+  c_args: test_c_args,
+  link_args: test_link_args,
+  include_directories: inc
+)
+test('louizou', test_louizou)
+
+test_spp_mmse = executable('test_spp_mmse',
+  sources: ['test_spp_mmse_noise_estimator.c'],
+
+error: patch failed: tests/meson.build:176
+error: tests/meson.build: patch does not apply
+Checking patch tests/test_adaptive_noise_estimator_null.c...
+error: while searching for:
+
+  // Adaptive Noise Estimators
+  adaptive_estimator_free(NULL);
+  AdaptiveNoiseEstimator* le = adaptive_estimator_initialize(
+      real_spectrum_size, sample_rate, fft_size, LOUIZOU_METHOD);
+  adaptive_estimator_free(le);
+
+  AdaptiveNoiseEstimator* spp = adaptive_estimator_initialize(
+      real_spectrum_size, sample_rate, fft_size, SPP_MMSE_METHOD);
+
+error: patch failed: tests/test_adaptive_noise_estimator_null.c:74
+error: tests/test_adaptive_noise_estimator_null.c: patch does not apply
+Checking patch tests/test_audio_regression.c...
+error: while searching for:
+  printf("✓ Adaptive denoiser test passed\n");
+}
+
+// Test that both noise estimation methods work correctly
+// Test that both noise estimation methods work correctly
+void test_noise_estimation_methods(void) {
+  printf("Testing noise estimation methods (Louizou vs SPP-MMSE)...\n");
+
+  float frame_size_ms = 20.0f;
+  float* input = calloc(TEST_SAMPLES, sizeof(float));
+  float* output_louizou = calloc(TEST_SAMPLES, sizeof(float));
+  float* output_spp_mmse = calloc(TEST_SAMPLES, sizeof(float));
+  TEST_ASSERT(input && output_louizou && output_spp_mmse,
+              "Failed to allocate test buffers");
+
+  // Generate noisy signal
+  generate_test_signal(input, TEST_SAMPLES, 12345);
+
+  // Process with Louizou method (default)
+  SpectralBleachDenoiserParameters params_louizou =
+      (SpectralBleachDenoiserParameters){.reduction_amount = 20.0f,
+                                         .smoothing_factor = 0.0f,
+                                         .noise_rescale = 0.0f,
+                                         .noise_scaling_type = 0,
+                                         .post_filter_threshold = 0.0f,
+                                         .residual_listen = false,
+                                         .whitening_factor = 0.0f,
+                                         .adaptive_noise = 1,
+                                         .noise_estimation_method = 0};
+
+  SpectralBleachHandle handle_louizou =
+      specbleach_initialize(SAMPLE_RATE, frame_size_ms);
+  TEST_ASSERT(handle_louizou != NULL, "Failed to initialize Louizou denoiser");
+
+  specbleach_load_parameters(handle_louizou, params_louizou);
+
+  for (int i = 0; i < TEST_SAMPLES; i += BLOCK_SIZE) {
+    int block_size =
+        (i + BLOCK_SIZE > TEST_SAMPLES) ? TEST_SAMPLES - i : BLOCK_SIZE;
+    TEST_ASSERT(specbleach_process(handle_louizou, block_size, input + i,
+                                   output_louizou + i),
+                "Failed to process with Louizou method");
+  }
+
+  specbleach_free(handle_louizou);
+
+  // Process with SPP-MMSE method
+  SpectralBleachDenoiserParameters params_spp_mmse =
+      (SpectralBleachDenoiserParameters){.reduction_amount = 20.0f,
+                                         .smoothing_factor = 0.0f,
+                                         .noise_rescale = 0.0f,
+                                         .noise_scaling_type = 0,
+                                         .post_filter_threshold = 0.0f,
+                                         .residual_listen = false,
+                                         .whitening_factor = 0.0f,
+                                         .adaptive_noise = 1,
+                                         .noise_estimation_method = 1};
+
+  SpectralBleachHandle handle_spp_mmse =
+      specbleach_initialize(SAMPLE_RATE, frame_size_ms);
+
+error: patch failed: tests/test_audio_regression.c:338
+error: tests/test_audio_regression.c: patch does not apply
+Checking patch tests/test_brandt_noise_estimator.c...
+Checking patch tests/test_louizou_noise_estimator.c...
+error: tests/test_louizou_noise_estimator.c: No such file or directory
+Checking patch tests/test_martin_noise_estimator.c...

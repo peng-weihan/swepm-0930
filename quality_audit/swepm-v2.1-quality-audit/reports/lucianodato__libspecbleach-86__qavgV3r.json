@@ -1,0 +1,65 @@
+{
+  "instance_id": "lucianodato__libspecbleach-86",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.88,
+  "gold_patch_assessment": "The gold patch is a massive 67-file refactoring that reorganizes the entire codebase directory structure (pre_estimation→utils, gain_estimation→denoiser_logic/processing, noise_estimation→denoiser_logic/estimators, post_estimation→denoiser_logic/processing+core), introduces new modules (denoiser_core.c/h, spectral_circular_buffer.c/h), renames APIs (estimate_gains→calculate_gains, GainEstimationType→GainCalculationType), changes function signatures (suppression_engine_initialize, masking_veto_initialize gain extra parameters), replaces spectral_trailing_buffer with spectral_circular_buffer, and introduces 1D/2D-specific configurations. It directly addresses the stated issue of refactoring modules to prepare for future processors.",
+  "base_vs_gold_expectation": "The verifier correctly rejects the unmodified base: the test patch rewrites all include paths to the new directory structure (e.g., shared/denoiser_logic/processing/masking_veto.h) and uses new API signatures (suppression_engine_initialize with 4 args instead of 1, masking_veto_initialize with 4 args instead of 3, calculate_gains instead of estimate_gains). The base repo lacks the denoiser_logic directory entirely, so compilation of the patched tests will fail. With the gold patch applied, the new structure and APIs exist, so tests should compile and pass.",
+  "too_narrow_risks": [
+    "Tests do not cover the new denoiser_core module (denoiser_core_handle_learning_mode, denoiser_core_update_noise_profile, denoiser_core_apply_post_processing) despite it being a key new abstraction in the gold patch.",
+    "Most test changes are purely include-path and function-signature updates, verifying compilation more than behavioral correctness of the refactoring.",
+    "No integration-level test verifies that the refactored pipeline produces the same audio output as before (regression test). The integration/audio_regression tests exist in the repo but are not run by eval.sh.",
+    "The spectral_circular_buffer test is the only test for a brand-new module. The other new module (denoiser_core) has zero test coverage.",
+    "No test verifies that the old modules (spectral_trailing_buffer, postfilter, noise_scaling_criterias) are properly removed or replaced."
+  ],
+  "too_broad_risks": [
+    "Running 15 different test suites for what is fundamentally a structural refactoring creates a large surface area for unrelated failures.",
+    "Tests for modules that were merely moved (martin, brandt, spp_mmse, tonal_reducer, nlm_filter) only had include-path changes, adding no verification value beyond build success."
+  ],
+  "implementation_coupling": [
+    "All tests are tightly coupled to the gold patch's specific directory hierarchy: shared/denoiser_logic/core/, shared/denoiser_logic/estimators/, shared/denoiser_logic/processing/. An alternative valid refactoring with different directory names would fail.",
+    "Tests are coupled to exact function renames: estimate_gains→calculate_gains, GainEstimationType→GainCalculationType. An alternative naming scheme would fail.",
+    "Tests are coupled to exact API signature changes: suppression_engine_initialize(size, sample_rate, band_type, spectrum_type), masking_veto_initialize(fft_size, sample_rate, band_type, spectrum_type). Alternative valid signatures would fail.",
+    "Tests are coupled to the SuppressionParameters struct and its type enum values (SUPPRESSION_BEROUTI_PER_BIN, SUPPRESSION_GLOBAL_SNR, SUPPRESSION_CRITICAL_BANDS_SNR, SUPPRESSION_MASKING_THRESHOLDS) which are specific to the gold implementation.",
+    "The test patch renames test_gain_estimation.c→test_gain_calculator.c and test_adaptive_noise_estimator_null.c→test_adaptive_noise_estimator.c, coupling to exact naming choices."
+  ],
+  "environment_risks": [
+    "The gold patch is ~3700 lines in solve.sh. If the patch application fails due to context drift or whitespace issues, the entire verification chain fails.",
+    "The test patch is ~45KB and patches 17 files. Complex patch application on modified code could fail with fuzz/conflict issues.",
+    "Build depends on meson, fftw, libsndfile, and other system libraries being pre-installed in the Docker image.",
+    "The test patch references src_inc variable defined by the gold patch in meson.build. If the gold patch is not applied first, the test patch's meson.build changes will reference an undefined variable."
+  ],
+  "mismatches": [
+    "The issue text is extremely vague ('Refactor almost all modules to prepare for future processors') with no specific requirements, yet the test patch demands exact directory structure, API names, and function signatures - effectively requiring the agent to guess or reverse-engineer the exact gold implementation.",
+    "The task is categorized as 'debugging' in task.toml but is actually a large-scale refactoring task with no bug to fix.",
+    "The eval.sh runs 'adaptive_noise_estimator' as a test name, but the test patch renames the test from 'adaptive_noise_estimator_null' to 'adaptive_noise_estimator'. This new name only exists after the test patch is applied."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/lucianodato__libspecbleach-86/instruction.md",
+      "detail": "Issue text is a PR title + 5 bullet-point commit messages with no specification of target directory structure, API changes, or architectural decisions."
+    },
+    {
+      "file": "/audit_tasks/lucianodato__libspecbleach-86/solution/solve.sh",
+      "detail": "Gold patch modifies 67 files across the entire codebase - an enormous scope for an SWE benchmark task."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch rewrites include paths in 17 test files to match the gold patch's specific directory structure (shared/denoiser_logic/{core,estimators,processing})."
+    },
+    {
+      "file": "/audit_tasks/lucianodato__libspecbleach-86/tests/eval.sh",
+      "detail": "eval.sh references test names (gain_calculator, spectral_circular_buffer, adaptive_noise_estimator) that only exist after the test patch is applied to a gold-patched codebase."
+    },
+    {
+      "file": "/testbed/src/shared/gain_estimation/suppression_engine.h",
+      "detail": "Base has suppression_engine_initialize(uint32_t) but test patch calls suppression_engine_initialize(size, sample_rate, OPUS_SCALE, POWER_SPECTRUM) - 4 args vs 1."
+    },
+    {
+      "file": "/audit_tasks/lucianodato__libspecbleach-86/task.toml",
+      "detail": "Category is 'debugging' but the task is a massive refactoring, not a bug fix."
+    }
+  ],
+  "recommended_action": "drop",
+  "summary": "This instance requires reproducing a massive 67-file refactoring from a vague 5-line issue description. The test patch is entirely coupled to the gold implementation's specific directory structure (shared/denoiser_logic/{core,estimators,processing}), exact function renames (estimate_gains→calculate_gains), and exact API signature changes. No behavioral tests verify the refactoring's correctness - tests primarily verify that the code compiles with the new structure. The issue text provides no actionable specification, making it impossible for an agent to derive the correct solution without effectively guessing the gold patch's exact choices. The task is also miscategorized as 'debugging'. This makes the instance unsuitable as an SWE benchmark: it tests whether an agent can reproduce one specific refactoring layout, not whether it can solve a well-defined engineering problem."
+}

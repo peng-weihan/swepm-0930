@@ -1,0 +1,86 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch tests/unit/test_base_fetcher.py...
+error: tests/unit/test_base_fetcher.py: already exists in working directory
+Checking patch tests/unit/test_config.py...
+error: while searching for:
+    def test_timezone_default(self, conf):
+        assert conf.timezone == setting.TIMEZONE
+
+    def test_fetchers_is_list(self, conf):
+        assert isinstance(conf.fetchers, list)
+        assert len(conf.fetchers) > 0
+
+
+class TestConfigHandlerEnvOverride:
+
+error: patch failed: tests/unit/test_config.py:72
+error: tests/unit/test_config.py: patch does not apply
+Checking patch tests/unit/test_fetcher_sources.py...
+The next patch would create the file tests/unit/test_base_fetcher.py,
+which already exists!  Assuming -R.
+patching file tests/unit/test_base_fetcher.py
+Hunk #1 FAILED at 1.
+Not deleting file tests/unit/test_base_fetcher.py as content differs from patch
+1 out of 1 hunk FAILED -- saving rejects to file tests/unit/test_base_fetcher.py.rej
+patching file tests/unit/test_config.py
+Reversed (or previously applied) patch detected!  Assuming -R.
+Hunk #1 succeeded at 72 with fuzz 3.
+patching file tests/unit/test_fetcher_sources.py
+============================= test session starts ==============================
+platform linux -- Python 3.11.16, pytest-9.1.1, pluggy-1.6.0 -- /testbed/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /testbed
+configfile: pyproject.toml
+plugins: cov-7.1.0
+collecting ... collected 64 items
+
+tests/unit/test_base_fetcher.py::TestBaseFetcherInterface::test_default_attributes PASSED [  1%]
+tests/unit/test_base_fetcher.py::TestBaseFetcherInterface::test_fetch_not_implemented PASSED [  3%]
+tests/unit/test_base_fetcher.py::TestBaseFetcherInterface::test_subclass_declares_attributes PASSED [  4%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_colon_format PASSED [  6%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_space_format PASSED [  7%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_multiple_proxies PASSED [  9%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_no_proxy_in_text PASSED [ 10%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_empty_input_returns_empty_list[] PASSED [ 12%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_empty_input_returns_empty_list[None] PASSED [ 14%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromText::test_callable_from_instance PASSED [ 15%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_proxy_like_keys[proxy] PASSED [ 17%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_proxy_like_keys[addr] PASSED [ 18%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_proxy_like_keys[address] PASSED [ 20%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_ip_port_keys[ip] PASSED [ 21%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_ip_port_keys[host] PASSED [ 23%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_ip_port_keys[server] PASSED [ 25%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_nested_structure PASSED [ 26%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_list_of_strings PASSED [ 28%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_empty_input_returns_empty_list[data0] PASSED [ 29%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_empty_input_returns_empty_list[data1] PASSED [ 31%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_empty_input_returns_empty_list[] PASSED [ 32%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromJson::test_empty_input_returns_empty_list[None] PASSED [ 34%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_table_rows PASSED [ 35%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_row_with_single_cell_skipped PASSED [ 37%]
+tests/unit/test_base_fetcher.py::TestParseProxiesFromTree::test_none_tree_returns_empty_list PASSED [ 39%]
+tests/unit/test_base_fetcher.py::TestYieldUniqueProxies::test_dedup_keeps_order PASSED [ 40%]
+tests/unit/test_base_fetcher.py::TestYieldUniqueProxies::test_empty_input PASSED [ 42%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_db_conn_default PASSED [ 43%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_server_host_default PASSED [ 45%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_server_port_default PASSED [ 46%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_table_name_default PASSED [ 48%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_http_url_default PASSED [ 50%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_https_url_default PASSED [ 51%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_verify_timeout_default PASSED [ 53%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_max_fail_count_default PASSED [ 54%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_pool_size_min_default PASSED [ 56%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_timezone_default PASSED [ 57%]
+tests/unit/test_config.py::TestConfigHandlerDefaults::test_fetchers_is_list FAILED [ 59%]
+
+=================================== FAILURES ===================================
+_______________ TestConfigHandlerDefaults.test_fetchers_is_list ________________
+tests/unit/test_config.py:76: in test_fetchers_is_list
+    assert isinstance(conf.fetchers, list)
+                      ^^^^^^^^^^^^^
+E   AttributeError: 'ConfigHandler' object has no attribute 'fetchers'
+=========================== short test summary info ============================
+FAILED tests/unit/test_config.py::TestConfigHandlerDefaults::test_fetchers_is_list
+!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!!
+========================= 1 failed, 37 passed in 0.16s =========================
+OMNIGRIL_EXIT_CODE=1

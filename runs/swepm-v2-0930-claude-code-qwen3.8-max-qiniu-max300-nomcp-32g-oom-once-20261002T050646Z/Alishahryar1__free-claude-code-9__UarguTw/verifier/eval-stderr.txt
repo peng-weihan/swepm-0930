@@ -1,0 +1,90 @@
+Checking patch tests/contracts/test_import_boundaries.py...
+Checking patch tests/providers/test_cerebras.py...
+error: while searching for:
+
+def test_build_request_body_remaps_max_tokens_preserves_message_name(cerebras_provider):
+    """Cerebras does not strip message ``name``; ``max_tokens`` maps to completion field."""
+    with patch("providers.cerebras.request.build_base_request_body") as mock_convert:
+        mock_convert.return_value = {
+            "model": "llama3.1-8b",
+            "messages": [{"role": "user", "name": "alice", "content": "hi"}],
+
+error: patch failed: tests/providers/test_cerebras.py:108
+error: tests/providers/test_cerebras.py: patch does not apply
+Checking patch tests/providers/test_gemini.py...
+error: while searching for:
+
+from providers.base import ProviderConfig
+from providers.gemini import GEMINI_DEFAULT_BASE, GeminiProvider
+from providers.gemini.request import GEMINI_SKIP_THOUGHT_SIGNATURE_VALIDATOR
+
+
+class MockMessage:
+
+error: patch failed: tests/providers/test_gemini.py:7
+error: tests/providers/test_gemini.py: patch does not apply
+Checking patch tests/providers/test_groq.py...
+error: while searching for:
+
+
+def test_build_request_body_sanitizes_and_remaps_via_mock_converter(groq_provider):
+    with patch("providers.groq.request.build_base_request_body") as mock_convert:
+        mock_convert.return_value = {
+            "model": "llama-3.3-70b-versatile",
+            "messages": [
+
+error: patch failed: tests/providers/test_groq.py:107
+error: tests/providers/test_groq.py: patch does not apply
+Checking patch tests/providers/test_nim_request_clone.py...
+error: while searching for:
+
+from copy import deepcopy
+
+from providers.nvidia_nim.request import clone_body_without_reasoning_budget
+
+
+def test_clone_body_without_reasoning_budget_strips_top_level_and_nested():
+
+error: patch failed: tests/providers/test_nim_request_clone.py:2
+error: tests/providers/test_nim_request_clone.py: patch does not apply
+Checking patch tests/providers/test_nvidia_nim.py...
+error: while searching for:
+from config.nim import NimSettings
+from providers.defaults import NVIDIA_NIM_DEFAULT_BASE
+from providers.nvidia_nim import NvidiaNimProvider
+from providers.nvidia_nim.request import NIM_TOOL_ARGUMENT_ALIASES_KEY
+
+
+# Mock data classes
+
+error: patch failed: tests/providers/test_nvidia_nim.py:8
+error: tests/providers/test_nvidia_nim.py: patch does not apply
+Checking patch tests/providers/test_nvidia_nim_request.py...
+error: while searching for:
+"""Tests for providers/nvidia_nim/request.py."""
+
+from copy import deepcopy
+from types import SimpleNamespace
+
+error: patch failed: tests/providers/test_nvidia_nim_request.py:1
+error: tests/providers/test_nvidia_nim_request.py: patch does not apply
+Checking patch tests/providers/test_open_router.py...
+error: while searching for:
+
+import pytest
+
+from core.anthropic.stream_contracts import (
+    assert_anthropic_stream_contract,
+    parse_sse_text,
+    text_content,
+    thinking_content,
+)
+from providers.base import ProviderConfig
+from providers.open_router import OpenRouterProvider
+from providers.open_router.request import OPENROUTER_DEFAULT_MAX_TOKENS
+
+
+class MockMessage:
+
+error: patch failed: tests/providers/test_open_router.py:6
+error: tests/providers/test_open_router.py: patch does not apply

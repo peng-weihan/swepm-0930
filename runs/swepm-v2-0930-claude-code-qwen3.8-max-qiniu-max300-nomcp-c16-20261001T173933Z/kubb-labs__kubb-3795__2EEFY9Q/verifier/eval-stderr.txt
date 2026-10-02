@@ -1,0 +1,303 @@
+Checking patch packages/adapter-oas/src/emit/createNode.test.ts...
+Checking patch packages/adapter-oas/src/emit/discriminator/preserve.test.ts...
+Checking patch packages/adapter-oas/src/discriminator.test.ts => packages/adapter-oas/src/emit/discriminator/propagate.test.ts...
+Checking patch packages/adapter-oas/src/emit/schemaShape.test.ts...
+Checking patch packages/adapter-oas/src/factory.test.ts => packages/adapter-oas/src/load/normalize.test.ts...
+Checking patch packages/adapter-oas/src/resolvers.test.ts => packages/adapter-oas/src/model/components.test.ts...
+error: while searching for:
+import { describe, expect, expectTypeOf, it } from 'vitest'
+import { DEFAULT_PARSER_OPTIONS } from './constants.ts'
+import { parseFromConfig } from './factory.ts'
+import {
+  buildSchemaNode,
+  extractSchemaFromContent,
+  flattenSchema,
+  getDateType,
+  getPrimitiveType,
+  getSchemas,
+  getSchemaType,
+  resolveBaseUrl,
+  resolveServerUrl,
+  sortSchemas,
+} from './resolvers.ts'
+import type { Document } from './types.ts'
+
+const minimalSpec: Document = {
+  openapi: '3.0.0',
+  info: { title: 'Test API', version: '1.0.0' },
+  servers: [{ url: 'https://api.example.com/v1' }],
+  paths: {
+    '/pets': {
+      get: {
+        operationId: 'listPets',
+        responses: { '200': { description: 'ok' } },
+      },
+    },
+  },
+  components: {
+    schemas: {
+      Pet: {
+        type: 'object',
+        properties: { id: { type: 'string' }, name: { type: 'string' } },
+        required: ['id'],
+      },
+    },
+  },
+}
+
+describe('resolveBaseUrl', () => {
+  it('returns the server URL at the given index', async () => {
+    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
+    const url = resolveBaseUrl({ document, server: { index: 0 } })
+    expect(url).toBe('https://api.example.com/v1')
+  })
+
+  it('returns null when no server index is provided', async () => {
+    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
+    const url = resolveBaseUrl({ document, server: {} })
+    expect(url).toBeNull()
+  })
+
+  it('returns null when no server is provided', async () => {
+    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
+    const url = resolveBaseUrl({ document })
+    expect(url).toBeNull()
+  })
+
+  it('returns null when the server index is out of range', async () => {
+    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
+    const url = resolveBaseUrl({ document, server: { index: 99 } })
+    expect(url).toBeNull()
+  })
+
+  it('substitutes server variables into the resolved URL', async () => {
+    const document = await parseFromConfig({
+      type: 'data',
+      data: {
+        ...minimalSpec,
+        servers: [{ url: 'https://api.{env}.example.com', variables: { env: { default: 'dev' } } }],
+      },
+    })
+    const url = resolveBaseUrl({ document, server: { index: 0, variables: { env: 'prod' } } })
+    expect(url).toBe('https://api.prod.example.com')
+  })
+})
+
+describe('getSchemaType', () => {
+  it('returns the SchemaType for a known format', () => {
+    expect(getSchemaType('uuid')).toBe('uuid')
+    expect(getSchemaType('uri')).toBe('url')
+    expect(getSchemaType('email')).toBe('email')
+  })
+
+  it('returns null for an unknown format', () => {
+    expect(getSchemaType('int64')).toBeNull()
+    expect(getSchemaType('date-time')).toBeNull()
+    expect(getSchemaType('not-a-format')).toBeNull()
+  })
+})
+
+describe('getPrimitiveType', () => {
+  it('returns numeric types unchanged', () => {
+    expect(getPrimitiveType('number')).toBe('number')
+    expect(getPrimitiveType('integer')).toBe('integer')
+    expect(getPrimitiveType('bigint')).toBe('bigint')
+  })
+
+  it('maps boolean to boolean', () => {
+    expect(getPrimitiveType('boolean')).toBe('boolean')
+  })
+
+  it('defaults everything else to string', () => {
+    expect(getPrimitiveType('string')).toBe('string')
+    expect(getPrimitiveType('object')).toBe('string')
+    expect(getPrimitiveType(undefined)).toBe('string')
+  })
+})
+
+describe('getDateType', () => {
+  const base = DEFAULT_PARSER_OPTIONS
+
+  it('returns null when dateType is false', () => {
+    expect(getDateType({ ...base, dateType: false }, 'date-time')).toBeNull()
+  })
+
+  it('resolves date-time with dateType string to datetime without offset', () => {
+    expect(getDateType({ ...base, dateType: 'string' }, 'date-time')).toStrictEqual({
+      type: 'datetime',
+      offset: false,
+    })
+  })
+
+  it('resolves date-time with dateType date', () => {
+    expect(getDateType({ ...base, dateType: 'date' }, 'date-time')).toStrictEqual({
+      type: 'date',
+      representation: 'date',
+    })
+  })
+
+  it('resolves date-time 
+error: patch failed: packages/adapter-oas/src/resolvers.test.ts:1
+error: packages/adapter-oas/src/resolvers.test.ts: patch does not apply
+Checking patch packages/adapter-oas/src/model/server.test.ts...
+Checking patch packages/adapter-oas/src/parser.test.ts...
+Hunk #4 succeeded at 793 (offset 146 lines).
+Hunk #5 succeeded at 809 (offset 146 lines).
+Hunk #6 succeeded at 849 (offset 146 lines).
+Hunk #7 succeeded at 884 (offset 146 lines).
+Hunk #8 succeeded at 921 (offset 146 lines).
+Hunk #9 succeeded at 947 (offset 146 lines).
+Hunk #10 succeeded at 967 (offset 146 lines).
+Hunk #11 succeeded at 1050 (offset 146 lines).
+Hunk #12 succeeded at 1273 (offset 146 lines).
+Hunk #13 succeeded at 1433 (offset 146 lines).
+Hunk #14 succeeded at 1517 (offset 146 lines).
+Hunk #15 succeeded at 1614 (offset 146 lines).
+Hunk #16 succeeded at 1664 (offset 146 lines).
+Hunk #17 succeeded at 1726 (offset 146 lines).
+Hunk #18 succeeded at 1813 (offset 146 lines).
+Hunk #19 succeeded at 1893 (offset 146 lines).
+Hunk #20 succeeded at 1927 (offset 146 lines).
+Hunk #21 succeeded at 2007 (offset 146 lines).
+Hunk #22 succeeded at 2074 (offset 146 lines).
+Hunk #23 succeeded at 2103 (offset 146 lines).
+Hunk #24 succeeded at 2247 (offset 146 lines).
+Hunk #25 succeeded at 2273 (offset 146 lines).
+Hunk #26 succeeded at 2299 (offset 146 lines).
+Hunk #27 succeeded at 2326 (offset 146 lines).
+Hunk #28 succeeded at 2395 (offset 146 lines).
+Hunk #29 succeeded at 2430 (offset 146 lines).
+Hunk #30 succeeded at 2457 (offset 146 lines).
+Hunk #31 succeeded at 2780 (offset 146 lines).
+Hunk #32 succeeded at 2816 (offset 146 lines).
+Hunk #33 succeeded at 2888 (offset 146 lines).
+Hunk #34 succeeded at 2929 (offset 146 lines).
+Hunk #35 succeeded at 2970 (offset 146 lines).
+Hunk #36 succeeded at 3029 (offset 146 lines).
+Hunk #37 succeeded at 3340 (offset 146 lines).
+Hunk #38 succeeded at 3400 (offset 146 lines).
+Hunk #39 succeeded at 3607 (offset 146 lines).
+Hunk #40 succeeded at 3644 (offset 146 lines).
+Hunk #41 succeeded at 3653 (offset 146 lines).
+Hunk #42 succeeded at 3684 (offset 146 lines).
+Hunk #43 succeeded at 3695 (offset 146 lines).
+Hunk #44 succeeded at 3704 (offset 146 lines).
+Hunk #45 succeeded at 3713 (offset 146 lines).
+Hunk #46 succeeded at 3722 (offset 146 lines).
+Hunk #47 succeeded at 3731 (offset 146 lines).
+Hunk #48 succeeded at 3740 (offset 146 lines).
+Hunk #49 succeeded at 3751 (offset 146 lines).
+Hunk #50 succeeded at 3760 (offset 146 lines).
+Hunk #51 succeeded at 3769 (offset 146 lines).
+Hunk #52 succeeded at 3778 (offset 146 lines).
+Hunk #53 succeeded at 3789 (offset 146 lines).
+Hunk #54 succeeded at 3798 (offset 146 lines).
+Hunk #55 succeeded at 3807 (offset 146 lines).
+Hunk #56 succeeded at 3817 (offset 146 lines).
+Hunk #57 succeeded at 3839 (offset 146 lines).
+Hunk #58 succeeded at 3953 (offset 146 lines).
+Hunk #59 succeeded at 4397 (offset 146 lines).
+Hunk #60 succeeded at 4483 (offset 146 lines).
+Hunk #61 succeeded at 4541 (offset 146 lines).
+Hunk #62 succeeded at 4570 (offset 146 lines).
+Hunk #63 succeeded at 4599 (offset 146 lines).
+Hunk #64 succeeded at 4609 (offset 146 lines).
+$ vitest run --config ./configs/vitest.config.ts -- --coverage --reporter=verbose packages/adapter-oas/src
+[90mstderr[2m | packages/unplugin-kubb/src/unpluginFactory.test.ts[2m > [22m[2munpluginFactory[2m > [22m[2mfails the host build when generation fails
+[22m[39m✗ setup failed
+
+
+[31m⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Suites 8 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m packages/adapter-oas/src/parser.test.ts[2m [ packages/adapter-oas/src/parser.test.ts ][22m
+[31m[1mError[22m: Cannot find module './load/normalize.ts' imported from /testbed/packages/adapter-oas/src/parser.test.ts[39m
+[36m [2m❯[22m packages/adapter-oas/src/parser.test.ts:[2m6:1[22m[39m
+    [90m  4|[39m import { buildMinimalOas } from '../mocks/oas.ts'
+    [90m  5|[39m import { DEFAULT_PARSER_OPTIONS } from './constants.ts'
+    [90m  6|[39m import { parseDocument } from './load/normalize.ts'
+    [90m   |[39m [31m^[39m
+    [90m  7|[39m import { getSchemas } from './model/components.ts'
+    [90m  8|[39m import { getOperations } from './operation.ts'
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/adapter-oas/src/emit/createNode.test.ts[2m [ packages/adapter-oas/src/emit/createNode.test.ts ][22m
+[31m[1mError[22m: Cannot find module './createNode.ts' imported from /testbed/packages/adapter-oas/src/emit/createNode.test.ts[39m
+[36m [2m❯[22m packages/adapter-oas/src/emit/createNode.test.ts:[2m2:1[22m[39m
+    [90m  1|[39m [35mimport[39m { describe[33m,[39m expect[33m,[39m it } [35mfrom[39m [32m'vitest'[39m
+    [90m  2|[39m [35mimport[39m { createNode } [35mfrom[39m [32m'./createNode.ts'[39m
+    [90m   |[39m [31m^[39m
+    [90m  3|[39m
+    [90m  4|[39m [34mdescribe[39m([32m'createNode'[39m[33m,[39m () [33m=>[39m {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/adapter-oas/src/emit/schemaShape.test.ts[2m [ packages/adapter-oas/src/emit/schemaShape.test.ts ][22m
+[31m[1mError[22m: Cannot find module './schemaShape.ts' imported from /testbed/packages/adapter-oas/src/emit/schemaShape.test.ts[39m
+[36m [2m❯[22m packages/adapter-oas/src/emit/schemaShape.test.ts:[2m3:1[22m[39m
+    [90m  1|[39m [35mimport[39m { describe[33m,[39m expect[33m,[39m it } [35mfrom[39m [32m'vitest'[39m
+    [90m  2|[39m [35mimport[39m { [33mDEFAULT_PARSER_OPTIONS[39m } [35mfrom[39m [32m'../constants.ts'[39m
+    [90m  3|[39m import { flattenSchema, getDateType, getPrimitiveType, getSchemaType }…
+    [90m   |[39m [31m^[39m
+    [90m  4|[39m
+    [90m  5|[39m [34mdescribe[39m([32m'getSchemaType'[39m[33m,[39m () [33m=>[39m {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/adapter-oas/src/load/normalize.test.ts[2m [ packages/adapter-oas/src/load/normalize.test.ts ][22m
+[31m[1mError[22m: Cannot find module './normalize.ts' imported from /testbed/packages/adapter-oas/src/load/normalize.test.ts[39m
+[36m [2m❯[22m packages/adapter-oas/src/load/normalize.test.ts:[2m4:1[22m[39m
+    [90m  2|[39m [35mimport[39m { fileURLToPath } [35mfrom[39m [32m'node:url'[39m
+    [90m  3|[39m [35mimport[39m { describe[33m,[39m expect[33m,[39m it[33m,[39m vi } [35mfrom[39m [32m'vitest'[39m
+    [90m  4|[39m import { bundleDocument, parseDocument, parseFromConfig, validateDocum…
+    [90m   |[39m [31m^[39m
+    [90m  5|[39m [35mimport[39m type { [33mDocument[39m } [35mfrom[39m [32m'../types.ts'[39m
+    [90m  6|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/adapter-oas/src/model/components.test.ts[2m [ packages/adapter-oas/src/model/components.test.ts ][22m
+[31m[1mError[22m: Cannot find module './constants.ts' imported from /testbed/packages/adapter-oas/src/model/components.test.ts[39m
+[36m [2m❯[22m packages/adapter-oas/src/model/components.test.ts:[2m2:1[22m[39m
+    [90m  1|[39m [35mimport[39m { describe[33m,[39m expect[33m,[39m expectTypeOf[33m,[39m it } [35mfrom[39m [32m'vitest'[39m
+    [90m  2|[39m [35mimport[39m { [33mDEFAULT_PARSER_OPTIONS[39m } [35mfrom[39m [32m'./constants.ts'[39m
+    [90m   |[39m [31m^[39m
+    [90m  3|[39m [35mimport[39m { parseFromConfig } [35mfrom[39m [32m'./factory.ts'[39m
+    [90m  4|[39m [35mimport[39m {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/adapter-oas/src/model/server.test.ts[2m [ packages/adapter-oas/src/model/server.test.ts ][22m
+[31m[1mError[22m: Cannot find module '../load/normalize.ts' imported from /testbed/packages/adapter-oas/src/model/server.test.ts[39m
+[36m [2m❯[22m packages/adapter-oas/src/model/server.test.ts:[2m2:1[22m[39m
+    [90m  1|[39m [35mimport[39m { describe[33m,[39m expect[33m,[39m it } [35mfrom[39m [32m'vitest'[39m
+    [90m  2|[39m [35mimport[39m { parseFromConfig } [35mfrom[39m [32m'../load/normalize.ts'[39m
+    [90m   |[39m [31m^[39m
+    [90m  3|[39m [35mimport[39m type { [33mDocument[39m } [35mfrom[39m [32m'../types.ts'[39m
+    [90m  4|[39m [35mimport[39m { resolveBaseUrl[33m,[39m resolveServerUrl } [35mfrom[39m [32m'./server.ts'[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/adapter-oas/src/emit/discriminator/preserve.test.ts[2m [ packages/adapter-oas/src/emit/discriminator/preserve.test.ts ][22m
+[31m[1mError[22m: Cannot find module './preserve.ts' imported from /testbed/packages/adapter-oas/src/emit/discriminator/preserve.test.ts[39m
+[36m [2m❯[22m packages/adapter-oas/src/emit/discriminator/preserve.test.ts:[2m2:1[22m[39m
+    [90m  1|[39m [35mimport[39m { describe[33m,[39m expect[33m,[39m it } [35mfrom[39m [32m'vitest'[39m
+    [90m  2|[39m import { createDiscriminantNode, findDiscriminator } from './preserve.…
+    [90m   |[39m [31m^[39m
+    [90m  3|[39m
+    [90m  4|[39m [34mdescribe[39m([32m'createDiscriminantNode'[39m[33m,[39m () [33m=>[39m {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/8]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m packages/adapter-oas/src/emit/discriminator/propagate.test.ts[2m [ packages/adapter-oas/src/emit/discriminator/propagate.test.ts ][22m
+[31m[1mError[22m: Cannot find module './propagate.ts' imported from /testbed/packages/adapter-oas/src/emit/discriminator/propagate.test.ts[39m
+[36m [2m❯[22m packages/adapter-oas/src/emit/discriminator/propagate.test.ts:[2m3:1[22m[39m
+    [90m  1|[39m [35mimport[39m { ast } [35mfrom[39m [32m'@kubb/ast'[39m
+    [90m  2|[39m [35mimport[39m { describe[33m,[39m expect[33m,[39m it } [35mfrom[39m [32m'vitest'[39m
+    [90m  3|[39m import { buildDiscriminatorChildMap, patchDiscriminatorNode } from './…
+    [90m   |[39m [31m^[39m
+    [90m  4|[39m
+    [90m  5|[39m [35mfunction[39m [34mrefSchema[39m(name[33m:[39m string) {
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯[22m[39m
+

@@ -1,0 +1,334 @@
+SPECBUILD_RESOLVED_PYTHON=python3
+Checking patch raft/src/main/java/org/apache/kafka/raft/CandidateState.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaNetworkChannelTest.java...
+error: while searching for:
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
+
+
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/KafkaNetworkChannelTest.java:62
+error: raft/src/test/java/org/apache/kafka/raft/KafkaNetworkChannelTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientAutoJoinTest.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientFetchTest.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientPreVoteTest.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientReconfigTest.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientSnapshotTest.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientTest.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/RaftEventSimulationTest.java...
+error: while searching for:
+            cluster.nodeIfRunning(destination.id()).ifPresent(node -> {
+                inflight.put(correlationId, new InflightRequest(senderId, destination));
+
+                inbound.completion.whenComplete((response, exception) -> {
+                    if (response != null && filters.get(destination.id()).acceptOutbound(response)) {
+                        deliver(response);
+                    }
+                });
+
+                node.client.handle(inbound);
+            });
+        }
+
+
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/RaftEventSimulationTest.java:1405
+error: raft/src/test/java/org/apache/kafka/raft/RaftEventSimulationTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/internals/BlockingMessageQueueTest.java...
+error: while searching for:
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class BlockingMessageQueueTest {
+
+    @Test
+    public void testOfferAndPoll() {
+        BlockingMessageQueue queue = new BlockingMessageQueue();
+        assertTrue(queue.isEmpty());
+        assertNull(queue.poll(0));
+
+        RaftMessage message1 = Mockito.mock(RaftMessage.class);
+        queue.add(message1);
+        assertFalse(queue.isEmpty());
+        assertEquals(message1, queue.poll(0));
+        assertTrue(queue.isEmpty());
+
+        RaftMessage message2 = Mockito.mock(RaftMessage.class);
+        RaftMessage message3 = Mockito.mock(RaftMessage.class);
+        queue.add(message2);
+        queue.add(message3);
+        assertFalse(queue.isEmpty());
+        assertEquals(message2, queue.poll(0));
+        assertEquals(message3, queue.poll(0));
+
+    }
+
+    @Test
+    public void testWakeupFromPoll() {
+        BlockingMessageQueue queue = new BlockingMessageQueue();
+        queue.wakeup();
+        assertNull(queue.poll(Long.MAX_VALUE));
+    }
+
+}
+error: patch failed: raft/src/test/java/org/apache/kafka/raft/internals/BlockingMessageQueueTest.java:21
+error: raft/src/test/java/org/apache/kafka/raft/internals/BlockingMessageQueueTest.java: patch does not apply
+Checking patch raft/src/test/java/org/apache/kafka/raft/internals/ChangeVoterHandlerStateTest.java...
+Checking patch raft/src/test/java/org/apache/kafka/raft/internals/ThresholdPurgatoryTest.java...
+Checking patch raft/src/testFixtures/java/org/apache/kafka/raft/MockMessageQueue.java...
+error: while searching for:
+package org.apache.kafka.raft;
+
+import java.util.ArrayDeque;
+import java.util.OptionalLong;
+import java.util.Queue;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * Mocked implementation which does not block in {@link #poll(long)}..
+ */
+public class MockMessageQueue implements RaftMessageQueue {
+    private final Queue<RaftMessage> messages = new ArrayDeque<>();
+    private final AtomicBoolean wakeupRequested = new AtomicBoolean(false);
+    private final AtomicLong lastPollTimeout = new AtomicLong(-1);
+
+    @Override
+    public RaftMessage poll(long timeoutMs) {
+        wakeupRequested.set(false);
+        lastPollTimeout.set(timeoutMs);
+        return messages.poll();
+    }
+
+    @Override
+    public void add(RaftMessage message) {
+        messages.offer(message);
+    }
+
+    public OptionalLong lastPollTimeoutMs() {
+
+error: patch failed: raft/src/testFixtures/java/org/apache/kafka/raft/MockMessageQueue.java:17
+error: raft/src/testFixtures/java/org/apache/kafka/raft/MockMessageQueue.java: patch does not apply
+Checking patch raft/src/testFixtures/java/org/apache/kafka/raft/MockNetworkChannel.java...
+error: while searching for:
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+
+public class MockNetworkChannel implements NetworkChannel {
+    public static final ListenerName LISTENER_NAME = VoterSetTestUtil.DEFAULT_LISTENER_NAME;
+
+    private final AtomicInteger correlationIdCounter;
+    private final List<RaftRequest.Outbound> sendQueue = new ArrayList<>();
+    private final Map<Integer, RaftRequest.Outbound> awaitingResponse = new HashMap<>();
+
+    public MockNetworkChannel(AtomicInteger correlationIdCounter) {
+        this.correlationIdCounter = correlationIdCounter;
+
+error: patch failed: raft/src/testFixtures/java/org/apache/kafka/raft/MockNetworkChannel.java:21
+error: raft/src/testFixtures/java/org/apache/kafka/raft/MockNetworkChannel.java: patch does not apply
+Checking patch raft/src/testFixtures/java/org/apache/kafka/raft/RaftClientTestContext.java...
+error: while searching for:
+            versionedRequest,
+            time.milliseconds()
+        );
+        inboundRequest.completion.whenComplete((response, exception) -> {
+            if (exception != null) {
+                throw new RuntimeException(exception);
+            } else {
+                sentResponses.add(response);
+            }
+        });
+        client.handle(inboundRequest);
+    }
+
+    void deliverResponse(int correlationId, Node source, ApiMessage response) {
+
+error: patch failed: raft/src/testFixtures/java/org/apache/kafka/raft/RaftClientTestContext.java:968
+error: raft/src/testFixtures/java/org/apache/kafka/raft/RaftClientTestContext.java: patch does not apply
+patching file raft/src/main/java/org/apache/kafka/raft/CandidateState.java
+patching file raft/src/test/java/org/apache/kafka/raft/KafkaNetworkChannelTest.java
+Hunk #1 succeeded at 62 with fuzz 3.
+Hunk #2 succeeded at 158 (offset 6 lines).
+Hunk #3 FAILED at 235.
+Hunk #4 succeeded at 274 (offset 7 lines).
+1 out of 4 hunks FAILED -- saving rejects to file raft/src/test/java/org/apache/kafka/raft/KafkaNetworkChannelTest.java.rej
+patching file raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientAutoJoinTest.java
+patching file raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientFetchTest.java
+patching file raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientPreVoteTest.java
+patching file raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientReconfigTest.java
+patching file raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientSnapshotTest.java
+patching file raft/src/test/java/org/apache/kafka/raft/KafkaRaftClientTest.java
+patching file raft/src/test/java/org/apache/kafka/raft/RaftEventSimulationTest.java
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file raft/src/test/java/org/apache/kafka/raft/internals/BlockingMessageQueueTest.java
+Hunk #1 FAILED at 21.
+1 out of 1 hunk FAILED -- saving rejects to file raft/src/test/java/org/apache/kafka/raft/internals/BlockingMessageQueueTest.java.rej
+patching file raft/src/test/java/org/apache/kafka/raft/internals/ChangeVoterHandlerStateTest.java
+patching file raft/src/test/java/org/apache/kafka/raft/internals/ThresholdPurgatoryTest.java
+patching file raft/src/testFixtures/java/org/apache/kafka/raft/MockMessageQueue.java
+Hunk #1 FAILED at 17.
+1 out of 1 hunk FAILED -- saving rejects to file raft/src/testFixtures/java/org/apache/kafka/raft/MockMessageQueue.java.rej
+patching file raft/src/testFixtures/java/org/apache/kafka/raft/MockNetworkChannel.java
+Hunk #1 FAILED at 21.
+Hunk #2 FAILED at 48.
+Hunk #3 FAILED at 80.
+3 out of 3 hunks FAILED -- saving rejects to file raft/src/testFixtures/java/org/apache/kafka/raft/MockNetworkChannel.java.rej
+patching file raft/src/testFixtures/java/org/apache/kafka/raft/RaftClientTestContext.java
+Hunk #3 FAILED at 993.
+Hunk #4 succeeded at 1013 (offset -1 lines).
+1 out of 4 hunks FAILED -- saving rejects to file raft/src/testFixtures/java/org/apache/kafka/raft/RaftClientTestContext.java.rej
+Downloading https://services.gradle.org/distributions/gradle-9.4.1-bin.zip
+.............10%.............20%.............30%.............40%.............50%.............60%..............70%.............80%.............90%.............100%
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :
+Starting build with version 4.4.0-SNAPSHOT (commit id e835bc4e) using Gradle 9.4.1, Java 25 and Scala 2.13.18
+Build properties: ignoreFailures=false, maxParallelForks=2, maxScalacThreads=4, maxTestRetries=0
+
+> Task :raft:processTestResources
+> Task :clients:processResources
+> Task :test-common:test-common-util:compileJava
+> Task :generator:compileJava
+> Task :generator:processResources NO-SOURCE
+> Task :generator:classes
+> Task :generator:jar
+
+> Task :raft:processMessages
+MessageGenerator: processed 1 Kafka message JSON file(s).
+
+> Task :storage:processMessages
+MessageGenerator: processed 5 Kafka message JSON file(s).
+
+> Task :clients:processMessages
+MessageGenerator: processed 201 Kafka message JSON file(s).
+
+> Task :clients:compileJava
+> Task :clients:classes
+> Task :server-common:compileJava
+> Task :storage:storage-api:compileJava
+> Task :storage:compileJava
+
+> Task :clients:compileTestFixturesJava
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :raft:compileJava FAILED
+/testbed/raft/src/main/java/org/apache/kafka/raft/CandidateState.java:130: error: method does not override or implement a method from a supertype
+    @Override
+    ^
+1 error
+
+[Incubating] Problems report is available at: file:///testbed/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':raft:compileJava'.
+> Compilation failed; see the compiler output below.
+  /testbed/raft/src/main/java/org/apache/kafka/raft/CandidateState.java:130: error: method does not override or implement a method from a supertype
+      @Override
+      ^
+  1 error
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 1m 56s
+14 actionable tasks: 14 executed
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Configure project :
+Starting build with version 4.4.0-SNAPSHOT (commit id e835bc4e) using Gradle 9.4.1, Java 25 and Scala 2.13.18
+Build properties: ignoreFailures=false, maxParallelForks=2, maxScalacThreads=4, maxTestRetries=0
+
+> Task :clients:processResources UP-TO-DATE
+> Task :test-common:test-common-util:compileJava UP-TO-DATE
+> Task :generator:compileJava UP-TO-DATE
+> Task :generator:processResources NO-SOURCE
+> Task :server-common:processResources NO-SOURCE
+> Task :generator:classes UP-TO-DATE
+> Task :generator:jar UP-TO-DATE
+> Task :raft:processResources
+> Task :storage:processMessages UP-TO-DATE
+> Task :storage:processResources
+> Task :raft:processMessages UP-TO-DATE
+> Task :server-common:createVersionFile
+> Task :clients:createVersionFile
+> Task :server-common:processTestFixturesResources NO-SOURCE
+> Task :storage:createVersionFile
+> Task :storage:storage-api:processResources NO-SOURCE
+> Task :raft:createVersionFile
+> Task :test-common:test-common-util:processResources
+> Task :test-common:test-common-util:classes
+> Task :storage:storage-api:createVersionFile
+> Task :raft:processTestFixturesResources NO-SOURCE
+> Task :raft:processTestResources UP-TO-DATE
+> Task :clients:processMessages UP-TO-DATE
+> Task :test-common:test-common-util:jar
+> Task :clients:compileJava UP-TO-DATE
+> Task :clients:classes UP-TO-DATE
+> Task :server-common:compileJava UP-TO-DATE
+> Task :server-common:classes UP-TO-DATE
+> Task :clients:compileTestFixturesJava UP-TO-DATE
+> Task :storage:storage-api:compileJava UP-TO-DATE
+> Task :storage:storage-api:classes UP-TO-DATE
+> Task :storage:storage-api:jar
+> Task :storage:compileJava UP-TO-DATE
+> Task :storage:classes
+> Task :server-common:jar
+> Task :storage:jar
+
+> Task :raft:compileJava
+/testbed/raft/src/main/java/org/apache/kafka/raft/CandidateState.java:130: error: method does not override or implement a method from a supertype
+    @Override
+    ^
+1 error
+
+> Task :raft:compileJava FAILED
+> Task :clients:shadowJar
+> Task :server-common:compileTestFixturesJava
+
+[Incubating] Problems report is available at: file:///testbed/build/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':raft:compileJava'.
+> Compilation failed; see the compiler output below.
+  /testbed/raft/src/main/java/org/apache/kafka/raft/CandidateState.java:130: error: method does not override or implement a method from a supertype
+      @Override
+      ^
+  1 error
+
+* Try:
+> Check your code and dependencies to fix the compilation error(s)
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 16s
+28 actionable tasks: 15 executed, 13 up-to-date
+OMNIGRIL_EXIT_CODE=1

@@ -1,0 +1,656 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "01a0fb83-eb25-7bc3-99bb-c2b3786ccaca",
+  "agent": {
+    "name": "codex",
+    "version": "0.159.0",
+    "model_name": "gpt-6-luna",
+    "extra": {
+      "originator": "codex_exec",
+      "cwd": "/testbed",
+      "git": {
+        "commit_hash": "f83cd54b51e04733873f5dec010f8b5852b4a005",
+        "repository_url": "https://github.com/0xPlaygrounds/rig.git"
+      }
+    }
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-10-02T07:28:44.758Z",
+      "source": "system",
+      "message": "<skills_instructions>\n## Skills\nA skill is a set of local instructions to follow that is stored in a `SKILL.md` file. Below is the list of skills that can be used. Each entry includes a name, description, and a short path that can be expanded into an absolute path using the skill roots table.\n### Skill roots\n- `r0` = `/opt/swepm-runtime/home/skills/.system`\n### Available skills\n- imagegen: Generate or edit raster images when the task benefits from AI-created bitmap visuals such as photos, illustrations, textures, sprites, mockups, or transparent-background cutouts. Use when Codex should create a brand-new image, transform an existing image, or derive visual variants from references, and the output should be a bitmap asset rather than repo-native code or vector. Do not use when the task is better handled by editing existing SVG/vector/code-native assets, extending an established icon or logo system, or building the visual directly in HTML/CSS/canvas. (file: r0/imagegen/SKILL.md)\n- openai-docs: Use for Codex models/pricing, scheduled tasks, skills, settings, setup, troubleshooting, customization, automations, and self-knowledge—including 'you,' 'your,' 'this app,' or 'this coding agent' when they refer to Codex—and for OpenAI APIs/products and ChatGPT Work. Also use for model choice/migration, prompting, SDKs, Responses, Realtime, agents, evals, and Chat/Work/Codex comparisons. Do not use for generic app/software tasks that merely mention Codex. (file: r0/openai-docs/SKILL.md)\n- skill-creator: Create or update a Codex skill with appropriately scoped instructions and any needed supporting resources. (file: r0/skill-creator/SKILL.md)\n- skill-installer: Install Codex skills into $CODEX_HOME/skills from a curated list or a GitHub repo path. Use when a user asks to list installable skills, install a curated skill, or install a skill from another repo (including private repos). (file: r0/skill-installer/SKILL.md)\n</skills_instructions><permissions instructions>\nFilesystem sandboxing defines which files can be read or written. `sandbox_mode` is `danger-full-access`: No filesystem sandboxing - all commands are permitted. Network access is enabled.\nApproval policy is currently never. Do not provide the `sandbox_permissions` for any reason, commands will be rejected.\n</permissions instructions><collaboration_mode># Collaboration Mode: Default\n\nYou are now in Default mode. Any previous instructions for other modes (e.g. Plan mode) are no longer active.\n\nYour active mode changes only when new developer instructions with a different `<collaboration_mode>...</collaboration_mode>` change it; user requests or tool descriptions do not change mode by themselves. Known mode names are Default and Plan.\n\n## request_user_input availability\n\nUse the `request_user_input` tool only when it is listed in the available tools for this turn.\n\nUse the `request_user_input` tool only for optional questions where the answer would materially improve the quality of the work.\n\nIf `request_user_input` returns no answers, continue with best judgment instead of asking again or treating the turn as blocked.\n\nNever use the `request_user_input` tool for permission requests or permission-related escalations.\n</collaboration_mode>"
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-10-02T07:28:44.758Z",
+      "source": "system",
+      "message": "<multi_agent_role>You are `/root`, the primary agent in a team of agents collaborating to fulfill the user's goals.\n\nAt the start of your turn, you are the active agent.\nYou can spawn sub-agents to handle subtasks, and those sub-agents can spawn their own sub-agents.\nAll agents in the team, including the agents that you can assign tasks to, are equally intelligent and capable, and have access to the same set of tools.\n\nYou can use `spawn_agent` to create a new agent, `followup_task` to give an existing agent a new task and trigger a turn, and `send_message` to pass a message to a running agent without triggering a turn.\n`send_message` calls may be read by a human, so ensure they are legible. Always put proper spaces between words and/or numbers.\nChild agents can also spawn their own sub-agents.\nYou can decide how much context you want to propagate to your sub-agents with the `fork_turns` parameter.\n\nYou will receive messages in the analysis channel in the form:\n```\nMessage Type: MESSAGE | FINAL_ANSWER\nTask name: <recipient>\nSender: <author>\nPayload:\n<payload text>\n```\nThey may be addressed as to=/root\n\nNote that collaboration tools cannot be called from inside `functions.exec`. Call `spawn_agent`, `send_message`, `followup_task`, `wait_agent`, `interrupt_agent`, and `list_agents` only as direct tool calls using the recipient shown in their tool definitions, such as `to=functions.collaboration.spawn_agent`, since they are intentionally absent from the `functions.exec` `tools.*` namespace. Available tools in `functions.exec` are explicitly described with a `tools` namespace in the developer message.\n\nAll agents share the same directory. In detail:\n- All agents have access to the same container and filesystem as you.\n- All agents use the same current working directory.\n- As a result, edits made by one agent are immediately visible to all other agents.\n\nWhen calling `wait_agent`, prefer longer waits (minutes) to avoid busy polling.\n\nThere are 4 available concurrency slots, meaning that up to 4 agents can be active at once, including you.\n\nFull-history forks (`fork_turns` omitted or `\"all\"`) inherit the parent model and reasoning effort and do not accept overrides. Only set `model` or `reasoning_effort` when explicitly requested by the user, applicable `AGENTS.md` instructions, or skill instructions; when doing so, set `fork_turns` to `\"none\"` or a positive integer string.</multi_agent_role>"
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-10-02T07:28:44.758Z",
+      "source": "system",
+      "message": "<multi_agent_mode>Any earlier instruction enabling proactive multi-agent delegation no longer applies. Do not spawn sub-agents unless the user or applicable AGENTS.md/skill instructions explicitly ask for sub-agents, delegation, or parallel agent work.</multi_agent_mode>"
+    },
+    {
+      "step_id": 4,
+      "timestamp": "2026-10-02T07:28:44.758Z",
+      "source": "user",
+      "message": "# AGENTS.md instructions for /testbed\n\n<INSTRUCTIONS>\n# AGENTS.md\n\nOperational instructions for AI coding agents working in Rig.\n\nFor contributor-facing policy, PR expectations, and accountability guidance, see\n`CONTRIBUTING.md`. This file is for repository-specific engineering rules that\nagents must follow while reading, editing, testing, and documenting code.\n\n## First Principles\n\n- Read the existing implementation before changing code.\n- Keep changes scoped to the user's request.\n- Prefer existing Rig traits, builders, modules, and error types over new abstractions.\n- Do not add TODOs, stubs, placeholder implementations, or speculative APIs.\n- Do not make commits, stage changes, push branches, or open PRs unless the user explicitly asks.\n- Do not discard user changes.\n\n## Repository Shape\n\n- Root facade crate: `rig`\n- Core crate: `crates/rig-core`\n- Companion provider and vector-store crates: `crates/rig-*`\n- Derive macros: `crates/rig-derive`\n- Workspace example packages: `examples/*`\n- Per-crate examples: `crates/<crate>/examples/`\n- Root integration test targets: `tests/*.rs`\n- Provider test modules: `tests/providers/<provider>/`\n- Provider cassette fixtures: `tests/cassettes/<provider>/`\n- External-service integration tests: `tests/integrations/`\n\nThe root `rig` crate re-exports `rig-core` and exposes companion crates behind\nfeature flags. Check `Cargo.toml` and `src/lib.rs` before documenting or changing\nexposed features, integrations, or module paths. If adding or exposing a\ncompanion provider/vector-store crate, update the root dependency, feature,\nfacade re-export, examples, README, and crate docs as applicable.\n\n## Core Architecture\n\nRig is built around provider-agnostic traits:\n\n- `CompletionModel` for text completion and chat models\n- `EmbeddingModel` for embedding generation\n- `VectorStoreIndex` for vector similarity search\n- `Tool` for callable tools\n\nUse these traits instead of creating parallel abstractions.\n\nConfigurable public types should follow Rig's builder style:\n\n```rust\nlet agent = client\n    .agent(openai::GPT_5_2)\n    .preamble(\"System prompt\")\n    .tool(my_tool)\n    .temperature(0.8)\n    .build();\n```\n\nProvider clients use the generic client architecture:\n\n```rust\npub struct Client<Ext = Nothing, H = reqwest::Client> {\n    // ...\n}\n```\n\nProviders declare capabilities explicitly with `Capable<T>` and `Nothing`.\n\n## WASM Compatibility\n\nRig supports WebAssembly targets.\n\nUse `WasmCompatSend` and `WasmCompatSync` in trait bounds instead of raw `Send`\nand `Sync`.\n\nUse `WasmBoxedFuture` for boxed futures.\n\nWhen an error type stores boxed errors, use platform-specific bounds:\n\n```rust\n#[cfg(not(target_family = \"wasm\"))]\nBox<dyn std::error::Error + Send + Sync + 'static>\n\n#[cfg(target_family = \"wasm\")]\nBox<dyn std::error::Error + 'static>\n```\n\n## Error Handling\n\n- Do not use `String` as an error type for new fallible APIs.\n- Use explicit error enums with `thiserror`.\n- Do not use `.unwrap()` or `.expect()` on fallible operations unless the condition is genuinely impossible and obvious from the code.\n- Prefer `?` and meaningful error conversions.\n\n## Documentation\n\n- Add `///` docs to new public items.\n- Add `//!` docs to new public modules.\n- Keep examples current with actual APIs, model constants, module paths, and feature flags.\n- Mark examples `no_run` when they require external credentials or services.\n- Do not document integrations, features, model constants, or crate paths without checking the code and manifests.\n- Keep root README, crate READMEs, and crate-level Rust docs consistent when changing public-facing behavior.\n\n## Provider Changes\n\nBefore implementing or modifying a provider, study the closest existing provider\nimplementation. For OpenAI-compatible chat APIs, start with:\n\n`crates/rig-core/src/providers/openai/`\n\nProvider implementations should include:\n\n- Provider extension and builder types\n- `Provider` implementation\n- `Capabilities` declaration\n- `ProviderBuilder` implementation\n- `ProviderClient::{from_env, from_val}`\n- public `Client` and `ClientBuilder` aliases; the `ClientBuilder` API-key generic must match `ProviderBuilder::ApiKey`\n- explicit API-key marker/auth types with redacted debug behavior for credential-bearing values\n- model constants where useful\n- request conversion from Rig request types\n- response conversion into Rig response types\n- streaming support when the provider supports streaming\n- provider-response error preservation through the relevant Rig error helpers\n- `ProviderResponseExt` and telemetry spans following existing GenAI conventions\n- tests or examples appropriate to the provider\n\nDo not add request or response fields that do not exist in the provider's real API.\n\nFor provider bug fixes or behavior changes, add or update regression coverage in\none of these places, preferring the smallest reliable scope:\n\n- unit tests near the implementation in `crates/rig-core/src/providers/...`;\n- cassette-backed provider tests in `tests/providers/<provider>/cassette/`;\n- ignored live tests only when cassette replay is unsuitable.\n\n## Vector Store Changes\n\nVector stores should live in companion crates unless there is a strong reason to\nplace them in `rig-core`.\n\nImplement both:\n\n- `top_n`\n- `top_n_ids`\n\nUse an appropriate backend-specific filter type.\n\nReturn `VectorStoreError` variants instead of ad hoc string errors.\n\nUse `WasmCompatSend` and `WasmCompatSync` bounds.\n\n## Agent Hook Changes\n\nAgent hooks are per-run lifecycle observers and steerers. `AgentHook` exposes\none method per lifecycle event, and every method receives the run-scoped\n`HookContext` (run id, turn, streaming flag, agent name, shared `Scratchpad`).\nEach method returns an event-specific action type, so unsupported combinations\nare rejected by the compiler.\n\nComposition through `HookStack` remains event-dependent:\n\n- **Completion calls accumulate and merge.** Every\n  `CompletionCallAction::Patch(RequestPatch)` is merged in registration order;\n  `Stop` short-circuits the stack.\n- **Tool calls and results chain.** `ToolCallAction::Rewrite` and\n  `ToolResultAction::Rewrite` are threaded into later hooks. A tool-call `Skip`\n  or either event's `Stop` is terminal.\n- **Invalid tool calls** return `InvalidToolCallAction` (`Fail`, `Retry`,\n  `Repair`, `Skip`, or `Stop`).\n- **Observe-only events** return `ObservationAction` (`Continue` or `Stop`).\n\nRegister observe-only hooks before steering hooks because stop actions\nshort-circuit. Nested `HookStack`s must preserve merge and chaining semantics.\n`RequestPatch` remains per-turn and non-sticky; its documented merge rules are\nappend `extra_context`, shallow-merge `additional_params`, intersect\n`active_tools`, and last-writer-wins scalars/history with a warning.\n\nEvery hook semantic must behave identically on streaming and non-streaming\nsurfaces (`AgentRunner::stream` and `AgentRunner::run` share `drive_agent`).\n\n## Style\n\n- Use full `where` clauses for complex trait bounds.\n- Comments should explain why, not restate what the code does.\n- Follow local naming, module layout, and test patterns.\n- Avoid unrelated refactors.\n\n## Cassette Regression Tests\n\nProvider regressions should usually include cassette-backed tests. Read\n`tests/README.md` before adding, updating, or running provider tests.\n\n- Test code lives under `tests/providers/<provider>/cassette/`.\n- Fixtures live under `tests/cassettes/<provider>/...`.\n- Replay cassettes by default; this should not require provider API keys.\n- Record mode requires the relevant provider API key and overwrites fixtures.\n- Keep record runs targeted to the provider and test being changed.\n\nReplay examples:\n\n```bash\ncargo test -p rig --all-features --test openai openai::cassette -- --nocapture --test-threads=1\ncargo test -p rig --all-features --test anthropic anthropic::cassette -- --nocapture --test-threads=1\ncargo test -p rig --all-features --test gemini gemini::cassette -- --nocapture --test-threads=1\n```\n\nRecord example:\n\n```bash\nRIG_PROVIDER_TEST_MODE=record \\\n  cargo test -p rig --all-features --test openai openai::cassette -- --nocapture --test-threads=1\n```\n\nReview cassette diffs carefully. They must not contain API keys, bearer tokens,\ncookies, provider account identifiers, or unrelated request/response churn. The\nrepo includes cassette scrub/safety checks in `tests/common/cassette_safety.rs`,\nbut agents are still responsible for inspecting generated fixtures before\npresenting changes.\n\n## Verification\n\nRun the smallest useful checks first, then broaden as needed. For tests, prefer\nthe targeted commands in `tests/README.md` before running broad workspace checks.\n\nBefore considering code complete, run when feasible:\n\n```bash\ncargo fmt\ncargo clippy --all-targets --all-features\ncargo test\n```\n\nFor documentation changes, also consider:\n\n```bash\ncargo doc --workspace --no-deps\n```\n\nIf a command cannot be run, say why and tell the user exactly what remains\nunverified.\n\n</INSTRUCTIONS><environment_context>\n  <cwd>/testbed</cwd>\n  <shell>bash</shell>\n  <current_date>2026-10-02</current_date>\n  <timezone>Etc/UTC</timezone>\n  <filesystem><workspace_roots><root>/testbed</root></workspace_roots><permission_profile type=\"disabled\"><file_system type=\"unrestricted\" /></permission_profile></filesystem>\n</environment_context>"
+    },
+    {
+      "step_id": 5,
+      "timestamp": "2026-10-02T07:28:44.769Z",
+      "source": "user",
+      "message": "The Ollama and Copilot model-listing implementations currently decode `GET /models` response bodies with provider-local `serde_json::from_slice` calls for their `ListModelsResponse` types. This creates special-case JSON parsing paths that have to be exempted in `crates/rig-core/tests/serde_policy_allowlist.txt`, alongside streaming-frame parsing exceptions, even though model listing is a normal unary response.\n\nUpdate the model listing code so Ollama’s lister and Copilot’s lister no longer need serde-policy allowlist entries for lines like `ListModelsResponse = serde_json::from_slice(&body)`. The observable behavior of model listing should remain unchanged: successful list-model responses should still deserialize into the same public `ModelList`/model entries, and non-successful or malformed provider responses should still surface through the existing model-listing error flow with provider response details preserved where applicable.\n\nAfter the change, the serde policy allowlist should not contain exceptions for Ollama or Copilot list-model response decoding, while the rest of the allowed unary and streaming JSON parsing entries remain unaffected.\n"
+    },
+    {
+      "step_id": 6,
+      "timestamp": "2026-10-02T07:28:47.175Z",
+      "source": "agent",
+      "model_name": "gpt-6-luna",
+      "message": "I’ll trace both listers and their existing error conversion, then update only the response-decoding path and the corresponding allowlist entries. I’ll read the relevant tests/policy before editing.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_nGPqoIZnDNJz7kIirmuyUKuF",
+          "function_name": "exec",
+          "arguments": {
+            "input": "const r = await tools.exec_command({cmd:\"rg -n \\\"ListModelsResponse|serde_json::from_slice|ollama|copilot\\\" crates/rig-core/src/providers crates/rig-core/tests/serde_policy_allowlist.txt\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:5000}); text(r.output);\n"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_nGPqoIZnDNJz7kIirmuyUKuF",
+            "content": "[{'type': 'input_text', 'text': 'Script completed\\nWall time 0.1 seconds\\nOutput:\\n'}, {'type': 'input_text', 'text': '/bin/bash: line 1: rg: command not found\\n'}]"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 14436,
+        "completion_tokens": 145,
+        "cached_tokens": 9984,
+        "cost_usd": 0.00061754,
+        "extra": {
+          "reasoning_output_tokens": 16,
+          "total_tokens": 14581,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "api_call_id": "api_call_1",
+        "codex_turn_id": "01a0fb83-ef33-7383-bb59-07d9f5d155da",
+        "tool_call_details": {
+          "call_nGPqoIZnDNJz7kIirmuyUKuF": {
+            "raw_arguments": "const r = await tools.exec_command({cmd:\"rg -n \\\"ListModelsResponse|serde_json::from_slice|ollama|copilot\\\" crates/rig-core/src/providers crates/rig-core/tests/serde_policy_allowlist.txt\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:5000}); text(r.output);\n",
+            "item_type": "custom_tool_call",
+            "status": "completed"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 7,
+      "timestamp": "2026-10-02T07:28:51.456Z",
+      "source": "agent",
+      "model_name": "gpt-6-luna",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_crUhOZK0kIY9HGNJ8HdqlAh1",
+          "function_name": "exec",
+          "arguments": {
+            "input": "const r = await tools.exec_command({cmd:\"grep -RInE \\\"ListModelsResponse|serde_json::from_slice\\\" crates/rig-core/src/providers crates/rig-core/tests/serde_policy_allowlist.txt\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:6000}); text(r.output);\n"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_crUhOZK0kIY9HGNJ8HdqlAh1",
+            "content": "[{'type': 'input_text', 'text': 'Script completed\\nWall time 0.0 seconds\\nOutput:\\n'}, {'type': 'input_text', 'text': 'crates/rig-core/src/providers/together/embedding.rs:73:            serde_json::from_slice(&requests[0].body).expect(\"request body should be JSON\");\\ncrates/rig-core/src/providers/together/embedding.rs:88:        let body: serde_json::Value = serde_json::from_slice(&http_client.requests()[0].body)\\ncrates/rig-core/src/providers/anthropic/model_listing.rs:11:struct ListModelsResponse {\\ncrates/rig-core/src/providers/anthropic/model_listing.rs:57:            let page: ListModelsResponse =\\ncrates/rig-core/src/providers/anthropic/completion.rs:2528:            match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&body)? {\\ncrates/rig-core/src/providers/mistral/transcription.rs:155:                serde_json::from_slice(&response_bytes)?;\\ncrates/rig-core/src/providers/mistral/embedding.rs:97:            serde_json::from_slice(&requests[0].body).expect(\"request body should be JSON\");\\ncrates/rig-core/src/providers/internal/transcription.rs:193:        match serde_json::from_slice::<A>(&response_body)?.into_payload() {\\ncrates/rig-core/src/providers/internal/image_generation.rs:51:    match serde_json::from_slice::<A>(&response_body)?.into_payload() {\\ncrates/rig-core/src/providers/internal/model_listing.rs:107:    serde_json::from_slice(&body).map_err(|error| {\\ncrates/rig-core/src/providers/internal/wire.rs:190:    match serde_json::from_slice::<T>(line) {\\ncrates/rig-core/src/providers/azure.rs:893:            serde_json::from_slice(&requests[0].body).expect(\"request body should be JSON\");\\ncrates/rig-core/src/providers/azure.rs:946:            serde_json::from_slice(&request.body).expect(\"captured body should be JSON\");\\ncrates/rig-core/src/providers/openrouter/transcription.rs:187:            let resp: TranscriptionResponse = serde_json::from_slice(&body_bytes)?;\\ncrates/rig-core/src/providers/openrouter/embedding.rs:51:            serde_json::from_slice(&requests[0].body).expect(\"request body should be JSON\");\\ncrates/rig-core/src/providers/ollama.rs:263:        let api_resp: EmbeddingResponse = serde_json::from_slice(&bytes)?;\\ncrates/rig-core/src/providers/ollama.rs:748:            let response: CompletionResponse = serde_json::from_slice(&response_body)?;\\ncrates/rig-core/src/providers/ollama.rs:1014:struct ListModelsResponse {\\ncrates/rig-core/src/providers/ollama.rs:1063:        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {\\ncrates/rig-core/src/providers/ollama.rs:2783:                    serde_json::from_slice(&line).expect(\"each drained line must be valid JSON\");\\ncrates/rig-core/src/providers/xai/completion.rs:326:                match serde_json::from_slice::<ApiResponse<CompletionResponse>>(&response_body)? {\\ncrates/rig-core/src/providers/cohere/embeddings.rs:118:            let body: ApiResponse<EmbeddingResponse> = serde_json::from_slice(raw_body.as_slice())?;\\ncrates/rig-core/src/providers/cohere/completion.rs:758:                let json_response: CompletionResponse = serde_json::from_slice(&body)?;\\ncrates/rig-core/src/providers/openai/embedding.rs:242:                serde_json::from_slice(&response_body)?;\\ncrates/rig-core/src/providers/openai/embedding.rs:453:            serde_json::from_slice(&requests[0].body).expect(\"request body should be JSON\");\\ncrates/rig-core/src/providers/chatgpt/auth/native.rs:137:            Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),\\ncrates/rig-core/src/providers/chatgpt/auth/native.rs:347:        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())\\ncrates/rig-core/src/providers/voyageai.rs:204:            match serde_json::from_slice::<ApiResponse<EmbeddingResponse>>(&response_body)? {\\ncrates/rig-core/src/providers/voyageai.rs:379:            match serde_json::from_slice::<ApiResponse<RerankApiResponse>>(&response_body)? {\\ncrates/rig-core/src/providers/hyperbolic.rs:357:            match serde_json::from_slice::<ApiResponse<AudioGenerationResponse>>(&response_body)? {\\ncrates/rig-core/src/providers/copilot/mod.rs:1231:            let body: CopilotEmbeddingResponse = match serde_json::from_slice(&body) {\\ncrates/rig-core/src/providers/copilot/mod.rs:1234:                    if let Ok(err) = serde_json::from_slice::<NestedApiError>(&body) {\\ncrates/rig-core/src/providers/copilot/mod.rs:1289:struct ListModelsResponse {\\ncrates/rig-core/src/providers/copilot/mod.rs:1372:        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {\\ncrates/rig-core/src/providers/copilot/auth/native.rs:314:            Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),\\ncrates/rig-core/src/providers/huggingface/transcription.rs:72:        match serde_json::from_slice::<ApiResponse<TranscriptionResponse>>(&body)? {\\ncrates/rig-core/src/providers/gemini/transcription.rs:106:                serde_json::from_slice(&response.into_body().await?)?;\\ncrates/rig-core/src/providers/gemini/model_listing.rs:15:struct ListModelsResponse {\\ncrates/rig-core/src/providers/gemini/model_listing.rs:95:    let page: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {\\ncrates/rig-core/src/providers/gemini/embedding.rs:127:        match serde_json::from_slice::<ApiResponse<gemini_api_types::EmbeddingResponse>>(&body)? {\\ncrates/rig-core/src/providers/gemini/completion.rs:140:                let response: GenerateContentResponse = serde_json::from_slice(&response_body)\\ncrates/rig-core/src/providers/gemini/interactions_api/mod.rs:170:                    serde_json::from_slice(&response_body).map_err(|err| {\\ncrates/rig-core/src/providers/gemini/interactions_api/mod.rs:441:        let response: Interaction = serde_json::from_slice(&response_body).map_err(|err| {\\ncrates/rig-core/tests/serde_policy_allowlist.txt:35:providers/ollama.rs | serde_json::from_slice(&bytes)?; | unary embedding response body, not a stream frame\\ncrates/rig-core/tests/serde_policy_allowlist.txt:36:providers/ollama.rs | serde_json::from_slice(&response_body)?; | unary completion response body, not a stream frame\\ncrates/rig-core/tests/serde_policy_allowlist.txt:37:providers/ollama.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame\\ncrates/rig-core/tests/serde_policy_allowlist.txt:40:providers/copilot/mod.rs | CopilotEmbeddingResponse = match serde_json::from_slice | unary embedding response body, not a stream frame\\ncrates/rig-core/tests/serde_policy_allowlist.txt:41:providers/copilot/mod.rs | serde_json::from_slice::<NestedApiError>(&body) | unary error-envelope decode on a non-2xx body, not a stream frame\\ncrates/rig-core/tests/serde_policy_allowlist.txt:42:providers/copilot/mod.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame\\n'}]"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 14617,
+        "completion_tokens": 94,
+        "cached_tokens": 14080,
+        "cost_usd": 0.00024150000000000002,
+        "extra": {
+          "reasoning_output_tokens": 14,
+          "total_tokens": 14711,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "api_call_id": "api_call_2",
+        "codex_turn_id": "01a0fb83-ef33-7383-bb59-07d9f5d155da",
+        "tool_call_details": {
+          "call_crUhOZK0kIY9HGNJ8HdqlAh1": {
+            "raw_arguments": "const r = await tools.exec_command({cmd:\"grep -RInE \\\"ListModelsResponse|serde_json::from_slice\\\" crates/rig-core/src/providers crates/rig-core/tests/serde_policy_allowlist.txt\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:6000}); text(r.output);\n",
+            "item_type": "custom_tool_call",
+            "status": "completed"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 8,
+      "timestamp": "2026-10-02T07:28:55.157Z",
+      "source": "agent",
+      "model_name": "gpt-6-luna",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_goIENkeOayDyKEd6lo6fcChl",
+          "function_name": "exec",
+          "arguments": {
+            "input": "const r = await tools.exec_command({cmd:\"sed -n '1,180p' crates/rig-core/src/providers/internal/model_listing.rs && sed -n '990,1095p' crates/rig-core/src/providers/ollama.rs && sed -n '1260,1410p' crates/rig-core/src/providers/copilot/mod.rs && cat crates/rig-core/tests/serde_policy_allowlist.txt &&\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:9500}); text(r.output);\n"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_goIENkeOayDyKEd6lo6fcChl",
+            "content": "[{'type': 'input_text', 'text': 'Script completed\\nWall time 0.0 seconds\\nOutput:\\n'}, {'type': 'input_text', 'text': '/bin/bash: -c: line 2: syntax error: unexpected end of file\\n'}]"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 16388,
+        "completion_tokens": 142,
+        "cached_tokens": 14080,
+        "cost_usd": 0.0004426,
+        "extra": {
+          "reasoning_output_tokens": 19,
+          "total_tokens": 16530,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "api_call_id": "api_call_3",
+        "codex_turn_id": "01a0fb83-ef33-7383-bb59-07d9f5d155da",
+        "tool_call_details": {
+          "call_goIENkeOayDyKEd6lo6fcChl": {
+            "raw_arguments": "const r = await tools.exec_command({cmd:\"sed -n '1,180p' crates/rig-core/src/providers/internal/model_listing.rs && sed -n '990,1095p' crates/rig-core/src/providers/ollama.rs && sed -n '1260,1410p' crates/rig-core/src/providers/copilot/mod.rs && cat crates/rig-core/tests/serde_policy_allowlist.txt &&\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:9500}); text(r.output);\n",
+            "item_type": "custom_tool_call",
+            "status": "completed"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 9,
+      "timestamp": "2026-10-02T07:28:58.666Z",
+      "source": "agent",
+      "model_name": "gpt-6-luna",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_dDHBhzMllpxBt4ZoBemYg4qu",
+          "function_name": "exec",
+          "arguments": {
+            "input": "const r = await tools.exec_command({cmd:\"sed -n '1,180p' crates/rig-core/src/providers/internal/model_listing.rs; sed -n '990,1095p' crates/rig-core/src/providers/ollama.rs; sed -n '1260,1410p' crates/rig-core/src/providers/copilot/mod.rs; cat crates/rig-core/tests/serde_policy_allowlist.txt\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:10500}); text(r.output);\n"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_dDHBhzMllpxBt4ZoBemYg4qu",
+            "content": "[{'type': 'input_text', 'text': 'Script completed\\nWall time 0.0 seconds\\nOutput:\\n'}, {'type': 'input_text', 'text': '//! Shared plumbing for provider `GET /models` listings.\\n//!\\n//! Every provider\\'s model listing is the same HTTP conversation — GET a\\n//! path, triage the status, decode a `{ \"data\": [...] }` envelope, convert\\n//! entries into [`Model`]s — differing only in the path, the provider label\\n//! used in error context, and the entry DTO. The DTOs and their\\n//! `From<Entry> for Model` impls stay in each provider module (that mapping\\n//! is genuinely provider-specific); the conversation lives here once.\\n\\nuse crate::{\\n    client::{Client, Provider},\\n    http_client::{self, HttpClientExt},\\n    model::{Model, ModelList, ModelListingError},\\n    wasm_compat::{WasmCompatSend, WasmCompatSync},\\n};\\n\\n/// The standard `{ \"data\": [...] }` list envelope shared by OpenAI-style\\n/// listing endpoints.\\n#[derive(Debug, serde::Deserialize)]\\npub(crate) struct DataEnvelope<Entry> {\\n    pub(crate) data: Vec<Entry>,\\n}\\n\\n/// The standard OpenAI-style listing entry (OpenAI, Mistral, DeepSeek,\\n/// Xiaomi MiMo). `id` is the one field every listing carries; the rest are\\n/// optional so providers that omit them still decode. Providers whose\\n/// entries genuinely diverge keep their own DTO.\\n#[derive(Debug, serde::Deserialize)]\\npub(crate) struct ListModelEntry {\\n    pub(crate) id: String,\\n    pub(crate) name: Option<String>,\\n    pub(crate) created: Option<u64>,\\n    pub(crate) owned_by: Option<String>,\\n}\\n\\nimpl From<ListModelEntry> for Model {\\n    fn from(value: ListModelEntry) -> Self {\\n        let mut model = Model::from_id(value.id);\\n        model.name = value.name;\\n        model.created_at = value.created;\\n        model.owned_by = value.owned_by;\\n        model\\n    }\\n}\\n\\n/// Map a transport-level send error into listing-flavored context: an\\n/// [`http_client::Error::InvalidStatusCodeWithMessage`] (backends that reject\\n/// non-2xx before handing back a response) keeps the provider label, path,\\n/// status, and body preview, exactly like a non-2xx status on a returned\\n/// response. Shared with listings that build their own request (copilot\\'s\\n/// auth-derived base URL cannot go through [`get_json`]).\\npub(crate) fn map_transport_error(\\n    provider_name: &str,\\n    path: &str,\\n    error: http_client::Error,\\n) -> ModelListingError {\\n    match error {\\n        http_client::Error::InvalidStatusCodeWithMessage(status, message) => {\\n            ModelListingError::api_error_with_context(\\n                provider_name,\\n                path,\\n                status.as_u16(),\\n                message.as_bytes(),\\n            )\\n        }\\n        other => ModelListingError::from(other),\\n    }\\n}\\n\\n/// GET `path` and decode the response body as `T`, with listing-flavored\\n/// error context.\\n///\\n/// Error triage is standardized on the most informative behavior: an\\n/// [`http_client::Error::InvalidStatusCodeWithMessage`] surfaced by the\\n/// transport (backends that reject non-2xx before handing back a response)\\n/// is mapped into [`ModelListingError::api_error_with_context`] so the\\n/// provider label, path, status, and body preview survive, exactly like a\\n/// non-2xx status on a returned response.\\npub(crate) async fn get_json<T, Ext, H>(\\n    client: &Client<Ext, H>,\\n    provider_name: &str,\\n    path: &str,\\n) -> Result<T, ModelListingError>\\nwhere\\n    T: serde::de::DeserializeOwned,\\n    Ext: Provider + WasmCompatSend + WasmCompatSync + \\'static,\\n    H: HttpClientExt + WasmCompatSend + WasmCompatSync + \\'static,\\n{\\n    let req = client.get(path)?.body(http_client::NoBody)?;\\n    let response = client\\n        .send::<_, Vec<u8>>(req)\\n        .await\\n        .map_err(|error| map_transport_error(provider_name, path, error))?;\\n\\n    if !response.status().is_success() {\\n        let status_code = response.status().as_u16();\\n        let body = response.into_body().await?;\\n        return Err(ModelListingError::api_error_with_context(\\n            provider_name,\\n            path,\\n            status_code,\\n            &body,\\n        ));\\n    }\\n\\n    let body = response.into_body().await?;\\n    serde_json::from_slice(&body).map_err(|error| {\\n        ModelListingError::parse_error_with_context(provider_name, path, &error, &body)\\n    })\\n}\\n\\n/// List models from an OpenAI-style `{ \"data\": [Entry, ...] }` endpoint,\\n/// converting each entry via `Entry: Into<Model>`.\\npub(crate) async fn list_models<Entry, Ext, H>(\\n    client: &Client<Ext, H>,\\n    provider_name: &str,\\n    path: &str,\\n) -> Result<ModelList, ModelListingError>\\nwhere\\n    Entry: serde::de::DeserializeOwned + Into<Model>,\\n    Ext: Provider + WasmCompatSend + WasmCompatSync + \\'static,\\n    H: HttpClientExt + WasmCompatSend + WasmCompatSync + \\'static,\\n{\\n    let envelope: DataEnvelope<Entry> = get_json(client, provider_name, path).await?;\\n    let models = envelope.data.into_iter().map(Into::into).collect();\\n    Ok(ModelList::new(models))\\n}\\n\\n#[cfg(test)]\\nmod tests {\\n    use super::ListModelEntry;\\n    use crate::model::Model;\\n\\n    /// `id` is the one required field: an entry that carries nothing else\\n    /// (some OpenAI-compatible gateways omit `created`/`owned_by`) still\\n    /// decodes, mapping the absent fields to `None` on the `Model`.\\n    #[test]\\n    fn minimal_entry_decodes_with_id_alone() {\\n        let entry: ListModelEntry =\\n            serde_json::from_str(r#\"{\"id\":\"gpt-test\"}\"#).expect(\"minimal entry should decode\");\\n        let model = Model::from(entry);\\n        assert_eq!(model.id, \"gpt-test\");\\n        assert_eq!(model.name, None);\\n        assert_eq!(model.created_at, None);\\n        assert_eq!(model.owned_by, None);\\n    }\\n}\\n    async fn completion(\\n        &self,\\n        completion_request: CompletionRequest,\\n    ) -> Result<completion::CompletionResponse, CompletionError> {\\n        self.raw_completion(completion_request).await?.try_into()\\n    }\\n\\n    async fn stream(\\n        &self,\\n        request: CompletionRequest,\\n    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {\\n        let stream = self.raw_stream(request).await?;\\n        let normalized = streaming::normalize_stream(stream, |response| Ok(response.into()));\\n\\n        Ok(streaming::StreamingCompletionResponse::stream(\\n            PROVIDER_NAME,\\n            normalized,\\n        ))\\n    }\\n}\\n\\n// ---------- Model Listing  ----------\\n\\n#[derive(Debug, Deserialize)]\\nstruct ListModelsResponse {\\n    models: Vec<ListModelEntry>,\\n}\\n\\n#[derive(Debug, Deserialize)]\\nstruct ListModelEntry {\\n    name: String,\\n    model: String,\\n}\\n\\nimpl From<ListModelEntry> for Model {\\n    fn from(value: ListModelEntry) -> Self {\\n        Model::new(value.model, value.name)\\n    }\\n}\\n\\n/// [`ModelLister`] implementation for the Ollama API (`GET /api/tags`).\\n#[derive(Clone)]\\npub struct OllamaModelLister<H = reqwest::Client> {\\n    client: Client<H>,\\n}\\n\\nimpl<H> ModelLister<H> for OllamaModelLister<H>\\nwhere\\n    H: HttpClientExt + WasmCompatSend + WasmCompatSync + \\'static,\\n{\\n    type Client = Client<H>;\\n\\n    fn new(client: Self::Client) -> Self {\\n        Self { client }\\n    }\\n\\n    async fn list_all(&self) -> Result<ModelList, ModelListingError> {\\n        let path = \"/api/tags\";\\n        let req = self.client.get(path)?.body(http_client::NoBody)?;\\n        let response = self.client.send::<_, Vec<u8>>(req).await?;\\n\\n        if !response.status().is_success() {\\n            let status_code = response.status().as_u16();\\n            let body = response.into_body().await?;\\n            return Err(ModelListingError::api_error_with_context(\\n                \"Ollama\",\\n                path,\\n                status_code,\\n                &body,\\n            ));\\n        }\\n\\n        let body = response.into_body().await?;\\n        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {\\n            ModelListingError::parse_error_with_context(\"Ollama\", path, &error, &body)\\n        })?;\\n        let models = api_resp.models.into_iter().map(Model::from).collect();\\n\\n        Ok(ModelList::new(models))\\n    }\\n}\\n\\n// ---------- Tool Definition Conversion ----------\\n\\n/// Ollama-required tool definition format.\\n#[derive(Clone, Debug, Deserialize, Serialize)]\\npub struct ToolDefinition {\\n    #[serde(rename = \"type\")]\\n    pub type_field: String, // Fixed as \"function\"\\n    pub function: completion::ToolDefinition,\\n}\\n\\n/// Convert internal ToolDefinition (from the completion module) into Ollama\\'s tool definition.\\nimpl From<crate::completion::ToolDefinition> for ToolDefinition {\\n    fn from(tool: crate::completion::ToolDefinition) -> Self {\\n        ToolDefinition {\\n            type_field: \"function\".to_owned(),\\n            function: completion::ToolDefinition {\\n                name: tool.name,\\n                description: tool.description,\\n                parameters: tool.parameters,\\n            },\\n        }\\n    }\\n}\\n\\n                .map(|usage| usage.to_normalized())\\n                .unwrap_or_default();\\n\\n            let embeddings = body\\n                .data\\n                .into_iter()\\n                .zip(documents.into_iter())\\n                .map(|(embedding, document)| embeddings::Embedding {\\n                    document,\\n                    vec: embedding\\n                        .embedding\\n                        .into_iter()\\n                        .filter_map(|n| n.as_f64())\\n                        .collect(),\\n                })\\n                .collect();\\n\\n            Ok(embeddings::EmbeddingResponse { embeddings, usage })\\n        } else {\\n            let text = http_client::text(response).await?;\\n            Err(EmbeddingError::from_http_response(status, text))\\n        }\\n    }\\n}\\n\\nconst MODEL_LISTING_PATH: &str = \"/models\";\\nconst MODEL_LISTING_PROVIDER: &str = \"Copilot\";\\n\\n#[derive(Debug, Deserialize)]\\nstruct ListModelsResponse {\\n    data: Vec<ListModelEntry>,\\n}\\n\\n#[derive(Debug, Deserialize)]\\nstruct ListModelEntry {\\n    id: String,\\n    #[serde(default)]\\n    name: Option<String>,\\n    #[serde(default)]\\n    vendor: Option<String>,\\n    #[serde(default)]\\n    capabilities: Option<ListModelEntryCapabilities>,\\n}\\n\\n#[derive(Debug, Deserialize)]\\nstruct ListModelEntryCapabilities {\\n    #[serde(default, rename = \"type\")]\\n    r#type: Option<String>,\\n}\\n\\nimpl From<ListModelEntry> for Model {\\n    fn from(value: ListModelEntry) -> Self {\\n        let mut model = Model::from_id(value.id);\\n        model.name = value.name;\\n        model.owned_by = value.vendor;\\n        if let Some(caps) = value.capabilities {\\n            model.r#type = caps.r#type;\\n        }\\n        model\\n    }\\n}\\n\\n/// [`ModelLister`] implementation for the GitHub Copilot API (`GET /models`).\\n#[derive(Clone)]\\npub struct CopilotModelLister<H = reqwest::Client> {\\n    client: Client<H>,\\n}\\n\\nimpl<H> ModelLister<H> for CopilotModelLister<H>\\nwhere\\n    H: HttpClientExt + Clone + Debug + Default + WasmCompatSend + WasmCompatSync + \\'static,\\n{\\n    type Client = Client<H>;\\n\\n    fn new(client: Self::Client) -> Self {\\n        Self { client }\\n    }\\n\\n    async fn list_all(&self) -> Result<ModelList, ModelListingError> {\\n        let auth = self.client.ext().auth.auth_context().await.map_err(|err| {\\n            ModelListingError::AuthError {\\n                message: err.to_string(),\\n            }\\n        })?;\\n\\n        let headers = default_headers(&auth.api_key, \"user\", false, CopilotIntent::Panel);\\n        let req = apply_headers(\\n            get_with_auth_base(&self.client, &auth, MODEL_LISTING_PATH, Transport::Http)?,\\n            &headers,\\n        )\\n        .body(http_client::NoBody)?;\\n\\n        let response = self.client.send::<_, Vec<u8>>(req).await.map_err(|error| {\\n            crate::providers::internal::model_listing::map_transport_error(\\n                MODEL_LISTING_PROVIDER,\\n                MODEL_LISTING_PATH,\\n                error,\\n            )\\n        })?;\\n\\n        if !response.status().is_success() {\\n            let status_code = response.status().as_u16();\\n            let body = response.into_body().await?;\\n            return Err(ModelListingError::api_error_with_context(\\n                MODEL_LISTING_PROVIDER,\\n                MODEL_LISTING_PATH,\\n                status_code,\\n                &body,\\n            ));\\n        }\\n\\n        let body = response.into_body().await?;\\n        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {\\n            ModelListingError::parse_error_with_context(\\n                MODEL_LISTING_PROVIDER,\\n                MODEL_LISTING_PATH,\\n                &error,\\n                &body,\\n            )\\n        })?;\\n        let models = api_resp.data.into_iter().map(Model::from).collect();\\n\\n        Ok(ModelList::new(models))\\n    }\\n}\\n\\nasync fn send_copilot_chat_raw_streaming_request<T>(\\n    http_client: T,\\n    req: Request<Vec<u8>>,\\n) -> Result<crate::streaming::RawStreamingResult<CopilotStreamingResponse>, CompletionError>\\nwhere\\n    T: HttpClientExt + Clone + \\'static,\\n{\\n    // Copilot\\'s `/chat/completions` route relays OpenAI\\'s chat-completions\\n    // SSE wire verbatim, so OpenAI\\'s shared streaming profile (tolerant\\n    // deserializers, reasoning handling, finish-reason mapping) is the event\\n    // interpreter — only the auth/transport in the caller and the\\n    // route-carrying terminal wrapper below are Copilot-specific.\\n    let raw =\\n        openai::completion::streaming::send_compatible_raw_streaming_request(http_client, req)\\n            .await?;\\n    let stream = raw.map(|item| {\\n        item.and_then(|choice| {\\n            choice.try_map_final(|response| Ok(CopilotStreamingResponse::Chat(response)))\\n        })\\n    });\\n\\n    Ok(Box::pin(stream))\\n}\\n\\nfn default_token_dir() -> Option<PathBuf> {\\n# Allowlist for the serde policy wall (see driver_adoption.rs,\\n# `provider_streaming_modules_never_raw_parse_the_wire`).\\n#\\n# Format: `path suffix | line snippet | one-line justification`.\\n# Every entry must justify why the raw parse is NOT wire-frame triage:\\n# frame decoding belongs to the wire.rs classifiers and the adapter driver.\\n# Stale entries (matching no shipped line) fail the guard — delete them\\n# alongside the code they covered.\\n\\n# --- shared Chat Completions-compatible helper: in-band error triage -------\\nproviders/internal/openai_chat_completions_compatible.rs | serde_json::from_str::<serde_json::Value>(data).ok()?; | provider_response_from_compatible_sse_data deliberately runs pre-classification: compatible gateways send in-band error envelopes as data frames (\"Treat the chunk as an error only when `error` is present AND carries a payload ... canonical OpenAI-compatible error event\"), so it peeks for a populated `error` key (with no `choices`) to surface a CompletionError; unparseable or non-error chunks fall through to the classifier untouched.\\n\\n# --- anthropic: content assembly, not frame triage -------------------------\\nproviders/anthropic/streaming.rs | citation: serde_json::from_value(citation) | Field decode inside the content-delta Deserialize impl: converts the `citation` value of an already-tag-matched `citations_delta` into its typed form; failure is a serde::de error and unrecognized tags fall to Self::Unknown, so no frame is triaged here.\\nproviders/anthropic/streaming.rs | serde_json::from_str(&server_tool_use.input_json) | Assembles the accumulated server_tool_use partial_json fragments into the raw-content value; malformed input surfaces as a CompletionError, no frame is triaged here.\\n\\n# --- openai Responses websocket: websocket-only envelope pre-dispatch ------\\n# `error` and `response.done` are transport envelopes outside the modeled\\n# Responses event set; parse_server_event dispatches exactly those two and\\n# routes every other frame through classify_responses_frame + triage_frame.\\nproviders/openai/responses_api/websocket.rs | serde_json::from_str::<EventType>(payload) | Reads only the `type` tag to dispatch the two websocket-only envelopes; a corrupt payload errors, never skips.\\nproviders/openai/responses_api/websocket.rs | \"error\" => serde_json::from_str(payload) | Decodes the websocket-only `error` envelope (outside the modeled Responses set); decode failure is a CompletionError.\\nproviders/openai/responses_api/websocket.rs | \"response.done\" => serde_json::from_str(payload) | Decodes the websocket-only `response.done` envelope (outside the modeled Responses set); decode failure is a CompletionError.\\nproviders/openai/responses_api/websocket.rs | serde_json::from_value(status) | Reads the optional `status` field of an already-decoded `response.done` payload for turn-state bookkeeping; absence/mismatch falls into an explicit handled arm.\\nproviders/openai/responses_api/websocket.rs | serde_json::from_value(self.response.clone()) | Attempts the full CompletionResponse view of an already-decoded `response.done` payload; the None case is handled with an explicit provider error, not a skip.\\n\\n# --- openai Responses SSE: classifier-adjacent helpers ---------------------\\nproviders/openai/responses_api/streaming.rs | let value = serde_json::from_str::<serde_json::Value>(data).ok()?; | provider_response_from_responses_sse_data peeks at the `type` tag to build the provider-error body; classification already happened.\\nproviders/openai/responses_api/streaming.rs | serde_json::from_str::<StreamingCompletionChunk>(data) | parse_sse_completion_body: unary (non-stream) replay of an SSE body into a CompletionResponse; terminal extraction, not per-frame triage.\\nproviders/openai/responses_api/streaming.rs | let value = match serde_json::from_str::<serde_json::Value>(data) | parse_sse_completion_body: fallback terminal extraction for envelope-less unary bodies; unmatched frames are not policy-decided here.\\nproviders/openai/responses_api/streaming.rs | completed = Some(serde_json::from_value(response.clone())?); | parse_sse_completion_body: decodes the terminal `response` payload of a completed/incomplete unary body; failure is an error.\\nproviders/openai/responses_api/streaming.rs | let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?; | repair_envelope_less_frame: buffered-body envelope repair feeding the ONE classifier (classify_with_repair); documented F8 policy note at the fn doc.\\nproviders/openai/responses_api/streaming.rs | let kind = serde_json::from_str::<serde_json::Value>(&data) | Reads the `type` tag only to word the buffered-path Corrupt error message; the classification itself came from classify_with_repair.\\n# Single-file providers: unary/non-stream parses sharing a file with streaming code.\\nproviders/ollama.rs | serde_json::from_slice(&bytes)?; | unary embedding response body, not a stream frame\\nproviders/ollama.rs | serde_json::from_slice(&response_body)?; | unary completion response body, not a stream frame\\nproviders/ollama.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame\\nproviders/copilot/mod.rs | ChatApiResponse<ChatCompletionResponse>>(&body)? | unary chat completion body, not a stream frame\\nproviders/copilot/mod.rs | responses_api::CompletionResponse>(&body)? | unary responses completion body, not a stream frame\\nproviders/copilot/mod.rs | CopilotEmbeddingResponse = match serde_json::from_slice | unary embedding response body, not a stream frame\\nproviders/copilot/mod.rs | serde_json::from_slice::<NestedApiError>(&body) | unary error-envelope decode on a non-2xx body, not a stream frame\\nproviders/copilot/mod.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame\\n\\n# --- #[serde(untagged)] unions that are not frame triage --------------------\\nproviders/ollama.rs | #[serde(untagged)] | The `Think` request-option value (`true`/`false` or a named level) is an untagged union on the REQUEST body; nothing about inbound frame policy is decided here.\\nproviders/openai/responses_api/streaming.rs | #[serde(untagged)] | Two sites, neither a triage fallback: `StreamingCompletionChunk` is the envelope union (response chunk vs item delta) decoded AFTER `classify_responses_frame` recognized the frame; `ContentPartChunkPart::Unknown` is untagged on the SERIALIZE side only — its Deserialize is the hand-written tag dispatch documented beside it, so a known tag with a defective payload still errors.\\nproviders/openai/completion/streaming.rs | #[serde(untagged)] | `FinishReason::Other(String)` preserves an unrecognized finish-reason token verbatim (surfacing gateway-invented reasons instead of misreading them as a stop); a scalar vocabulary field, not frame policy.\\nproviders/copilot/mod.rs | #[serde(untagged)] | `ChatApiResponse<T>` distinguishes a success body from Copilot\\'s error envelope on a UNARY response (no stream frame involved).\\n'}]"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 16571,
+        "completion_tokens": 130,
+        "cached_tokens": 16128,
+        "cost_usd": 0.00027058,
+        "extra": {
+          "reasoning_output_tokens": 8,
+          "total_tokens": 16701,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "api_call_id": "api_call_4",
+        "codex_turn_id": "01a0fb83-ef33-7383-bb59-07d9f5d155da",
+        "tool_call_details": {
+          "call_dDHBhzMllpxBt4ZoBemYg4qu": {
+            "raw_arguments": "const r = await tools.exec_command({cmd:\"sed -n '1,180p' crates/rig-core/src/providers/internal/model_listing.rs; sed -n '990,1095p' crates/rig-core/src/providers/ollama.rs; sed -n '1260,1410p' crates/rig-core/src/providers/copilot/mod.rs; cat crates/rig-core/tests/serde_policy_allowlist.txt\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:10500}); text(r.output);\n",
+            "item_type": "custom_tool_call",
+            "status": "completed"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 10,
+      "timestamp": "2026-10-02T07:29:06.492Z",
+      "source": "agent",
+      "model_name": "gpt-6-luna",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_rhY3DDOeRPOO3tcHAtjgujnw",
+          "function_name": "exec",
+          "arguments": {
+            "input": "const r = await tools.exec_command({cmd:\"grep -RIn \\\"provider_streaming_modules_never_raw_parse_the_wire\\\\|serde_policy_allowlist\\\" crates/rig-core/tests\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:5000}); text(r.output);\n"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_rhY3DDOeRPOO3tcHAtjgujnw",
+            "content": "[{'type': 'input_text', 'text': 'Script completed\\nWall time 0.0 seconds\\nOutput:\\n'}, {'type': 'input_text', 'text': 'crates/rig-core/tests/driver_adoption.rs:501:                \"malformed serde_policy_allowlist.txt entry (need `path | snippet | justification`): {line}\"\\ncrates/rig-core/tests/driver_adoption.rs:887:/// a justification in `serde_policy_allowlist.txt`.\\ncrates/rig-core/tests/driver_adoption.rs:889:fn provider_streaming_modules_never_raw_parse_the_wire() {\\ncrates/rig-core/tests/driver_adoption.rs:893:        \"serde_policy_allowlist.txt\",\\ncrates/rig-core/tests/driver_adoption.rs:936:         crates/rig-core/tests/serde_policy_allowlist.txt:\\\\n{}\",\\ncrates/rig-core/tests/driver_adoption.rs:947:        \"stale serde_policy_allowlist.txt entries (the code they covered is gone \\\\\\ncrates/rig-core/tests/serde_policy_allowlist.txt:2:# `provider_streaming_modules_never_raw_parse_the_wire`).\\n'}]"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 21314,
+        "completion_tokens": 365,
+        "cached_tokens": 16128,
+        "cost_usd": 0.00086238,
+        "extra": {
+          "reasoning_output_tokens": 291,
+          "total_tokens": 21679,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "api_call_id": "api_call_5",
+        "codex_turn_id": "01a0fb83-ef33-7383-bb59-07d9f5d155da",
+        "tool_call_details": {
+          "call_rhY3DDOeRPOO3tcHAtjgujnw": {
+            "raw_arguments": "const r = await tools.exec_command({cmd:\"grep -RIn \\\"provider_streaming_modules_never_raw_parse_the_wire\\\\|serde_policy_allowlist\\\" crates/rig-core/tests\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:5000}); text(r.output);\n",
+            "item_type": "custom_tool_call",
+            "status": "completed"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 11,
+      "timestamp": "2026-10-02T07:29:09.705Z",
+      "source": "agent",
+      "model_name": "gpt-6-luna",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_raAfpDaGnpVkgardh6rtqoOt",
+          "function_name": "exec",
+          "arguments": {
+            "input": "const r = await tools.exec_command({cmd:\"sed -n '880,955p' crates/rig-core/tests/driver_adoption.rs; grep -n \\\"internal::model_listing\\\\|model_listing\\\" crates/rig-core/src/providers/ollama.rs | head; grep -n \\\"internal::model_listing\\\\|model_listing\\\" crates/rig-core/src/providers/copilot/mod.rs | head\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:3500}); text(r.output);\n"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_raAfpDaGnpVkgardh6rtqoOt",
+            "content": "[{'type': 'input_text', 'text': 'Script completed\\nWall time 0.0 seconds\\nOutput:\\n'}, {'type': 'input_text', 'text': '            \"must not flag: {clean}\"\\n        );\\n    }\\n}\\n\\n/// Shipped provider streaming code never raw-parses the wire: decoding goes\\n/// through the `wire.rs` classifiers, and every exception is allowlisted with\\n/// a justification in `serde_policy_allowlist.txt`.\\n#[test]\\nfn provider_streaming_modules_never_raw_parse_the_wire() {\\n    let allowlist_path: PathBuf = [\\n        env!(\"CARGO_MANIFEST_DIR\"),\\n        \"tests\",\\n        \"serde_policy_allowlist.txt\",\\n    ]\\n    .iter()\\n    .collect();\\n    let raw = std::fs::read_to_string(&allowlist_path).expect(\"allowlist file should be readable\");\\n    let mut allowlist = parse_allowlist(&raw);\\n\\n    let mut violations = Vec::new();\\n    let mut walked = Vec::new();\\n    let mut scanned_targets = Vec::new();\\n    for_each_shipped_source(|path, shipped| {\\n        walked.push(path.to_string_lossy().replace(\\'\\\\\\\\\\', \"/\"));\\n        if !is_serde_wall_target(path, shipped) {\\n            return;\\n        }\\n        let label = path.to_string_lossy().replace(\\'\\\\\\\\\\', \"/\");\\n        scanned_targets.push(label.clone());\\n        violations.extend(scan_streaming_source(&label, shipped, &mut allowlist));\\n    });\\n\\n    assert_walk_floor(&walked);\\n    // Scope floor: the wall must actually cover the streaming modules it\\n    // exists for — an in-scope set that collapses to nothing (a renamed\\n    // basename pattern, broken content scoping) is a vacuous pass.\\n    for suffix in [\\n        \"rig-core/src/providers/anthropic/streaming.rs\",\\n        \"rig-core/src/providers/ollama.rs\",\\n        \"rig-core/src/providers/openai/responses_api/streaming.rs\",\\n        \"rig-bedrock/src/streaming.rs\",\\n    ] {\\n        assert!(\\n            scanned_targets.iter().any(|label| label.ends_with(suffix)),\\n            \"the serde wall no longer scans {suffix} — its scoping collapsed; \\\\\\n             scanned {} targets\",\\n            scanned_targets.len()\\n        );\\n    }\\n\\n    assert!(\\n        violations.is_empty(),\\n        \"raw serde parsing in a provider streaming module — route wire decoding \\\\\\n         through the `wire.rs` classify layer, or (for a genuine non-triage use) \\\\\\n         add a `path | snippet | justification` entry to \\\\\\n         crates/rig-core/tests/serde_policy_allowlist.txt:\\\\n{}\",\\n        violations.join(\"\\\\n\")\\n    );\\n\\n    let stale: Vec<&str> = allowlist\\n        .iter()\\n        .filter(|entry| !entry.used)\\n        .map(|entry| entry.snippet.as_str())\\n        .collect();\\n    assert!(\\n        stale.is_empty(),\\n        \"stale serde_policy_allowlist.txt entries (the code they covered is gone \\\\\\n         — delete them): {stale:?}\"\\n    );\\n}\\n\\n/// The scanner itself flags new raw serde: a synthetic streaming-module\\n/// source with an unlisted `serde_json::from_str` (and a `#[serde(other)]`)\\n/// fails, and the allowlist covers exactly what it names.\\n#[test]\\n126:    model_listing = OllamaModelLister<H>,\\n196:    model_listing = CopilotModelLister<H>,\\n1353:            crate::providers::internal::model_listing::map_transport_error(\\n'}]"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 21902,
+        "completion_tokens": 116,
+        "cached_tokens": 20224,
+        "cost_usd": 0.00042804,
+        "extra": {
+          "reasoning_output_tokens": 0,
+          "total_tokens": 22018,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "api_call_id": "api_call_6",
+        "codex_turn_id": "01a0fb83-ef33-7383-bb59-07d9f5d155da",
+        "tool_call_details": {
+          "call_raAfpDaGnpVkgardh6rtqoOt": {
+            "raw_arguments": "const r = await tools.exec_command({cmd:\"sed -n '880,955p' crates/rig-core/tests/driver_adoption.rs; grep -n \\\"internal::model_listing\\\\|model_listing\\\" crates/rig-core/src/providers/ollama.rs | head; grep -n \\\"internal::model_listing\\\\|model_listing\\\" crates/rig-core/src/providers/copilot/mod.rs | head\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:3500}); text(r.output);\n",
+            "item_type": "custom_tool_call",
+            "status": "completed"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 12,
+      "timestamp": "2026-10-02T07:29:17.678Z",
+      "source": "agent",
+      "model_name": "gpt-6-luna",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_FLWr04WCMQOHYQ7Jayc3fHm8",
+          "function_name": "exec",
+          "arguments": {
+            "input": "const r = await tools.exec_command({cmd:\"sed -n '1,100p' crates/rig-core/src/providers/ollama.rs; sed -n '1,90p' crates/rig-core/src/providers/copilot/mod.rs; grep -RIn \\\"parse_error_with_context\\\" crates/rig-core/src/model.rs crates/rig-core/src/model\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:4500}); text(r.output);\n"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_FLWr04WCMQOHYQ7Jayc3fHm8",
+            "content": "[{'type': 'input_text', 'text': 'Script completed\\nWall time 0.0 seconds\\nOutput:\\n'}, {'type': 'input_text', 'text': '//! Ollama API client and Rig integration\\n//!\\n//! # Example\\n//! ```no_run\\n//! use rig_core::{\\n//!     client::{CompletionClient, EmbeddingsClient, Nothing},\\n//!     completion::CompletionModel,\\n//!     embeddings::EmbeddingModel,\\n//!     providers::ollama,\\n//! };\\n//!\\n//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {\\n//! // Create a new Ollama client (defaults to http://localhost:11434, no auth)\\n//! let client = ollama::Client::new(Nothing)?;\\n//!\\n//! // Or connect to a remote/proxied Ollama instance with authentication\\n//! let client = ollama::Client::builder()\\n//!     .api_key(\"my-secret-key\")\\n//!     .base_url(\"http://remote-ollama:11434\")\\n//!     .build()?;\\n//!\\n//! // Send a completion request with a preamble.\\n//! let model = client.completion_model(\"qwen2.5:14b\");\\n//! let request = model\\n//!     .completion_request(\"Entertain me!\")\\n//!     .preamble(\"You are a comedian here to entertain the user using humour and jokes.\".to_string())\\n//!     .build();\\n//! let response = model.completion(request).await?;\\n//! println!(\"{:?}\", response.choice);\\n//!\\n//! // Create an embedding model using the \"all-minilm\" model\\n//! let emb_model = client.embedding_model_with_ndims(\"all-minilm\", 384);\\n//! let embeddings = emb_model.embed_texts(vec![\\n//!     \"Why is the sky blue?\".to_owned(),\\n//!     \"Why is the grass green?\".to_owned()\\n//! ]).await?;\\n//! println!(\"Embedding response: {:?}\", embeddings);\\n//! # Ok(())\\n//! # }\\n//! ```\\nuse crate::client::{self, ApiKey, DebugExt, ModelLister, Nothing, Provider, ProviderClient};\\nuse crate::completion::Usage;\\nuse crate::http_client::{self, HttpClientExt};\\nuse crate::message::DocumentSourceKind;\\nuse crate::model::{Model, ModelList, ModelListingError};\\nuse crate::providers::internal;\\nuse crate::streaming::{RawStreamingChoice, RawStreamingResult, StreamFinal};\\nuse crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};\\nuse crate::{\\n    completion::{self, CompletionError, CompletionRequest},\\n    embeddings::{self, EmbeddingError},\\n    json_utils, message,\\n    message::{ImageDetail, Text},\\n    streaming,\\n    wasm_compat::{WasmCompatSend, WasmCompatSync},\\n};\\nuse async_stream::stream;\\nuse bytes::Bytes;\\nuse futures::StreamExt;\\nuse serde::{Deserialize, Serialize};\\nuse serde_json::{Value, json};\\nuse std::{convert::TryFrom, str::FromStr};\\nuse tracing_futures::Instrument;\\n// ---------- Main Client ----------\\n\\nconst OLLAMA_API_BASE_URL: &str = \"http://localhost:11434\";\\n\\n/// Stable descriptor name recorded on normalized responses, streams, and\\n/// telemetry spans for this provider.\\nconst PROVIDER_NAME: &str = \"ollama\";\\n\\n/// Optional API key for Ollama. By default Ollama requires no authentication,\\n/// but proxied or secured deployments may require a Bearer token.\\n#[derive(Debug, Default, Clone)]\\npub struct OllamaApiKey(Option<String>);\\n\\nimpl ApiKey for OllamaApiKey {\\n    fn into_header(\\n        self,\\n    ) -> Option<http_client::Result<(http::header::HeaderName, http::header::HeaderValue)>> {\\n        self.0.map(http_client::make_auth_header)\\n    }\\n}\\n\\nimpl From<Nothing> for OllamaApiKey {\\n    fn from(_: Nothing) -> Self {\\n        Self(None)\\n    }\\n}\\n\\nimpl From<String> for OllamaApiKey {\\n    fn from(key: String) -> Self {\\n        if key.is_empty() {\\n            Self(None)\\n        } else {\\n            Self(Some(key))\\n        }\\n    }\\n}\\n\\n//! GitHub Copilot provider.\\n//!\\n//! Supports Chat Completions, Responses, and Embeddings against\\n//! `https://api.githubcopilot.com`.\\n//!\\n//! `Client::completion_model(...)` automatically routes Codex-class models\\n//! through `/responses` and conversational models through\\n//! `/chat/completions`.\\n//!\\n//! # Example\\n//! ```no_run\\n//! use rig_core::client::{CompletionClient, ProviderClient};\\n//! use rig_core::providers::copilot;\\n//!\\n//! # fn example() -> Result<(), Box<dyn std::error::Error>> {\\n//! let client = copilot::Client::from_env()?;\\n//! let model = client.completion_model(copilot::GPT_4O);\\n//! # let _ = model;\\n//! # Ok(())\\n//! # }\\n//! ```\\n\\nmod auth;\\n\\nuse crate::client::{\\n    self, ApiKey, DebugExt, ModelLister, Provider, ProviderBuilder, ProviderClient, Transport,\\n};\\nuse crate::completion::NormalizeCompletionResponse;\\nuse crate::completion::{self, CompletionError};\\nuse crate::embeddings::{self, EmbeddingError};\\nuse crate::http_client::{self, HttpClientExt};\\nuse crate::model::{Model, ModelList, ModelListingError};\\nuse crate::providers::openai;\\nuse crate::providers::openai::responses_api::{self, CompletionRequest as ResponsesRequest};\\nuse crate::streaming::StreamingCompletionResponse;\\nuse crate::telemetry::{\\n    CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator,\\n};\\nuse crate::wasm_compat::{WasmCompatSend, WasmCompatSync};\\nuse futures::StreamExt;\\nuse http::Request;\\nuse serde::{Deserialize, Serialize};\\nuse serde_json::json;\\nuse std::borrow::Cow;\\nuse std::fmt::Debug;\\nuse std::path::{Path, PathBuf};\\nuse tracing_futures::Instrument as _;\\n\\nconst GITHUB_COPILOT_API_BASE_URL: &str = \"https://api.githubcopilot.com\";\\npub(crate) const EDITOR_PLUGIN_VERSION: &str = \"copilot-chat/0.35.0\";\\npub(crate) const USER_AGENT: &str = \"GitHubCopilotChat/0.35.0\";\\npub(crate) const EDITOR_VERSION: &str = \"vscode/1.107.0\";\\nconst API_VERSION: &str = \"2025-04-01\";\\n\\n/// Copilot conversation intent sent in the `openai-intent` request header.\\n#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]\\npub enum CopilotIntent {\\n    /// Generic chat panel conversation semantics.\\n    #[default]\\n    Panel,\\n    /// Edit-oriented conversation semantics.\\n    Edits,\\n}\\n\\nimpl CopilotIntent {\\n    fn as_header(self) -> &\\'static str {\\n        match self {\\n            Self::Panel => \"conversation-panel\",\\n            Self::Edits => \"conversation-edits\",\\n        }\\n    }\\n}\\n\\n/// `gpt-4`\\npub const GPT_4: &str = \"gpt-4\";\\n/// `gpt-4o`\\npub const GPT_4O: &str = \"gpt-4o\";\\n/// `gpt-4o-mini`\\npub const GPT_4O_MINI: &str = \"gpt-4o-mini\";\\n/// `gpt-4.1`\\npub const GPT_4_1: &str = \"gpt-4.1\";\\n/// `gpt-4.1-mini`\\npub const GPT_4_1_MINI: &str = \"gpt-4.1-mini\";\\n/// `gpt-4.1-nano`\\npub const GPT_4_1_NANO: &str = \"gpt-4.1-nano\";\\n/// `gpt-5.3-codex`\\npub const GPT_5_3_CODEX: &str = \"gpt-5.3-codex\";\\n/// `gpt-5.1-codex`\\npub const GPT_5_1_CODEX: &str = \"gpt-5.1-codex\";\\n/// `gpt-5.5`\\ngrep: crates/rig-core/src/model.rs: No such file or directory\\ncrates/rig-core/src/model/listing.rs:408:    pub(crate) fn parse_error_with_context(\\ncrates/rig-core/src/model/listing.rs:665:    fn test_parse_error_with_context_includes_parse_error_and_preview() {\\ncrates/rig-core/src/model/listing.rs:669:        let error = ModelListingError::parse_error_with_context(\\n'}]"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 22728,
+        "completion_tokens": 382,
+        "cached_tokens": 21248,
+        "cost_usd": 0.00055148,
+        "extra": {
+          "reasoning_output_tokens": 272,
+          "total_tokens": 23110,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "api_call_id": "api_call_7",
+        "codex_turn_id": "01a0fb83-ef33-7383-bb59-07d9f5d155da",
+        "tool_call_details": {
+          "call_FLWr04WCMQOHYQ7Jayc3fHm8": {
+            "raw_arguments": "const r = await tools.exec_command({cmd:\"sed -n '1,100p' crates/rig-core/src/providers/ollama.rs; sed -n '1,90p' crates/rig-core/src/providers/copilot/mod.rs; grep -RIn \\\"parse_error_with_context\\\" crates/rig-core/src/model.rs crates/rig-core/src/model\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:4500}); text(r.output);\n",
+            "item_type": "custom_tool_call",
+            "status": "completed"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 13,
+      "timestamp": "2026-10-02T07:29:20.605Z",
+      "source": "agent",
+      "model_name": "gpt-6-luna",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_JbeAvDuqqwi3ZrV8CZGOvebF",
+          "function_name": "exec",
+          "arguments": {
+            "input": "const r = await tools.exec_command({cmd:\"grep -n \\\"mod model_listing\\\\|pub.*model_listing\\\" crates/rig-core/src/providers/internal.rs crates/rig-core/src/providers/internal/mod.rs\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:2000}); text(r.output);\n"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_JbeAvDuqqwi3ZrV8CZGOvebF",
+            "content": "[{'type': 'input_text', 'text': 'Script completed\\nWall time 0.0 seconds\\nOutput:\\n'}, {'type': 'input_text', 'text': 'grep: crates/rig-core/src/providers/internal.rs: No such file or directory\\ncrates/rig-core/src/providers/internal/mod.rs:19:pub(crate) mod model_listing;\\n'}]"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 24901,
+        "completion_tokens": 103,
+        "cached_tokens": 22272,
+        "cost_usd": 0.00053712,
+        "extra": {
+          "reasoning_output_tokens": 25,
+          "total_tokens": 25004,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "api_call_id": "api_call_8",
+        "codex_turn_id": "01a0fb83-ef33-7383-bb59-07d9f5d155da",
+        "tool_call_details": {
+          "call_JbeAvDuqqwi3ZrV8CZGOvebF": {
+            "raw_arguments": "const r = await tools.exec_command({cmd:\"grep -n \\\"mod model_listing\\\\|pub.*model_listing\\\" crates/rig-core/src/providers/internal.rs crates/rig-core/src/providers/internal/mod.rs\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:2000}); text(r.output);\n",
+            "item_type": "custom_tool_call",
+            "status": "completed"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 14,
+      "timestamp": "2026-10-02T07:29:36.419Z",
+      "source": "agent",
+      "model_name": "gpt-6-luna",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_pLMQIk440BHXe00rvdWUuV5r",
+          "function_name": "exec",
+          "arguments": {
+            "input": "const patch = \"*** Begin Patch\\n*** Update File: /testbed/crates/rig-core/src/providers/internal/model_listing.rs\\n@@\\n pub(crate) fn map_transport_error(\\n@@\\n }\\n+\\n+/// Decode a successful model-listing response body with listing-specific\\n+/// provider and path context for malformed JSON.\\n+pub(crate) fn decode_json_body<T>(\\n+    provider_name: &str,\\n+    path: &str,\\n+    body: &[u8],\\n+) -> Result<T, ModelListingError>\\n+where\\n+    T: serde::de::DeserializeOwned,\\n+{\\n+    serde_json::from_slice(body).map_err(|error| {\\n+        ModelListingError::parse_error_with_context(provider_name, path, &error, body)\\n+    })\\n+}\\n@@\\n-    serde_json::from_slice(&body).map_err(|error| {\\n-        ModelListingError::parse_error_with_context(provider_name, path, &error, &body)\\n-    })\\n+    decode_json_body(provider_name, path, &body)\\n }\\n*** Update File: /testbed/crates/rig-core/src/providers/ollama.rs\\n@@\\n-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {\\n-            ModelListingError::parse_error_with_context(\\\"Ollama\\\", path, &error, &body)\\n-        })?;\\n+        let api_resp: ListModelsResponse =\\n+            internal::model_listing::decode_json_body(\\\"Ollama\\\", path, &body)?;\\n*** Update File: /testbed/crates/rig-core/src/providers/copilot/mod.rs\\n@@\\n-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {\\n-            ModelListingError::parse_error_with_context(\\n-                MODEL_LISTING_PROVIDER,\\n-                MODEL_LISTING_PATH,\\n-                &error,\\n-                &body,\\n-            )\\n-        })?;\\n+        let api_resp: ListModelsResponse = crate::providers::internal::model_listing::decode_json_body(\\n+            MODEL_LISTING_PROVIDER,\\n+            MODEL_LISTING_PATH,\\n+            &body,\\n+        )?;\\n*** Update File: /testbed/crates/rig-core/tests/serde_policy_allowlist.txt\\n@@\\n-providers/ollama.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame\\n@@\\n-providers/copilot/mod.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame\\n*** End Patch\";\ntext(await tools.apply_patch(patch));\n"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_pLMQIk440BHXe00rvdWUuV5r",
+            "content": "[{'type': 'input_text', 'text': 'Script completed\\nWall time 0.0 seconds\\nOutput:\\n'}, {'type': 'input_text', 'text': '{}'}]"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 25064,
+        "completion_tokens": 810,
+        "cached_tokens": 24320,
+        "cost_usd": 0.0007226,
+        "extra": {
+          "reasoning_output_tokens": 192,
+          "total_tokens": 25874,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "api_call_id": "api_call_9",
+        "codex_turn_id": "01a0fb83-ef33-7383-bb59-07d9f5d155da",
+        "tool_call_details": {
+          "call_pLMQIk440BHXe00rvdWUuV5r": {
+            "raw_arguments": "const patch = \"*** Begin Patch\\n*** Update File: /testbed/crates/rig-core/src/providers/internal/model_listing.rs\\n@@\\n pub(crate) fn map_transport_error(\\n@@\\n }\\n+\\n+/// Decode a successful model-listing response body with listing-specific\\n+/// provider and path context for malformed JSON.\\n+pub(crate) fn decode_json_body<T>(\\n+    provider_name: &str,\\n+    path: &str,\\n+    body: &[u8],\\n+) -> Result<T, ModelListingError>\\n+where\\n+    T: serde::de::DeserializeOwned,\\n+{\\n+    serde_json::from_slice(body).map_err(|error| {\\n+        ModelListingError::parse_error_with_context(provider_name, path, &error, body)\\n+    })\\n+}\\n@@\\n-    serde_json::from_slice(&body).map_err(|error| {\\n-        ModelListingError::parse_error_with_context(provider_name, path, &error, &body)\\n-    })\\n+    decode_json_body(provider_name, path, &body)\\n }\\n*** Update File: /testbed/crates/rig-core/src/providers/ollama.rs\\n@@\\n-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {\\n-            ModelListingError::parse_error_with_context(\\\"Ollama\\\", path, &error, &body)\\n-        })?;\\n+        let api_resp: ListModelsResponse =\\n+            internal::model_listing::decode_json_body(\\\"Ollama\\\", path, &body)?;\\n*** Update File: /testbed/crates/rig-core/src/providers/copilot/mod.rs\\n@@\\n-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {\\n-            ModelListingError::parse_error_with_context(\\n-                MODEL_LISTING_PROVIDER,\\n-                MODEL_LISTING_PATH,\\n-                &error,\\n-                &body,\\n-            )\\n-        })?;\\n+        let api_resp: ListModelsResponse = crate::providers::internal::model_listing::decode_json_body(\\n+            MODEL_LISTING_PROVIDER,\\n+            MODEL_LISTING_PATH,\\n+            &body,\\n+        )?;\\n*** Update File: /testbed/crates/rig-core/tests/serde_policy_allowlist.txt\\n@@\\n-providers/ollama.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame\\n@@\\n-providers/copilot/mod.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame\\n*** End Patch\";\ntext(await tools.apply_patch(patch));\n",
+            "item_type": "custom_tool_call",
+            "status": "completed"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 15,
+      "timestamp": "2026-10-02T07:29:40.381Z",
+      "source": "agent",
+      "model_name": "gpt-6-luna",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_mxBTmxv1vCZRngEIJ4jFel7W",
+          "function_name": "exec",
+          "arguments": {
+            "input": "const r = await tools.exec_command({cmd:\"git diff --check && git diff -- crates/rig-core/src/providers/internal/model_listing.rs crates/rig-core/src/providers/ollama.rs crates/rig-core/src/providers/copilot/mod.rs crates/rig-core/tests/serde_policy_allowlist.txt\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:5000}); text(r.output);\n"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_mxBTmxv1vCZRngEIJ4jFel7W",
+            "content": "[{'type': 'input_text', 'text': 'Script completed\\nWall time 0.3 seconds\\nOutput:\\n'}, {'type': 'input_text', 'text': 'diff --git a/crates/rig-core/src/providers/copilot/mod.rs b/crates/rig-core/src/providers/copilot/mod.rs\\nindex ff53eec..0ea7903 100644\\n--- a/crates/rig-core/src/providers/copilot/mod.rs\\n+++ b/crates/rig-core/src/providers/copilot/mod.rs\\n@@ -1369,14 +1369,11 @@ where\\n         }\\n \\n         let body = response.into_body().await?;\\n-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {\\n-            ModelListingError::parse_error_with_context(\\n-                MODEL_LISTING_PROVIDER,\\n-                MODEL_LISTING_PATH,\\n-                &error,\\n-                &body,\\n-            )\\n-        })?;\\n+        let api_resp: ListModelsResponse = crate::providers::internal::model_listing::decode_json_body(\\n+            MODEL_LISTING_PROVIDER,\\n+            MODEL_LISTING_PATH,\\n+            &body,\\n+        )?;\\n         let models = api_resp.data.into_iter().map(Model::from).collect();\\n \\n         Ok(ModelList::new(models))\\ndiff --git a/crates/rig-core/src/providers/internal/model_listing.rs b/crates/rig-core/src/providers/internal/model_listing.rs\\nindex 867e854..f648067 100644\\n--- a/crates/rig-core/src/providers/internal/model_listing.rs\\n+++ b/crates/rig-core/src/providers/internal/model_listing.rs\\n@@ -67,6 +67,21 @@ pub(crate) fn map_transport_error(\\n     }\\n }\\n \\n+/// Decode a successful model-listing response body with listing-specific\\n+/// provider and path context for malformed JSON.\\n+pub(crate) fn decode_json_body<T>(\\n+    provider_name: &str,\\n+    path: &str,\\n+    body: &[u8],\\n+) -> Result<T, ModelListingError>\\n+where\\n+    T: serde::de::DeserializeOwned,\\n+{\\n+    serde_json::from_slice(body).map_err(|error| {\\n+        ModelListingError::parse_error_with_context(provider_name, path, &error, body)\\n+    })\\n+}\\n+\\n /// GET `path` and decode the response body as `T`, with listing-flavored\\n /// error context.\\n ///\\n@@ -104,9 +119,7 @@ where\\n     }\\n \\n     let body = response.into_body().await?;\\n-    serde_json::from_slice(&body).map_err(|error| {\\n-        ModelListingError::parse_error_with_context(provider_name, path, &error, &body)\\n-    })\\n+    decode_json_body(provider_name, path, &body)\\n }\\n \\n /// List models from an OpenAI-style `{ \"data\": [Entry, ...] }` endpoint,\\ndiff --git a/crates/rig-core/src/providers/ollama.rs b/crates/rig-core/src/providers/ollama.rs\\nindex 8d9cd8a..5222e93 100644\\n--- a/crates/rig-core/src/providers/ollama.rs\\n+++ b/crates/rig-core/src/providers/ollama.rs\\n@@ -1060,9 +1060,8 @@ where\\n         }\\n \\n         let body = response.into_body().await?;\\n-        let api_resp: ListModelsResponse = serde_json::from_slice(&body).map_err(|error| {\\n-            ModelListingError::parse_error_with_context(\"Ollama\", path, &error, &body)\\n-        })?;\\n+        let api_resp: ListModelsResponse =\\n+            internal::model_listing::decode_json_body(\"Ollama\", path, &body)?;\\n         let models = api_resp.models.into_iter().map(Model::from).collect();\\n \\n         Ok(ModelList::new(models))\\ndiff --git a/crates/rig-core/tests/serde_policy_allowlist.txt b/crates/rig-core/tests/serde_policy_allowlist.txt\\nindex 2434a00..4601ae7 100644\\n--- a/crates/rig-core/tests/serde_policy_allowlist.txt\\n+++ b/crates/rig-core/tests/serde_policy_allowlist.txt\\n@@ -34,12 +34,10 @@ providers/openai/responses_api/streaming.rs | let kind = serde_json::from_str::<\\n # Single-file providers: unary/non-stream parses sharing a file with streaming code.\\n providers/ollama.rs | serde_json::from_slice(&bytes)?; | unary embedding response body, not a stream frame\\n providers/ollama.rs | serde_json::from_slice(&response_body)?; | unary completion response body, not a stream frame\\n-providers/ollama.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame\\n providers/copilot/mod.rs | ChatApiResponse<ChatCompletionResponse>>(&body)? | unary chat completion body, not a stream frame\\n providers/copilot/mod.rs | responses_api::CompletionResponse>(&body)? | unary responses completion body, not a stream frame\\n providers/copilot/mod.rs | CopilotEmbeddingResponse = match serde_json::from_slice | unary embedding response body, not a stream frame\\n providers/copilot/mod.rs | serde_json::from_slice::<NestedApiError>(&body) | unary error-envelope decode on a non-2xx body, not a stream frame\\n-providers/copilot/mod.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame\\n \\n # --- #[serde(untagged)] unions that are not frame triage --------------------\\n providers/ollama.rs | #[serde(untagged)] | The `Think` request-option value (`true`/`false` or a named level) is an untagged union on the REQUEST body; nothing about inbound frame policy is decided here.\\n'}]"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 25898,
+        "completion_tokens": 159,
+        "cached_tokens": 24320,
+        "cost_usd": 0.00048049999999999997,
+        "extra": {
+          "reasoning_output_tokens": 63,
+          "total_tokens": 26057,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "api_call_id": "api_call_10",
+        "codex_turn_id": "01a0fb83-ef33-7383-bb59-07d9f5d155da",
+        "tool_call_details": {
+          "call_mxBTmxv1vCZRngEIJ4jFel7W": {
+            "raw_arguments": "const r = await tools.exec_command({cmd:\"git diff --check && git diff -- crates/rig-core/src/providers/internal/model_listing.rs crates/rig-core/src/providers/ollama.rs crates/rig-core/src/providers/copilot/mod.rs crates/rig-core/tests/serde_policy_allowlist.txt\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:5000}); text(r.output);\n",
+            "item_type": "custom_tool_call",
+            "status": "completed"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 16,
+      "timestamp": "2026-10-02T07:29:49.940Z",
+      "source": "agent",
+      "model_name": "gpt-6-luna",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_BWrXbhfyb27ceOvLyChDNFvF",
+          "function_name": "exec",
+          "arguments": {
+            "input": "const patch = \"*** Begin Patch\\n*** Update File: /testbed/crates/rig-core/src/providers/copilot/mod.rs\\n@@\\n-        let api_resp: ListModelsResponse = crate::providers::internal::model_listing::decode_json_body(\\n-            MODEL_LISTING_PROVIDER,\\n-            MODEL_LISTING_PATH,\\n-            &body,\\n-        )?;\\n+        let api_resp: ListModelsResponse =\\n+            crate::providers::internal::model_listing::decode_json_body(\\n+                MODEL_LISTING_PROVIDER,\\n+                MODEL_LISTING_PATH,\\n+                &body,\\n+            )?;\\n*** End Patch\";\ntext(await tools.apply_patch(patch));\n"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_BWrXbhfyb27ceOvLyChDNFvF",
+            "content": "[{'type': 'input_text', 'text': 'Script completed\\nWall time 0.0 seconds\\nOutput:\\n'}, {'type': 'input_text', 'text': '{}'}]"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 27286,
+        "completion_tokens": 455,
+        "cached_tokens": 25344,
+        "cost_usd": 0.0006751400000000001,
+        "extra": {
+          "reasoning_output_tokens": 294,
+          "total_tokens": 27741,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "api_call_id": "api_call_11",
+        "codex_turn_id": "01a0fb83-ef33-7383-bb59-07d9f5d155da",
+        "tool_call_details": {
+          "call_BWrXbhfyb27ceOvLyChDNFvF": {
+            "raw_arguments": "const patch = \"*** Begin Patch\\n*** Update File: /testbed/crates/rig-core/src/providers/copilot/mod.rs\\n@@\\n-        let api_resp: ListModelsResponse = crate::providers::internal::model_listing::decode_json_body(\\n-            MODEL_LISTING_PROVIDER,\\n-            MODEL_LISTING_PATH,\\n-            &body,\\n-        )?;\\n+        let api_resp: ListModelsResponse =\\n+            crate::providers::internal::model_listing::decode_json_body(\\n+                MODEL_LISTING_PROVIDER,\\n+                MODEL_LISTING_PATH,\\n+                &body,\\n+            )?;\\n*** End Patch\";\ntext(await tools.apply_patch(patch));\n",
+            "item_type": "custom_tool_call",
+            "status": "completed"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 17,
+      "timestamp": "2026-10-02T07:29:53.541Z",
+      "source": "agent",
+      "model_name": "gpt-6-luna",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_DFvwveAT3YqshTc0X0PJzyvk",
+          "function_name": "exec",
+          "arguments": {
+            "input": "const r = await tools.exec_command({cmd:\"git diff --check; git status --short; grep -n \\\"ListModelsResponse.*from_slice\\\\|providers/ollama.rs.*list-models\\\\|providers/copilot/mod.rs.*list-models\\\" crates/rig-core/tests/serde_policy_allowlist.txt || true\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:2000}); text(r.output);\n"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_DFvwveAT3YqshTc0X0PJzyvk",
+            "content": "[{'type': 'input_text', 'text': 'Script completed\\nWall time 0.1 seconds\\nOutput:\\n'}, {'type': 'input_text', 'text': ' M crates/rig-core/src/providers/copilot/mod.rs\\n M crates/rig-core/src/providers/internal/model_listing.rs\\n M crates/rig-core/src/providers/ollama.rs\\n M crates/rig-core/tests/serde_policy_allowlist.txt\\n'}]"
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 27765,
+        "completion_tokens": 138,
+        "cached_tokens": 26368,
+        "cost_usd": 0.00047238,
+        "extra": {
+          "reasoning_output_tokens": 35,
+          "total_tokens": 27903,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "api_call_id": "api_call_12",
+        "codex_turn_id": "01a0fb83-ef33-7383-bb59-07d9f5d155da",
+        "tool_call_details": {
+          "call_DFvwveAT3YqshTc0X0PJzyvk": {
+            "raw_arguments": "const r = await tools.exec_command({cmd:\"git diff --check; git status --short; grep -n \\\"ListModelsResponse.*from_slice\\\\|providers/ollama.rs.*list-models\\\\|providers/copilot/mod.rs.*list-models\\\" crates/rig-core/tests/serde_policy_allowlist.txt || true\",workdir:\"/testbed\",yield_time_ms:10000,max_output_tokens:2000}); text(r.output);\n",
+            "item_type": "custom_tool_call",
+            "status": "completed"
+          }
+        }
+      }
+    },
+    {
+      "step_id": 18,
+      "timestamp": "2026-10-02T07:29:55.861Z",
+      "source": "agent",
+      "model_name": "gpt-6-luna",
+      "message": "Ollama and Copilot now decode model-list responses through the shared model-listing JSON helper, which preserves provider, path, and malformed-response context. Their two list-model decoding exceptions are removed from the serde policy allowlist; other entries remain unchanged.\n\n`git diff --check` passed. I did not run tests.",
+      "metrics": {
+        "prompt_tokens": 27975,
+        "completion_tokens": 69,
+        "cached_tokens": 27392,
+        "cost_usd": 0.00036671999999999996,
+        "extra": {
+          "reasoning_output_tokens": 0,
+          "total_tokens": 28044,
+          "cache_write_input_tokens": 0
+        }
+      },
+      "llm_call_count": 1,
+      "extra": {
+        "api_call_id": "api_call_13",
+        "codex_turn_id": "01a0fb83-ef33-7383-bb59-07d9f5d155da"
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 286845,
+    "total_completion_tokens": 3108,
+    "total_cached_tokens": 261888,
+    "total_cost_usd": 0.006668580000000001,
+    "total_steps": 18,
+    "extra": {
+      "reasoning_output_tokens": 1229,
+      "total_tokens": 289953,
+      "last_token_usage": {
+        "input_tokens": 27975,
+        "cached_input_tokens": 27392,
+        "cache_write_input_tokens": 0,
+        "output_tokens": 69,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 28044
+      },
+      "total_cache_write_input_tokens": 0
+    }
+  }
+}

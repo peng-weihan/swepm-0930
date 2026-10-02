@@ -1,0 +1,62 @@
+{
+  "instance_id": "iced-rs__iced-3278",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.85,
+  "gold_patch_assessment": "The gold patch correctly addresses all aspects of the stated issue: it creates core::renderer::Settings (with default_font and default_text_size), splits the old graphics::Settings into compositor::Settings and renderer::Settings, restructures font-related actions into a font::Action namespace (Load, List, SetDefaults), changes Renderer::new and Compositor::create_renderer to accept the new settings types, implements the runtime SetDefaults handler (recreates renderers, relayouts UIs, redraws windows), adds From<&core::Settings> for both renderer::Settings and compositor::Settings, removes the Font::DEFAULT-to-'Fira Sans' special-casing from the Simulator and registers Fira Sans as the sans-serif family in the font system instead. The patch is comprehensive and well-structured.",
+  "base_vs_gold_expectation": "The verifier should correctly accept the gold patch and reject the unmodified base. The test patch modifies test/src/emulator.rs and test/src/simulator.rs to use the new API (renderer::Settings, Action::Font). On the base, these types/variants don't exist and the old Action::LoadFont/ListFonts variants are removed from match arms, so compilation would fail with type errors and non-exhaustive pattern errors. On the gold patch, all new types exist and old variants are removed from the Action enum, so the test crate compiles successfully.",
+  "too_narrow_risks": [
+    "The test is purely a compilation check — there are zero #[test] functions in the iced_test crate. cargo test -p iced_test only verifies that the library compiles and doc examples (all marked no_run) parse.",
+    "No behavioral test for font::set_defaults — the core feature requested in the issue (runtime task to change default font/text size) is completely untested functionally.",
+    "No test that renderer::Settings has correct default values (Font::DEFAULT, Pixels(16.0)).",
+    "No test for the runtime SetDefaults handler logic (recreating renderers, relaying out UIs, redrawing windows).",
+    "No test that the From<&core::Settings> conversions correctly map fields between settings types.",
+    "No test that the Fira Sans font registration as sans-serif family works correctly when fira-sans feature is enabled.",
+    "A partial implementation that adds just the right type definitions and enum variants (without implementing any runtime behavior for SetDefaults) would pass the tests.",
+    "The test patch only touches 2 of the 18+ files modified by the gold patch — most of the implementation is not exercised even via compilation of the test crate."
+  ],
+  "too_broad_risks": [],
+  "implementation_coupling": [
+    "Test patch requires exact struct path core::renderer::Settings with fields named default_font and default_text_size — alternative names or module paths would fail.",
+    "Test patch requires From<&Settings> for renderer::Settings conversion — a builder pattern or constructor-based alternative would not compile.",
+    "Test patch requires exact Action::Font(action) variant with sub-variants matching font::Action — different namespace organization would fail.",
+    "Test patch hardcodes struct literal construction in simulator.rs: core::renderer::Settings { default_font: ..., default_text_size: ... } — this couples to exact field names and struct construction style."
+  ],
+  "environment_risks": [
+    "Compilation of the full iced_test crate with its transitive dependencies (iced_runtime, iced_renderer, iced_program, etc.) may be slow and resource-intensive, but the 3600s timeout should be sufficient.",
+    "No network, GPU, or external service dependencies — the test is deterministic."
+  ],
+  "mismatches": [
+    "The instruction emphasizes 'font::set_defaults task' as the primary feature, but no test verifies this task exists or functions correctly — only compilation of the test infrastructure is checked.",
+    "The instruction requires 'all existing window renderers should be recreated with the new defaults, all user interfaces should be relaid out' — no runtime behavior is tested.",
+    "The task.toml categorizes this as 'debugging' but it is clearly a feature addition / refactoring task."
+  ],
+  "evidence": [
+    {
+      "file": "/testbed/test/src/emulator.rs",
+      "detail": "No #[test] functions exist anywhere in /testbed/test/src/. cargo test -p iced_test is a compile-only check."
+    },
+    {
+      "file": "/testbed/test/src/lib.rs",
+      "detail": "All doc examples use ```rust,no_run — they are compile-checked only, never executed."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch modifies emulator.rs and simulator.rs to use new API (renderer::Settings, Action::Font), making it a compilation compatibility test rather than a behavioral test."
+    },
+    {
+      "file": "/audit_tasks/iced-rs__iced-3278/tests/eval.sh",
+      "detail": "Runs 'cargo test --verbose -p iced_test --no-fail-fast' which for this crate amounts to compilation + doc-test parsing only."
+    },
+    {
+      "file": "/testbed/core/src/renderer.rs",
+      "detail": "Base code has Headless::new(default_font, default_text_size, backend) — no renderer::Settings struct. Test patch references renderer::Settings which only exists after gold patch."
+    },
+    {
+      "file": "/testbed/runtime/src/lib.rs",
+      "detail": "Base Action enum has LoadFont/ListFonts variants. Gold patch replaces with Font(font::Action). Test patch removes old variant match arms and adds Font(action) arm."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch is comprehensive and correctly implements the requested feature (font::set_defaults task, settings restructuring, font action namespace). However, the test is fundamentally too narrow: it is purely a compilation check with zero executable test functions. The iced_test crate contains no #[test] functions, and all doc examples are no_run. This means any implementation that provides the correct type signatures and enum variants would pass, even without implementing the core runtime behavior (SetDefaults handler, renderer recreation, UI relayout). The test should be revised to include at least basic behavioral tests verifying that renderer::Settings defaults are correct, the set_defaults task is constructable, and ideally that the runtime handles it correctly."
+}

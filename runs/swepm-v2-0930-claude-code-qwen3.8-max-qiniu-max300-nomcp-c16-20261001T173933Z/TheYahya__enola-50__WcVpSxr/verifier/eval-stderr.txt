@@ -1,0 +1,1012 @@
++ cd /testbed
++ export NO_PROXY=localhost,127.0.0.1,0.0.0.0,::1
++ NO_PROXY=localhost,127.0.0.1,0.0.0.0,::1
++ export no_proxy=localhost,127.0.0.1,0.0.0.0,::1
++ no_proxy=localhost,127.0.0.1,0.0.0.0,::1
++ echo OMNIGRIL_LOCAL_NO_PROXY_ADDED=1
++ RUNNABLE_TEST_FILES=(enola_test.go internal/checker/checker_test.go internal/export/export_test.go regex_test.go website_test.go)
++ DELETED_TEST_PATCH_FILES=()
++ BASE_SHA=d45f591fb51a463d00a61a881ab581dddba6fe85
++ for f in "${RUNNABLE_TEST_FILES[@]}"
++ git cat-file -e d45f591fb51a463d00a61a881ab581dddba6fe85:enola_test.go
++ rm -f enola_test.go
++ for f in "${RUNNABLE_TEST_FILES[@]}"
++ git cat-file -e d45f591fb51a463d00a61a881ab581dddba6fe85:internal/checker/checker_test.go
++ rm -f internal/checker/checker_test.go
++ for f in "${RUNNABLE_TEST_FILES[@]}"
++ git cat-file -e d45f591fb51a463d00a61a881ab581dddba6fe85:internal/export/export_test.go
++ rm -f internal/export/export_test.go
++ for f in "${RUNNABLE_TEST_FILES[@]}"
++ git cat-file -e d45f591fb51a463d00a61a881ab581dddba6fe85:regex_test.go
++ rm -f regex_test.go
++ for f in "${RUNNABLE_TEST_FILES[@]}"
++ git cat-file -e d45f591fb51a463d00a61a881ab581dddba6fe85:website_test.go
++ rm -f website_test.go
+++ mktemp
++ TEST_PATCH_FILE=/tmp/tmp.8PjRZBmkPt
++ cat
++ '[' -s /tmp/tmp.8PjRZBmkPt ']'
++ git apply -v /tmp/tmp.8PjRZBmkPt
+Checking patch enola_test.go...
+Checking patch internal/checker/checker_test.go...
+Checking patch internal/export/export_test.go...
+Checking patch regex_test.go...
+Checking patch website_test.go...
+Applied patch enola_test.go cleanly.
+Applied patch internal/checker/checker_test.go cleanly.
+Applied patch internal/export/export_test.go cleanly.
+Applied patch regex_test.go cleanly.
+Applied patch website_test.go cleanly.
++ rm -f /tmp/tmp.8PjRZBmkPt
++ mapfile -t TARGET_PKGS
+++ for f in "${RUNNABLE_TEST_FILES[@]}"
+++ awk '!seen[$0]++'
++++ dirname enola_test.go
+++ d=.
+++ '[' . = . ']'
+++ echo .
+++ for f in "${RUNNABLE_TEST_FILES[@]}"
++++ dirname internal/checker/checker_test.go
+++ d=internal/checker
+++ '[' internal/checker = . ']'
+++ echo ./internal/checker
+++ for f in "${RUNNABLE_TEST_FILES[@]}"
++++ dirname internal/export/export_test.go
+++ d=internal/export
+++ '[' internal/export = . ']'
+++ echo ./internal/export
+++ for f in "${RUNNABLE_TEST_FILES[@]}"
++++ dirname regex_test.go
+++ d=.
+++ '[' . = . ']'
+++ echo .
+++ for f in "${RUNNABLE_TEST_FILES[@]}"
++++ dirname website_test.go
+++ d=.
+++ '[' . = . ']'
+++ echo .
++ '[' 5 -eq 0 ']'
+++ mktemp
++ JSON_OUT=/tmp/tmp.hSpJUmnsMM
++ set +e
++ go test -p 1 -json . ./internal/checker ./internal/export
++ tee /tmp/tmp.hSpJUmnsMM
++ rc=1
++ set -e
+++ go list -m -f '{{.Path}}'
++ MODULE_PATH=github.com/theyahya/enola
++ PKG_STATUS=()
++ declare -A PKG_STATUS
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"# github.com/theyahya/enola [github.com/theyahya/enola.test]\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"# github.com/theyahya/enola [github.com/theyahya/enola.test]\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./enola_test.go:32:12: assignment mismatch: 2 variables but New returns 1 value\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./enola_test.go:32:12: assignment mismatch: 2 variables but New returns 1 value\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./enola_test.go:65:12: assignment mismatch: 2 variables but New returns 1 value\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./enola_test.go:65:12: assignment mismatch: 2 variables but New returns 1 value\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./enola_test.go:90:12: assignment mismatch: 2 variables but New returns 1 value\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./enola_test.go:90:12: assignment mismatch: 2 variables but New returns 1 value\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./enola_test.go:110:12: assignment mismatch: 2 variables but New returns 1 value\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./enola_test.go:110:12: assignment mismatch: 2 variables but New returns 1 value\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./enola_test.go:134:12: assignment mismatch: 2 variables but New returns 1 value\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./enola_test.go:134:12: assignment mismatch: 2 variables but New returns 1 value\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./enola_test.go:170:20: cannot use map[string]any{…} (value of type map[string]any) as json.RawMessage value in struct literal\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./enola_test.go:170:20: cannot use map[string]any{…} (value of type map[string]any) as json.RawMessage value in struct literal\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./enola_test.go:175:12: assignment mismatch: 2 variables but New returns 1 value\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./enola_test.go:175:12: assignment mismatch: 2 variables but New returns 1 value\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./regex_test.go:19:15: assignment mismatch: 2 variables but matchUsernameRegex returns 1 value\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./regex_test.go:19:15: assignment mismatch: 2 variables but matchUsernameRegex returns 1 value\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./regex_test.go:30:14: assignment mismatch: 2 variables but matchUsernameRegex returns 1 value\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./regex_test.go:30:14: assignment mismatch: 2 variables but matchUsernameRegex returns 1 value\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./regex_test.go:40:14: assignment mismatch: 2 variables but matchUsernameRegex returns 1 value\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./regex_test.go:40:14: assignment mismatch: 2 variables but matchUsernameRegex returns 1 value\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./regex_test.go:40:14: too many errors\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-output","Output":"./regex_test.go:40:14: too many errors\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-fail"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola [github.com/theyahya/enola.test]","Action":"build-fail"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-fail
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:13.833302576Z","Action":"start","Package":"github.com/theyahya/enola"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola
+++ printf %s '{"Time":"2026-10-01T19:15:13.833302576Z","Action":"start","Package":"github.com/theyahya/enola"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=start
++ '[' -n github.com/theyahya/enola ']'
++ '[' start = pass ']'
++ '[' start = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:13.833408976Z","Action":"output","Package":"github.com/theyahya/enola","Output":"FAIL\tgithub.com/theyahya/enola [build failed]\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola
+++ printf %s '{"Time":"2026-10-01T19:15:13.833408976Z","Action":"output","Package":"github.com/theyahya/enola","Output":"FAIL\tgithub.com/theyahya/enola [build failed]\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:13.833417473Z","Action":"fail","Package":"github.com/theyahya/enola","Elapsed":0,"FailedBuild":"github.com/theyahya/enola [github.com/theyahya/enola.test]"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola
+++ printf %s '{"Time":"2026-10-01T19:15:13.833417473Z","Action":"fail","Package":"github.com/theyahya/enola","Elapsed":0,"FailedBuild":"github.com/theyahya/enola [github.com/theyahya/enola.test]"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=fail
++ '[' -n github.com/theyahya/enola ']'
++ '[' fail = pass ']'
++ '[' fail = fail ']'
+++ normalize_pkg github.com/theyahya/enola
+++ local p=github.com/theyahya/enola
+++ '[' -n github.com/theyahya/enola ']'
+++ [[ github.com/theyahya/enola == \g\i\t\h\u\b\.\c\o\m\/\t\h\e\y\a\h\y\a\/\e\n\o\l\a* ]]
+++ p=
+++ p=
+++ '[' -z '' ']'
+++ echo .
+++ return
++ npkg=.
++ PKG_STATUS["$npkg"]=fail
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"# github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"# github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:9:7: undefined: statusCodeDetector\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:9:7: undefined: statusCodeDetector\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:12:10: undefined: Response\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:12:10: undefined: Response\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:13:10: undefined: Target\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:13:10: undefined: Target\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:18:12: undefined: Response\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:18:12: undefined: Response\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:19:12: undefined: Target\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:19:12: undefined: Target\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:24:12: undefined: Response\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:24:12: undefined: Response\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:25:12: undefined: Target\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:25:12: undefined: Target\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:30:12: undefined: Response\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:30:12: undefined: Response\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:31:12: undefined: Target\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:31:12: undefined: Target\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:36:12: undefined: Response\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:36:12: undefined: Response\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:36:12: too many errors\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-output","Output":"internal/checker/checker_test.go:36:12: too many errors\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-output
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-fail"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=
+++ printf %s '{"ImportPath":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]","Action":"build-fail"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=build-fail
++ '[' -n '' ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:13.844377466Z","Action":"start","Package":"github.com/theyahya/enola/internal/checker"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/checker
+++ printf %s '{"Time":"2026-10-01T19:15:13.844377466Z","Action":"start","Package":"github.com/theyahya/enola/internal/checker"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=start
++ '[' -n github.com/theyahya/enola/internal/checker ']'
++ '[' start = pass ']'
++ '[' start = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:13.844387128Z","Action":"output","Package":"github.com/theyahya/enola/internal/checker","Output":"FAIL\tgithub.com/theyahya/enola/internal/checker [build failed]\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/checker
+++ printf %s '{"Time":"2026-10-01T19:15:13.844387128Z","Action":"output","Package":"github.com/theyahya/enola/internal/checker","Output":"FAIL\tgithub.com/theyahya/enola/internal/checker [build failed]\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/checker ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:13.844392624Z","Action":"fail","Package":"github.com/theyahya/enola/internal/checker","Elapsed":0,"FailedBuild":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/checker
+++ printf %s '{"Time":"2026-10-01T19:15:13.844392624Z","Action":"fail","Package":"github.com/theyahya/enola/internal/checker","Elapsed":0,"FailedBuild":"github.com/theyahya/enola/internal/checker [github.com/theyahya/enola/internal/checker.test]"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=fail
++ '[' -n github.com/theyahya/enola/internal/checker ']'
++ '[' fail = pass ']'
++ '[' fail = fail ']'
+++ normalize_pkg github.com/theyahya/enola/internal/checker
+++ local p=github.com/theyahya/enola/internal/checker
+++ '[' -n github.com/theyahya/enola ']'
+++ [[ github.com/theyahya/enola/internal/checker == \g\i\t\h\u\b\.\c\o\m\/\t\h\e\y\a\h\y\a\/\e\n\o\l\a* ]]
+++ p=/internal/checker
+++ p=internal/checker
+++ '[' -z internal/checker ']'
+++ '[' internal/checker = . ']'
+++ [[ internal/checker == ./* ]]
+++ echo ./internal/checker
++ npkg=./internal/checker
++ PKG_STATUS["$npkg"]=fail
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.005239473Z","Action":"start","Package":"github.com/theyahya/enola/internal/export"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.005239473Z","Action":"start","Package":"github.com/theyahya/enola/internal/export"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=start
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' start = pass ']'
++ '[' start = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.006842718Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestCheckExportType"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.006842718Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestCheckExportType"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=run
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' run = pass ']'
++ '[' run = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.006897351Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestCheckExportType","Output":"=== RUN   TestCheckExportType\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.006897351Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestCheckExportType","Output":"=== RUN   TestCheckExportType\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.0069085Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestCheckExportType","Output":"--- PASS: TestCheckExportType (0.00s)\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.0069085Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestCheckExportType","Output":"--- PASS: TestCheckExportType (0.00s)\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.006912093Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestCheckExportType","Elapsed":0}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.006912093Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestCheckExportType","Elapsed":0}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=pass
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' pass = pass ']'
+++ normalize_pkg github.com/theyahya/enola/internal/export
+++ local p=github.com/theyahya/enola/internal/export
+++ '[' -n github.com/theyahya/enola ']'
+++ [[ github.com/theyahya/enola/internal/export == \g\i\t\h\u\b\.\c\o\m\/\t\h\e\y\a\h\y\a\/\e\n\o\l\a* ]]
+++ p=/internal/export
+++ p=internal/export
+++ '[' -z internal/export ']'
+++ '[' internal/export = . ']'
+++ [[ internal/export == ./* ]]
+++ echo ./internal/export
++ npkg=./internal/export
++ PKG_STATUS["$npkg"]=pass
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.006917125Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestNewWriterUnsupported"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.006917125Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestNewWriterUnsupported"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=run
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' run = pass ']'
++ '[' run = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.006919898Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestNewWriterUnsupported","Output":"=== RUN   TestNewWriterUnsupported\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.006919898Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestNewWriterUnsupported","Output":"=== RUN   TestNewWriterUnsupported\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.006923056Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestNewWriterUnsupported","Output":"--- PASS: TestNewWriterUnsupported (0.00s)\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.006923056Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestNewWriterUnsupported","Output":"--- PASS: TestNewWriterUnsupported (0.00s)\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.006925884Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestNewWriterUnsupported","Elapsed":0}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.006925884Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestNewWriterUnsupported","Elapsed":0}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=pass
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' pass = pass ']'
+++ normalize_pkg github.com/theyahya/enola/internal/export
+++ local p=github.com/theyahya/enola/internal/export
+++ '[' -n github.com/theyahya/enola ']'
+++ [[ github.com/theyahya/enola/internal/export == \g\i\t\h\u\b\.\c\o\m\/\t\h\e\y\a\h\y\a\/\e\n\o\l\a* ]]
+++ p=/internal/export
+++ p=internal/export
+++ '[' -z internal/export ']'
+++ '[' internal/export = . ']'
+++ [[ internal/export == ./* ]]
+++ echo ./internal/export
++ npkg=./internal/export
++ PKG_STATUS["$npkg"]=pass
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.006928049Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestJSONWriterRoundTrip"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.006928049Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestJSONWriterRoundTrip"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=run
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' run = pass ']'
++ '[' run = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.006930136Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestJSONWriterRoundTrip","Output":"=== RUN   TestJSONWriterRoundTrip\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.006930136Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestJSONWriterRoundTrip","Output":"=== RUN   TestJSONWriterRoundTrip\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007537467Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestJSONWriterRoundTrip","Output":"--- PASS: TestJSONWriterRoundTrip (0.00s)\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007537467Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestJSONWriterRoundTrip","Output":"--- PASS: TestJSONWriterRoundTrip (0.00s)\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007558752Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestJSONWriterRoundTrip","Elapsed":0}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007558752Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestJSONWriterRoundTrip","Elapsed":0}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=pass
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' pass = pass ']'
+++ normalize_pkg github.com/theyahya/enola/internal/export
+++ local p=github.com/theyahya/enola/internal/export
+++ '[' -n github.com/theyahya/enola ']'
+++ [[ github.com/theyahya/enola/internal/export == \g\i\t\h\u\b\.\c\o\m\/\t\h\e\y\a\h\y\a\/\e\n\o\l\a* ]]
+++ p=/internal/export
+++ p=internal/export
+++ '[' -z internal/export ']'
+++ '[' internal/export = . ']'
+++ [[ internal/export == ./* ]]
+++ echo ./internal/export
++ npkg=./internal/export
++ PKG_STATUS["$npkg"]=pass
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.00756604Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestCSVWriterRoundTrip"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.00756604Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestCSVWriterRoundTrip"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=run
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' run = pass ']'
++ '[' run = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007570801Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestCSVWriterRoundTrip","Output":"=== RUN   TestCSVWriterRoundTrip\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007570801Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestCSVWriterRoundTrip","Output":"=== RUN   TestCSVWriterRoundTrip\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007816544Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestCSVWriterRoundTrip","Output":"--- PASS: TestCSVWriterRoundTrip (0.00s)\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007816544Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestCSVWriterRoundTrip","Output":"--- PASS: TestCSVWriterRoundTrip (0.00s)\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007821636Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestCSVWriterRoundTrip","Elapsed":0}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007821636Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestCSVWriterRoundTrip","Elapsed":0}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=pass
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' pass = pass ']'
+++ normalize_pkg github.com/theyahya/enola/internal/export
+++ local p=github.com/theyahya/enola/internal/export
+++ '[' -n github.com/theyahya/enola ']'
+++ [[ github.com/theyahya/enola/internal/export == \g\i\t\h\u\b\.\c\o\m\/\t\h\e\y\a\h\y\a\/\e\n\o\l\a* ]]
+++ p=/internal/export
+++ p=internal/export
+++ '[' -z internal/export ']'
+++ '[' internal/export = . ']'
+++ [[ internal/export == ./* ]]
+++ echo ./internal/export
++ npkg=./internal/export
++ PKG_STATUS["$npkg"]=pass
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007825017Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCheckExportType"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007825017Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCheckExportType"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=run
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' run = pass ']'
++ '[' run = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007827018Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCheckExportType","Output":"=== RUN   TestZZCheckExportType\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007827018Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCheckExportType","Output":"=== RUN   TestZZCheckExportType\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007831448Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCheckExportType","Output":"--- PASS: TestZZCheckExportType (0.00s)\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007831448Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCheckExportType","Output":"--- PASS: TestZZCheckExportType (0.00s)\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007833574Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCheckExportType","Elapsed":0}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007833574Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCheckExportType","Elapsed":0}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=pass
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' pass = pass ']'
+++ normalize_pkg github.com/theyahya/enola/internal/export
+++ local p=github.com/theyahya/enola/internal/export
+++ '[' -n github.com/theyahya/enola ']'
+++ [[ github.com/theyahya/enola/internal/export == \g\i\t\h\u\b\.\c\o\m\/\t\h\e\y\a\h\y\a\/\e\n\o\l\a* ]]
+++ p=/internal/export
+++ p=internal/export
+++ '[' -z internal/export ']'
+++ '[' internal/export = . ']'
+++ [[ internal/export == ./* ]]
+++ echo ./internal/export
++ npkg=./internal/export
++ PKG_STATUS["$npkg"]=pass
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007836053Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZNewWriterUnsupported"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007836053Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZNewWriterUnsupported"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=run
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' run = pass ']'
++ '[' run = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007837781Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZNewWriterUnsupported","Output":"=== RUN   TestZZNewWriterUnsupported\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007837781Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZNewWriterUnsupported","Output":"=== RUN   TestZZNewWriterUnsupported\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007841191Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZNewWriterUnsupported","Output":"--- PASS: TestZZNewWriterUnsupported (0.00s)\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007841191Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZNewWriterUnsupported","Output":"--- PASS: TestZZNewWriterUnsupported (0.00s)\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007843988Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZNewWriterUnsupported","Elapsed":0}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007843988Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZNewWriterUnsupported","Elapsed":0}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=pass
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' pass = pass ']'
+++ normalize_pkg github.com/theyahya/enola/internal/export
+++ local p=github.com/theyahya/enola/internal/export
+++ '[' -n github.com/theyahya/enola ']'
+++ [[ github.com/theyahya/enola/internal/export == \g\i\t\h\u\b\.\c\o\m\/\t\h\e\y\a\h\y\a\/\e\n\o\l\a* ]]
+++ p=/internal/export
+++ p=internal/export
+++ '[' -z internal/export ']'
+++ '[' internal/export = . ']'
+++ [[ internal/export == ./* ]]
+++ echo ./internal/export
++ npkg=./internal/export
++ PKG_STATUS["$npkg"]=pass
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007846451Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZJSONExport"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007846451Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZJSONExport"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=run
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' run = pass ']'
++ '[' run = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.007848184Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZJSONExport","Output":"=== RUN   TestZZJSONExport\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.007848184Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZJSONExport","Output":"=== RUN   TestZZJSONExport\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.008292906Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZJSONExport","Output":"--- PASS: TestZZJSONExport (0.00s)\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.008292906Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZJSONExport","Output":"--- PASS: TestZZJSONExport (0.00s)\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.00829568Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZJSONExport","Elapsed":0}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.00829568Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZJSONExport","Elapsed":0}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=pass
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' pass = pass ']'
+++ normalize_pkg github.com/theyahya/enola/internal/export
+++ local p=github.com/theyahya/enola/internal/export
+++ '[' -n github.com/theyahya/enola ']'
+++ [[ github.com/theyahya/enola/internal/export == \g\i\t\h\u\b\.\c\o\m\/\t\h\e\y\a\h\y\a\/\e\n\o\l\a* ]]
+++ p=/internal/export
+++ p=internal/export
+++ '[' -z internal/export ']'
+++ '[' internal/export = . ']'
+++ [[ internal/export == ./* ]]
+++ echo ./internal/export
++ npkg=./internal/export
++ PKG_STATUS["$npkg"]=pass
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.00829844Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCSVExport"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.00829844Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCSVExport"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=run
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' run = pass ']'
++ '[' run = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.008300013Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCSVExport","Output":"=== RUN   TestZZCSVExport\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.008300013Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCSVExport","Output":"=== RUN   TestZZCSVExport\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.0085893Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCSVExport","Output":"--- PASS: TestZZCSVExport (0.00s)\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.0085893Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCSVExport","Output":"--- PASS: TestZZCSVExport (0.00s)\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.008591729Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCSVExport","Elapsed":0}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.008591729Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZCSVExport","Elapsed":0}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=pass
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' pass = pass ']'
+++ normalize_pkg github.com/theyahya/enola/internal/export
+++ local p=github.com/theyahya/enola/internal/export
+++ '[' -n github.com/theyahya/enola ']'
+++ [[ github.com/theyahya/enola/internal/export == \g\i\t\h\u\b\.\c\o\m\/\t\h\e\y\a\h\y\a\/\e\n\o\l\a* ]]
+++ p=/internal/export
+++ p=internal/export
+++ '[' -z internal/export ']'
+++ '[' internal/export = . ']'
+++ [[ internal/export == ./* ]]
+++ echo ./internal/export
++ npkg=./internal/export
++ PKG_STATUS["$npkg"]=pass
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.008594313Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZEmptyItemsJSON"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.008594313Z","Action":"run","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZEmptyItemsJSON"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=run
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' run = pass ']'
++ '[' run = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.008595738Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZEmptyItemsJSON","Output":"=== RUN   TestZZEmptyItemsJSON\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.008595738Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZEmptyItemsJSON","Output":"=== RUN   TestZZEmptyItemsJSON\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.008794101Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZEmptyItemsJSON","Output":"--- PASS: TestZZEmptyItemsJSON (0.00s)\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.008794101Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZEmptyItemsJSON","Output":"--- PASS: TestZZEmptyItemsJSON (0.00s)\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.008796638Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZEmptyItemsJSON","Elapsed":0}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.008796638Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Test":"TestZZEmptyItemsJSON","Elapsed":0}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=pass
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' pass = pass ']'
+++ normalize_pkg github.com/theyahya/enola/internal/export
+++ local p=github.com/theyahya/enola/internal/export
+++ '[' -n github.com/theyahya/enola ']'
+++ [[ github.com/theyahya/enola/internal/export == \g\i\t\h\u\b\.\c\o\m\/\t\h\e\y\a\h\y\a\/\e\n\o\l\a* ]]
+++ p=/internal/export
+++ p=internal/export
+++ '[' -z internal/export ']'
+++ '[' internal/export = . ']'
+++ [[ internal/export == ./* ]]
+++ echo ./internal/export
++ npkg=./internal/export
++ PKG_STATUS["$npkg"]=pass
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.008799323Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Output":"PASS\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.008799323Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Output":"PASS\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.010230425Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Output":"ok  \tgithub.com/theyahya/enola/internal/export\t0.005s\n"}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.010230425Z","Action":"output","Package":"github.com/theyahya/enola/internal/export","Output":"ok  \tgithub.com/theyahya/enola/internal/export\t0.005s\n"}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=output
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' output = pass ']'
++ '[' output = fail ']'
++ IFS=
++ read -r line
+++ printf %s '{"Time":"2026-10-01T19:15:14.011518707Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Elapsed":0.006}'
+++ sed -n 's/.*"Package":"\([^"]*\)".*/\1/p'
++ pkg=github.com/theyahya/enola/internal/export
+++ printf %s '{"Time":"2026-10-01T19:15:14.011518707Z","Action":"pass","Package":"github.com/theyahya/enola/internal/export","Elapsed":0.006}'
+++ sed -n 's/.*"Action":"\([^"]*\)".*/\1/p'
++ act=pass
++ '[' -n github.com/theyahya/enola/internal/export ']'
++ '[' pass = pass ']'
+++ normalize_pkg github.com/theyahya/enola/internal/export
+++ local p=github.com/theyahya/enola/internal/export
+++ '[' -n github.com/theyahya/enola ']'
+++ [[ github.com/theyahya/enola/internal/export == \g\i\t\h\u\b\.\c\o\m\/\t\h\e\y\a\h\y\a\/\e\n\o\l\a* ]]
+++ p=/internal/export
+++ p=internal/export
+++ '[' -z internal/export ']'
+++ '[' internal/export = . ']'
+++ [[ internal/export == ./* ]]
+++ echo ./internal/export
++ npkg=./internal/export
++ PKG_STATUS["$npkg"]=pass
++ IFS=
++ read -r line
++ rm -f /tmp/tmp.hSpJUmnsMM
++ for f in "${RUNNABLE_TEST_FILES[@]}"
+++ dirname enola_test.go
++ d=.
++ '[' . = . ']'
++ pkg=.
++ st=fail
++ case "$st" in
++ echo 'enola_test.go FAIL'
++ for f in "${RUNNABLE_TEST_FILES[@]}"
+++ dirname internal/checker/checker_test.go
++ d=internal/checker
++ '[' internal/checker = . ']'
++ pkg=./internal/checker
++ st=fail
++ case "$st" in
++ echo 'internal/checker/checker_test.go FAIL'
++ for f in "${RUNNABLE_TEST_FILES[@]}"
+++ dirname internal/export/export_test.go
++ d=internal/export
++ '[' internal/export = . ']'
++ pkg=./internal/export
++ st=pass
++ case "$st" in
++ echo 'internal/export/export_test.go PASS'
++ for f in "${RUNNABLE_TEST_FILES[@]}"
+++ dirname regex_test.go
++ d=.
++ '[' . = . ']'
++ pkg=.
++ st=fail
++ case "$st" in
++ echo 'regex_test.go FAIL'
++ for f in "${RUNNABLE_TEST_FILES[@]}"
+++ dirname website_test.go
++ d=.
++ '[' . = . ']'
++ pkg=.
++ st=fail
++ case "$st" in
++ echo 'website_test.go FAIL'
++ echo OMNIGRIL_EXIT_CODE=1
++ for f in "${RUNNABLE_TEST_FILES[@]}"
++ git cat-file -e d45f591fb51a463d00a61a881ab581dddba6fe85:enola_test.go
++ rm -f enola_test.go
++ for f in "${RUNNABLE_TEST_FILES[@]}"
++ git cat-file -e d45f591fb51a463d00a61a881ab581dddba6fe85:internal/checker/checker_test.go
++ rm -f internal/checker/checker_test.go
++ for f in "${RUNNABLE_TEST_FILES[@]}"
++ git cat-file -e d45f591fb51a463d00a61a881ab581dddba6fe85:internal/export/export_test.go
++ rm -f internal/export/export_test.go
++ for f in "${RUNNABLE_TEST_FILES[@]}"
++ git cat-file -e d45f591fb51a463d00a61a881ab581dddba6fe85:regex_test.go
++ rm -f regex_test.go
++ for f in "${RUNNABLE_TEST_FILES[@]}"
++ git cat-file -e d45f591fb51a463d00a61a881ab581dddba6fe85:website_test.go
++ rm -f website_test.go
++ exit 1

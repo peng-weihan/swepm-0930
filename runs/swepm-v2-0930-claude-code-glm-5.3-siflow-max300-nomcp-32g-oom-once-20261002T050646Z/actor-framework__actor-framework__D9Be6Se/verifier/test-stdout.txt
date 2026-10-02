@@ -1,0 +1,577 @@
+SPECBUILD_RESOLVED_PYTHON=/opt/venv/bin/python
+Checking patch libcaf_core/caf/serialization.test.cpp...
+error: while searching for:
+  )_";
+}
+
+// TODO: update tests to use apply instead of value overload
+SCENARIO("binary serializer and deserializer handle vectors of booleans") {
+  GIVEN("a binary serializer") {
+    auto sink = binary_serializer_wrapper{sys};
+    WHEN("serializing a vector of booleans with 8 values") {
+      auto val = std::vector<bool>{true,  false, true, true,
+                                   false, false, true, false};
+      check(sink.sink.value(val));
+      THEN("deserializing the result produces the value again") {
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
+        auto copy = std::vector<bool>{};
+        check(source.value(copy));
+        check_eq(copy, val);
+      }
+    }
+    WHEN("serializing a vector of boolean with 9 values") {
+      auto val = std::vector<bool>{true,  false, true,  true, false,
+                                   false, true,  false, true};
+      check(sink.sink.value(val));
+      THEN("deserializing the result produces the value again") {
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
+        auto copy = std::vector<bool>{};
+        check(source.value(copy));
+        check_eq(copy, val);
+      }
+    }
+    WHEN("serializing a vector of boolean with 1 value") {
+      auto val = std::vector<bool>{true};
+      check(sink.sink.value(val));
+      THEN("deserializing the result produces the value again") {
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
+        auto copy = std::vector<bool>{};
+        check(source.value(copy));
+        check_eq(copy, val);
+      }
+    }
+    WHEN("serializing an empty vector of boolean") {
+      auto val = std::vector<bool>{};
+      check(sink.sink.value(val));
+      THEN("deserializing the result produces the value again") {
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
+        auto copy = std::vector<bool>{};
+        check(source.value(copy));
+        check_eq(copy, val);
+      }
+    }
+
+error: patch failed: libcaf_core/caf/serialization.test.cpp:882
+error: libcaf_core/caf/serialization.test.cpp: patch does not apply
+Checking patch libcaf_core/caf/serializer.test.cpp...
+error: while searching for:
+  };
+
+private:
+  detail::default_actor_handle_codec codec_;
+  bool state_ = false;
+  error err_;
+};
+
+} // namespace
+
+TEST("base serializer") {
+  auto cfg = actor_system_config{};
+  auto sys = actor_system{cfg};
+  SECTION("failing serializer") {
+    auto serializer = test_serializer{sys, false};
+    check(!serializer.begin_associative_array(3));
+    check(!serializer.end_associative_array());
+    check(!serializer.begin_key_value_pair());
+    check(!serializer.end_key_value_pair());
+    check(!serializer.list(std::vector<bool>{true, false}));
+  }
+  SECTION("successful serializer") {
+    auto serializer = test_serializer{sys, true};
+    check(serializer.begin_associative_array(4));
+    check(serializer.end_associative_array());
+    check(serializer.begin_key_value_pair());
+    check(serializer.end_key_value_pair());
+    check(!serializer.list(std::vector<bool>{true, false, true}));
+    check(serializer.list(std::vector<bool>{true, false}));
+  }
+}
+
+error: patch failed: libcaf_core/caf/serializer.test.cpp:162
+error: libcaf_core/caf/serializer.test.cpp: patch does not apply
+patching file libcaf_core/caf/serialization.test.cpp
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file libcaf_core/caf/serializer.test.cpp
+Hunk #5 FAILED at 163.
+1 out of 5 hunks FAILED -- saving rejects to file libcaf_core/caf/serializer.test.cpp.rej
+[1/482] Building CXX object CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/fixture/deterministic.cpp.o
+FAILED: CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/fixture/deterministic.cpp.o 
+/usr/bin/c++ -Dlibcaf_test_EXPORTS -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -MD -MT CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/fixture/deterministic.cpp.o -MF CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/fixture/deterministic.cpp.o.d -o CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/fixture/deterministic.cpp.o -c /testbed/libcaf_test/caf/test/fixture/deterministic.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[2/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/cow_tuple.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/cow_tuple.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.cow_tuple -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/cow_tuple.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/cow_tuple.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/cow_tuple.test.cpp.o -c /testbed/libcaf_core/caf/cow_tuple.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[3/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_companion.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_companion.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.actor_companion -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_companion.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_companion.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_companion.test.cpp.o -c /testbed/libcaf_core/caf/actor_companion.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[4/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_config.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_config.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.detail.parser.read_config -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_config.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_config.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_config.test.cpp.o -c /testbed/libcaf_core/caf/detail/parser/read_config.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[5/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/abstract_actor.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/abstract_actor.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.abstract_actor -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/abstract_actor.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/abstract_actor.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/abstract_actor.test.cpp.o -c /testbed/libcaf_core/caf/abstract_actor.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[6/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/main.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/main.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/main.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/main.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/main.test.cpp.o -c /testbed/libcaf_core/main.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[7/482] Building CXX object CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/reporter.cpp.o
+FAILED: CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/reporter.cpp.o 
+/usr/bin/c++ -Dlibcaf_test_EXPORTS -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -MD -MT CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/reporter.cpp.o -MF CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/reporter.cpp.o.d -o CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/reporter.cpp.o -c /testbed/libcaf_test/caf/test/reporter.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[8/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_from_state.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_from_state.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.actor_from_state -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_from_state.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_from_state.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_from_state.test.cpp.o -c /testbed/libcaf_core/caf/actor_from_state.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[9/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_pool.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_pool.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.actor_pool -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_pool.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_pool.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_pool.test.cpp.o -c /testbed/libcaf_core/caf/actor_pool.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[10/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_termination.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_termination.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.actor_termination -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_termination.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_termination.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_termination.test.cpp.o -c /testbed/libcaf_core/caf/actor_termination.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[11/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_option_set.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_option_set.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.config_option_set -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_option_set.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_option_set.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_option_set.test.cpp.o -c /testbed/libcaf_core/caf/config_option_set.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[12/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_cast.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_cast.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.actor_cast -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_cast.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_cast.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_cast.test.cpp.o -c /testbed/libcaf_core/caf/actor_cast.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[13/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/spsc_buffer.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/spsc_buffer.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.async.spsc_buffer -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/spsc_buffer.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/spsc_buffer.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/spsc_buffer.test.cpp.o -c /testbed/libcaf_core/caf/async/spsc_buffer.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[14/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_system_config.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_system_config.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.actor_system_config -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_system_config.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_system_config.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_system_config.test.cpp.o -c /testbed/libcaf_core/caf/actor_system_config.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[15/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/consumer_adapter.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/consumer_adapter.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.async.consumer_adapter -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/consumer_adapter.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/consumer_adapter.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/consumer_adapter.test.cpp.o -c /testbed/libcaf_core/caf/async/consumer_adapter.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[16/482] Building CXX object CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/fixture/flow.cpp.o
+[17/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_config.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_config.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.actor_config -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_config.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_config.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_config.test.cpp.o -c /testbed/libcaf_core/caf/actor_config.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[18/482] Building CXX object CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runnable.cpp.o
+FAILED: CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runnable.cpp.o 
+/usr/bin/c++ -Dlibcaf_test_EXPORTS -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -MD -MT CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runnable.cpp.o -MF CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runnable.cpp.o.d -o CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runnable.cpp.o -c /testbed/libcaf_test/caf/test/runnable.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[19/482] Building CXX object CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runner.cpp.o
+FAILED: CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runner.cpp.o 
+/usr/bin/c++ -Dlibcaf_test_EXPORTS -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -MD -MT CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runner.cpp.o -MF CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runner.cpp.o.d -o CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runner.cpp.o -c /testbed/libcaf_test/caf/test/runner.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[20/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/blocking_actor.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/blocking_actor.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.blocking_actor -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/blocking_actor.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/blocking_actor.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/blocking_actor.test.cpp.o -c /testbed/libcaf_core/caf/blocking_actor.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[21/482] Building CXX object CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/outline.cpp.o
+[22/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/asynchronous_actor_clock.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/asynchronous_actor_clock.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.detail.asynchronous_actor_clock -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/asynchronous_actor_clock.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/asynchronous_actor_clock.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/asynchronous_actor_clock.test.cpp.o -c /testbed/libcaf_core/caf/detail/asynchronous_actor_clock.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[23/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/bounds_checker.test.cpp.o
+[24/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/batch.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/batch.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.async.batch -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/batch.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/batch.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/batch.test.cpp.o -c /testbed/libcaf_core/caf/async/batch.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[25/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_option.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_option.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.config_option -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_option.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_option.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_option.test.cpp.o -c /testbed/libcaf_core/caf/config_option.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[26/482] Building CXX object CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/scenario.cpp.o
+[27/482] Building CXX object libcaf_net/CMakeFiles/libcaf_net.dir/caf/net/http/header.cpp.o
+[28/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/deep_to_string.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/deep_to_string.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.deep_to_string -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/deep_to_string.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/deep_to_string.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/deep_to_string.test.cpp.o -c /testbed/libcaf_core/caf/deep_to_string.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[29/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/const_typed_message_view.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/const_typed_message_view.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.const_typed_message_view -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/const_typed_message_view.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/const_typed_message_view.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/const_typed_message_view.test.cpp.o -c /testbed/libcaf_core/caf/const_typed_message_view.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[30/482] Building CXX object CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runnable_with_examples.cpp.o
+FAILED: CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runnable_with_examples.cpp.o 
+/usr/bin/c++ -Dlibcaf_test_EXPORTS -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -MD -MT CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runnable_with_examples.cpp.o -MF CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runnable_with_examples.cpp.o.d -o CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/runnable_with_examples.cpp.o -c /testbed/libcaf_test/caf/test/runnable_with_examples.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[31/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/blocking_consumer.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/blocking_consumer.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.async.blocking_consumer -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/blocking_consumer.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/blocking_consumer.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/blocking_consumer.test.cpp.o -c /testbed/libcaf_core/caf/async/blocking_consumer.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[32/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parse.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parse.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.detail.parse -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parse.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parse.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parse.test.cpp.o -c /testbed/libcaf_core/caf/detail/parse.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[33/482] Building CXX object CMakeFiles/libcaf_test.dir/libcaf_test/caf/test/test.cpp.o
+[34/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/chrono.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/chrono.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.chrono -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/chrono.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/chrono.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/chrono.test.cpp.o -c /testbed/libcaf_core/caf/chrono.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[35/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/config_consumer.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/config_consumer.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.detail.config_consumer -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/config_consumer.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/config_consumer.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/config_consumer.test.cpp.o -c /testbed/libcaf_core/caf/detail/config_consumer.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[36/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/chunk.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/chunk.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.chunk -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/chunk.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/chunk.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/chunk.test.cpp.o -c /testbed/libcaf_core/caf/chunk.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[37/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/ieee_754.test.cpp.o
+[38/482] Building CXX object libcaf_net/CMakeFiles/caf-net-test.dir/caf/net/actor_shell.test.cpp.o
+FAILED: libcaf_net/CMakeFiles/caf-net-test.dir/caf/net/actor_shell.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_net/tests/data\" -DCAF_TEST_SUITE_NAME=caf.net.actor_shell -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -I/testbed/libcaf_net -I/testbed/build/libcaf_net -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_net/CMakeFiles/caf-net-test.dir/caf/net/actor_shell.test.cpp.o -MF libcaf_net/CMakeFiles/caf-net-test.dir/caf/net/actor_shell.test.cpp.o.d -o libcaf_net/CMakeFiles/caf-net-test.dir/caf/net/actor_shell.test.cpp.o -c /testbed/libcaf_net/caf/net/actor_shell.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[39/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/publisher.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/publisher.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.async.publisher -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/publisher.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/publisher.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/publisher.test.cpp.o -c /testbed/libcaf_core/caf/async/publisher.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[40/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/promise.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/promise.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.async.promise -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/promise.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/promise.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/promise.test.cpp.o -c /testbed/libcaf_core/caf/async/promise.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[41/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/default_mailbox.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/default_mailbox.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.detail.default_mailbox -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/default_mailbox.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/default_mailbox.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/default_mailbox.test.cpp.o -c /testbed/libcaf_core/caf/detail/default_mailbox.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[42/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/cleanup_and_release.test.cpp.o
+[43/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_number_or_timespan.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_number_or_timespan.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.detail.parser.read_number_or_timespan -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_number_or_timespan.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_number_or_timespan.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_number_or_timespan.test.cpp.o -c /testbed/libcaf_core/caf/detail/parser/read_number_or_timespan.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[44/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/counted_disposable.test.cpp.o
+[45/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_factory.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_factory.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.actor_factory -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_factory.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_factory.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_factory.test.cpp.o -c /testbed/libcaf_core/caf/actor_factory.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[46/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/base64.test.cpp.o
+[47/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/match_wildcard_pattern.test.cpp.o
+[48/482] Building CXX object libcaf_net/CMakeFiles/caf-net-test.dir/caf/net/datagram_socket.test.cpp.o
+[49/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_number.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_number.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.detail.parser.read_number -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_number.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_number.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_number.test.cpp.o -c /testbed/libcaf_core/caf/detail/parser/read_number.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[50/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_bool.test.cpp.o
+[51/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/cow_string.test.cpp.o
+[52/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/mbr_list.test.cpp.o
+[53/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/rfc3629.test.cpp.o
+[54/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/file.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/file.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.async.file -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/file.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/file.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/file.test.cpp.o -c /testbed/libcaf_core/caf/async/file.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[55/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/log_level_map.test.cpp.o
+[56/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/type_list.test.cpp.o
+[57/482] Building CXX object libcaf_net/CMakeFiles/caf-net-test.dir/caf/net/accept_socket.test.cpp.o
+[58/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/meta_object.test.cpp.o
+[59/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_system.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_system.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.actor_system -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_system.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_system.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_system.test.cpp.o -c /testbed/libcaf_core/caf/actor_system.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[60/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/producer_adapter.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/producer_adapter.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.async.producer_adapter -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/producer_adapter.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/producer_adapter.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/producer_adapter.test.cpp.o -c /testbed/libcaf_core/caf/async/producer_adapter.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[61/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_string.test.cpp.o
+[62/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_timespan.test.cpp.o
+[63/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_signed_integer.test.cpp.o
+[64/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/ring_buffer.test.cpp.o
+[65/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_floating_point.test.cpp.o
+[66/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/chunked_string.test.cpp.o
+[67/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/sync_ring_buffer.test.cpp.o
+[68/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/exit_reason.test.cpp.o
+[69/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/blocking_producer.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/blocking_producer.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.async.blocking_producer -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/blocking_producer.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/blocking_producer.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/async/blocking_producer.test.cpp.o -c /testbed/libcaf_core/caf/async/blocking_producer.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[70/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/error.test.cpp.o
+[71/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/intrusive/stack.test.cpp.o
+[72/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/unique_function.test.cpp.o
+[73/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/parser/read_unsigned_integer.test.cpp.o
+[74/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/delegate.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/delegate.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.delegate -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/delegate.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/delegate.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/delegate.test.cpp.o -c /testbed/libcaf_core/caf/delegate.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[75/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/type_id_list_builder.test.cpp.o
+[76/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_value.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_value.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.config_value -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_value.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_value.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/config_value.test.cpp.o -c /testbed/libcaf_core/caf/config_value.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[77/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/anon_mail.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/anon_mail.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.anon_mail -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/anon_mail.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/anon_mail.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/anon_mail.test.cpp.o -c /testbed/libcaf_core/caf/anon_mail.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[78/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_registry.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_registry.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.actor_registry -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_registry.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_registry.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/actor_registry.test.cpp.o -c /testbed/libcaf_core/caf/actor_registry.test.cpp
+c++: fatal error: Killed signal terminated program cc1plus
+compilation terminated.
+[79/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/intrusive/lifo_inbox.test.cpp.o
+[80/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/message_id.test.cpp.o
+[81/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/meta/handler.test.cpp.o
+[82/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/private_thread_pool.test.cpp.o
+[83/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/inspector_access_type.test.cpp.o
+[84/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/fail.test.cpp.o
+[85/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/ipv6_address.test.cpp.o
+[86/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/telemetry/counter.test.cpp.o
+[87/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/telemetry/label.test.cpp.o
+[88/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/telemetry/gauge.test.cpp.o
+[89/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/empty.test.cpp.o
+[90/482] Building CXX object libcaf_net/CMakeFiles/caf-net-test.dir/caf/detail/rfc6455.test.cpp.o
+[91/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/serializer.test.cpp.o
+FAILED: libcaf_core/CMakeFiles/caf-core-test.dir/caf/serializer.test.cpp.o 
+/usr/bin/c++ -DCAF_TEST_DATA_DIR=\"/testbed/libcaf_core/tests/data\" -DCAF_TEST_SUITE_NAME=caf.serializer -I/testbed/libcaf_test -I/testbed/build/libcaf_test -I/testbed/libcaf_core -I/testbed/build/libcaf_core -g -Wall -Wextra -pedantic -ftemplate-depth=512 -ftemplate-backtrace-limit=0 -Wno-missing-field-initializers -std=gnu++20 -Wno-deprecated-declarations -MD -MT libcaf_core/CMakeFiles/caf-core-test.dir/caf/serializer.test.cpp.o -MF libcaf_core/CMakeFiles/caf-core-test.dir/caf/serializer.test.cpp.o.d -o libcaf_core/CMakeFiles/caf-core-test.dir/caf/serializer.test.cpp.o -c /testbed/libcaf_core/caf/serializer.test.cpp
+/testbed/libcaf_core/caf/serializer.test.cpp:166:11: error: 'default_actor_handle_codec' in namespace 'caf::detail' does not name a type
+  166 |   detail::default_actor_handle_codec codec_;
+      |           ^~~~~~~~~~~~~~~~~~~~~~~~~~
+/testbed/libcaf_core/caf/serializer.test.cpp: In member function 'virtual void {anonymous}::caf_test_173::run_next_test_branch_impl()':
+/testbed/libcaf_core/caf/serializer.test.cpp:177:49: error: no matching function for call to '{anonymous}::test_serializer::test_serializer(<brace-enclosed initializer list>)'
+  177 |     auto serializer = test_serializer{sys, false};
+      |                                                 ^
+/testbed/libcaf_core/caf/serializer.test.cpp:23:3: note: candidate: '{anonymous}::test_serializer::test_serializer(bool)'
+   23 |   test_serializer(bool state) : state_(state) {
+      |   ^~~~~~~~~~~~~~~
+/testbed/libcaf_core/caf/serializer.test.cpp:23:3: note:   candidate expects 1 argument, 2 provided
+/testbed/libcaf_core/caf/serializer.test.cpp:18:7: note: candidate: '{anonymous}::test_serializer::test_serializer(const {anonymous}::test_serializer&)'
+   18 | class test_serializer : public serializer {
+      |       ^~~~~~~~~~~~~~~
+/testbed/libcaf_core/caf/serializer.test.cpp:18:7: note:   candidate expects 1 argument, 2 provided
+/testbed/libcaf_core/caf/serializer.test.cpp:185:48: error: no matching function for call to '{anonymous}::test_serializer::test_serializer(<brace-enclosed initializer list>)'
+  185 |     auto serializer = test_serializer{sys, true};
+      |                                                ^
+/testbed/libcaf_core/caf/serializer.test.cpp:23:3: note: candidate: '{anonymous}::test_serializer::test_serializer(bool)'
+   23 |   test_serializer(bool state) : state_(state) {
+      |   ^~~~~~~~~~~~~~~
+/testbed/libcaf_core/caf/serializer.test.cpp:23:3: note:   candidate expects 1 argument, 2 provided
+/testbed/libcaf_core/caf/serializer.test.cpp:18:7: note: candidate: '{anonymous}::test_serializer::test_serializer(const {anonymous}::test_serializer&)'
+   18 | class test_serializer : public serializer {
+      |       ^~~~~~~~~~~~~~~
+/testbed/libcaf_core/caf/serializer.test.cpp:18:7: note:   candidate expects 1 argument, 2 provided
+[92/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/beacon.test.cpp.o
+[93/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/intrusive/linked_list.test.cpp.o
+[94/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/telemetry/timer.test.cpp.o
+[95/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/telemetry/importer/process.test.cpp.o
+[96/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/constructor_attach.test.cpp.o
+[97/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/string_algorithms.test.cpp.o
+[98/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/ipv4_address.test.cpp.o
+[99/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/message_builder.test.cpp.o
+[100/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/none.test.cpp.o
+[101/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/dictionary.test.cpp.o
+[102/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/mcast.test.cpp.o
+[103/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/hash/sha1.test.cpp.o
+[104/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/sec.test.cpp.o
+[105/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detached_actors.test.cpp.o
+[106/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/metaprogramming.test.cpp.o
+[107/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/hash/fnv.test.cpp.o
+[108/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/intrusive_cow_ptr.test.cpp.o
+[109/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/intrusive/lifo_uptr_queue.test.cpp.o
+[110/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/result.test.cpp.o
+[111/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/never.test.cpp.o
+[112/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/action.test.cpp.o
+[113/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/timestamp.test.cpp.o
+[114/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/log/event.test.cpp.o
+[115/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/defer.test.cpp.o
+[116/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/ipv4_endpoint.test.cpp.o
+[117/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/multicaster.test.cpp.o
+[118/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/ipv4_subnet.test.cpp.o
+[119/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/auto_connect.test.cpp.o
+[120/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/json_array.test.cpp.o
+[121/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/format.test.cpp.o
+[122/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/telemetry/histogram.test.cpp.o
+[123/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/ipv6_subnet.test.cpp.o
+[124/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/pec.test.cpp.o
+[125/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/ref_count.test.cpp.o
+[126/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/json_object.test.cpp.o
+[127/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/cell.test.cpp.o
+[128/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/ucast.test.cpp.o
+[129/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/thread_hook.test.cpp.o
+[130/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/cache.test.cpp.o
+[131/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/ipv6_endpoint.test.cpp.o
+[132/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/scheduler.test.cpp.o
+[133/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/type_id.test.cpp.o
+[134/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/message_handler.test.cpp.o
+[135/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/node_id.test.cpp.o
+[136/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/mailbox_element.test.cpp.o
+[137/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/intrusive_ptr.test.cpp.o
+[138/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/mail_cache.test.cpp.o
+[139/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/observe_on.test.cpp.o
+[140/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/single.test.cpp.o
+[141/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/message.test.cpp.o
+[142/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/concat.test.cpp.o
+[143/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/run_scheduled.test.cpp.o
+[144/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/json_value.test.cpp.o
+[145/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/telemetry/collector/prometheus.test.cpp.o
+[146/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/handles.test.cpp.o
+[147/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/interval.test.cpp.o
+[148/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/on_backpressure_buffer.test.cpp.o
+[149/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/for_each.test.cpp.o
+[150/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/or_else.test.cpp.o
+[151/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/serial_reply.test.cpp.o
+[152/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/message_lifetime.test.cpp.o
+[153/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/step/ignore_elements.test.cpp.o
+[154/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/publish.test.cpp.o
+[155/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/run_delayed.test.cpp.o
+[156/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/json_writer.test.cpp.o
+[157/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/logger.test.cpp.o
+[158/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/monitor.test.cpp.o
+[159/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/retry.test.cpp.o
+[160/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/messaging.test.cpp.o
+[161/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/on_error_resume_next.test.cpp.o
+[162/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/step/skip_last.test.cpp.o
+[163/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/string.test.cpp.o
+[164/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/settings.test.cpp.o
+[165/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/concat_map.test.cpp.o
+[166/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/step/take_last.test.cpp.o
+[167/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/zip_with.test.cpp.o
+[168/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/mtl.test.cpp.o
+[169/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/json_builder.test.cpp.o
+[170/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/flat_map.test.cpp.o
+[171/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/prefix_and_tail.test.cpp.o
+[172/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/detail/stringification_inspector.test.cpp.o
+[173/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/event_based_actor.test.cpp.o
+[174/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/merge.test.cpp.o
+[175/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/debounce.test.cpp.o
+[176/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/generation.test.cpp.o
+[177/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/response_promise.test.cpp.o
+[178/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/request_timeout.test.cpp.o
+[179/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/mixed.test.cpp.o
+[180/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/throttle_first.test.cpp.o
+[181/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/json_reader.test.cpp.o
+[182/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/scheduled_actor.test.cpp.o
+[183/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/sample.test.cpp.o
+[184/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/system_messages.test.cpp.o
+[185/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/byte.test.cpp.o
+[186/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/stateful_actor.test.cpp.o
+[187/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/dynamic_spawn.test.cpp.o
+[188/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/stream.test.cpp.o
+[189/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/telemetry/metric_registry.test.cpp.o
+[190/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/op/buffer.test.cpp.o
+[191/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/combine_latest.test.cpp.o
+[192/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/flow/observable.test.cpp.o
+[193/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/serialization.test.cpp.o
+[194/482] Building CXX object libcaf_core/CMakeFiles/caf-core-test.dir/caf/mailer.test.cpp.o
+ninja: build stopped: subcommand failed.
+Internal ctest changing into directory: /testbed/build
+Test project /testbed/build
+    Start 162: caf.serialization
+Could not find executable /testbed/build/libcaf_core/caf-core-test
+Looked in the following places:
+/testbed/build/libcaf_core/caf-core-test
+/testbed/build/libcaf_core/caf-core-test
+/testbed/build/libcaf_core/Release/caf-core-test
+/testbed/build/libcaf_core/Release/caf-core-test
+/testbed/build/libcaf_core/Debug/caf-core-test
+/testbed/build/libcaf_core/Debug/caf-core-test
+/testbed/build/libcaf_core/MinSizeRel/caf-core-test
+/testbed/build/libcaf_core/MinSizeRel/caf-core-test
+/testbed/build/libcaf_core/RelWithDebInfo/caf-core-test
+/testbed/build/libcaf_core/RelWithDebInfo/caf-core-test
+/testbed/build/libcaf_core/Deployment/caf-core-test
+/testbed/build/libcaf_core/Deployment/caf-core-test
+/testbed/build/libcaf_core/Development/caf-core-test
+/testbed/build/libcaf_core/Development/caf-core-test
+testbed/build/libcaf_core/caf-core-test
+testbed/build/libcaf_core/caf-core-test
+testbed/build/libcaf_core/Release/caf-core-test
+testbed/build/libcaf_core/Release/caf-core-test
+testbed/build/libcaf_core/Debug/caf-core-test
+testbed/build/libcaf_core/Debug/caf-core-test
+testbed/build/libcaf_core/MinSizeRel/caf-core-test
+testbed/build/libcaf_core/MinSizeRel/caf-core-test
+testbed/build/libcaf_core/RelWithDebInfo/caf-core-test
+testbed/build/libcaf_core/RelWithDebInfo/caf-core-test
+testbed/build/libcaf_core/Deployment/caf-core-test
+testbed/build/libcaf_core/Deployment/caf-core-test
+testbed/build/libcaf_core/Development/caf-core-test
+testbed/build/libcaf_core/Development/caf-core-test
+Unable to find executable: /testbed/build/libcaf_core/caf-core-test
+1/2 Test #162: caf.serialization ................***Not Run   0.00 sec
+    Start 163: caf.serializer
+Could not find executable /testbed/build/libcaf_core/caf-core-test
+Looked in the following places:
+/testbed/build/libcaf_core/caf-core-test
+/testbed/build/libcaf_core/caf-core-test
+/testbed/build/libcaf_core/Release/caf-core-test
+/testbed/build/libcaf_core/Release/caf-core-test
+/testbed/build/libcaf_core/Debug/caf-core-test
+/testbed/build/libcaf_core/Debug/caf-core-test
+/testbed/build/libcaf_core/MinSizeRel/caf-core-test
+/testbed/build/libcaf_core/MinSizeRel/caf-core-test
+/testbed/build/libcaf_core/RelWithDebInfo/caf-core-test
+/testbed/build/libcaf_core/RelWithDebInfo/caf-core-test
+/testbed/build/libcaf_core/Deployment/caf-core-test
+/testbed/build/libcaf_core/Deployment/caf-core-test
+/testbed/build/libcaf_core/Development/caf-core-test
+/testbed/build/libcaf_core/Development/caf-core-test
+testbed/build/libcaf_core/caf-core-test
+testbed/build/libcaf_core/caf-core-test
+testbed/build/libcaf_core/Release/caf-core-test
+testbed/build/libcaf_core/Release/caf-core-test
+testbed/build/libcaf_core/Debug/caf-core-test
+testbed/build/libcaf_core/Debug/caf-core-test
+testbed/build/libcaf_core/MinSizeRel/caf-core-test
+testbed/build/libcaf_core/MinSizeRel/caf-core-test
+testbed/build/libcaf_core/RelWithDebInfo/caf-core-test
+testbed/build/libcaf_core/RelWithDebInfo/caf-core-test
+testbed/build/libcaf_core/Deployment/caf-core-test
+testbed/build/libcaf_core/Deployment/caf-core-test
+testbed/build/libcaf_core/Development/caf-core-test
+testbed/build/libcaf_core/Development/caf-core-test
+Unable to find executable: /testbed/build/libcaf_core/caf-core-test
+2/2 Test #163: caf.serializer ...................***Not Run   0.00 sec
+
+0% tests passed, 2 tests failed out of 2
+
+Total Test time (real) =   0.01 sec
+
+The following tests FAILED:
+	162 - caf.serialization (Not Run)
+	163 - caf.serializer (Not Run)
+Errors while running CTest
+OMNIGRIL_EXIT_CODE=8

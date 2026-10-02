@@ -1,0 +1,243 @@
+quantum_launcher/src/menu_renderer/sidebar/mod.rs:5:use ql_core::{InstanceKind, InstanceSelection};
+quantum_launcher/src/menu_renderer/sidebar/mod.rs:163:                    MainMenuMessage::InstanceSelected(InstanceSelection::new(
+quantum_launcher/src/menu_renderer/sidebar/mod.rs:246:                                    MainMenuMessage::InstanceSelected(InstanceSelection::new(
+quantum_launcher/src/menu_renderer/launch.rs:5:use ql_core::{InstanceSelection, LAUNCHER_VERSION_NAME};
+quantum_launcher/src/menu_renderer/launch.rs:173:        selected: &'a InstanceSelection,
+quantum_launcher/src/menu_renderer/launch.rs:418:        if self.is_process_running(&InstanceSelection::new(name, is_server)) {
+quantum_launcher/src/menu_renderer/launch.rs:429:    fn is_process_running(&self, instance: &InstanceSelection) -> bool {
+quantum_launcher/src/menu_renderer/launch.rs:476:        selected: &InstanceSelection,
+quantum_launcher/src/menu_renderer/launch.rs:509:        selected_instance: &InstanceSelection,
+quantum_launcher/src/menu_renderer/launch.rs:520:        selected: &InstanceSelection,
+quantum_launcher/src/menu_renderer/mods/jarmods.rs:2:use ql_core::InstanceSelection;
+quantum_launcher/src/menu_renderer/mods/jarmods.rs:12:    pub fn view(&'_ self, selected_instance: &InstanceSelection) -> Element<'_> {
+quantum_launcher/src/menu_renderer/mods/install_loader.rs:2:use ql_core::InstanceSelection;
+quantum_launcher/src/menu_renderer/mods/install_loader.rs:100:    pub fn view(&'_ self, selected_instance: &InstanceSelection, tick_timer: usize) -> Element<'_> {
+quantum_launcher/src/menu_renderer/mods/install_loader.rs:154:    selected_instance: &InstanceSelection,
+quantum_launcher/src/menu_renderer/mods/mods_manage.rs:5:use ql_core::{InstanceSelection, Loader, json::InstanceConfigJson};
+quantum_launcher/src/menu_renderer/mods/mods_manage.rs:30:        selected_instance: &'a InstanceSelection,
+quantum_launcher/src/menu_renderer/mods/mods_manage.rs:113:        selected_instance: &'a InstanceSelection,
+quantum_launcher/src/menu_renderer/mods/mods_manage.rs:195:    fn get_mod_installer_buttons(&'_ self, selected_instance: &InstanceSelection) -> Element<'_> {
+quantum_launcher/src/menu_renderer/mods/mods_manage.rs:198:                InstanceSelection::Instance(_) => column![
+quantum_launcher/src/menu_renderer/mods/mods_manage.rs:217:                InstanceSelection::Server(_) => column![
+quantum_launcher/src/menu_renderer/edit_instance.rs:16:use ql_core::InstanceSelection;
+quantum_launcher/src/menu_renderer/edit_instance.rs:30:        selected_instance: &InstanceSelection,
+quantum_launcher/src/menu_renderer/edit_instance.rs:69:    fn item_rename(&self, selected_instance: &InstanceSelection) -> Column<'_> {
+quantum_launcher/src/menu_renderer/edit_instance.rs:406:    selected_instance: &InstanceSelection,
+quantum_launcher/src/menu_renderer/edit_instance.rs:409:        InstanceSelection::Instance(_) => column![
+quantum_launcher/src/menu_renderer/edit_instance.rs:427:        InstanceSelection::Server(_) => {
+quantum_launcher/src/mclog_upload.rs:2:    CLIENT, InstanceConfigJson, InstanceSelection, IntoJsonError, IntoStringError, Loader,
+quantum_launcher/src/mclog_upload.rs:17:pub async fn upload_log(content: String, instance: InstanceSelection) -> Result<String, String> {
+quantum_launcher/src/config/sidebar/types.rs:3:use ql_core::{InstanceKind, InstanceSelection};
+quantum_launcher/src/config/sidebar/types.rs:28:impl PartialEq<InstanceSelection> for SidebarNode {
+quantum_launcher/src/config/sidebar/types.rs:29:    fn eq(&self, other: &InstanceSelection) -> bool {
+quantum_launcher/src/config/sidebar/types.rs:39:impl PartialEq<InstanceSelection> for SidebarSelection {
+quantum_launcher/src/config/sidebar/types.rs:40:    fn eq(&self, other: &InstanceSelection) -> bool {
+quantum_launcher/src/tick.rs:9:    InstanceSelection, IntoIoError, IntoJsonError, IntoStringError, JsonFileError,
+quantum_launcher/src/tick.rs:293:        instance: &InstanceSelection,
+quantum_launcher/src/tick.rs:294:        logs: &mut HashMap<InstanceSelection, InstanceLog>,
+quantum_launcher/src/tick.rs:296:        selected_instance: Option<&InstanceSelection>,
+quantum_launcher/src/tick.rs:335:        instance: InstanceSelection,
+quantum_launcher/src/tick.rs:353:    pub fn tick(selected_instance: InstanceSelection) -> Task<Message> {
+quantum_launcher/src/tick.rs:412:    fn tick(&mut self, instance_selection: &InstanceSelection) -> Task<Message> {
+quantum_launcher/src/message_handler/mod.rs:23:    GenericProgress, InstanceSelection, IntoIoError, IntoJsonError, IntoStringError, JsonFileError,
+quantum_launcher/src/message_handler/mod.rs:44:    pub fn select_instance(&mut self, instance: InstanceSelection) -> Task<Message> {
+quantum_launcher/src/message_handler/mod.rs:52:                    InstanceSelection::Instance(n) => persistent.selected_instance = Some(n),
+quantum_launcher/src/message_handler/mod.rs:53:                    InstanceSelection::Server(n) => persistent.selected_server = Some(n),
+quantum_launcher/src/message_handler/mod.rs:216:        selected_instance: &InstanceSelection,
+quantum_launcher/src/message_handler/mod.rs:307:        instance: &InstanceSelection,
+quantum_launcher/src/message_handler/mod.rs:436:            .is_some_and(InstanceSelection::is_server)
+quantum_launcher/src/message_handler/mod.rs:560:            InstanceSelection::Instance(_) => {
+quantum_launcher/src/message_handler/mod.rs:566:            InstanceSelection::Server(_) => {
+quantum_launcher/src/message_handler/mod.rs:614:            InstanceSelection::Instance(_) => {
+quantum_launcher/src/message_handler/mod.rs:634:            InstanceSelection::Server(server) => {
+quantum_launcher/src/message_handler/mod.rs:694:async fn copy_optifine_over(instance: &InstanceSelection) -> Result<(), String> {
+quantum_launcher/src/message_handler/iced_event.rs:14:    InstanceSelection, err,
+quantum_launcher/src/message_handler/iced_event.rs:283:        selected_instance: &InstanceSelection,
+quantum_launcher/src/message_handler/iced_event.rs:493:                            InstanceSelection::new(list.get(idx + 1).unwrap(), is_viewing_server);
+quantum_launcher/src/message_handler/iced_event.rs:501:                        InstanceSelection::new(list.get(idx - 1).unwrap(), is_viewing_server);
+quantum_launcher/src/message_handler/iced_event.rs:517:                .map(|n| InstanceSelection::new(n, is_viewing_server));
+quantum_launcher/src/state/message.rs:11:    InstanceSelection, LaunchedProcess, ListEntry, Loader,
+quantum_launcher/src/state/message.rs:69:    End(Res<InstanceSelection>),
+quantum_launcher/src/state/message.rs:73:    ImportResult(Res<Option<InstanceSelection>>),
+quantum_launcher/src/state/message.rs:391:    InstanceSelected(InstanceSelection),
+quantum_launcher/src/state/message.rs:459:    LaunchGameExited(Res<(ExitStatus, InstanceSelection, Option<Diagnostic>)>),
+quantum_launcher/src/state/mod.rs:11:    GenericProgress, InstanceSelection, IntoIoError, IntoStringError, IoError, JsonFileError,
+quantum_launcher/src/state/mod.rs:49:    pub selected_instance: Option<InstanceSelection>,
+quantum_launcher/src/state/mod.rs:73:    pub processes: HashMap<InstanceSelection, GameProcess>,
+quantum_launcher/src/state/mod.rs:74:    pub logs: HashMap<InstanceSelection, InstanceLog>,
+quantum_launcher/src/state/mod.rs:181:                .map(|n| InstanceSelection::new(n, false)),
+quantum_launcher/src/state/mod.rs:283:    pub fn instance(&self) -> &InstanceSelection {
+quantum_launcher/src/message_update/recommended.rs:2:use ql_core::{InstanceSelection, IntoStringError, JsonFileError, json::InstanceConfigJson};
+quantum_launcher/src/message_update/recommended.rs:135:        instance: &InstanceSelection,
+quantum_launcher/src/message_update/mod_store.rs:5:    InstanceConfigJson, InstanceSelection, IntoStringError, JsonFileError, err,
+quantum_launcher/src/message_update/mod_store.rs:19:        let is_server = matches!(&self.selected_instance, Some(InstanceSelection::Server(_)));
+quantum_launcher/src/message_update/mod_store.rs:321:                matches!(&self.selected_instance, Some(InstanceSelection::Server(_))),
+quantum_launcher/src/state/menu.rs:22:    DownloadProgress, GenericProgress, InstanceSelection, IntoStringError, ListEntry,
+quantum_launcher/src/state/menu.rs:158:    pub fn reload_notes(&mut self, instance: InstanceSelection) -> Task<Message> {
+quantum_launcher/src/state/menu.rs:319:        selected_instance: &InstanceSelection,
+quantum_launcher/src/message_update/launch.rs:2:use ql_core::InstanceSelection;
+quantum_launcher/src/message_update/launch.rs:26:                                Some(InstanceSelection::new(name, kind.is_server()));
+tests/src/launch.rs:67:        (ExitStatus, ql_core::InstanceSelection, Option<Diagnostic>),
+tests/src/main.rs:119:    let instance = ql_core::InstanceSelection::new(name, false);
+quantum_launcher/src/message_update/manage_mods.rs:4:use ql_core::{InstanceSelection, IntoIoError, IntoStringError, err, jarmod::JarMods};
+quantum_launcher/src/message_update/manage_mods.rs:402:        selected_instance: InstanceSelection,
+quantum_launcher/src/message_update/create_instance.rs:2:use ql_core::{DownloadProgress, InstanceSelection, IntoStringError, ListEntry, ListEntryKind};
+quantum_launcher/src/message_update/create_instance.rs:256:                            .map(InstanceSelection::Server)
+quantum_launcher/src/message_update/create_instance.rs:269:                        n.strerr().map(InstanceSelection::Instance),
+quantum_launcher/src/cli/command.rs:3:    InstanceSelection, IntoStringError, LAUNCHER_DIR, ListEntry, Loader, OptifineUniqueVersion,
+quantum_launcher/src/cli/command.rs:167:    let instance = InstanceSelection::Instance(instance_name);
+quantum_launcher/src/cli/command.rs:250:                InstanceConfigJson::read(&InstanceSelection::new(&instance, servers)).await?;
+quantum_launcher/src/cli/command.rs:285:            let instance = InstanceSelection::new(&instance, servers);
+quantum_launcher/src/cli/command.rs:322:            let instance = InstanceSelection::new(&instance, servers);
+quantum_launcher/src/cli/command.rs:331:    instance: InstanceSelection,
+crates/ql_packager/src/import.rs:2:    GenericProgress, InstanceSelection, IntoIoError, IntoJsonError, ListEntry, Progress,
+crates/ql_packager/src/import.rs:50:) -> Result<Option<InstanceSelection>, InstancePackageError> {
+crates/ql_packager/src/import.rs:98:) -> Result<InstanceSelection, InstancePackageError> {
+crates/ql_packager/src/import.rs:109:    let instance = InstanceSelection::new(&instance_info.instance_name, instance_info.is_server);
+crates/ql_packager/src/multimc.rs:10:    GenericProgress, InstanceSelection, IntoIoError, IntoJsonError, LAUNCHER_DIR, ListEntry,
+crates/ql_packager/src/multimc.rs:77:) -> Result<InstanceSelection, InstancePackageError> {
+crates/ql_packager/src/multimc.rs:130:async fn setup_details(instance: &InstanceSelection) -> Result<(), InstancePackageError> {
+crates/ql_packager/src/multimc.rs:188:async fn get_instance(ini: &Ini) -> Result<InstanceSelection, InstancePackageError> {
+crates/ql_packager/src/multimc.rs:206:    Ok(InstanceSelection::new(&instance_name, false))
+crates/ql_packager/src/multimc.rs:269:    instance: &InstanceSelection,
+crates/ql_packager/src/multimc.rs:302:    instance_selection: &InstanceSelection,
+crates/ql_packager/src/multimc.rs:403:    instance_selection: &InstanceSelection,
+crates/ql_packager/src/multimc.rs:427:    instance_selection: &InstanceSelection,
+crates/ql_packager/src/multimc.rs:463:    instance_selection: &InstanceSelection,
+crates/ql_packager/src/export.rs:2:use ql_core::{InstanceSelection, IntoIoError, IntoJsonError, info, pt};
+crates/ql_packager/src/export.rs:19:    instance: &InstanceSelection,
+crates/ql_packager/src/export.rs:62:    instance: InstanceSelection,
+crates/ql_servers/src/run.rs:8:    GenericProgress, InstanceSelection, IntoIoError, LAUNCHER_DIR, LaunchedProcess, Loader,
+crates/ql_servers/src/run.rs:77:        instance: InstanceSelection::Server(name),
+crates/ql_core/src/lib.rs:249:pub enum InstanceSelection {
+crates/ql_core/src/lib.rs:254:impl InstanceSelection {
+crates/ql_core/src/lib.rs:284:            InstanceSelection::Instance(name) => {
+crates/ql_core/src/lib.rs:287:            InstanceSelection::Server(name) => LAUNCHER_DIR.join("servers").join(name),
+crates/ql_core/src/lib.rs:551:    pub async fn get(instance: &InstanceSelection) -> Option<Self> {
+crates/ql_core/src/lib.rs:646:    pub instance: InstanceSelection,
+crates/ql_core/src/lib.rs:656:type ReadLogOut = Result<(ExitStatus, InstanceSelection, Option<Diagnostic>), ReadError>;
+crates/ql_core/src/jarmod/json.rs:1:use crate::{InstanceSelection, IntoIoError, JsonFileError};
+crates/ql_core/src/jarmod/json.rs:11:    pub async fn read(instance: &InstanceSelection) -> Result<Self, JsonFileError> {
+crates/ql_core/src/jarmod/json.rs:26:    pub async fn save(&mut self, instance: &InstanceSelection) -> Result<(), JsonFileError> {
+crates/ql_core/src/jarmod/json.rs:38:    fn trim(&mut self, instance: &InstanceSelection) {
+crates/ql_core/src/jarmod/json.rs:43:    pub async fn expand(&mut self, instance: &InstanceSelection) -> Result<(), IoError> {
+crates/ql_core/src/jarmod/mod.rs:22:    InstanceSelection, IntoIoError, IoError, JsonError, JsonFileError,
+crates/ql_core/src/jarmod/mod.rs:34:pub async fn remove(instance: &InstanceSelection, filename: &str) -> Result<(), JsonFileError> {
+crates/ql_core/src/jarmod/mod.rs:56:    instance: InstanceSelection,
+crates/ql_core/src/jarmod/mod.rs:88:pub async fn build(instance: &InstanceSelection) -> Result<PathBuf, JarModError> {
+crates/ql_core/src/jarmod/mod.rs:138:    instance: &InstanceSelection,
+crates/ql_core/src/read_log.rs:19:    InstanceSelection, IoError, JsonError, JsonFileError, REDACT_SENSITIVE_INFO, err,
+crates/ql_core/src/read_log.rs:34:    instance: InstanceSelection,
+crates/ql_core/src/read_log.rs:36:) -> Result<(ExitStatus, InstanceSelection, Option<Diagnostic>), ReadError> {
+crates/ql_core/src/read_log.rs:218:    let json = VersionDetails::load(&InstanceSelection::Instance(instance_name.to_owned())).await?;
+crates/ql_instances/src/download/mod.rs:4:    DownloadProgress, InstanceSelection, IntoIoError, IntoStringError, LAUNCHER_DIR,
+crates/ql_instances/src/download/mod.rs:96:    instance: InstanceSelection,
+crates/ql_instances/src/instance/mod.rs:6:    use ql_core::{InstanceSelection, IntoIoError, IoError};
+crates/ql_instances/src/instance/mod.rs:8:    pub async fn read(instance: InstanceSelection) -> Result<String, IoError> {
+crates/ql_instances/src/instance/mod.rs:17:    pub async fn write(instance: InstanceSelection, notes: String) -> Result<(), IoError> {
+crates/ql_core/src/json/version.rs:9:    InstanceSelection, IntoIoError, IntoJsonError, JsonFileError, OS_NAME, constants::*, err, pt,
+crates/ql_core/src/json/version.rs:66:    /// based on a specific `InstanceSelection`
+crates/ql_core/src/json/version.rs:71:    pub async fn load(instance: &InstanceSelection) -> Result<Self, JsonFileError> {
+crates/ql_core/src/json/version.rs:92:    /// to a specific [`InstanceSelection`] (Minecraft installation).
+crates/ql_core/src/json/version.rs:93:    pub async fn save(&self, instance: &InstanceSelection) -> Result<(), JsonFileError> {
+crates/ql_core/src/json/version.rs:110:        instance: &InstanceSelection,
+crates/ql_core/src/json/instance_config.rs:9:    DEFAULT_RAM_MB_FOR_INSTANCE, InstanceSelection, IntoIoError, IntoJsonError, JsonFileError,
+crates/ql_core/src/json/instance_config.rs:157:    /// based on a specific `InstanceSelection`
+crates/ql_core/src/json/instance_config.rs:162:    pub async fn read(instance: &InstanceSelection) -> Result<Self, JsonFileError> {
+crates/ql_core/src/json/instance_config.rs:181:    /// based on a specific `InstanceSelection`
+crates/ql_core/src/json/instance_config.rs:186:    pub async fn save(&self, instance: &InstanceSelection) -> Result<(), JsonFileError> {
+crates/ql_instances/src/instance/launch/launcher.rs:7:    CLASSPATH_SEPARATOR, GenericProgress, InstanceSelection, IntoIoError, IntoJsonError, IoError,
+crates/ql_instances/src/instance/launch/launcher.rs:77:        let instance = InstanceSelection::Instance(instance_name.clone());
+crates/ql_instances/src/instance/launch/launcher.rs:504:        let instance = InstanceSelection::Instance(self.instance_name.clone());
+crates/ql_instances/src/instance/launch/mod.rs:4:    GenericProgress, InstanceSelection, LaunchedProcess, REDACT_SENSITIVE_INFO, err, info,
+crates/ql_instances/src/instance/launch/mod.rs:109:        instance: InstanceSelection::Instance(instance_name),
+crates/ql_mod_manager/src/store/recommended.rs:5:use ql_core::{GenericProgress, InstanceSelection, Loader, err, info, json::VersionDetails, pt};
+crates/ql_mod_manager/src/store/recommended.rs:23:        instance: InstanceSelection,
+crates/ql_mod_manager/src/store/toggle.rs:3:use ql_core::{InstanceSelection, IoError, err};
+crates/ql_mod_manager/src/store/toggle.rs:20:    instance: InstanceSelection,
+crates/ql_mod_manager/src/store/toggle.rs:31:pub async fn toggle_mods(ids: Vec<ModId>, instance: InstanceSelection) -> Result<(), ModError> {
+crates/ql_mod_manager/src/store/modrinth/mod.rs:7:use ql_core::{GenericProgress, InstanceSelection, Loader, download, pt};
+crates/ql_mod_manager/src/store/modrinth/mod.rs:112:        instance: &InstanceSelection,
+crates/ql_mod_manager/src/store/modrinth/mod.rs:129:        instance: &InstanceSelection,
+crates/ql_mod_manager/src/store/modrinth/mod.rs:276:        instance: &InstanceSelection,
+crates/ql_mod_manager/src/store/modrinth/download.rs:9:    GenericProgress, InstanceConfigJson, InstanceSelection, download, err, file_utils, info,
+crates/ql_mod_manager/src/store/modrinth/download.rs:22:    instance: InstanceSelection,
+crates/ql_mod_manager/src/store/modrinth/download.rs:35:        instance: &InstanceSelection,
+crates/ql_mod_manager/src/store/modrinth/download.rs:59:    pub async fn basic(instance: &InstanceSelection) -> Result<ModDownloader, ModError> {
+crates/ql_mod_manager/src/presets/mod.rs:9:    InstanceSelection, IntoIoError, IntoJsonError, LAUNCHER_VERSION_NAME, Loader, err, info,
+crates/ql_mod_manager/src/presets/mod.rs:83:        instance: InstanceSelection,
+crates/ql_mod_manager/src/presets/mod.rs:154:    /// - `instance: InstanceSelection`:
+crates/ql_mod_manager/src/presets/mod.rs:178:        instance: InstanceSelection,
+crates/ql_mod_manager/src/presets/mod.rs:281:async fn get_instance_type(instance_name: &InstanceSelection) -> Result<Loader, ModError> {
+crates/ql_mod_manager/src/presets/mod.rs:303:async fn get_minecraft_version(instance_name: &InstanceSelection) -> Result<String, ModError> {
+crates/ql_mod_manager/src/store/modpack/mod.rs:8:    GenericProgress, InstanceSelection, IntoIoError, IntoJsonError, err, info,
+crates/ql_mod_manager/src/store/modpack/mod.rs:34:/// - `instance: InstanceSelection`: The selected instance you want to download this pack to.
+crates/ql_mod_manager/src/store/modpack/mod.rs:47:    instance: InstanceSelection,
+crates/ql_mod_manager/src/loaders/optifine.rs:10:    CLASSPATH_SEPARATOR, GenericProgress, InstanceSelection, IntoIoError, IoError, JsonError,
+crates/ql_mod_manager/src/loaders/optifine.rs:25:    instance: InstanceSelection,
+crates/ql_mod_manager/src/loaders/optifine.rs:134:                InstanceSelection::Instance(instance_name),
+crates/ql_mod_manager/src/store/modpack/curseforge.rs:7:    GenericProgress, InstanceSelection, IntoIoError, Loader, do_jobs, download,
+crates/ql_mod_manager/src/store/modpack/curseforge.rs:184:    instance: &InstanceSelection,
+crates/ql_mod_manager/src/loaders/mod.rs:12:    GenericProgress, InstanceSelection, IntoStringError, JsonFileError, Loader, Progress,
+crates/ql_mod_manager/src/loaders/mod.rs:47:    instance: InstanceSelection,
+crates/ql_mod_manager/src/loaders/mod.rs:139:pub async fn uninstall_loader(instance: InstanceSelection) -> Result<(), String> {
+crates/ql_mod_manager/src/store/modpack/modrinth.rs:4:    GenericProgress, InstanceSelection, Loader, do_jobs, download,
+crates/ql_mod_manager/src/store/modpack/modrinth.rs:43:    instance: &InstanceSelection,
+crates/ql_mod_manager/src/store/modpack/modrinth.rs:84:                    InstanceSelection::Instance(_) => &file.env.client,
+crates/ql_mod_manager/src/store/modpack/modrinth.rs:85:                    InstanceSelection::Server(_) => &file.env.server,
+crates/ql_mod_manager/src/store/delete.rs:5:use ql_core::{InstanceSelection, IoError, err, info, pt};
+crates/ql_mod_manager/src/store/delete.rs:13:    instance: InstanceSelection,
+crates/ql_mod_manager/src/store/mod.rs:5:    GenericProgress, InstanceSelection, IntoIoError, Loader, do_jobs, json::VersionDetails, pt,
+crates/ql_mod_manager/src/store/mod.rs:75:        instance: &InstanceSelection,
+crates/ql_mod_manager/src/store/mod.rs:84:        instance: &InstanceSelection,
+crates/ql_mod_manager/src/store/mod.rs:138:        instance: &InstanceSelection,
+crates/ql_mod_manager/src/store/mod.rs:171:    instance: &InstanceSelection,
+crates/ql_mod_manager/src/store/mod.rs:186:    instance: InstanceSelection,
+crates/ql_mod_manager/src/store/mod.rs:291:    instance: &InstanceSelection,
+crates/ql_mod_manager/src/store/mod.rs:310:        instance_name: &InstanceSelection,
+crates/ql_mod_manager/src/loaders/fabric/mod.rs:7:    GenericProgress, InstanceSelection, IntoIoError, IntoJsonError, LAUNCHER_DIR, Loader, do_jobs,
+crates/ql_mod_manager/src/loaders/fabric/mod.rs:319:    instance: InstanceSelection,
+crates/ql_mod_manager/src/loaders/fabric/mod.rs:337:        InstanceSelection::Instance(n) => {
+crates/ql_mod_manager/src/loaders/fabric/mod.rs:340:        InstanceSelection::Server(n) => install_server(loader_version, n, progress, backend).await,
+crates/ql_mod_manager/src/store/local_json.rs:8:    InstanceSelection, IntoIoError, IntoJsonError, IoError, JsonFileError, file_utils::exists, info,
+crates/ql_mod_manager/src/store/local_json.rs:42:    pub async fn load(selected_instance: &InstanceSelection) -> Result<Self, JsonFileError> {
+crates/ql_mod_manager/src/store/local_json.rs:50:        selected_instance: &InstanceSelection,
+crates/ql_mod_manager/src/store/local_json.rs:61:    fn new(instance_name: &InstanceSelection) -> Self {
+crates/ql_mod_manager/src/store/local_json.rs:68:    pub async fn fix(&mut self, selected_instance: &InstanceSelection) -> Result<(), IoError> {
+crates/ql_mod_manager/src/store/local_json.rs:131:async fn load_inner(selected_instance: &InstanceSelection) -> Result<ModIndex, JsonFileError> {
+crates/ql_mod_manager/src/loaders/fabric/uninstall.rs:4:    InstanceSelection, IntoIoError, IntoJsonError, IoError, LAUNCHER_DIR, Loader, err,
+crates/ql_mod_manager/src/loaders/fabric/uninstall.rs:99:pub async fn uninstall(instance: InstanceSelection) -> Result<(), FabricInstallError> {
+crates/ql_mod_manager/src/loaders/fabric/uninstall.rs:101:        InstanceSelection::Instance(n) => uninstall_client(n).await,
+crates/ql_mod_manager/src/loaders/fabric/uninstall.rs:102:        InstanceSelection::Server(n) => uninstall_server(n).await,
+crates/ql_mod_manager/src/loaders/fabric/version_list.rs:4:    InstanceSelection, JsonDownloadError, RequestError, download, info,
+crates/ql_mod_manager/src/loaders/fabric/version_list.rs:182:    instance: InstanceSelection,
+crates/ql_mod_manager/src/store/curseforge/mod.rs:375:        instance: &ql_core::InstanceSelection,
+crates/ql_mod_manager/src/store/curseforge/mod.rs:391:        instance: &ql_core::InstanceSelection,
+crates/ql_mod_manager/src/store/curseforge/mod.rs:537:        instance: &ql_core::InstanceSelection,
+crates/ql_mod_manager/src/store/curseforge/download.rs:7:    GenericProgress, InstanceConfigJson, InstanceSelection, download, err, file_utils, info,
+crates/ql_mod_manager/src/store/curseforge/download.rs:22:    instance: InstanceSelection,
+crates/ql_mod_manager/src/store/curseforge/download.rs:36:        instance: InstanceSelection,
+crates/ql_mod_manager/src/store/curseforge/download.rs:55:    pub async fn basic(instance: InstanceSelection) -> Result<Self, ModError> {
+crates/ql_mod_manager/src/store/add_file.rs:3:use ql_core::{GenericProgress, InstanceSelection, IntoIoError, err, pt};
+crates/ql_mod_manager/src/store/add_file.rs:13:    instance: InstanceSelection,
+crates/ql_mod_manager/src/loaders/forge/mod.rs:4:    CLASSPATH_SEPARATOR, GenericProgress, InstanceSelection, IntoIoError, IntoJsonError, IoError,
+crates/ql_mod_manager/src/loaders/forge/mod.rs:62:        instance: InstanceSelection,
+crates/ql_mod_manager/src/loaders/forge/mod.rs:445:    instance: InstanceSelection,
+crates/ql_mod_manager/src/loaders/forge/mod.rs:450:        InstanceSelection::Instance(name) => {
+crates/ql_mod_manager/src/loaders/forge/mod.rs:453:        InstanceSelection::Server(name) => {
+crates/ql_mod_manager/src/loaders/forge/mod.rs:520:        InstanceSelection::Instance(instance_name.clone()),
+crates/ql_mod_manager/src/loaders/forge/mod.rs:527:            InstanceSelection::Instance(instance_name.clone()),
+crates/ql_mod_manager/src/store/update.rs:7:use ql_core::{GenericProgress, InstanceSelection, do_jobs, err, info, json::VersionDetails};
+crates/ql_mod_manager/src/store/update.rs:20:    selected_instance: InstanceSelection,
+crates/ql_mod_manager/src/store/update.rs:59:    selected_instance: InstanceSelection,
+crates/ql_mod_manager/src/store/update.rs:110:    instance: InstanceSelection,
+crates/ql_mod_manager/src/loaders/forge/uninstall.rs:4:    InstanceSelection, IntoIoError, IntoStringError, LAUNCHER_DIR, Loader, err,
+crates/ql_mod_manager/src/loaders/forge/uninstall.rs:12:pub async fn uninstall(instance: InstanceSelection) -> Result<(), String> {
+crates/ql_mod_manager/src/loaders/forge/uninstall.rs:14:        InstanceSelection::Instance(instance) => uninstall_client(&instance).await,
+crates/ql_mod_manager/src/loaders/forge/uninstall.rs:15:        InstanceSelection::Server(instance) => uninstall_server(&instance).await.strerr(),
+crates/ql_mod_manager/src/loaders/neoforge.rs:3:    CLASSPATH_SEPARATOR, GenericProgress, InstanceSelection, IntoIoError, IntoJsonError, IoError,
+crates/ql_mod_manager/src/loaders/neoforge.rs:31:    instance: InstanceSelection,
+crates/ql_mod_manager/src/loaders/neoforge.rs:185:    instance: &InstanceSelection,
+crates/ql_mod_manager/src/loaders/neoforge.rs:235:    instance_selection: InstanceSelection,
+crates/ql_mod_manager/src/loaders/forge/server.rs:1:use ql_core::{InstanceSelection, IntoIoError, Loader, json::instance_config::ModTypeInfo};
+crates/ql_mod_manager/src/loaders/forge/server.rs:20:        InstanceSelection::Server(instance_name),

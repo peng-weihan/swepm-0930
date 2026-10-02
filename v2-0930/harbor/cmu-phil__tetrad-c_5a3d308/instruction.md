@@ -1,0 +1,5 @@
+The `DataSet` API has been refactored so callers should use `getColumnIndex(Node)` when retrieving the integer column position for a variable. The codebase still contains many references to the old `getColumn(Node)` method, causing compilation failures or stale API usage in GUI, library, simulation, search, estimation, Bayes, SEM, and test code.
+
+Update all usages that are intended to retrieve a variable’s column index from a `DataSet` to call `getColumnIndex(...)` instead of `getColumn(...)`. This includes reads and writes such as `getDouble(row, column)`, `setDouble(row, column, value)`, `getInt(row, column)`, `setInt(row, column, value)`, `getObject(row, column)`, `removeColumn(column)`, and any logic that stores or compares column indices.
+
+The expected behavior is that the project consistently uses the `DataSet.getColumnIndex(Node)` API for column lookup, with no remaining calls to the deprecated or removed `DataSet.getColumn(Node)` method, and all affected code continues to compile and behave the same as before.

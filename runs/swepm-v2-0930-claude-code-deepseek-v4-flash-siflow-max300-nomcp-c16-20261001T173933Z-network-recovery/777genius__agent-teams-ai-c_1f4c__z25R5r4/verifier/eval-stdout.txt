@@ -1,0 +1,30 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+patching file test/main/services/team/TeamProvisioningServicePostCompact.test.ts
+Hunk #1 succeeded at 287 with fuzz 3.
+
+ RUN  v3.2.4 /testbed
+
+ ❯ test/main/services/team/TeamProvisioningServicePostCompact.test.ts (15 tests | 1 failed) 161ms
+   ✓ TeamProvisioningService post-compact lifecycle > compact_boundary sets pendingPostCompactReminder when provisioning is complete 35ms
+   ✓ TeamProvisioningService post-compact lifecycle > compact_boundary does NOT set pending before provisioning complete 4ms
+   ✓ TeamProvisioningService post-compact lifecycle > compact_boundary re-arms pending when reminder is already in-flight 7ms
+   ✓ TeamProvisioningService post-compact lifecycle > multiple compacts coalesce to one pending reminder 3ms
+   ✓ TeamProvisioningService post-compact lifecycle > injectPostCompactReminder defers when leadRelayCapture is active 4ms
+   ✓ TeamProvisioningService post-compact lifecycle > injectPostCompactReminder defers when silentUserDmForward is active 3ms
+   ✓ TeamProvisioningService post-compact lifecycle > injectPostCompactReminder skips when lead is not idle 4ms
+   × TeamProvisioningService post-compact lifecycle > injectPostCompactReminder sends context-only reminder (no "continue with pending work") 17ms
+     → expected 'Context reminder (post-compaction) — …' to contain 'do NOT appear silent'
+   ✓ TeamProvisioningService post-compact lifecycle > reminder uses compact roster (no workflow details) 6ms
+   ✓ TeamProvisioningService post-compact lifecycle > clearPostCompactReminderState resets all 3 flags 3ms
+   ✓ TeamProvisioningService post-compact lifecycle > result.success clears in-flight state and suppress flag 3ms
+   ✓ TeamProvisioningService post-compact lifecycle > result.error clears in-flight state (strict drop-after-attempt) 3ms
+   ✓ TeamProvisioningService post-compact lifecycle > result.error clears pending even when NOT in-flight (no stale pending survives) 3ms
+   ✓ TeamProvisioningService post-compact lifecycle > compact_boundary during in-flight produces follow-up reminder after current completes 59ms
+   ✓ TeamProvisioningService post-compact lifecycle > reminder reads live config.json members instead of stale launch-time members 5ms
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 14 passed (15)
+   Start at  21:36:53
+   Duration  7.67s (transform 341ms, setup 17ms, collect 409ms, tests 161ms, environment 266ms, prepare 784ms)
+
+OMNIGRIL_EXIT_CODE=1

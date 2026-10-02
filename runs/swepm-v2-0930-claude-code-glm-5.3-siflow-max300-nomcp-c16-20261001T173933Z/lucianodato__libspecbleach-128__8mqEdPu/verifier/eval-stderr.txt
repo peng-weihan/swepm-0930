@@ -1,0 +1,160 @@
+Checking patch tests/test_audio_file_regression.c...
+Checking patch tests/test_hpss_filter.c...
+error: tests/test_hpss_filter.c: already exists in working directory
+Checking patch tests/test_specbleach_2d_denoiser.c...
+error: while searching for:
+#include <stdlib.h>
+#include <string.h>
+
+#include "specbleach_2d_denoiser.h"
+
+#define ROLLING_MEAN 1
+
+error: patch failed: tests/test_specbleach_2d_denoiser.c:23
+error: tests/test_specbleach_2d_denoiser.c: patch does not apply
+Checking patch tests/test_specbleach_denoiser.c...
+error: while searching for:
+#include <stdlib.h>
+#include <string.h>
+
+#include "specbleach_denoiser.h"
+
+#define ROLLING_MEAN 1
+
+error: patch failed: tests/test_specbleach_denoiser.c:7
+error: tests/test_specbleach_denoiser.c: patch does not apply
+Checking patch tests/test_specbleach_processor_core.c...
+error: while searching for:
+  TEST_ASSERT(sp2.reduction_curve_bias == (const float*)0x1234,
+              "Sanitize enabled curve bias ptr");
+
+  // Bounds clamping checks for noise_profile_offset_db (-6dB to +6dB)
+  SpectralBleachDenoiserParameters p_min = p1;
+  p_min.noise_profile_offset_db = -20.0f;
+  DenoiserParameters sp_min = sb_denoiser_params_sanitize(p_min);
+  TEST_FLOAT_CLOSE(sp_min.noise_profile_offset_linear, 0.5012f, 1e-3f);
+
+  SpectralBleachDenoiserParameters p_max = p1;
+  p_max.noise_profile_offset_db = 20.0f;
+  DenoiserParameters sp_max = sb_denoiser_params_sanitize(p_max);
+  TEST_FLOAT_CLOSE(sp_max.noise_profile_offset_linear, 1.9953f, 1e-3f);
+
+  SpectralBleach2DDenoiserParameters p2_min = p2;
+  p2_min.noise_profile_offset_db = -20.0f;
+  Denoiser2DParameters sp2_min = sb_denoiser_2d_params_sanitize(p2_min);
+  TEST_FLOAT_CLOSE(sp2_min.noise_profile_offset_linear, 0.5012f, 1e-3f);
+
+  SpectralBleach2DDenoiserParameters p2_max = p2;
+  p2_max.noise_profile_offset_db = 20.0f;
+  Denoiser2DParameters sp2_max = sb_denoiser_2d_params_sanitize(p2_max);
+  TEST_FLOAT_CLOSE(sp2_max.noise_profile_offset_linear, 1.9953f, 1e-3f);
+
+  printf("✓ Params sanitize functions tests passed\n");
+}
+
+error: patch failed: tests/test_specbleach_processor_core.c:213
+error: tests/test_specbleach_processor_core.c: patch does not apply
+Checking patch tests/test_spectral_circular_buffer.c...
+error: while searching for:
+  spectral_circular_buffer_push(NULL, layer0, NULL);
+  TEST_ASSERT(spectral_circular_buffer_retrieve(NULL, layer0, 0) == NULL,
+              "NULL handle retrieve");
+  TEST_ASSERT(spectral_circular_buffer_retrieve(cb, 99, 0) == NULL,
+              "Invalid layer id retrieve");
+  spectral_circular_buffer_advance(NULL);
+
+  spectral_circular_buffer_free(cb);
+  spectral_circular_buffer_free(NULL);
+  printf("✓ Edge cases passed\n");
+}
+
+int main(void) {
+  printf("Running SbSpectralCircularBuffer tests...\n\n");
+
+  test_circular_buffer_init_and_free();
+  test_circular_buffer_push_retrieve();
+  test_circular_buffer_delay_alignment();
+  test_circular_buffer_edge_cases();
+
+  printf("\n✅ All spectral circular buffer tests passed!\n");
+  return 0;
+
+error: patch failed: tests/test_spectral_circular_buffer.c:141
+error: tests/test_spectral_circular_buffer.c: patch does not apply
+Checking patch tests/test_stft_latency.c...
+error: while searching for:
+  printf("  (Previously was incorrectly: frame_size - hop = %u samples)\n",
+         old_incorrect_latency);
+
+  stft_processor_free(processor);
+
+  return 0;
+
+error: patch failed: tests/test_stft_latency.c:65
+error: tests/test_stft_latency.c: patch does not apply
+/testbed/tests/test_specbleach_denoiser.c: In function 'main':
+/testbed/tests/test_specbleach_denoiser.c:548:8: error: 'SpectralBleachDenoiserParameters' has no member named 'hpss_quality_mode'
+  548 |       .hpss_quality_mode = 2,
+      |        ^~~~~~~~~~~~~~~~~
+/testbed/tests/test_specbleach_denoiser.c:583:11: error: 'SpectralBleachDenoiserParameters' has no member named 'hpss_quality_mode'
+  583 |   t_params.hpss_quality_mode = HPSS_QUALITY_OFF;
+      |           ^
+/testbed/tests/test_specbleach_denoiser.c:583:32: error: 'HPSS_QUALITY_OFF' undeclared (first use in this function)
+  583 |   t_params.hpss_quality_mode = HPSS_QUALITY_OFF;
+      |                                ^~~~~~~~~~~~~~~~
+/testbed/tests/test_specbleach_denoiser.c:583:32: note: each undeclared identifier is reported only once for each function it appears in
+/testbed/tests/test_specbleach_denoiser.c:588:11: error: 'SpectralBleachDenoiserParameters' has no member named 'hpss_quality_mode'
+  588 |   t_params.hpss_quality_mode = HPSS_QUALITY_LOW;
+      |           ^
+/testbed/tests/test_specbleach_denoiser.c:588:32: error: 'HPSS_QUALITY_LOW' undeclared (first use in this function)
+  588 |   t_params.hpss_quality_mode = HPSS_QUALITY_LOW;
+      |                                ^~~~~~~~~~~~~~~~
+/testbed/tests/test_specbleach_denoiser.c:594:11: error: 'SpectralBleachDenoiserParameters' has no member named 'hpss_quality_mode'
+  594 |   t_params.hpss_quality_mode = HPSS_QUALITY_MEDIUM;
+      |           ^
+/testbed/tests/test_specbleach_denoiser.c:594:32: error: 'HPSS_QUALITY_MEDIUM' undeclared (first use in this function); did you mean 'HPSS_MODE_MEDIUM'?
+  594 |   t_params.hpss_quality_mode = HPSS_QUALITY_MEDIUM;
+      |                                ^~~~~~~~~~~~~~~~~~~
+      |                                HPSS_MODE_MEDIUM
+/testbed/tests/test_specbleach_denoiser.c:600:11: error: 'SpectralBleachDenoiserParameters' has no member named 'hpss_quality_mode'
+  600 |   t_params.hpss_quality_mode = HPSS_QUALITY_HIGH;
+      |           ^
+/testbed/tests/test_specbleach_denoiser.c:600:32: error: 'HPSS_QUALITY_HIGH' undeclared (first use in this function)
+  600 |   t_params.hpss_quality_mode = HPSS_QUALITY_HIGH;
+      |                                ^~~~~~~~~~~~~~~~~
+gmake[2]: *** [CMakeFiles/test_specbleach_denoiser.dir/build.make:76: CMakeFiles/test_specbleach_denoiser.dir/tests/test_specbleach_denoiser.c.o] Error 1
+gmake[1]: *** [CMakeFiles/Makefile2:535: CMakeFiles/test_specbleach_denoiser.dir/all] Error 2
+gmake[1]: *** Waiting for unfinished jobs....
+/testbed/tests/test_specbleach_2d_denoiser.c: In function 'test_process_loop':
+/testbed/tests/test_specbleach_2d_denoiser.c:302:9: error: 'SpectralBleach2DDenoiserParameters' has no member named 'hpss_quality_mode'
+  302 |   params.hpss_quality_mode = HPSS_QUALITY_MEDIUM;
+      |         ^
+/testbed/tests/test_specbleach_2d_denoiser.c:302:30: error: 'HPSS_QUALITY_MEDIUM' undeclared (first use in this function); did you mean 'HPSS_MODE_MEDIUM'?
+  302 |   params.hpss_quality_mode = HPSS_QUALITY_MEDIUM;
+      |                              ^~~~~~~~~~~~~~~~~~~
+      |                              HPSS_MODE_MEDIUM
+/testbed/tests/test_specbleach_2d_denoiser.c:302:30: note: each undeclared identifier is reported only once for each function it appears in
+/testbed/tests/test_specbleach_2d_denoiser.c:345:9: error: 'SpectralBleach2DDenoiserParameters' has no member named 'hpss_quality_mode'
+  345 |   params.hpss_quality_mode = HPSS_QUALITY_OFF;
+      |         ^
+/testbed/tests/test_specbleach_2d_denoiser.c:345:30: error: 'HPSS_QUALITY_OFF' undeclared (first use in this function)
+  345 |   params.hpss_quality_mode = HPSS_QUALITY_OFF;
+      |                              ^~~~~~~~~~~~~~~~
+/testbed/tests/test_specbleach_2d_denoiser.c:350:9: error: 'SpectralBleach2DDenoiserParameters' has no member named 'hpss_quality_mode'
+  350 |   params.hpss_quality_mode = HPSS_QUALITY_LOW;
+      |         ^
+/testbed/tests/test_specbleach_2d_denoiser.c:350:30: error: 'HPSS_QUALITY_LOW' undeclared (first use in this function)
+  350 |   params.hpss_quality_mode = HPSS_QUALITY_LOW;
+      |                              ^~~~~~~~~~~~~~~~
+/testbed/tests/test_specbleach_2d_denoiser.c:356:9: error: 'SpectralBleach2DDenoiserParameters' has no member named 'hpss_quality_mode'
+  356 |   params.hpss_quality_mode = HPSS_QUALITY_MEDIUM;
+      |         ^
+/testbed/tests/test_specbleach_2d_denoiser.c:362:9: error: 'SpectralBleach2DDenoiserParameters' has no member named 'hpss_quality_mode'
+  362 |   params.hpss_quality_mode = HPSS_QUALITY_HIGH;
+      |         ^
+/testbed/tests/test_specbleach_2d_denoiser.c:362:30: error: 'HPSS_QUALITY_HIGH' undeclared (first use in this function)
+  362 |   params.hpss_quality_mode = HPSS_QUALITY_HIGH;
+      |                              ^~~~~~~~~~~~~~~~~
+gmake[2]: *** [CMakeFiles/test_specbleach_2d_denoiser.dir/build.make:76: CMakeFiles/test_specbleach_2d_denoiser.dir/tests/test_specbleach_2d_denoiser.c.o] Error 1
+gmake[1]: *** [CMakeFiles/Makefile2:639: CMakeFiles/test_specbleach_2d_denoiser.dir/all] Error 2
+gmake: *** [Makefile:146: all] Error 2

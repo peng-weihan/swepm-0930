@@ -1,0 +1,252 @@
+vessel/probes_test.go:52:	sub, err := c.Bus().Subscribe(context.Background(), event.Pattern(SubjectProbeFailed))
+vessel/option.go:66:	// [WithCheckpointStore]. Nil when none was configured. Most
+vessel/option.go:178:// WithCheckpointStore wires an [engine.CheckpointStore] that the
+vessel/option.go:182:// themselves; the contract is "if WithCheckpointStore is set,
+vessel/option.go:193:func WithCheckpointStore(store engine.CheckpointStore) Option {
+vessel/kanban.go:552:	kanbanBus := c.kanban.board.Bus()
+vessel/checkpoint_test.go:18:// to the persistence backend wired via WithCheckpointStore.
+vessel/checkpoint_test.go:42:// Without the WithCheckpointStore plumbing the call would silently
+vessel/checkpoint_test.go:44:// WithCheckpointStore would be a lie.
+vessel/checkpoint_test.go:59:	c, err := New(vs, WithEngine(emitter), WithCheckpointStore(store))
+vessel/checkpoint_test.go:102:	c, _ := New(vs, WithEngine(probe), WithCheckpointStore(store))
+vessel/checkpoint_test.go:133:	if _, err := New(vs, WithEngineFactory(factory), WithCheckpointStore(store)); err != nil {
+vessel/captain_test.go:219:	if err := c.Bus().Publish(context.Background(), env); err != nil {
+vessel/captain_test.go:384:	sub, err := c.Bus().Subscribe(context.Background(), event.Pattern(SubjectPhaseChanged))
+voice/pipeline_test.go:22:func collectStreamEvents(t *testing.T, s audio.Stream[voice.Event]) []voice.Event {
+voice/pipeline_test.go:375:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:425:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:473:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:521:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:556:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:596:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:628:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:664:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:695:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:728:	for _, ev := range collectStreamEvents(t, stream) {
+voice/pipeline_test.go:766:	for _, ev := range collectStreamEvents(t, stream) {
+voice/pipeline_test.go:799:	for _, ev := range collectStreamEvents(t, stream) {
+voice/pipeline_test.go:837:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:881:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:917:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:973:	collectStreamEvents(t, stream)
+voice/pipeline_test.go:991:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:1023:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:1068:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:1162:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:1218:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:1272:	collectStreamEvents(t, stream)
+voice/pipeline_test.go:1302:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:1362:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:1409:		collectStreamEvents(t, stream)
+voice/pipeline_test.go:1443:		collectStreamEvents(t, stream)
+voice/pipeline_test.go:1468:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:1503:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:1571:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:1600:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:1645:	events := collectStreamEvents(t, stream)
+voice/pipeline_test.go:1693:	collectStreamEvents(t, stream)
+docs/migrations/v0.3.0.md:129:  `WithEventBus`, `WithStreamCallback`, `WithCheckpointStore`,
+docs/migrations/v0.3.0.md:130:  `Runner.Bus()`, plus the matching internal fields on `Executor`.
+docs/migrations/v0.3.0.md:134:- **`busOnlyHost`** transitional shim.
+docs/migrations/v0.3.0.md:135:- **Chat-application `graph.Var*` constants**: `VarMessages`, `VarQuery`,
+docs/migrations/v0.3.0.md:136:  `VarAnswer`. These move to `sdk/agent` as the chat conventions belong
+sdkx/llm/anthropic/stream.go:28:	stream  *ssestream.Stream[asdk.BetaRawMessageStreamEventUnion]
+sdkx/llm/anthropic/stream.go:48:	stream *ssestream.Stream[asdk.BetaRawMessageStreamEventUnion],
+sdkx/llm/anthropic/stream.go:144:func (s *anthropicBetaStreamMessage) betaUpdateUsage(ev asdk.BetaRawMessageStreamEventUnion) {
+sdkx/llm/anthropic/stream.go:164:func (s *anthropicBetaStreamMessage) betaObserveBlockType(ev asdk.BetaRawMessageStreamEventUnion) {
+sdkx/llm/anthropic/stream.go:175:func (s *anthropicBetaStreamMessage) betaExtractDeltaText(ev asdk.BetaRawMessageStreamEventUnion) string {
+sdkx/llm/anthropic/stream.go:222:	stream  *ssestream.Stream[asdk.MessageStreamEventUnion]
+sdkx/llm/anthropic/stream.go:244:	stream *ssestream.Stream[asdk.MessageStreamEventUnion],
+sdkx/llm/anthropic/stream.go:352:func (s *anthropicStreamMessage) updateUsage(ev asdk.MessageStreamEventUnion) {
+sdkx/llm/anthropic/stream.go:372:func (s *anthropicStreamMessage) observeBlockType(ev asdk.MessageStreamEventUnion) {
+sdkx/llm/anthropic/stream.go:383:func (s *anthropicStreamMessage) accumulateToolUse(ev asdk.MessageStreamEventUnion) {
+sdkx/llm/anthropic/stream.go:417:func (s *anthropicStreamMessage) extractDeltaText(ev asdk.MessageStreamEventUnion) string {
+sdk/workflow/option.go:9:// StreamEvent carries a streaming event emitted by a node during execution.
+sdk/workflow/option.go:10:type StreamEvent struct {
+sdk/workflow/option.go:16:// StreamCallback receives streaming events during execution.
+sdk/workflow/option.go:17:type StreamCallback func(event StreamEvent)
+sdk/workflow/option.go:46:	StreamCallback StreamCallback
+sdk/workflow/option.go:65:// WithStreamCallback sets a streaming event callback for the execution.
+sdk/workflow/option.go:66:func WithStreamCallback(cb StreamCallback) RunOption {
+sdk/workflow/option.go:67:	return func(c *RunConfig) { c.StreamCallback = cb }
+sdk/workflow/strategy_test.go:105:	if c.AnswerVar() != VarAnswer {
+sdk/workflow/strategy_test.go:106:		t.Fatalf("expected %q, got %q", VarAnswer, c.AnswerVar())
+sdk/workflow/run_test.go:24:	board.SetVar(VarAnswer, "ok")
+sdk/workflow/run_test.go:257:	board.SetVar(VarAnswer, r.answer)
+sdk/workflow/run_test.go:306:	board.SetVar(VarAnswer, "done")
+sdk/workflow/run_integration_test.go:84:	board.SetVar(VarAnswer, reply)
+sdk/workflow/run_integration_test.go:473:func TestRuntime_StreamCallbackOption(t *testing.T) {
+sdk/workflow/run_integration_test.go:474:	var captured []StreamEvent
+sdk/workflow/run_integration_test.go:475:	cb := func(e StreamEvent) { captured = append(captured, e) }
+sdk/workflow/run_integration_test.go:477:	rc := ApplyRunOpts([]RunOption{WithStreamCallback(cb)})
+sdk/workflow/run_integration_test.go:478:	if rc.StreamCallback == nil {
+sdk/workflow/run_integration_test.go:479:		t.Fatal("StreamCallback not set")
+sdk/workflow/run_integration_test.go:481:	rc.StreamCallback(StreamEvent{Type: "token", NodeID: "n1", Payload: "hi"})
+sdk/workflow/strategy.go:18:	return VarAnswer
+sdk/workflow/keys.go:5:	VarQuery            = "query"
+sdk/workflow/keys.go:6:	VarAnswer           = "answer"
+sdk/workflow/keys.go:7:	VarMessages         = "messages"
+sdk/workflow/doc.go:58://   - workflow.RunOption / WithHistory / WithStreamCallback /
+sdk/workflow/doc.go:64://   - workflow.StreamEvent / StreamCallback
+sdk/workflow/run.go:120:		board.SetVar(VarQuery, q)
+sdk/workflow/run.go:134:	board.SetVar(VarMessages, append([]model.Message(nil), main...))
+sdk/llm/deprecated.go:97:// in one helper and depends on workflow.StreamCallback. It is
+sdk/llm/deprecated.go:103:	stream workflow.StreamCallback,
+sdk/llm/deprecated.go:148:	stream  workflow.StreamCallback
+sdk/llm/deprecated.go:162:	stream workflow.StreamCallback,
+sdk/llm/deprecated.go:204:			s.stream(workflow.StreamEvent{
+sdk/llm/deprecated.go:264:				s.stream(workflow.StreamEvent{
+sdk/llm/deprecated.go:280:				s.stream(workflow.StreamEvent{
+sdk/engine/doc.go:111://   - StreamCallback / StreamEvent — replaced by Publisher +
+sdk/engine/doc.go:118://   - VarMessages / VarQuery / VarAnswer — chat conventions that
+sdk/kanban/kanban.go:90:// published on Board.Bus(), which is the single source of truth.
+sdk/kanban/kanban.go:91:// (k *Kanban).Bus() is a thin alias for board.Bus() kept for ergonomics.
+sdk/kanban/kanban.go:245:// It is an alias for Board().Bus(); both return the same underlying bus.
+sdk/kanban/kanban.go:246:func (k *Kanban) Bus() event.Bus { return k.board.Bus() }
+sdk/kanban/kanban.go:310:	// Do not re-publish here; Board.Bus() is the single source of truth.
+sdk/kanban/kanban.go:436:// Board.Bus().
+sdk/kanban/board.go:326:// type and publishes it on Board.Bus(). Internal card types (cron rules /
+sdk/kanban/scheduler.go:161:		bus := s.kanban.board.Bus()
+sdk/kanban/scheduler.go:298:	publishCronEvent(ctx, s.kanban.board.Bus(), EventCronRuleFired, scheduleID, s.kanban.board.ScopeID(), CronRuleFiredPayload{
+sdk/kanban/scheduler.go:434:		publishCronEvent(ctx, s.kanban.board.Bus(), EventCronRuleCreated, scheduleID, s.kanban.board.ScopeID(), CronRuleCreatedPayload{
+sdk/kanban/events.go:9:// EventKind labels the Kanban events surfaced via Board.Bus(). Subjects
+sdk/kanban/kanban_test.go:703:	sub, err := b.Bus().Subscribe(context.Background(), PatternAllCards())
+sdk/kanban/board_test.go:881:	if b.Bus() == nil {
+sdk/kanban/board_test.go:886:	sub, err := b.Bus().Subscribe(ctx, event.Pattern(">"))
+sdk/kanban/board_test.go:897:	if err := b.Bus().Publish(ctx, env); err != nil {
+sdk/kanban/board_test.go:919:		s, err := b.Bus().Subscribe(ctx, event.Pattern(">"))
+sdk/kanban/board_test.go:932:	if err := b.Bus().Publish(ctx, env); err != nil {
+sdk/kanban/board_test.go:1236:			if _, err := b.Bus().Subscribe(ctx, event.Pattern(">")); err != nil {
+sdk/kanban/helpers_test.go:129:// subscribeBus subscribes to b.Bus() with a generous buffer and registers
+sdk/kanban/helpers_test.go:135:	sub, err := b.Bus().Subscribe(context.Background(), PatternAll(), event.WithBufferSize(1024))
+sdk/script/bindings/deprecated.go:24:// Deprecated: scheduled for removal in v0.3.0. Tied to workflow.StreamCallback
+sdk/script/bindings/deprecated.go:27:// workflow.StreamCallback.
+sdk/script/bindings/deprecated.go:28:func NewStreamBridge(stream workflow.StreamCallback, nodeID string) BindingFunc {
+sdk/script/bindings/deprecated.go:33:					stream(workflow.StreamEvent{Type: eventType, NodeID: nodeID, Payload: payload})
+sdk/graph/core.go:34:// ErrInterrupt is the legacy graceful-exit sentinel returned by nodes.
+sdk/graph/core.go:40:var ErrInterrupt = errdefs.Interrupted(errdefs.New("execution interrupted"))
+sdk/graph/core.go:101:	Stream StreamCallback
+sdk/graph/deprecated.go:15:// StreamEvent carries a streaming event emitted by a node during execution.
+sdk/graph/deprecated.go:18:// produced through StreamPublisher. Aliased to workflow.StreamEvent so legacy
+sdk/graph/deprecated.go:21:// executor.WithStreamCallback.
+sdk/graph/deprecated.go:22:type StreamEvent = workflow.StreamEvent
+sdk/graph/deprecated.go:24:// StreamCallback receives streaming events during execution.
+sdk/graph/deprecated.go:28:// workflow.StreamCallback so legacy code paths interoperate without explicit
+sdk/graph/deprecated.go:30:type StreamCallback = workflow.StreamCallback
+sdk/graph/port.go:60:		if (p.Name == VarMessages || p.Type == PortTypeMessages) && len(b.Channel(MainChannel)) > 0 {
+sdk/graph/adapter/strategy_test.go:39:	if s.Capabilities().AnswerVar() != workflow.VarAnswer {
+sdk/graph/adapter/strategy_test.go:79:	if s.Capabilities().AnswerVar() != workflow.VarAnswer {
+sdk/graph/adapter/strategy.go:63:	return workflow.StrategyCapabilities{AnswerKey: workflow.VarAnswer}
+sdk/graph/adapter/strategy.go:98:	return workflow.StrategyCapabilities{AnswerKey: workflow.VarAnswer}
+sdk/graph/adapter/strategy.go:149:	if rc.StreamCallback != nil {
+sdk/graph/adapter/strategy.go:150:		rOpts = append(rOpts, runner.WithStreamCallback(rc.StreamCallback))
+sdk/graph/vars.go:11://   - Chat-application conventions (VarMessages, VarQuery, VarAnswer) — these
+sdk/graph/vars.go:24:	// graph.ErrInterrupt, written by the executor before propagating the
+sdk/graph/vars.go:42:// VarMessages is the canonical board-var key holding a []model.Message
+sdk/graph/vars.go:47:const VarMessages = "messages"
+sdk/graph/vars.go:49:// VarQuery is the canonical key for the user's current question, used by
+sdk/graph/vars.go:55:const VarQuery = "query"
+sdk/graph/vars.go:57:// VarAnswer is the canonical key for the final assistant answer string
+sdk/graph/vars.go:62:const VarAnswer = "answer"
+sdk/graph/runner/options.go:74:// WithStreamCallback installs a legacy node-delta stream callback.
+sdk/graph/runner/options.go:78:// removal in v0.3.0 together with executor.WithStreamCallback.
+sdk/graph/runner/options.go:79:func WithStreamCallback(cb graph.StreamCallback) Option {
+sdk/graph/runner/options.go:80:	return appendRunOpt(executor.WithStreamCallback(cb))
+sdk/graph/runner/options.go:83:// WithCheckpointStore installs a graph-format CheckpointStore that
+sdk/graph/runner/options.go:88:// executor.WithCheckpointStore.
+sdk/graph/runner/options.go:89:func WithCheckpointStore(s executor.CheckpointStore) Option { //nolint:staticcheck // forwards to deprecated executor option for transitional callers
+sdk/graph/runner/options.go:90:	return appendRunOpt(executor.WithCheckpointStore(s))
+sdk/graph/runner/engine_test.go:124:// parameter (and only that — no executor.WithRunID needed) drives
+sdk/graph/runner/engine_test.go:126:// flows end-to-end without a parallel WithRunID indirection.
+sdk/graph/runner/runner_test.go:226:func TestRunner_WithEventBus(t *testing.T) {
+sdk/graph/runner/runner_test.go:241:	r, err := runner.New(def, node.NewFactory(), runner.WithEventBus(bus))
+sdk/graph/runner/runner_test.go:246:	if r.Bus() != bus {
+sdk/graph/runner/runner_test.go:342:func TestRunner_StreamCallback(t *testing.T) {
+sdk/graph/runner/runner_test.go:346:				ctx.Stream(graph.StreamEvent{Type: "token", NodeID: "emit", Payload: map[string]any{"content": "hi"}})
+sdk/graph/runner/runner_test.go:364:	var captured []graph.StreamEvent
+sdk/graph/runner/runner_test.go:366:		runner.WithStreamCallback(func(se graph.StreamEvent) {
+sdk/graph/node/llmnode/config_test.go:183:	msgs := n.buildMessages(n.config, board, graph.MainChannel, graph.VarMessages)
+sdk/graph/node/llmnode/config_test.go:198:	board.SetVar(graph.VarMessages, []model.Message{
+sdk/graph/node/llmnode/config_test.go:202:	msgs := n.buildMessages(n.config, board, "empty_channel", graph.VarMessages)
+sdk/graph/node/llmnode/config_test.go:216:	msgs := n.buildMessages(n.config, board, graph.MainChannel, graph.VarMessages)
+sdk/graph/runner/internal/executor/checkpoint.go:22:// together with WithCheckpointStore. Existing CheckpointStore
+sdk/graph/runner/internal/executor/checkpoint.go:23:// implementations keep working via storeOnlyHost.
+sdk/graph/runner/internal/executor/checkpoint.go:52:// checkpointFromEngine is the inverse of toEngine. Used by storeOnlyHost
+sdk/graph/runner/internal/executor/checkpoint.go:71:// code already using WithCheckpointStore keeps compiling and is folded
+sdk/graph/runner/internal/executor/checkpoint.go:72:// into the host path via storeOnlyHost. Scheduled for removal in v0.3.0.
+sdk/graph/runner/internal/executor/checkpoint.go:312:// storeOnlyHost adapts a deprecated executor.CheckpointStore into a
+sdk/graph/runner/internal/executor/checkpoint.go:316:// It mirrors busOnlyHost (the runner.WithEventBus shim): every Host
+sdk/graph/runner/internal/executor/checkpoint.go:322:// executor.WithCheckpointStore. New code should pass a real
+sdk/graph/runner/internal/executor/checkpoint.go:325:type storeOnlyHost struct {
+sdk/graph/runner/internal/executor/checkpoint.go:334:func (h storeOnlyHost) Checkpoint(_ context.Context, cp engine.Checkpoint) error {
+sdk/graph/runner/internal/executor/checkpoint.go:341:// resolveCheckpointHost folds a legacy CheckpointStore into the
+sdk/graph/runner/internal/executor/checkpoint.go:344:// Resolution rules (mirroring resolvePublisher):
+sdk/graph/runner/internal/executor/checkpoint.go:346://   - store alone: wrap in storeOnlyHost{NoopHost, store}.
+sdk/graph/runner/internal/executor/checkpoint.go:350://     resolvePublisher does for envelopes. The deprecation comment on
+sdk/graph/runner/internal/executor/checkpoint.go:351://     WithCheckpointStore tells callers to drop it once they wire a
+sdk/graph/runner/internal/executor/checkpoint.go:357:func resolveCheckpointHost(host engine.Host, store CheckpointStore) engine.Host {
+sdk/graph/runner/internal/executor/checkpoint.go:364:		return storeOnlyHost{Host: engine.NoopHost{}, store: store}
+sdk/graph/node/llmnode/exec_test.go:236:	board.SetVar(graph.VarQuery, "what is this?")
+sdk/graph/runner/internal/executor/parallel_test.go:40:	exec := NewLocalExecutor()
+sdk/graph/runner/internal/executor/parallel_test.go:87:	exec := NewLocalExecutor()
+sdk/graph/runner/internal/executor/parallel_test.go:149:	exec := NewLocalExecutor()
+sdk/graph/runner/internal/executor/parallel_test.go:193:	exec := NewLocalExecutor()
+sdk/graph/runner/internal/executor/parallel_test.go:229:	exec := NewLocalExecutor()
+sdk/graph/runner/internal/executor/parallel_test.go:283:	exec := NewLocalExecutor()
+sdk/graph/node/llmnode/round.go:25://     and the deprecated StreamCallback shim if a legacy caller registered
+sdk/graph/node/llmnode/llmnode.go:81:		{Name: graph.VarMessages, Type: graph.PortTypeMessages, Required: true},
+sdk/graph/node/llmnode/llmnode.go:92:		{Name: graph.VarMessages, Type: graph.PortTypeMessages, Required: true},
+sdk/graph/node/llmnode/llmnode.go:106:		messagesKey = graph.VarMessages
+sdk/graph/node/llmnode/llmnode.go:109:	if chName == graph.VarMessages {
+sdk/graph/node/llmnode/llmnode.go:196:	if cfg.QueryFallback && messagesKey != graph.VarMessages {
+sdk/graph/node/llmnode/llmnode.go:197:		if query, ok := board.GetVar(graph.VarQuery); ok {
+sdk/graph/runner/internal/executor/checkpoint_test.go:37:	exec := NewLocalExecutor()
+sdk/graph/runner/internal/executor/checkpoint_test.go:39:		WithCheckpointStore(store))
+sdk/graph/runner/internal/executor/checkpoint_test.go:272:func TestCheckpoint_WithRunID_IntegrationExecution(t *testing.T) {
+sdk/graph/runner/internal/executor/checkpoint_test.go:290:	exec := NewLocalExecutor()
+sdk/graph/runner/internal/executor/checkpoint_test.go:292:		WithRunID("run-abc"),
+sdk/graph/runner/internal/executor/checkpoint_test.go:293:		WithCheckpointStore(store),
+sdk/graph/runner/internal/executor/checkpoint_test.go:326:// resolveCheckpointHost documents: when WithHost is supplied, the
+sdk/graph/runner/internal/executor/checkpoint_test.go:327:// deprecated WithCheckpointStore is ignored. Checkpointing is state
+sdk/graph/runner/internal/executor/checkpoint_test.go:350:	exec := NewLocalExecutor()
+sdk/graph/runner/internal/executor/checkpoint_test.go:352:		WithRunID("run-host"),
+sdk/graph/runner/internal/executor/checkpoint_test.go:354:		WithCheckpointStore(store), // intentionally also set; should be ignored
+sdk/graph/runner/internal/executor/checkpoint_test.go:387:// transitional path (only WithCheckpointStore, no WithHost) keeps
+sdk/graph/runner/internal/executor/checkpoint_test.go:388:// working: the store is folded into a storeOnlyHost so the executor's
+sdk/graph/runner/internal/executor/checkpoint_test.go:407:	exec := NewLocalExecutor()
+sdk/graph/runner/internal/executor/checkpoint_test.go:409:		WithRunID("run-store"),
+sdk/graph/runner/internal/executor/checkpoint_test.go:410:		WithCheckpointStore(store),
+sdk/graph/stream.go:7:// (engine.Host.Publisher, legacy StreamCallback, both) so nodes never see
+sdk/graph/runner/internal/executor/publisher.go:26:// resolvePublisher collapses the executor's two possible event inputs
+sdk/graph/runner/internal/executor/publisher.go:27:// (cfg.host — modern; cfg.bus — deprecated WithEventBus) into a single
+sdk/graph/runner/internal/executor/publisher.go:42:func resolvePublisher(host engine.Host, bus event.Bus) engine.Publisher {
+sdk/graph/runner/internal/executor/publisher.go:64:// isNoopBus lets resolvePublisher skip the fan-out wrapper when the
+sdk/graph/runner/internal/executor/publisher.go:77:// legacy bus). The deprecated StreamCallback registered via
+sdk/graph/runner/internal/executor/publisher.go:78:// WithStreamCallback is also fanned to here for v0.2 backwards
+sdk/graph/runner/internal/executor/publisher.go:91:			cb(graph.StreamEvent{Type: eventType, NodeID: nodeID, Payload: payload})
+sdk/graph/runner/internal/executor/retry.go:46:		// Both legacy graph.ErrInterrupt and engine.Interrupted satisfy
+sdk/graph/runner/internal/executor/retry.go:85:// legacyStreamShim adapts a StreamPublisher into the deprecated StreamCallback
+sdk/graph/runner/internal/executor/retry.go:89:func legacyStreamShim(p graph.StreamPublisher) graph.StreamCallback {
+sdk/graph/runner/internal/executor/retry.go:93:	return func(se graph.StreamEvent) {
+sdk/graph/runner/runner.go:48:// WithExecutor overrides the default LocalExecutor.
+sdk/graph/runner/runner.go:55:func WithExecutor(e executor.Executor) Option { //nolint:staticcheck
+sdk/graph/runner/runner.go:77:// WithEventBus sets the Bus used for graph lifecycle events.
+sdk/graph/runner/runner.go:80:// every envelope through host.Publish. WithEventBus is retained as a
+sdk/graph/runner/runner.go:83:// executor.WithEventBus.
+sdk/graph/runner/runner.go:84:func WithEventBus(bus event.Bus) Option {
+sdk/graph/runner/runner.go:89:		r.host = busOnlyHost{Host: engine.NoopHost{}, bus: bus}
+sdk/graph/runner/runner.go:93:// busOnlyHost adapts an event.Bus into engine.Host. It exists only to keep
+sdk/graph/runner/runner.go:94:// the deprecated WithEventBus working without polluting Runner with a
+sdk/graph/runner/runner.go:101:// runner.WithEventBus.
+sdk/graph/runner/runner.go:102:type busOnlyHost struct {
+sdk/graph/runner/runner.go:109:func (h busOnlyHost) Publish(ctx context.Context, env event.Envelope) error {
+sdk/graph/runner/runner.go:118:// runner.WithEventBus. Used by the deprecated Runner.Bus() getter so
+sdk/graph/runner/runner.go:120:func (h busOnlyHost) unwrapBus() event.Bus { return h.bus }
+sdk/graph/runner/runner.go:133:		executor: executor.NewLocalExecutor(),
+sdk/graph/runner/runner.go:226:		opts = append(opts, executor.WithRunID(run.ID)) //nolint:staticcheck
+sdk/graph/runner/runner.go:244:// Bus returns the bus configured via the deprecated WithEventBus option,
+sdk/graph/runner/internal/executor/executor_test.go:29:	exec := NewLocalExecutor()
+sdk/graph/runner/internal/executor/executor_test.go:58:	exec := NewLocalExecutor()
+sdk/graph/runner/internal/executor/executor_test.go:95:	exec := NewLocalExecutor()
+
+[Showing results with pagination = limit: 250]

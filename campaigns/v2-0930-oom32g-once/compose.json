@@ -1,0 +1,23 @@
+{
+  "services": {
+    "main": {
+      "extra_hosts": [
+        "llm-sidecar.iquest-inner.com:10.148.194.100"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "/data/swepmv2-harbor-runtime/tools/claude-code/2.1.140/linux-x64",
+          "target": "/opt/swepm-claude",
+          "read_only": true
+        }
+      ]
+    }
+  },
+  "networks": {
+    "default": {
+      "name": "${COMPOSE_PROJECT_NAME}_default",
+      "external": true
+    }
+  }
+}

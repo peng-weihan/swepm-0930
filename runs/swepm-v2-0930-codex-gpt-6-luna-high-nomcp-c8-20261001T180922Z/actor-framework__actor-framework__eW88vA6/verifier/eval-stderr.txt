@@ -1,0 +1,66 @@
+Checking patch libcaf_core/caf/serialization.test.cpp...
+error: while searching for:
+  )_";
+}
+
+// TODO: update tests to use apply instead of value overload
+SCENARIO("binary serializer and deserializer handle vectors of booleans") {
+  GIVEN("a binary serializer") {
+    auto sink = binary_serializer_wrapper{sys};
+    WHEN("serializing a vector of booleans with 8 values") {
+      auto val = std::vector<bool>{true,  false, true, true,
+                                   false, false, true, false};
+      check(sink.sink.value(val));
+      THEN("deserializing the result produces the value again") {
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
+        auto copy = std::vector<bool>{};
+        check(source.value(copy));
+        check_eq(copy, val);
+      }
+    }
+    WHEN("serializing a vector of boolean with 9 values") {
+      auto val = std::vector<bool>{true,  false, true,  true, false,
+                                   false, true,  false, true};
+      check(sink.sink.value(val));
+      THEN("deserializing the result produces the value again") {
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
+        auto copy = std::vector<bool>{};
+        check(source.value(copy));
+        check_eq(copy, val);
+      }
+    }
+    WHEN("serializing a vector of boolean with 1 value") {
+      auto val = std::vector<bool>{true};
+      check(sink.sink.value(val));
+      THEN("deserializing the result produces the value again") {
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
+        auto copy = std::vector<bool>{};
+        check(source.value(copy));
+        check_eq(copy, val);
+      }
+    }
+    WHEN("serializing an empty vector of boolean") {
+      auto val = std::vector<bool>{};
+      check(sink.sink.value(val));
+      THEN("deserializing the result produces the value again") {
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
+        auto copy = std::vector<bool>{};
+        check(source.value(copy));
+        check_eq(copy, val);
+      }
+    }
+
+error: patch failed: libcaf_core/caf/serialization.test.cpp:882
+error: libcaf_core/caf/serialization.test.cpp: patch does not apply
+Checking patch libcaf_core/caf/serializer.test.cpp...
+error: while searching for:
+public:
+  using super = serializer;
+
+  test_serializer(actor_system& sys, bool state) : codec_(sys), state_(state) {
+    // nop
+  }
+
+
+error: patch failed: libcaf_core/caf/serializer.test.cpp:21
+error: libcaf_core/caf/serializer.test.cpp: patch does not apply

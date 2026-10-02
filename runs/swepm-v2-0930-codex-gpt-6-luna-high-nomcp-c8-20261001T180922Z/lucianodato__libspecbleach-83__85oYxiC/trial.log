@@ -1,0 +1,27 @@
+Running command: test -x /usr/local/bin/codex-code-mode-host && codex --version
+Command outputs captured
+Running command: mkdir -p "$CODEX_HOME" /opt/swepm-runtime/secrets /logs/agent
+Command outputs captured
+Codex auth: using auth.json from [REDACTED]
+Running command: ln -sf /opt/swepm-runtime/secrets/auth.json "$CODEX_HOME/auth.json"
+
+Command outputs captured
+Running command: if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi; codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-6-luna --json --enable unified_exec -c model_reasoning_effort=high -- 'feat: Introduce tonal detection and support multiple noise reduction … (#83)
+
+* feat: Introduce tonal detection and support multiple noise reduction modes for 2D denoiser.
+
+* refactor: remove boundary checks when spreading tonal mask influence to neighboring bins.
+
+Additional public API contracts covered by the tests: replace the previous 2D denoiser `noise_reduction_mode` field/API with `aggressiveness` and `tonal_reduction`, support noise profile modes `1` through `4`, rename the noise profile `blocks_averaged` accessors/fields to `block_count`, and apply the corresponding parameter/API changes to the 1D denoiser entry points as well as the 2D denoiser.
+' 2>&1 </dev/null | tee /logs/agent/codex.txt
+Command outputs captured
+Running command: mkdir -p /logs/agent
+if [ -d "$CODEX_HOME/sessions" ]; then
+  rm -rf /logs/agent/sessions
+  cp -R "$CODEX_HOME/sessions" /logs/agent/sessions
+fi
+Command outputs captured
+Running command: rm -rf /opt/swepm-runtime/secrets "$CODEX_HOME"
+Command outputs captured
+Wrote Codex trajectory to /data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/lucianodato__libspecbleach-83__85oYxiC/agent/trajectory.json
+Collecting main service artifacts

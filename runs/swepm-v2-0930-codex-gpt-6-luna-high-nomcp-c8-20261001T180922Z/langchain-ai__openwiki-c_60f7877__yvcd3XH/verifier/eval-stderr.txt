@@ -1,0 +1,149 @@
+Checking patch test/telemetry.test.ts...
+Checking patch test/visualize-client-lib.test.ts...
+Checking patch test/visualize-command.test.ts...
+Checking patch test/visualize-graph.test.ts...
+Checking patch test/visualize-server.test.ts...
+Applied patch test/telemetry.test.ts cleanly.
+Applied patch test/visualize-client-lib.test.ts cleanly.
+Applied patch test/visualize-command.test.ts cleanly.
+Applied patch test/visualize-graph.test.ts cleanly.
+Applied patch test/visualize-server.test.ts cleanly.
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 6 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m test/telemetry.test.ts[2m > [22merror origin tags[2m > [22mleaves detail, stage, and status undefined when absent
+[31m[1mAssertionError[22m: expected { errorClass: 'agent_error', …(4) } to deeply equal { errorClass: 'agent_error', …(4) }[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[2m    "errorClass": "agent_error",[22m
+[32m-   "errorDetail": undefined,[39m
+[31m+   "errorDetail": "Error",[39m
+[2m    "errorOwner": "unowned",[22m
+[2m    "errorStage": undefined,[22m
+[2m    "httpStatus": undefined,[22m
+[2m  }[22m
+
+[36m [2m❯[22m test/telemetry.test.ts:[2m335:58[22m[39m
+    [90m333|[39m
+    [90m334|[39m   test("leaves detail, stage, and status undefined when absent", () =>…
+    [90m335|[39m     [34mexpect[39m([34mdescribeErrorForTelemetry[39m([35mnew[39m [33mError[39m([32m"boom"[39m)))[33m.[39m[34mtoEqual[39m({
+    [90m   |[39m                                                          [31m^[39m
+    [90m336|[39m       errorClass[33m:[39m [32m"agent_error"[39m[33m,[39m
+    [90m337|[39m       errorDetail[33m:[39m undefined[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/telemetry.test.ts[2m > [22mbuildRunEvent diagnostics[2m > [22mapp_version is stamped when the context supplies it
+[31m[1mAssertionError[22m: expected { command: 'update', …(5) } to match object { app_version: '9.9.9' }
+(5 matching properties omitted from actual)[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[32m-   "app_version": "9.9.9",[39m
+[31m+   "app_version": "0.2.4",[39m
+[2m  }[22m
+
+[36m [2m❯[22m test/telemetry.test.ts:[2m694:30[22m[39m
+    [90m692|[39m     )[33m;[39m
+    [90m693|[39m
+    [90m694|[39m     [34mexpect[39m(event[33m.[39mproperties)[33m.[39m[34mtoMatchObject[39m({ app_version[33m:[39m [32m"9.9.9"[39m })[33m;[39m
+    [90m   |[39m                              [31m^[39m
+    [90m695|[39m   })[33m;[39m
+    [90m696|[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/telemetry.test.ts[2m > [22mbuildRunEvent diagnostics[2m > [22mapp_version is omitted when the context could not resolve it
+[31m[1mAssertionError[22m: expected { command: 'init', …(5) } to not have property "app_version"[39m
+
+[32m- Expected:[39m
+undefined
+
+[31m+ Received:[39m
+"0.2.4"
+
+[36m [2m❯[22m test/telemetry.test.ts:[2m705:34[22m[39m
+    [90m703|[39m     )[33m;[39m
+    [90m704|[39m
+    [90m705|[39m     [34mexpect[39m(event[33m.[39mproperties)[33m.[39mnot[33m.[39m[34mtoHaveProperty[39m([32m"app_version"[39m)[33m;[39m
+    [90m   |[39m                                  [31m^[39m
+    [90m706|[39m   })[33m;[39m
+    [90m707|[39m })[33m;[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/telemetry.test.ts[2m > [22manonymity envelope: one representative failure per reachable family[2m > [22m'agent_error' ('an unclassified throw') resolves its class and stays inside the envelope
+[31m[1mAssertionError[22m: expected false to be true // Object.is equality[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- true[39m
+[31m+ false[39m
+
+[36m [2m❯[22m assertAnonymousEnvelope test/telemetry.test.ts:[2m828:57[22m[39m
+    [90m826|[39m           [35mbreak[39m[33m;[39m
+    [90m827|[39m         [35mcase[39m [32m"error_detail"[39m[33m:[39m
+    [90m828|[39m           [34mexpect[39m([33mDETAIL_ALLOWLIST[39m[33m.[39m[34mhas[39m(value [35mas[39m string))[33m.[39m[34mtoBe[39m([35mtrue[39m)[33m;[39m
+    [90m   |[39m                                                         [31m^[39m
+    [90m829|[39m           [35mbreak[39m[33m;[39m
+    [90m830|[39m         [35mcase[39m [32m"provider"[39m[33m:[39m
+[90m [2m❯[22m test/telemetry.test.ts:[2m976:7[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/visualize-command.test.ts[2m > [22mparseCommand visualize[2m > [22mdefaults: openwiki dir, port 4321, opens the browser
+[31m[1mAssertionError[22m: expected { kind: 'visualize', …(5) } to deeply equal { kind: 'visualize', …(4) }[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[2m    "exitCode": 0,[22m
+[31m+   "exportDir": null,[39m
+[2m    "kind": "visualize",[22m
+[2m    "open": true,[22m
+[2m    "port": 4321,[22m
+[2m    "wikiDir": "openwiki",[22m
+[2m  }[22m
+
+[36m [2m❯[22m test/visualize-command.test.ts:[2m6:41[22m[39m
+    [90m  4|[39m [34mdescribe[39m([32m"parseCommand visualize"[39m[33m,[39m () [33m=>[39m {
+    [90m  5|[39m   [34mtest[39m([32m"defaults: openwiki dir, port 4321, opens the browser"[39m[33m,[39m () [33m=>[39m {
+    [90m  6|[39m     [34mexpect[39m([34mparseCommand[39m([[32m"visualize"[39m]))[33m.[39m[34mtoEqual[39m({
+    [90m   |[39m                                         [31m^[39m
+    [90m  7|[39m       kind[33m:[39m [32m"visualize"[39m[33m,[39m
+    [90m  8|[39m       exitCode[33m:[39m [34m0[39m[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/6]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m test/visualize-command.test.ts[2m > [22mparseCommand visualize[2m > [22maccepts a positional dir, --port, and --no-open
+[31m[1mAssertionError[22m: expected { kind: 'visualize', …(5) } to deeply equal { kind: 'visualize', …(4) }[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  {[22m
+[2m    "exitCode": 0,[22m
+[31m+   "exportDir": null,[39m
+[2m    "kind": "visualize",[22m
+[2m    "open": false,[22m
+[2m    "port": 4400,[22m
+[2m    "wikiDir": "docs/wiki",[22m
+[2m  }[22m
+
+[36m [2m❯[22m test/visualize-command.test.ts:[2m18:7[22m[39m
+    [90m 16|[39m     [34mexpect[39m(
+    [90m 17|[39m       parseCommand(["visualize", "docs/wiki", "--port", "4400", "--no-…
+    [90m 18|[39m     )[33m.[39m[34mtoEqual[39m({
+    [90m   |[39m       [31m^[39m
+    [90m 19|[39m       kind[33m:[39m [32m"visualize"[39m[33m,[39m
+    [90m 20|[39m       exitCode[33m:[39m [34m0[39m[33m,[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/6]⎯[22m[39m
+

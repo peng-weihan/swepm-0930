@@ -1,0 +1,37 @@
+Checking patch crates/rig-core/tests/serde_policy_allowlist.txt...
+error: while searching for:
+# Single-file providers: unary/non-stream parses sharing a file with streaming code.
+providers/ollama.rs | serde_json::from_slice(&bytes)?; | unary embedding response body, not a stream frame
+providers/ollama.rs | serde_json::from_slice(&response_body)?; | unary completion response body, not a stream frame
+providers/ollama.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame
+providers/copilot/mod.rs | ChatApiResponse<ChatCompletionResponse>>(&body)? | unary chat completion body, not a stream frame
+providers/copilot/mod.rs | responses_api::CompletionResponse>(&body)? | unary responses completion body, not a stream frame
+providers/copilot/mod.rs | CopilotEmbeddingResponse = match serde_json::from_slice | unary embedding response body, not a stream frame
+providers/copilot/mod.rs | serde_json::from_slice::<NestedApiError>(&body) | unary error-envelope decode on a non-2xx body, not a stream frame
+providers/copilot/mod.rs | ListModelsResponse = serde_json::from_slice(&body) | list-models response body, not a stream frame
+
+# --- #[serde(untagged)] unions that are not frame triage --------------------
+providers/ollama.rs | #[serde(untagged)] | The `Think` request-option value (`true`/`false` or a named level) is an untagged union on the REQUEST body; nothing about inbound frame policy is decided here.
+
+error: patch failed: crates/rig-core/tests/serde_policy_allowlist.txt:34
+error: crates/rig-core/tests/serde_policy_allowlist.txt: patch does not apply
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.34s
+     Running unittests src/lib.rs (target/debug/deps/rig_core-afd1c853682a75f9)
+     Running tests/driver_adoption.rs (target/debug/deps/driver_adoption-6021025e163c219c)
+error: test failed, to rerun pass `-p rig-core --test driver_adoption`
+     Running tests/identity_leak.rs (target/debug/deps/identity_leak-a946130297913ef1)
+    Checking rig-core-tests v0.0.0 (/testbed/target/tests/trybuild/rig-core)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.23s
+
+
+test tests/identity_leak/construct_wire_id.rs ... ok
+test tests/identity_leak/match_stream_key.rs ... ok
+test tests/identity_leak/render_stream_key.rs ... ok
+test tests/identity_leak/serialize_part_id.rs ... ok
+
+
+     Running tests/macro_hygiene.rs (target/debug/deps/macro_hygiene-2d0edcda08fc4526)
+     Running tests/streaming_conformance_websocket.rs (target/debug/deps/streaming_conformance_websocket-2e290c4189f9bbe6)
+   Doc-tests rig_core
+error: 1 target failed:
+    `-p rig-core --test driver_adoption`

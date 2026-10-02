@@ -1,0 +1,435 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+The Meson build system
+Version: 0.61.2
+Source dir: /testbed
+Build dir: /testbed/build
+Build type: native build
+Project name: libspecbleach
+Project version: 0.2.1
+C compiler for the host machine: cc (gcc 11.4.0 "cc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0")
+C linker for the host machine: cc ld.bfd 2.38
+Host machine cpu family: x86_64
+Host machine cpu: x86_64
+Compiler for C supports arguments -Wall: YES 
+Compiler for C supports arguments -Wextra: YES 
+Compiler for C supports arguments -Wpedantic: YES 
+Compiler for C supports arguments -Wno-unused-parameter: YES 
+Compiler for C supports arguments -Wno-unused-variable: YES 
+Compiler for C supports arguments -msse: YES 
+Compiler for C supports arguments -msse2: YES 
+Compiler for C supports arguments -mfpmath=sse: YES 
+Compiler for C supports arguments -ffast-math: YES 
+Compiler for C supports arguments -fomit-frame-pointer: YES 
+Compiler for C supports arguments -fno-finite-math-only: YES 
+Library m found: YES
+Found pkg-config: /usr/bin/pkg-config (0.29.2)
+Run-time dependency fftw3f found: YES 3.3.8
+Run-time dependency sndfile found: YES 1.0.31
+Build targets in project: 25
+
+libspecbleach 0.2.1
+
+  User defined options
+    buildtype      : debug
+    enable_examples: true
+    enable_tests   : true
+
+Found ninja-1.10.1 at /usr/bin/ninja
+ninja: Entering directory `/testbed/build'
+[1/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_noise_estimation_noise_estimator.c.o -MF src/libspecbleach.so.0.2.1.p/shared_noise_estimation_noise_estimator.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_noise_estimation_noise_estimator.c.o -c ../src/shared/noise_estimation/noise_estimator.c
+../src/shared/noise_estimation/noise_estimator.c: In function ‘noise_estimation_run’:
+../src/shared/noise_estimation/noise_estimator.c:84:33: warning: implicit declaration of function ‘get_noise_profile_blocks_averaged’; did you mean ‘get_noise_profile_block_count’? [-Wimplicit-function-declaration]
+   84 |                                 get_noise_profile_blocks_averaged(
+      |                                 ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                 get_noise_profile_block_count
+../src/shared/noise_estimation/noise_estimator.c:87:7: warning: implicit declaration of function ‘increment_blocks_averaged’; did you mean ‘increment_block_count’? [-Wimplicit-function-declaration]
+   87 |       increment_blocks_averaged(self->noise_profile, noise_estimator_type);
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~
+      |       increment_block_count
+[2/80] cc -Itests/test_noise_floor_manager.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o -MF tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o.d -o tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o -c ../tests/test_noise_floor_manager.c
+FAILED: tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o 
+cc -Itests/test_noise_floor_manager.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o -MF tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o.d -o tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o -c ../tests/test_noise_floor_manager.c
+../tests/test_noise_floor_manager.c: In function ‘test_noise_floor_manager_apply’:
+../tests/test_noise_floor_manager.c:52:3: error: too many arguments to function ‘noise_floor_manager_apply’
+   52 |   noise_floor_manager_apply(NULL, real_size, fft_size, gain_spectrum,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:54:3: error: too many arguments to function ‘noise_floor_manager_apply’
+   54 |   noise_floor_manager_apply(nfm, real_size, fft_size, NULL, noise_profile, 0.1f,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:56:3: error: too many arguments to function ‘noise_floor_manager_apply’
+   56 |   noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum, NULL, 0.1f,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:60:3: error: too many arguments to function ‘noise_floor_manager_apply’
+   60 |   noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:68:3: error: too many arguments to function ‘noise_floor_manager_apply’
+   68 |   noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+[3/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_noise_estimation_adaptive_noise_estimator.c.o -MF src/libspecbleach.so.0.2.1.p/shared_noise_estimation_adaptive_noise_estimator.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_noise_estimation_adaptive_noise_estimator.c.o -c ../src/shared/noise_estimation/adaptive_noise_estimator.c
+[4/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_post_estimation_postfilter.c.o -MF src/libspecbleach.so.0.2.1.p/shared_post_estimation_postfilter.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_post_estimation_postfilter.c.o -c ../src/shared/post_estimation/postfilter.c
+[5/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_utils_denoise_mixer.c.o -MF src/libspecbleach.so.0.2.1.p/shared_utils_denoise_mixer.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_utils_denoise_mixer.c.o -c ../src/shared/utils/denoise_mixer.c
+[6/80] cc -Itests/test_specbleach_2d_denoiser.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o -MF tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o.d -o tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o -c ../tests/test_specbleach_2d_denoiser.c
+FAILED: tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o 
+cc -Itests/test_specbleach_2d_denoiser.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o -MF tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o.d -o tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o -c ../tests/test_specbleach_2d_denoiser.c
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_null_handling’:
+../tests/test_specbleach_2d_denoiser.c:56:15: warning: implicit declaration of function ‘specbleach_2d_get_noise_profile_block_count_for_mode’; did you mean ‘specbleach_2d_get_noise_profile_blocks_averaged_for_mode’? [-Wimplicit-function-declaration]
+   56 |   TEST_ASSERT(specbleach_2d_get_noise_profile_block_count_for_mode(
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:15:11: note: in definition of macro ‘TEST_ASSERT’
+   15 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_noise_profile_api’:
+../tests/test_specbleach_2d_denoiser.c:89:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘tonal_reduction’
+   89 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:90:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘aggressiveness’
+   90 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_2d_parameter_switching’:
+../tests/test_specbleach_2d_denoiser.c:177:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘tonal_reduction’
+  177 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:178:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘aggressiveness’
+  178 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_process_loop’:
+../tests/test_specbleach_2d_denoiser.c:242:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘tonal_reduction’
+  242 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:243:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘aggressiveness’
+  243 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+[7/80] cc -Itests/test_audio_file_regression.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -isystem/usr/include/opus -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_audio_file_regression.p/test_audio_file_regression.c.o -MF tests/test_audio_file_regression.p/test_audio_file_regression.c.o.d -o tests/test_audio_file_regression.p/test_audio_file_regression.c.o -c ../tests/test_audio_file_regression.c
+FAILED: tests/test_audio_file_regression.p/test_audio_file_regression.c.o 
+cc -Itests/test_audio_file_regression.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -isystem/usr/include/opus -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_audio_file_regression.p/test_audio_file_regression.c.o -MF tests/test_audio_file_regression.p/test_audio_file_regression.c.o.d -o tests/test_audio_file_regression.p/test_audio_file_regression.c.o -c ../tests/test_audio_file_regression.c
+../tests/test_audio_file_regression.c:30:6: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘tonal_reduction’
+   30 |     .tonal_reduction = 0.0f,
+      |      ^~~~~~~~~~~~~~~
+../tests/test_audio_file_regression.c:31:6: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘aggressiveness’
+   31 |     .aggressiveness = 1.0f, // Use maximum profile
+      |      ^~~~~~~~~~~~~~
+../tests/test_audio_file_regression.c:31:23: warning: initialized field overwritten [-Woverride-init]
+   31 |     .aggressiveness = 1.0f, // Use maximum profile
+      |                       ^~~~
+../tests/test_audio_file_regression.c:31:23: note: (near initialization for ‘CANONICAL_DENOISER_PARAMS.residual_listen’)
+[8/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_pre_estimation_transient_detector.c.o -MF src/libspecbleach.so.0.2.1.p/shared_pre_estimation_transient_detector.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_pre_estimation_transient_detector.c.o -c ../src/shared/pre_estimation/transient_detector.c
+[9/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_post_estimation_noise_floor_manager.c.o -MF src/libspecbleach.so.0.2.1.p/shared_post_estimation_noise_floor_manager.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_post_estimation_noise_floor_manager.c.o -c ../src/shared/post_estimation/noise_floor_manager.c
+[10/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_utils_general_utils.c.o -MF src/libspecbleach.so.0.2.1.p/shared_utils_general_utils.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_utils_general_utils.c.o -c ../src/shared/utils/general_utils.c
+[11/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_post_estimation_masking_veto.c.o -MF src/libspecbleach.so.0.2.1.p/shared_post_estimation_masking_veto.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_post_estimation_masking_veto.c.o -c ../src/shared/post_estimation/masking_veto.c
+[12/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_pre_estimation_absolute_hearing_thresholds.c.o -MF src/libspecbleach.so.0.2.1.p/shared_pre_estimation_absolute_hearing_thresholds.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_pre_estimation_absolute_hearing_thresholds.c.o -c ../src/shared/pre_estimation/absolute_hearing_thresholds.c
+[13/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_stft_stft_windows.c.o -MF src/libspecbleach.so.0.2.1.p/shared_stft_stft_windows.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_stft_stft_windows.c.o -c ../src/shared/stft/stft_windows.c
+[14/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_stft_stft_buffer.c.o -MF src/libspecbleach.so.0.2.1.p/shared_stft_stft_buffer.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_stft_stft_buffer.c.o -c ../src/shared/stft/stft_buffer.c
+[15/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_noise_estimation_noise_profile.c.o -MF src/libspecbleach.so.0.2.1.p/shared_noise_estimation_noise_profile.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_noise_estimation_noise_profile.c.o -c ../src/shared/noise_estimation/noise_profile.c
+[16/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_noise_estimation_martin_noise_estimator.c.o -MF src/libspecbleach.so.0.2.1.p/shared_noise_estimation_martin_noise_estimator.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_noise_estimation_martin_noise_estimator.c.o -c ../src/shared/noise_estimation/martin_noise_estimator.c
+[17/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_post_estimation_spectral_whitening.c.o -MF src/libspecbleach.so.0.2.1.p/shared_post_estimation_spectral_whitening.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_post_estimation_spectral_whitening.c.o -c ../src/shared/post_estimation/spectral_whitening.c
+[18/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_noise_estimation_spp_mmse_noise_estimator.c.o -MF src/libspecbleach.so.0.2.1.p/shared_noise_estimation_spp_mmse_noise_estimator.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_noise_estimation_spp_mmse_noise_estimator.c.o -c ../src/shared/noise_estimation/spp_mmse_noise_estimator.c
+[19/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_stft_stft_processor.c.o -MF src/libspecbleach.so.0.2.1.p/shared_stft_stft_processor.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_stft_stft_processor.c.o -c ../src/shared/stft/stft_processor.c
+[20/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_utils_spectral_trailing_buffer.c.o -MF src/libspecbleach.so.0.2.1.p/shared_utils_spectral_trailing_buffer.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_utils_spectral_trailing_buffer.c.o -c ../src/shared/utils/spectral_trailing_buffer.c
+[21/80] cc -Itests/test_audio_files.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_audio_files.p/test_audio_files.c.o -MF tests/test_audio_files.p/test_audio_files.c.o.d -o tests/test_audio_files.p/test_audio_files.c.o -c ../tests/test_audio_files.c
+[22/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_gain_estimation_suppression_engine.c.o -MF src/libspecbleach.so.0.2.1.p/shared_gain_estimation_suppression_engine.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_gain_estimation_suppression_engine.c.o -c ../src/shared/gain_estimation/suppression_engine.c
+[23/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_pre_estimation_spectral_smoother.c.o -MF src/libspecbleach.so.0.2.1.p/shared_pre_estimation_spectral_smoother.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_pre_estimation_spectral_smoother.c.o -c ../src/shared/pre_estimation/spectral_smoother.c
+[24/80] cc -Itests/test_suppression_engine.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_suppression_engine.p/test_suppression_engine.c.o -MF tests/test_suppression_engine.p/test_suppression_engine.c.o.d -o tests/test_suppression_engine.p/test_suppression_engine.c.o -c ../tests/test_suppression_engine.c
+[25/80] cc -Itests/test_adaptive_noise_estimator_null.p -Itests -I../tests -Iinclude -I../include -Isrc -I../src -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o -MF tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o.d -o tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o -c ../tests/test_adaptive_noise_estimator_null.c
+[26/80] cc -Itests/test_spp_mmse.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_spp_mmse.p/test_spp_mmse_noise_estimator.c.o -MF tests/test_spp_mmse.p/test_spp_mmse_noise_estimator.c.o.d -o tests/test_spp_mmse.p/test_spp_mmse_noise_estimator.c.o -c ../tests/test_spp_mmse_noise_estimator.c
+[27/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_gain_estimation_gain_estimators.c.o -MF src/libspecbleach.so.0.2.1.p/shared_gain_estimation_gain_estimators.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_gain_estimation_gain_estimators.c.o -c ../src/shared/gain_estimation/gain_estimators.c
+[28/80] cc -Itests/test_audio_regression.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_audio_regression.p/test_audio_regression.c.o -MF tests/test_audio_regression.p/test_audio_regression.c.o.d -o tests/test_audio_regression.p/test_audio_regression.c.o -c ../tests/test_audio_regression.c
+FAILED: tests/test_audio_regression.p/test_audio_regression.c.o 
+cc -Itests/test_audio_regression.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_audio_regression.p/test_audio_regression.c.o -MF tests/test_audio_regression.p/test_audio_regression.c.o.d -o tests/test_audio_regression.p/test_audio_regression.c.o -c ../tests/test_audio_regression.c
+../tests/test_audio_regression.c: In function ‘process_audio’:
+../tests/test_audio_regression.c:74:12: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘tonal_reduction’
+   74 |           .tonal_reduction = 0.0f,
+      |            ^~~~~~~~~~~~~~~
+../tests/test_audio_regression.c:75:12: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘aggressiveness’
+   75 |           .aggressiveness = -1.0f, // Use median when processing
+      |            ^~~~~~~~~~~~~~
+../tests/test_audio_regression.c:81:30: warning: initialized field overwritten [-Woverride-init]
+   81 |           .residual_listen = false,
+      |                              ^~~~~
+../tests/test_audio_regression.c:81:30: note: (near initialization for ‘(anonymous).residual_listen’)
+[29/80] cc -Itests/test_stft_latency.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_stft_latency.p/test_stft_latency.c.o -MF tests/test_stft_latency.p/test_stft_latency.c.o.d -o tests/test_stft_latency.p/test_stft_latency.c.o -c ../tests/test_stft_latency.c
+[30/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_utils_spectral_features.c.o -MF src/libspecbleach.so.0.2.1.p/shared_utils_spectral_features.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_utils_spectral_features.c.o -c ../src/shared/utils/spectral_features.c
+[31/80] cc -Itests/test_spectral_whitening.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_spectral_whitening.p/test_spectral_whitening.c.o -MF tests/test_spectral_whitening.p/test_spectral_whitening.c.o.d -o tests/test_spectral_whitening.p/test_spectral_whitening.c.o -c ../tests/test_spectral_whitening.c
+[32/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_stft_fft_transform.c.o -MF src/libspecbleach.so.0.2.1.p/shared_stft_fft_transform.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_stft_fft_transform.c.o -c ../src/shared/stft/fft_transform.c
+[33/80] cc -Iexamples/denoiser_demo.p -Iexamples -I../examples -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -isystem/usr/include/opus -MD -MQ examples/denoiser_demo.p/denoiser_demo.c.o -MF examples/denoiser_demo.p/denoiser_demo.c.o.d -o examples/denoiser_demo.p/denoiser_demo.c.o -c ../examples/denoiser_demo.c
+[34/80] cc -Itests/test_gain_estimation.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_gain_estimation.p/test_gain_estimation.c.o -MF tests/test_gain_estimation.p/test_gain_estimation.c.o.d -o tests/test_gain_estimation.p/test_gain_estimation.c.o -c ../tests/test_gain_estimation.c
+[35/80] cc -Itests/test_specbleach_denoiser.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o -MF tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o.d -o tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o -c ../tests/test_specbleach_denoiser.c
+FAILED: tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o 
+cc -Itests/test_specbleach_denoiser.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o -MF tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o.d -o tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o -c ../tests/test_specbleach_denoiser.c
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_noise_profile_mode_functions’:
+../tests/test_specbleach_denoiser.c:40:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘tonal_reduction’
+   40 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:41:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘aggressiveness’
+   41 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:41:25: warning: excess elements in struct initializer
+   41 |       .aggressiveness = 0.0f,
+      |                         ^~~~
+../tests/test_specbleach_denoiser.c:41:25: note: (near initialization for ‘params’)
+../tests/test_specbleach_denoiser.c:48:15: warning: implicit declaration of function ‘specbleach_get_noise_profile_block_count_for_mode’; did you mean ‘specbleach_get_noise_profile_blocks_averaged_for_mode’? [-Wimplicit-function-declaration]
+   48 |   TEST_ASSERT(specbleach_get_noise_profile_block_count_for_mode(NULL, 1) == 0,
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:16:11: note: in definition of macro ‘TEST_ASSERT’
+   16 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_load_noise_profile_with_mode’:
+../tests/test_specbleach_denoiser.c:102:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘tonal_reduction’
+  102 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:103:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘aggressiveness’
+  103 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:103:25: warning: excess elements in struct initializer
+  103 |       .aggressiveness = 0.0f,
+      |                         ^~~~
+../tests/test_specbleach_denoiser.c:103:25: note: (near initialization for ‘(anonymous)’)
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_mode_switching’:
+../tests/test_specbleach_denoiser.c:186:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘tonal_reduction’
+  186 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:187:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘aggressiveness’
+  187 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:187:25: warning: excess elements in struct initializer
+  187 |       .aggressiveness = 0.0f,
+      |                         ^~~~
+../tests/test_specbleach_denoiser.c:187:25: note: (near initialization for ‘(anonymous)’)
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_reset_noise_profile’:
+../tests/test_specbleach_denoiser.c:272:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘tonal_reduction’
+  272 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:273:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘aggressiveness’
+  273 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:273:25: warning: excess elements in struct initializer
+  273 |       .aggressiveness = 0.0f,
+      |                         ^~~~
+../tests/test_specbleach_denoiser.c:273:25: note: (near initialization for ‘params’)
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_run_features’:
+../tests/test_specbleach_denoiser.c:373:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘tonal_reduction’
+  373 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:374:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘aggressiveness’
+  374 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:374:25: warning: excess elements in struct initializer
+  374 |       .aggressiveness = 0.0f,
+      |                         ^~~~
+../tests/test_specbleach_denoiser.c:374:25: note: (near initialization for ‘params’)
+[36/80] cc -Itests/test_masking_veto.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_masking_veto.p/test_masking_veto.c.o -MF tests/test_masking_veto.p/test_masking_veto.c.o.d -o tests/test_masking_veto.p/test_masking_veto.c.o -c ../tests/test_masking_veto.c
+[37/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_pre_estimation_masking_estimator.c.o -MF src/libspecbleach.so.0.2.1.p/shared_pre_estimation_masking_estimator.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_pre_estimation_masking_estimator.c.o -c ../src/shared/pre_estimation/masking_estimator.c
+[38/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_pre_estimation_critical_bands.c.o -MF src/libspecbleach.so.0.2.1.p/shared_pre_estimation_critical_bands.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_pre_estimation_critical_bands.c.o -c ../src/shared/pre_estimation/critical_bands.c
+[39/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_pre_estimation_noise_scaling_criterias.c.o -MF src/libspecbleach.so.0.2.1.p/shared_pre_estimation_noise_scaling_criterias.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_pre_estimation_noise_scaling_criterias.c.o -c ../src/shared/pre_estimation/noise_scaling_criterias.c
+[40/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/processors_denoiser_spectral_denoiser.c.o -MF src/libspecbleach.so.0.2.1.p/processors_denoiser_spectral_denoiser.c.o.d -o src/libspecbleach.so.0.2.1.p/processors_denoiser_spectral_denoiser.c.o -c ../src/processors/denoiser/spectral_denoiser.c
+[41/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/processors_specbleach_2d_denoiser.c.o -MF src/libspecbleach.so.0.2.1.p/processors_specbleach_2d_denoiser.c.o.d -o src/libspecbleach.so.0.2.1.p/processors_specbleach_2d_denoiser.c.o -c ../src/processors/specbleach_2d_denoiser.c
+../src/processors/specbleach_2d_denoiser.c: In function ‘specbleach_2d_get_noise_profile_blocks_averaged’:
+../src/processors/specbleach_2d_denoiser.c:155:10: warning: implicit declaration of function ‘get_noise_profile_blocks_averaged’; did you mean ‘get_noise_profile_block_count’? [-Wimplicit-function-declaration]
+  155 |   return get_noise_profile_blocks_averaged(self->noise_profile, ROLLING_MEAN);
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |          get_noise_profile_block_count
+[42/80] cc -Itests/test_pre_estimation.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_pre_estimation.p/test_pre_estimation.c.o -MF tests/test_pre_estimation.p/test_pre_estimation.c.o.d -o tests/test_pre_estimation.p/test_pre_estimation.c.o -c ../tests/test_pre_estimation.c
+[43/80] cc -Itests/test_postfilter.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_postfilter.p/test_postfilter.c.o -MF tests/test_postfilter.p/test_postfilter.c.o.d -o tests/test_postfilter.p/test_postfilter.c.o -c ../tests/test_postfilter.c
+[44/80] cc -Itests/test_martin.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_martin.p/test_martin_noise_estimator.c.o -MF tests/test_martin.p/test_martin_noise_estimator.c.o.d -o tests/test_martin.p/test_martin_noise_estimator.c.o -c ../tests/test_martin_noise_estimator.c
+[45/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_noise_estimation_brandt_noise_estimator.c.o -MF src/libspecbleach.so.0.2.1.p/shared_noise_estimation_brandt_noise_estimator.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_noise_estimation_brandt_noise_estimator.c.o -c ../src/shared/noise_estimation/brandt_noise_estimator.c
+[46/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/processors_denoiser2d_spectral_2d_denoiser.c.o -MF src/libspecbleach.so.0.2.1.p/processors_denoiser2d_spectral_2d_denoiser.c.o.d -o src/libspecbleach.so.0.2.1.p/processors_denoiser2d_spectral_2d_denoiser.c.o -c ../src/processors/denoiser2d/spectral_2d_denoiser.c
+[47/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_post_estimation_nlm_filter.c.o -MF src/libspecbleach.so.0.2.1.p/shared_post_estimation_nlm_filter.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_post_estimation_nlm_filter.c.o -c ../src/shared/post_estimation/nlm_filter.c
+[48/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/processors_specbleach_denoiser.c.o -MF src/libspecbleach.so.0.2.1.p/processors_specbleach_denoiser.c.o.d -o src/libspecbleach.so.0.2.1.p/processors_specbleach_denoiser.c.o -c ../src/processors/specbleach_denoiser.c
+../src/processors/specbleach_denoiser.c: In function ‘specbleach_get_noise_profile_blocks_averaged’:
+../src/processors/specbleach_denoiser.c:148:10: warning: implicit declaration of function ‘get_noise_profile_blocks_averaged’; did you mean ‘get_noise_profile_block_count’? [-Wimplicit-function-declaration]
+  148 |   return get_noise_profile_blocks_averaged(
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |          get_noise_profile_block_count
+[49/80] cc -Itests/test_fft.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_fft.p/test_fft.c.o -MF tests/test_fft.p/test_fft.c.o.d -o tests/test_fft.p/test_fft.c.o -c ../tests/test_fft.c
+[50/80] cc -Itests/test_utils.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_utils.p/test_utils.c.o -MF tests/test_utils.p/test_utils.c.o.d -o tests/test_utils.p/test_utils.c.o -c ../tests/test_utils.c
+[51/80] cc -Itests/test_integration.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_integration.p/test_integration.c.o -MF tests/test_integration.p/test_integration.c.o.d -o tests/test_integration.p/test_integration.c.o -c ../tests/test_integration.c
+[52/80] cc -Itests/test_nlm_filter.p -Itests -I../tests -Iinclude -I../include -Isrc -I../src -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_nlm_filter.p/test_nlm_filter.c.o -MF tests/test_nlm_filter.p/test_nlm_filter.c.o.d -o tests/test_nlm_filter.p/test_nlm_filter.c.o -c ../tests/test_nlm_filter.c
+[53/80] cc -Itests/test_brandt.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_brandt.p/test_brandt_noise_estimator.c.o -MF tests/test_brandt.p/test_brandt_noise_estimator.c.o.d -o tests/test_brandt.p/test_brandt_noise_estimator.c.o -c ../tests/test_brandt_noise_estimator.c
+[54/80] cc -Isrc/libspecbleach.so.0.2.1.p -Isrc -I../src -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -fPIC -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only -MD -MQ src/libspecbleach.so.0.2.1.p/shared_utils_spectral_utils.c.o -MF src/libspecbleach.so.0.2.1.p/shared_utils_spectral_utils.c.o.d -o src/libspecbleach.so.0.2.1.p/shared_utils_spectral_utils.c.o -c ../src/shared/utils/spectral_utils.c
+[55/80] cc -Itests/test_noise_profile.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_noise_profile.p/test_noise_profile.c.o -MF tests/test_noise_profile.p/test_noise_profile.c.o.d -o tests/test_noise_profile.p/test_noise_profile.c.o -c ../tests/test_noise_profile.c
+ninja: build stopped: subcommand failed.
+ninja: Entering directory `/testbed/build'
+[1/29] Compiling C object tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o
+FAILED: tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o 
+cc -Itests/test_specbleach_2d_denoiser.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o -MF tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o.d -o tests/test_specbleach_2d_denoiser.p/test_specbleach_2d_denoiser.c.o -c ../tests/test_specbleach_2d_denoiser.c
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_null_handling’:
+../tests/test_specbleach_2d_denoiser.c:56:15: warning: implicit declaration of function ‘specbleach_2d_get_noise_profile_block_count_for_mode’; did you mean ‘specbleach_2d_get_noise_profile_blocks_averaged_for_mode’? [-Wimplicit-function-declaration]
+   56 |   TEST_ASSERT(specbleach_2d_get_noise_profile_block_count_for_mode(
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:15:11: note: in definition of macro ‘TEST_ASSERT’
+   15 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_noise_profile_api’:
+../tests/test_specbleach_2d_denoiser.c:89:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘tonal_reduction’
+   89 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:90:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘aggressiveness’
+   90 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_2d_parameter_switching’:
+../tests/test_specbleach_2d_denoiser.c:177:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘tonal_reduction’
+  177 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:178:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘aggressiveness’
+  178 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c: In function ‘test_process_loop’:
+../tests/test_specbleach_2d_denoiser.c:242:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘tonal_reduction’
+  242 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_2d_denoiser.c:243:8: error: ‘SpectralBleach2DDenoiserParameters’ has no member named ‘aggressiveness’
+  243 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+[2/29] Compiling C object tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o
+FAILED: tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o 
+cc -Itests/test_noise_floor_manager.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o -MF tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o.d -o tests/test_noise_floor_manager.p/test_noise_floor_manager.c.o -c ../tests/test_noise_floor_manager.c
+../tests/test_noise_floor_manager.c: In function ‘test_noise_floor_manager_apply’:
+../tests/test_noise_floor_manager.c:52:3: error: too many arguments to function ‘noise_floor_manager_apply’
+   52 |   noise_floor_manager_apply(NULL, real_size, fft_size, gain_spectrum,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:54:3: error: too many arguments to function ‘noise_floor_manager_apply’
+   54 |   noise_floor_manager_apply(nfm, real_size, fft_size, NULL, noise_profile, 0.1f,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:56:3: error: too many arguments to function ‘noise_floor_manager_apply’
+   56 |   noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum, NULL, 0.1f,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:60:3: error: too many arguments to function ‘noise_floor_manager_apply’
+   60 |   noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_noise_floor_manager.c:68:3: error: too many arguments to function ‘noise_floor_manager_apply’
+   68 |   noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum,
+      |   ^~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../tests/test_noise_floor_manager.c:10:
+../tests/../src/shared/post_estimation/noise_floor_manager.h:35:6: note: declared here
+   35 | void noise_floor_manager_apply(NoiseFloorManager* self,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~
+[3/29] Compiling C object tests/test_audio_file_regression.p/test_audio_file_regression.c.o
+FAILED: tests/test_audio_file_regression.p/test_audio_file_regression.c.o 
+cc -Itests/test_audio_file_regression.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -isystem/usr/include/opus -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_audio_file_regression.p/test_audio_file_regression.c.o -MF tests/test_audio_file_regression.p/test_audio_file_regression.c.o.d -o tests/test_audio_file_regression.p/test_audio_file_regression.c.o -c ../tests/test_audio_file_regression.c
+../tests/test_audio_file_regression.c:30:6: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘tonal_reduction’
+   30 |     .tonal_reduction = 0.0f,
+      |      ^~~~~~~~~~~~~~~
+../tests/test_audio_file_regression.c:31:6: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘aggressiveness’
+   31 |     .aggressiveness = 1.0f, // Use maximum profile
+      |      ^~~~~~~~~~~~~~
+../tests/test_audio_file_regression.c:31:23: warning: initialized field overwritten [-Woverride-init]
+   31 |     .aggressiveness = 1.0f, // Use maximum profile
+      |                       ^~~~
+../tests/test_audio_file_regression.c:31:23: note: (near initialization for ‘CANONICAL_DENOISER_PARAMS.residual_listen’)
+[4/29] Compiling C object tests/test_audio_regression.p/test_audio_regression.c.o
+FAILED: tests/test_audio_regression.p/test_audio_regression.c.o 
+cc -Itests/test_audio_regression.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_audio_regression.p/test_audio_regression.c.o -MF tests/test_audio_regression.p/test_audio_regression.c.o.d -o tests/test_audio_regression.p/test_audio_regression.c.o -c ../tests/test_audio_regression.c
+../tests/test_audio_regression.c: In function ‘process_audio’:
+../tests/test_audio_regression.c:74:12: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘tonal_reduction’
+   74 |           .tonal_reduction = 0.0f,
+      |            ^~~~~~~~~~~~~~~
+../tests/test_audio_regression.c:75:12: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘aggressiveness’
+   75 |           .aggressiveness = -1.0f, // Use median when processing
+      |            ^~~~~~~~~~~~~~
+../tests/test_audio_regression.c:81:30: warning: initialized field overwritten [-Woverride-init]
+   81 |           .residual_listen = false,
+      |                              ^~~~~
+../tests/test_audio_regression.c:81:30: note: (near initialization for ‘(anonymous).residual_listen’)
+[5/29] Compiling C object tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o
+FAILED: tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o 
+cc -Itests/test_specbleach_denoiser.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o -MF tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o.d -o tests/test_specbleach_denoiser.p/test_specbleach_denoiser.c.o -c ../tests/test_specbleach_denoiser.c
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_noise_profile_mode_functions’:
+../tests/test_specbleach_denoiser.c:40:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘tonal_reduction’
+   40 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:41:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘aggressiveness’
+   41 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:41:25: warning: excess elements in struct initializer
+   41 |       .aggressiveness = 0.0f,
+      |                         ^~~~
+../tests/test_specbleach_denoiser.c:41:25: note: (near initialization for ‘params’)
+../tests/test_specbleach_denoiser.c:48:15: warning: implicit declaration of function ‘specbleach_get_noise_profile_block_count_for_mode’; did you mean ‘specbleach_get_noise_profile_blocks_averaged_for_mode’? [-Wimplicit-function-declaration]
+   48 |   TEST_ASSERT(specbleach_get_noise_profile_block_count_for_mode(NULL, 1) == 0,
+      |               ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:16:11: note: in definition of macro ‘TEST_ASSERT’
+   16 |     if (!(condition)) {                                                        \
+      |           ^~~~~~~~~
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_load_noise_profile_with_mode’:
+../tests/test_specbleach_denoiser.c:102:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘tonal_reduction’
+  102 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:103:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘aggressiveness’
+  103 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:103:25: warning: excess elements in struct initializer
+  103 |       .aggressiveness = 0.0f,
+      |                         ^~~~
+../tests/test_specbleach_denoiser.c:103:25: note: (near initialization for ‘(anonymous)’)
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_mode_switching’:
+../tests/test_specbleach_denoiser.c:186:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘tonal_reduction’
+  186 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:187:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘aggressiveness’
+  187 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:187:25: warning: excess elements in struct initializer
+  187 |       .aggressiveness = 0.0f,
+      |                         ^~~~
+../tests/test_specbleach_denoiser.c:187:25: note: (near initialization for ‘(anonymous)’)
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_reset_noise_profile’:
+../tests/test_specbleach_denoiser.c:272:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘tonal_reduction’
+  272 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:273:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘aggressiveness’
+  273 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:273:25: warning: excess elements in struct initializer
+  273 |       .aggressiveness = 0.0f,
+      |                         ^~~~
+../tests/test_specbleach_denoiser.c:273:25: note: (near initialization for ‘params’)
+../tests/test_specbleach_denoiser.c: In function ‘test_specbleach_run_features’:
+../tests/test_specbleach_denoiser.c:373:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘tonal_reduction’
+  373 |       .tonal_reduction = 0.0f,
+      |        ^~~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:374:8: error: ‘SpectralBleachDenoiserParameters’ has no member named ‘aggressiveness’
+  374 |       .aggressiveness = 0.0f,
+      |        ^~~~~~~~~~~~~~
+../tests/test_specbleach_denoiser.c:374:25: warning: excess elements in struct initializer
+  374 |       .aggressiveness = 0.0f,
+      |                         ^~~~
+../tests/test_specbleach_denoiser.c:374:25: note: (near initialization for ‘params’)
+[6/29] Linking target src/libspecbleach.so.0.2.1
+ninja: build stopped: subcommand failed.
+Could not rebuild /testbed/build
+OMNIGRIL_EXIT_CODE=125

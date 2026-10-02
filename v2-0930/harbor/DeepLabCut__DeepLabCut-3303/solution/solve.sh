@@ -1,0 +1,1410 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/deeplabcut/__init__.py b/deeplabcut/__init__.py
+--- a/deeplabcut/__init__.py
++++ b/deeplabcut/__init__.py
+@@ -102,6 +102,7 @@
+     DownSampleVideo,
+     ShortenVideo,
+     check_video_integrity,
++    collect_video_paths,
+ )
+ 
+ # -----------------------------------------------------------------------------
+diff --git a/deeplabcut/compat.py b/deeplabcut/compat.py
+--- a/deeplabcut/compat.py
++++ b/deeplabcut/compat.py
+@@ -12,7 +12,7 @@
+ 
+ from __future__ import annotations
+ 
+-from collections.abc import Iterable
++from collections.abc import Iterable, Sequence
+ from pathlib import Path
+ 
+ import numpy as np
+@@ -664,7 +664,7 @@ def return_evaluate_network_data(
+ def analyze_videos(
+     config: str,
+     videos: list[str],
+-    videotype: str = "",
++    videotype: str | Sequence[str] | None = None,
+     shuffle: int = 1,
+     trainingsetindex: int = 0,
+     gputouse: str | None = None,
+@@ -710,10 +710,14 @@ def analyze_videos(
+         A list of strings containing the full paths to videos for analysis or a path to
+         the directory, where all the videos with same extension are stored.
+ 
+-    videotype: str, optional, default=""
+-        Checks for the extension of the video in case the input to the video is a
+-        directory. Only videos with this extension are analyzed. If left unspecified,
+-        videos with common extensions ('avi', 'mp4', 'mov', 'mpeg', 'mkv') are kept.
++    videotype : str | Sequence[str] | None, optional, default=None
++        Controls how ``videos`` are filtered, based on file extension.
++        File paths and directory contents are treated differently:
++        - ``None`` (default): file paths are accepted as-is; directories are
++          scanned for files with a recognized video extension.
++        - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++          both file paths and directory contents are filtered by the given
++          extension(s).
+ 
+     shuffle: int, optional, default=1
+         An integer specifying the shuffle index of the training dataset used for
+@@ -986,7 +990,7 @@ def create_tracking_dataset(
+     config: str,
+     videos: list[str],
+     track_method: str,
+-    videotype: str = "",
++    videotype: str | Sequence[str] | None = None,
+     shuffle: int = 1,
+     trainingsetindex: int = 0,
+     gputouse: int | None = None,
+@@ -1015,10 +1019,14 @@ def create_tracking_dataset(
+         Specifies the tracker used to generate the pose estimation data. Must be either
+         'box', 'skeleton', or 'ellipse'.
+ 
+-    videotype: str, optional, default=""
+-        Checks for the extension of the video in case the input to the video is a
+-        directory. Only videos with this extension are analyzed. If left unspecified,
+-        videos with common extensions ('avi', 'mp4', 'mov', 'mpeg', 'mkv') are kept.
++    videotype : str | Sequence[str] | None, optional, default=None
++        Controls how ``videos`` are filtered, based on file extension.
++        File paths and directory contents are treated differently:
++        - ``None`` (default): file paths are accepted as-is; directories are
++          scanned for files with a recognized video extension.
++        - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++          both file paths and directory contents are filtered by the given
++          extension(s).
+ 
+     shuffle: int, optional, default=1
+         An integer specifying the shuffle index of the training dataset used for
+@@ -1408,7 +1416,7 @@ def analyze_time_lapse_frames(
+ def convert_detections2tracklets(
+     config: str,
+     videos: list[str],
+-    videotype: str = "",
++    videotype: str | Sequence[str] | None = None,
+     shuffle: int = 1,
+     trainingsetindex: int = 0,
+     overwrite: bool = False,
+@@ -1435,10 +1443,14 @@ def convert_detections2tracklets(
+         A list of strings containing the full paths to videos for analysis or a path to the directory,
+         where all the videos with same extension are stored.
+ 
+-    videotype: string, optional
+-        Checks for the extension of the video in case the input to the video is a directory.\n
+-        Only videos with this extension are analyzed.
+-        If left unspecified, videos with common extensions ('avi', 'mp4', 'mov', 'mpeg', 'mkv') are kept.
++    videotype : str | Sequence[str] | None, optional, default=None
++        Controls how ``videos`` are filtered, based on file extension.
++        File paths and directory contents are treated differently:
++        - ``None`` (default): file paths are accepted as-is; directories are
++          scanned for files with a recognized video extension.
++        - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++          both file paths and directory contents are filtered by the given
++          extension(s).
+ 
+     shuffle: int, optional
+         An integer specifying the shuffle index of the training dataset used for training the network. T
+diff --git a/deeplabcut/pose_estimation_pytorch/apis/tracking_dataset.py b/deeplabcut/pose_estimation_pytorch/apis/tracking_dataset.py
+--- a/deeplabcut/pose_estimation_pytorch/apis/tracking_dataset.py
++++ b/deeplabcut/pose_estimation_pytorch/apis/tracking_dataset.py
+@@ -10,6 +10,7 @@
+ #
+ """Code to create tracking datasets for ReID model training."""
+ 
++from collections.abc import Sequence
+ from pathlib import Path
+ 
+ from tqdm import tqdm
+@@ -24,6 +25,7 @@
+ from deeplabcut.pose_estimation_pytorch.apis.videos import VideoIterator
+ from deeplabcut.pose_estimation_pytorch.task import Task
+ from deeplabcut.pose_tracking_pytorch import create_triplets_dataset
++from deeplabcut.utils.auxfun_videos import collect_video_paths
+ 
+ 
+ def build_feature_extraction_runner(
+@@ -127,7 +129,7 @@ def create_tracking_dataset(
+     config: str,
+     videos: list[str] | list[Path],
+     track_method: str,
+-    videotype: str = "",
++    videotype: str | Sequence[str] | None = None,
+     shuffle: int = 1,
+     trainingsetindex: int = 0,
+     destfolder: str | None = None,
+@@ -147,10 +149,13 @@ def create_tracking_dataset(
+             the videos with same extension are stored.
+         track_method: Specifies the tracker used to generate the pose estimation data.
+             Must be either 'box', 'skeleton', or 'ellipse'.
+-        videotype: Checks for the extension of the video in case the input to the video
+-            is a directory. Only videos with this extension are analyzed. If left
+-            unspecified, keeps videos with extensions ('avi', 'mp4', 'mov', 'mpeg',
+-            'mkv').
++        videotype: Controls how ``videos`` are filtered, based on file extension.
++            File paths and directory contents are treated differently:
++            - ``None`` (default): file paths are accepted as-is; directories are
++              scanned for files with a recognized video extension.
++            - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++              both file paths and directory contents are filtered by the given
++              extension(s).
+         shuffle: An integer specifying the shuffle index of the training dataset used
+             for training the network.
+         trainingsetindex: Integer specifying which TrainingsetFraction to use.
+@@ -240,7 +245,7 @@ def create_tracking_dataset(
+         modelprefix=modelprefix,
+     )
+ 
+-    videos = utils.list_videos_in_folder(videos, videotype)
++    videos = collect_video_paths(videos, extensions=videotype)
+     for video_path in videos:
+         print(f"Loading {video_path}")
+         video = VideoIterator(video_path, cropping=cropping)
+diff --git a/deeplabcut/pose_estimation_pytorch/apis/tracklets.py b/deeplabcut/pose_estimation_pytorch/apis/tracklets.py
+--- a/deeplabcut/pose_estimation_pytorch/apis/tracklets.py
++++ b/deeplabcut/pose_estimation_pytorch/apis/tracklets.py
+@@ -11,6 +11,7 @@
+ import os
+ import pickle
+ import warnings
++from collections.abc import Sequence
+ from pathlib import Path
+ 
+ import numpy as np
+@@ -26,16 +27,16 @@
+ from deeplabcut.core.inferenceutils import Assembly
+ from deeplabcut.pose_estimation_pytorch.apis.utils import (
+     get_scorer_name,
+-    list_videos_in_folder,
+     parse_snapshot_index_for_analysis,
+ )
+ from deeplabcut.pose_estimation_pytorch.data.dlcloader import DLCLoader
++from deeplabcut.utils.auxfun_videos import collect_video_paths
+ 
+ 
+ def convert_detections2tracklets(
+     config: str,
+     videos: str | list[str],
+-    videotype: str | None = None,
++    videotype: str | Sequence[str] | None = None,
+     shuffle: int = 1,
+     trainingsetindex: int = 0,
+     overwrite: bool = False,
+@@ -124,9 +125,10 @@ def convert_detections2tracklets(
+         modelprefix=modelprefix,
+     )
+ 
+-    videos = list_videos_in_folder(videos, videotype)
++    paths_input = videos
++    videos = collect_video_paths(videos, extensions=videotype)
+     if len(videos) == 0:
+-        print(f"No videos were found in {videos}")
++        print(f"No videos were found in {paths_input}")
+         return
+ 
+     for video in videos:
+diff --git a/deeplabcut/pose_estimation_pytorch/apis/utils.py b/deeplabcut/pose_estimation_pytorch/apis/utils.py
+--- a/deeplabcut/pose_estimation_pytorch/apis/utils.py
++++ b/deeplabcut/pose_estimation_pytorch/apis/utils.py
+@@ -11,8 +11,7 @@
+ from __future__ import annotations
+ 
+ import logging
+-import random
+-from collections.abc import Callable
++from collections.abc import Callable, Sequence
+ from pathlib import Path
+ 
+ import albumentations as A
+@@ -65,7 +64,9 @@
+ )
+ from deeplabcut.pose_estimation_pytorch.task import Task
+ from deeplabcut.pose_estimation_pytorch.utils import resolve_device
+-from deeplabcut.utils import auxfun_videos, auxiliaryfunctions
++from deeplabcut.utils import auxiliaryfunctions
++from deeplabcut.utils.auxfun_videos import SUPPORTED_VIDEOS, collect_video_paths
++from deeplabcut.utils.deprecation import deprecated
+ 
+ 
+ def parse_snapshot_index_for_analysis(
+@@ -293,49 +294,17 @@ def get_scorer_name(
+     return f"DLC_{name}_{task}{date}shuffle{shuffle}_{snapshot_uid}"
+ 
+ 
++@deprecated(replacement="deeplabcut.collect_video_paths", since="3.0.0")
+ def list_videos_in_folder(
+     data_path: str | Path | list[str | Path],
+-    video_type: str | None = None,
++    video_type: str | Sequence[str] | None = SUPPORTED_VIDEOS,
+     shuffle: bool = False,
+ ) -> list[Path]:
+-    """
+-    Args:
+-        data_path: Path or list of paths to folders containing videos, or individual
+-            video files. Can be a mix of directories and files.
+-        video_type: The type of video to filter for (e.g., "mp4", ".mp4"). If None,
+-            all supported video types are included.
+-        shuffle: Whether to shuffle the order of videos. If False, videos are returned
+-            in sorted order for deterministic behavior.
+-
+-    Returns:
+-        The paths of videos to analyze. Duplicate paths are removed.
+-
+-    Raises:
+-        FileNotFoundError: If any path in data_path does not exist.
+-    """
+-    if isinstance(data_path, (str, Path)):
+-        data_path = [data_path]
+-
+-    if not video_type:
+-        video_suffixes = {f".{ext.lower()}" for ext in auxfun_videos.SUPPORTED_VIDEOS}
+-    else:
+-        video_suffixes = {f".{video_type.lstrip('.').lower()}"}
+-
+-    videos = []
+-    for path in map(Path, data_path):
+-        if not path.exists():
+-            raise FileNotFoundError(f"Could not find: {path}. Check access rights.")
+-
+-        if path.is_dir():
+-            videos.extend(f for f in path.iterdir() if f.is_file() and f.suffix.lower() in video_suffixes)
+-        elif path.is_file() and path.suffix.lower() in video_suffixes:
+-            videos.append(path)
+-
+-    # Resolve video paths and remove duplicates
+-    unique_videos = list(dict.fromkeys(v.resolve() for v in videos))
+-    if shuffle:
+-        random.shuffle(unique_videos)
+-    return unique_videos
++    return collect_video_paths(
++        data_path=data_path,
++        extensions=video_type,
++        shuffle=shuffle,
++    )
+ 
+ 
+ def ensure_multianimal_df_format(df_predictions: pd.DataFrame) -> pd.DataFrame:
+diff --git a/deeplabcut/pose_estimation_pytorch/apis/videos.py b/deeplabcut/pose_estimation_pytorch/apis/videos.py
+--- a/deeplabcut/pose_estimation_pytorch/apis/videos.py
++++ b/deeplabcut/pose_estimation_pytorch/apis/videos.py
+@@ -14,6 +14,7 @@
+ import logging
+ import pickle
+ import time
++from collections.abc import Sequence
+ from pathlib import Path
+ from typing import Any
+ 
+@@ -44,6 +45,7 @@
+ from deeplabcut.pose_estimation_pytorch.task import Task
+ from deeplabcut.refine_training_dataset.stitch import stitch_tracklets
+ from deeplabcut.utils import VideoReader, auxiliaryfunctions
++from deeplabcut.utils.auxfun_videos import collect_video_paths
+ 
+ 
+ class VideoIterator(VideoReader):
+@@ -242,7 +244,7 @@ def video_inference(
+ def analyze_videos(
+     config: str,
+     videos: str | list[str],
+-    videotype: str | None = None,
++    videotype: str | Sequence[str] | None = None,
+     shuffle: int = 1,
+     trainingsetindex: int = 0,
+     save_as_csv: bool = False,
+@@ -282,9 +284,13 @@ def analyze_videos(
+         videos: a str (or list of strings) containing the full paths to videos for
+             analysis or a path to the directory, where all the videos with same
+             extension are stored.
+-        videotype: checks for the extension of the video in case the input to the video
+-            is a directory. Only videos with this extension are analyzed. If left
+-            unspecified, keeps videos with extensions ('avi', 'mp4', 'mov', 'mpeg', 'mkv').
++        videotype: Controls how ``videos`` are filtered, based on file extension.
++            File paths and directory contents are treated differently:
++            - ``None`` (default): file paths are accepted as-is; directories are
++              scanned for files with a recognized video extension.
++            - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++              both file paths and directory contents are filtered by the given
++              extension(s).
+         shuffle: An integer specifying the shuffle index of the training dataset used for
+             training the network.
+         trainingsetindex: Integer specifying which TrainingsetFraction to use.
+@@ -540,7 +546,7 @@ def analyze_videos(
+     print(f"Using scorer: {dlc_scorer}")
+ 
+     # Reading video and init variables
+-    videos = utils.list_videos_in_folder(videos, videotype, shuffle=in_random_order)
++    videos = collect_video_paths(videos, extensions=videotype, shuffle=in_random_order)
+     h5_files_created = False  # Track if any .h5 files were created
+ 
+     for video in videos:
+diff --git a/deeplabcut/pose_estimation_tensorflow/modelzoo/api/superanimal_inference.py b/deeplabcut/pose_estimation_tensorflow/modelzoo/api/superanimal_inference.py
+--- a/deeplabcut/pose_estimation_tensorflow/modelzoo/api/superanimal_inference.py
++++ b/deeplabcut/pose_estimation_tensorflow/modelzoo/api/superanimal_inference.py
+@@ -14,6 +14,7 @@
+ import pickle
+ import time
+ import warnings
++from collections.abc import Sequence
+ from pathlib import Path
+ 
+ import imgaug.augmenters as iaa
+@@ -26,7 +27,7 @@
+ from deeplabcut.pose_estimation_tensorflow.core import predict as single_predict
+ from deeplabcut.pose_estimation_tensorflow.core import predict_multianimal as predict
+ from deeplabcut.utils import auxiliaryfunctions
+-from deeplabcut.utils.auxfun_videos import VideoWriter
++from deeplabcut.utils.auxfun_videos import VideoWriter, collect_video_paths
+ 
+ warnings.simplefilter("ignore", category=RuntimeWarning)
+ 
+@@ -247,7 +248,7 @@ def video_inference(
+     project_name,
+     model_name,
+     scale_list=None,
+-    videotype="avi",
++    videotype: str | Sequence[str] | None = None,
+     destfolder=None,
+     batchsize=1,
+     robust_nframes=False,
+@@ -306,7 +307,7 @@ def video_inference(
+ 
+     sess, inputs, outputs = single_predict.setup_pose_prediction(test_cfg, allow_growth=allow_growth)
+     DLCscorer = "DLC_" + Path(test_cfg["init_weights"]).stem
+-    videos = auxiliaryfunctions.get_list_of_videos(videos, videotype)
++    videos = collect_video_paths(videos, extensions=videotype)
+ 
+     datafiles = []
+     for video in videos:
+diff --git a/deeplabcut/pose_estimation_tensorflow/predict_videos.py b/deeplabcut/pose_estimation_tensorflow/predict_videos.py
+--- a/deeplabcut/pose_estimation_tensorflow/predict_videos.py
++++ b/deeplabcut/pose_estimation_tensorflow/predict_videos.py
+@@ -21,6 +21,7 @@
+ import re
+ import time
+ import warnings
++from collections.abc import Sequence
+ from pathlib import Path
+ 
+ import cv2
+@@ -40,6 +41,7 @@
+ )
+ from deeplabcut.refine_training_dataset.stitch import stitch_tracklets
+ from deeplabcut.utils import auxfun_models, auxfun_multianimal, auxiliaryfunctions
++from deeplabcut.utils.auxfun_videos import collect_video_paths
+ 
+ ####################################################
+ # Loading data, and defining model folder
+@@ -50,7 +52,7 @@ def create_tracking_dataset(
+     config,
+     videos,
+     track_method,
+-    videotype="",
++    videotype: str | Sequence[str] | None = None,
+     shuffle=1,
+     trainingsetindex=0,
+     gputouse=None,
+@@ -198,7 +200,7 @@ def create_tracking_dataset(
+     ##################################################
+     # Looping over videos
+     ##################################################
+-    Videos = auxiliaryfunctions.get_list_of_videos(videos, videotype)
++    Videos = collect_video_paths(videos, extensions=videotype)
+     if len(Videos) > 0:
+         if "multi-animal" in dlc_cfg["dataset_type"]:
+             for video in Videos:
+@@ -254,7 +256,7 @@ def create_tracking_dataset(
+ def analyze_videos(
+     config,
+     videos,
+-    videotype="",
++    videotype: str | Sequence[str] | None = None,
+     shuffle=1,
+     trainingsetindex=0,
+     gputouse=None,
+@@ -298,10 +300,14 @@ def analyze_videos(
+         A list of strings containing the full paths to videos for analysis or a path to
+         the directory, where all the videos with same extension are stored.
+ 
+-    videotype: str, optional, default=""
+-        Checks for the extension of the video in case the input to the video is a
+-        directory. Only videos with this extension are analyzed. If left unspecified,
+-        videos with common extensions ('avi', 'mp4', 'mov', 'mpeg', 'mkv') are kept.
++    videotype : str | Sequence[str] | None, optional, default=None
++        Controls how ``videos`` are filtered, based on file extension.
++        File paths and directory contents are treated differently:
++        - ``None`` (default): file paths are accepted as-is; directories are
++          scanned for files with a recognized video extension.
++        - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++          both file paths and directory contents are filtered by the given
++          extension(s).
+ 
+     shuffle: int, optional, default=1
+         An integer specifying the shuffle index of the training dataset used for
+@@ -594,7 +600,7 @@ def analyze_videos(
+     ##################################################
+     # Looping over videos
+     ##################################################
+-    Videos = auxiliaryfunctions.get_list_of_videos(videos, videotype, in_random_order)
++    Videos = collect_video_paths(videos, extensions=videotype, shuffle=in_random_order)
+     if len(Videos) > 0:
+         if "multi-animal" in dlc_cfg["dataset_type"]:
+             from deeplabcut.pose_estimation_tensorflow.predict_multianimal import (
+@@ -680,7 +686,7 @@ def analyze_videos(
+             )
+         return DLCscorer  # note: this is either DLCscorer or DLCscorerlegacy depending on what was used!
+     else:
+-        print("No video(s) were found. Please check your paths and/or 'video_type'.")
++        print("No video(s) were found. Please check your paths and/or 'videotype'.")
+         return DLCscorer
+ 
+ 
+@@ -1478,7 +1484,7 @@ def _convert_detections_to_tracklets(
+ def convert_detections2tracklets(
+     config,
+     videos,
+-    videotype="",
++    videotype: str | Sequence[str] | None = None,
+     shuffle=1,
+     trainingsetindex=0,
+     overwrite=False,
+@@ -1504,10 +1510,14 @@ def convert_detections2tracklets(
+         A list of strings containing the full paths to videos for analysis
+         or a path to the directory, where all the videos with same extension are stored.
+ 
+-    videotype: string, optional
+-        Checks for the extension of the video in case the input to the video is a directory.\n
+-        Only videos with this extension are analyzed.
+-        If left unspecified, videos with common extensions ('avi', 'mp4', 'mov', 'mpeg', 'mkv') are kept.
++    videotype : str | Sequence[str] | None, optional, default=None
++        Controls how ``videos`` are filtered, based on file extension.
++        File paths and directory contents are treated differently:
++        - ``None`` (default): file paths are accepted as-is; directories are
++          scanned for files with a recognized video extension.
++        - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++          both file paths and directory contents are filtered by the given
++          extension(s).
+ 
+     shuffle: int, optional
+         An integer specifying the shuffle index of the training dataset used for training the network.
+@@ -1651,7 +1661,7 @@ def convert_detections2tracklets(
+     ##################################################
+     # Looping over videos
+     ##################################################
+-    Videos = auxiliaryfunctions.get_list_of_videos(videos, videotype)
++    Videos = collect_video_paths(videos, extensions=videotype)
+     if len(Videos) > 0:
+         for video in Videos:
+             print("Processing... ", video)
+diff --git a/deeplabcut/pose_tracking_pytorch/apis.py b/deeplabcut/pose_tracking_pytorch/apis.py
+--- a/deeplabcut/pose_tracking_pytorch/apis.py
++++ b/deeplabcut/pose_tracking_pytorch/apis.py
+@@ -9,11 +9,13 @@
+ # Licensed under GNU Lesser General Public License v3.0
+ #
+ 
++from collections.abc import Sequence
++
+ 
+ def transformer_reID(
+     config: str,
+     videos: list[str],
+-    videotype: str = "",
++    videotype: str | Sequence[str] | None = None,
+     shuffle: int = 1,
+     trainingsetindex: int = 0,
+     track_method: str = "ellipse",
+@@ -44,11 +46,14 @@ def transformer_reID(
+         A list of strings containing the full paths to videos for analysis or a path to
+         the directory, where all the videos with same extension are stored.
+ 
+-    videotype: string, optional
+-        Checks for the extension of the video in case the input to the video is a
+-        directory. Only videos with this extension are analyzed.
+-        If left unspecified, videos with common extensions ('avi', 'mp4', 'mov', 'mpeg',
+-        'mkv') are kept.
++    videotype : str | Sequence[str] | None, optional, default=None
++        Controls how ``videos`` are filtered, based on file extension.
++        File paths and directory contents are treated differently:
++        - ``None`` (default): file paths are accepted as-is; directories are
++          scanned for files with a recognized video extension.
++        - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++          both file paths and directory contents are filtered by the given
++          extension(s).
+ 
+     shuffle : int, optional
+         which shuffle to use
+diff --git a/deeplabcut/pose_tracking_pytorch/train_dlctransreid.py b/deeplabcut/pose_tracking_pytorch/train_dlctransreid.py
+--- a/deeplabcut/pose_tracking_pytorch/train_dlctransreid.py
++++ b/deeplabcut/pose_tracking_pytorch/train_dlctransreid.py
+@@ -17,11 +17,12 @@
+     raise ModuleNotFoundError("Unsupervised identity learning requires PyTorch. Please run `pip install torch`.") from e
+ import glob
+ import os
++from collections.abc import Sequence
+ from pathlib import Path
+ 
+ import numpy as np
+ 
+-from deeplabcut.utils import auxiliaryfunctions
++from deeplabcut.utils.auxfun_videos import collect_video_paths
+ 
+ from .config import cfg
+ from .datasets import make_dlc_dataloader
+@@ -70,7 +71,7 @@ def train_tracking_transformer(
+     path_config_file,
+     dlcscorer,
+     videos,
+-    videotype="",
++    videotype: str | Sequence[str] | None = None,
+     train_frac=0.8,
+     modelprefix="",
+     train_epochs=100,
+@@ -79,7 +80,7 @@ def train_tracking_transformer(
+     destfolder=None,
+ ):
+     npy_list = []
+-    videos = auxiliaryfunctions.get_list_of_videos(videos, videotype)
++    videos = collect_video_paths(videos, extensions=videotype)
+     for video in videos:
+         videofolder = str(Path(video).parents[0])
+         if destfolder is None:
+diff --git a/deeplabcut/post_processing/analyze_skeleton.py b/deeplabcut/post_processing/analyze_skeleton.py
+--- a/deeplabcut/post_processing/analyze_skeleton.py
++++ b/deeplabcut/post_processing/analyze_skeleton.py
+@@ -15,6 +15,7 @@
+ 
+ import argparse
+ import os
++from collections.abc import Sequence
+ from math import atan2, degrees
+ from pathlib import Path
+ 
+@@ -23,6 +24,7 @@
+ from scipy.spatial import distance
+ 
+ from deeplabcut.utils import auxfun_multianimal, auxiliaryfunctions
++from deeplabcut.utils.auxfun_videos import collect_video_paths
+ 
+ 
+ # utility functions
+@@ -167,7 +169,7 @@ def analyzebone(bp1, bp2):
+ def analyzeskeleton(
+     config,
+     videos,
+-    videotype="",
++    videotype: str | Sequence[str] | None = None,
+     shuffle=1,
+     trainingsetindex=0,
+     filtered=False,
+@@ -191,11 +193,14 @@ def analyzeskeleton(
+         The full paths to videos for analysis or a path to the directory, where all the
+         videos with same extension are stored.
+ 
+-    videotype: str, optional, default=""
+-        Checks for the extension of the video in case the input to the video is a
+-        directory. Only videos with this extension are analyzed.
+-        If left unspecified, videos with common extensions
+-        ('avi', 'mp4', 'mov', 'mpeg', 'mkv') are kept.
++    videotype : str | Sequence[str] | None, optional, default=None
++        Controls how ``videos`` are filtered, based on file extension.
++        File paths and directory contents are treated differently:
++        - ``None`` (default): file paths are accepted as-is; directories are
++          scanned for files with a recognized video extension.
++        - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++          both file paths and directory contents are filtered by the given
++          extension(s).
+ 
+     shuffle : int, optional, default=1
+         The shuffle index of training dataset. The extracted frames will be stored in
+@@ -261,7 +266,7 @@ def analyzeskeleton(
+         **kwargs,
+     )
+ 
+-    Videos = auxiliaryfunctions.get_list_of_videos(videos, videotype)
++    Videos = collect_video_paths(videos, extensions=videotype)
+     for video in Videos:
+         print(f"Processing {video}")
+         if destfolder is None:
+diff --git a/deeplabcut/post_processing/filtering.py b/deeplabcut/post_processing/filtering.py
+--- a/deeplabcut/post_processing/filtering.py
++++ b/deeplabcut/post_processing/filtering.py
+@@ -10,6 +10,7 @@
+ #
+ 
+ import argparse
++from collections.abc import Sequence
+ from pathlib import Path
+ 
+ import numpy as np
+@@ -19,6 +20,7 @@
+ 
+ from deeplabcut.refine_training_dataset.outlier_frames import FitSARIMAXModel
+ from deeplabcut.utils import auxfun_multianimal, auxiliaryfunctions
++from deeplabcut.utils.auxfun_videos import collect_video_paths
+ 
+ 
+ def columnwise_spline_interp(data, max_gap=0):
+@@ -65,7 +67,7 @@ def columnwise_spline_interp(data, max_gap=0):
+ def filterpredictions(
+     config,
+     video,
+-    videotype="",
++    videotype: str | Sequence[str] | None = None,
+     shuffle=1,
+     trainingsetindex=0,
+     filtertype="median",
+@@ -95,6 +97,15 @@ def filterpredictions(
+         Full path of the video to extract the frame from. Make sure that this video is
+         already analyzed.
+ 
++    videotype : str | Sequence[str] | None, optional, default=None
++        Controls how ``videos`` are filtered, based on file extension.
++        File paths and directory contents are treated differently:
++        - ``None`` (default): file paths are accepted as-is; directories are
++          scanned for files with a recognized video extension.
++        - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++          both file paths and directory contents are filtered by the given
++          extension(s).
++
+     shuffle : int, optional, default=1
+         The shuffle index of training dataset. The extracted frames will be stored in
+         the labeled-dataset for the corresponding shuffle of training dataset.
+@@ -212,7 +223,7 @@ def filterpredictions(
+         modelprefix=modelprefix,
+         **kwargs,
+     )
+-    Videos = auxiliaryfunctions.get_list_of_videos(video, videotype)
++    Videos = collect_video_paths(video, extensions=videotype)
+ 
+     video_to_filtered_df = {}
+ 
+diff --git a/deeplabcut/refine_training_dataset/outlier_frames.py b/deeplabcut/refine_training_dataset/outlier_frames.py
+--- a/deeplabcut/refine_training_dataset/outlier_frames.py
++++ b/deeplabcut/refine_training_dataset/outlier_frames.py
+@@ -14,6 +14,7 @@
+ import os
+ import pickle
+ import re
++from collections.abc import Sequence
+ from pathlib import Path
+ 
+ import matplotlib.pyplot as plt
+@@ -30,7 +31,7 @@
+     frameselectiontools,
+     visualization,
+ )
+-from deeplabcut.utils.auxfun_videos import VideoWriter
++from deeplabcut.utils.auxfun_videos import VideoWriter, collect_video_paths
+ 
+ 
+ def find_outliers_in_raw_data(
+@@ -199,7 +200,7 @@ def _read_video_specific_cropping_margins(config: str | Path | dict, video_path:
+ def extract_outlier_frames(
+     config,
+     videos,
+-    videotype="",
++    videotype: str | Sequence[str] | None = None,
+     shuffle=1,
+     trainingsetindex=0,
+     outlieralgorithm="jump",
+@@ -239,11 +240,14 @@ def extract_outlier_frames(
+         The full paths to videos for analysis or a path to the directory, where all the
+         videos with same extension are stored.
+ 
+-    videotype: str, optional, default=""
+-        Checks for the extension of the video in case the input to the video is a
+-        directory. Only videos with this extension are analyzed.
+-        If left unspecified, videos with common extensions
+-        ('avi', 'mp4', 'mov', 'mpeg', 'mkv') are kept.
++    videotype : str | Sequence[str] | None, optional, default=None
++        Controls how ``videos`` are filtered, based on file extension.
++        File paths and directory contents are treated differently:
++        - ``None`` (default): file paths are accepted as-is; directories are
++          scanned for files with a recognized video extension.
++        - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++          both file paths and directory contents are filtered by the given
++          extension(s).
+ 
+     shuffle : int, optional, default=1
+         The shuffle index of training dataset. The extracted frames will be stored in
+@@ -402,7 +406,7 @@ def extract_outlier_frames(
+         **kwargs,
+     )
+ 
+-    Videos = auxiliaryfunctions.get_list_of_videos(videos, videotype)
++    Videos = collect_video_paths(videos, extensions=videotype)
+     if len(Videos) == 0:
+         print("No suitable videos found in", videos)
+ 
+diff --git a/deeplabcut/refine_training_dataset/stitch.py b/deeplabcut/refine_training_dataset/stitch.py
+--- a/deeplabcut/refine_training_dataset/stitch.py
++++ b/deeplabcut/refine_training_dataset/stitch.py
+@@ -14,6 +14,7 @@
+ import shelve
+ import warnings
+ from collections import defaultdict
++from collections.abc import Sequence
+ from functools import partial
+ from itertools import combinations, cycle
+ from pathlib import Path
+@@ -35,7 +36,7 @@
+     calc_iou,
+ )
+ from deeplabcut.utils import auxfun_multianimal, auxiliaryfunctions
+-from deeplabcut.utils.auxfun_videos import VideoWriter
++from deeplabcut.utils.auxfun_videos import VideoWriter, collect_video_paths
+ 
+ 
+ class Tracklet:
+@@ -960,7 +961,7 @@ def reconstruct_path(self, source):
+ def stitch_tracklets(
+     config_path,
+     videos,
+-    videotype="",
++    videotype: str | Sequence[str] | None = None,
+     shuffle=1,
+     trainingsetindex=0,
+     n_tracks=None,
+@@ -990,10 +991,14 @@ def stitch_tracklets(
+         A list of strings containing the full paths to videos for analysis or a path to the directory, where all the
+         videos with same extension are stored.
+ 
+-    videotype: string, optional
+-        Checks for the extension of the video in case the input to the video is a directory.\n Only videos with this
+-        extension are analyzed.
+-        If left unspecified, videos with common extensions ('avi', 'mp4', 'mov', 'mpeg', 'mkv') are kept.
++    videotype : str | Sequence[str] | None, optional, default=None
++        Controls how ``videos`` are filtered, based on file extension.
++        File paths and directory contents are treated differently:
++        - ``None`` (default): file paths are accepted as-is; directories are
++          scanned for files with a recognized video extension.
++        - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++          both file paths and directory contents are filtered by the given
++          extension(s).
+ 
+     shuffle: int, optional
+         An integer specifying the shuffle index of the training dataset used for training the network. The default is 1.
+@@ -1076,7 +1081,7 @@ def stitch_tracklets(
+     -------
+     A TrackletStitcher object
+     """
+-    vids = deeplabcut.utils.auxiliaryfunctions.get_list_of_videos(videos, videotype)
++    vids = collect_video_paths(videos, extensions=videotype)
+     if not vids:
+         print("No video(s) found. Please check your path!")
+         return
+diff --git a/deeplabcut/utils/auxfun_videos.py b/deeplabcut/utils/auxfun_videos.py
+--- a/deeplabcut/utils/auxfun_videos.py
++++ b/deeplabcut/utils/auxfun_videos.py
+@@ -21,17 +21,23 @@
+ 
+ import datetime
+ import os
++import random
+ import subprocess
+ import warnings
++from collections.abc import Sequence
++from pathlib import Path
+ 
+ import cv2
+ import numpy as np
+ import skimage.color
+ from skimage import io
+ from skimage.util import img_as_ubyte
+ 
++from deeplabcut.utils.deprecation import DLCDeprecationWarning
++
+ # more videos are in principle covered, as OpenCV is used and allows many formats.
+ SUPPORTED_VIDEOS = "avi", "mp4", "mov", "mpeg", "mpg", "mpv", "mkv", "flv", "qt", "yuv"
++DEFAULT_EXCLUDE_PATTERNS: tuple[str, ...] = "*_labeled.*", "*_full.*"
+ 
+ 
+ class VideoReader:
+@@ -643,3 +649,108 @@ def display_help(*args):
+ 
+     plt.close(fig)
+     return bbox
++
++
++def collect_video_paths(
++    data_path: str | Path | list[str | Path],
++    extensions: str | Sequence[str] | None = None,
++    shuffle: bool = False,
++    exclude_patterns: Sequence[str] = DEFAULT_EXCLUDE_PATTERNS,
++) -> list[Path]:
++    """
++    Collects video paths from a given set of data paths: directories, files, or a mix
++    of both. Directories are scanned one level deep (non-recursively).
++
++    Files and directories are treated differently with respect to extension filtering:
++    - File paths are accepted as-is when ``extensions`` is ``None``; only filtered when
++      ``extensions`` is explicitly set.
++    - Directory contents are always filtered by extension: by ``SUPPORTED_VIDEOS`` when
++      ``extensions`` is ``None``, or by the given value(s) otherwise.
++    - ``exclude_patterns`` are always applied to both files and directory contents.
++
++    Args:
++        data_path: Path or list of paths to folders containing videos, or individual
++            video files. Can be a mix of directories and files.
++        extensions: Controls extension filtering for collected video files.
++            - ``None`` (default): file paths are accepted without extension filtering;
++              directories are scanned for files with a recognized video extension.
++            - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++              both file paths and directory contents are filtered to only include files
++              matching the given extension(s).
++            - Empty ``str`` ``""`` is treated as ``None`` (deprecated, keep for backwards
++              compatibility).
++        shuffle: Whether to shuffle the order of videos. If ``False``, videos are
++            returned in sorted order for deterministic behavior.
++        exclude_patterns: Patterns to exclude from the collection. Defaults to
++            ``DEFAULT_EXCLUDE_PATTERNS``. Set to ``[]`` to disable pattern exclusion.
++
++    Returns:
++        The paths of videos to analyze. Duplicate paths are removed.
++
++    Raises:
++        FileNotFoundError: If any path in ``data_path`` does not exist.
++        ValueError: If ``extensions`` is an empty sequence.
++    """
++    if isinstance(data_path, (str, Path)):
++        data_path = [data_path]
++
++    def _coerce_extensions(extensions: str | Sequence[str] | None) -> set[str] | None:
++        """Coerce the extensions argument to a set of dot-prefixed suffixes, or None."""
++        if extensions is None:
++            return None
++
++        if extensions in ["", ("",), [""], {""}]:
++            warnings.warn(
++                "Passing an empty string for filtering video type extensions is deprecated; pass None instead.",
++                DLCDeprecationWarning,
++                stacklevel=3,
++            )
++            return None
++
++        if isinstance(extensions, str):
++            return {f".{extensions.lstrip('.').lower()}"}
++
++        if not isinstance(extensions, Sequence):
++            raise TypeError(f"extensions must be a string, a sequence or None, got {type(extensions)}")
++
++        if len(extensions) == 0:
++            raise ValueError("Video type extensions filter needs to be an non-empty sequence.")
++        return {f".{e.lstrip('.').lower()}" for e in extensions}
++
++    explicit_suffixes = _coerce_extensions(extensions)
++    implicit_suffixes = {f".{ext.lower()}" for ext in SUPPORTED_VIDEOS}
++
++    videos: list[Path] = []
++    for path in map(Path, data_path):
++        if not path.exists():
++            raise FileNotFoundError(f"Could not find: {path}. Check access rights.")
++
++        if path.is_dir():
++            # Discriminate videos from other files; skip excluded patterns (e.g. prior DLC outputs).
++            allowed = explicit_suffixes if explicit_suffixes else implicit_suffixes
++            videos.extend(
++                f
++                for f in path.iterdir()
++                if f.is_file()
++                and f.suffix.lower() in allowed
++                and not any(f.match(pattern) for pattern in exclude_patterns)
++            )
++        elif path.is_file():
++            # Accept all caller-supplied files; ONLY filter extensions if set. ALWAYS filter exclude patterns.
++            if explicit_suffixes is None or path.suffix.lower() in explicit_suffixes:
++                if not any(path.match(pattern) for pattern in exclude_patterns):
++                    videos.append(path)
++
++    # Resolve video paths and remove duplicates
++    unique_videos = list(dict.fromkeys(v.resolve() for v in videos))
++    if shuffle:
++        random.shuffle(unique_videos)
++    else:
++        unique_videos.sort()
++
++    if any(fn.suffix.lower().lstrip(".") not in SUPPORTED_VIDEOS for fn in unique_videos if fn.suffix):
++        warnings.warn(
++            f"Some videos have unsupported extensions: {unique_videos} \nSupported extensions are: {SUPPORTED_VIDEOS}",
++            stacklevel=2,
++        )
++    return unique_videos
+diff --git a/deeplabcut/utils/auxiliaryfunctions.py b/deeplabcut/utils/auxiliaryfunctions.py
+--- a/deeplabcut/utils/auxiliaryfunctions.py
++++ b/deeplabcut/utils/auxiliaryfunctions.py
+@@ -23,6 +23,7 @@
+ import os
+ import pickle
+ import warnings
++from collections.abc import Sequence
+ from pathlib import Path
+ 
+ import pandas as pd
+@@ -32,7 +33,9 @@
+ 
+ from deeplabcut.core.engine import Engine
+ from deeplabcut.core.trackingutils import TRACK_METHODS
+-from deeplabcut.utils import auxfun_multianimal, auxfun_videos
++from deeplabcut.utils import auxfun_multianimal
++from deeplabcut.utils.auxfun_videos import SUPPORTED_VIDEOS, collect_video_paths
++from deeplabcut.utils.deprecation import deprecated
+ 
+ 
+ def create_config_template(multianimal=False):
+@@ -387,66 +390,18 @@ def write_pickle(filename, data):
+         pickle.dump(data, handle, protocol=pickle.HIGHEST_PROTOCOL)
+ 
+ 
++@deprecated(replacement="deeplabcut.collect_video_paths", since="3.0.0")
+ def get_list_of_videos(
+     videos: list[str] | str,
+-    videotype: list[str] | str = "",
++    videotype: str | Sequence[str] | None = SUPPORTED_VIDEOS,
+     in_random_order: bool = True,
+ ) -> list[str]:
+-    """Returns list of videos of videotype "videotype" in folder videos or for list of
+-    videos.
+-
+-    NOTE: excludes keyword videos of the form:
+-
+-    *_labeled.videotype
+-    *_full.videotype
+-
+-    Args:
+-        videos (list[str], str): List of video paths or a single path string. If string (or len() == 1 list of strings)
+-        is a directory,
+-            finds all videos whose extension matches  ``videotype`` in the directory
+-
+-        videotype (list[str], str): File extension used to filter videos. Optional if ``videos`` is a list of video
+-        files,
+-            and filters with common video extensions if a directory is passed in.
+-
+-        in_random_order (bool): Whether or not to return a shuffled list of videos.
+-    """
+-    if isinstance(videos, str):
+-        videos = [videos]
+-
+-    if [os.path.isdir(i) for i in videos] == [True]:  # checks if input is a directory
+-        """Returns all the videos in the directory."""
+-        if not videotype:
+-            videotype = auxfun_videos.SUPPORTED_VIDEOS
+-
+-        print("Analyzing all the videos in the directory...")
+-        videofolder = videos[0]
+-
+-        # make list of full paths
+-        videos = [os.path.join(videofolder, fn) for fn in os.listdir(videofolder)]
+-
+-        if in_random_order:
+-            from random import shuffle
+-
+-            shuffle(videos)  # this is useful so multiple nets can be used to analyze simultaneously
+-        else:
+-            videos.sort()
+-
+-    if isinstance(videotype, str):
+-        videotype = [videotype]
+-    if not videotype:
+-        videotype = auxfun_videos.SUPPORTED_VIDEOS
+-    # filter list of videos
+-    videos = [
+-        v
+-        for v in videos
+-        if os.path.isfile(v)
+-        and any(v.endswith(ext) for ext in videotype)
+-        and "_labeled." not in v
+-        and "_full." not in v
+-    ]
+-
+-    return videos
++    video_paths = collect_video_paths(
++        data_path=videos,
++        extensions=videotype,
++        shuffle=in_random_order,
++    )
++    return [str(path) for path in video_paths]
+ 
+ 
+ def save_data(PredicteData, metadata, dataname, pdindex, imagenames, save_as_csv):
+@@ -531,6 +486,7 @@ def filter_files_by_patterns(
+     return matching_files
+ 
+ 
++@deprecated(replacement="deeplabcut.collect_video_paths", since="3.0.0")
+ def get_video_list(filename, videopath, videtype):
+     """Get list of videos in a path (if filetype == all), otherwise just a specific
+     file."""
+diff --git a/deeplabcut/utils/deprecation.py b/deeplabcut/utils/deprecation.py
+new file mode 100644
+--- /dev/null
++++ b/deeplabcut/utils/deprecation.py
+@@ -0,0 +1,156 @@
++#
++# DeepLabCut Toolbox (deeplabcut.org)
++# © A. & M.W. Mathis Labs
++# https://github.com/DeepLabCut/DeepLabCut
++#
++# Please see AUTHORS for contributors.
++# https://github.com/DeepLabCut/DeepLabCut/blob/master/AUTHORS
++#
++# Licensed under GNU Lesser General Public License v3.0
++#
++from __future__ import annotations
++
++import functools
++import warnings
++from collections.abc import Callable
++from typing import Literal, ParamSpec, TypeVar
++
++from packaging.version import InvalidVersion, Version
++from pydantic import BaseModel, ConfigDict, field_validator, model_validator
++
++P = ParamSpec("P")
++R = TypeVar("R")
++
++
++class DLCDeprecationWarning(DeprecationWarning):
++    """Project-specific deprecation warning. Helps with filtering."""
++
++
++class DeprecationInfo(BaseModel):
++    model_config = ConfigDict(
++        frozen=True,
++        arbitrary_types_allowed=True,
++    )
++
++    kind: Literal["callable", "parameter"]
++    target: str
++    replacement: str | None = None
++
++    since: Version | None = None
++    removed_in: Version | None = None
++
++    old_parameter: str | None = None
++    new_parameter: str | None = None
++
++    @field_validator("since", "removed_in", mode="before")
++    @classmethod
++    def _parse_version(cls, value):
++        if value is None or isinstance(value, Version):
++            return value
++        try:
++            return Version(value)
++        except InvalidVersion as e:
++            raise ValueError(f"Invalid version: {value!r}") from e
++
++    @model_validator(mode="after")
++    def _validate_version_order(self) -> DeprecationInfo:
++        if self.since and self.removed_in and self.removed_in <= self.since:
++            raise ValueError(f"'removed_in' ({self.removed_in}) must be greater than 'since' ({self.since}).")
++        return self
++
++    def format_message(self) -> str:
++        if self.kind == "callable":
++            parts = [f"{self.target} is deprecated"]
++            if self.since:
++                parts[0] += f" since {self.since}"
++            if self.replacement:
++                parts.append(f"Use {self.replacement} instead.")
++            if self.removed_in:
++                parts.append(f"It will be removed in {self.removed_in}.")
++            return " ".join(parts)
++
++        if self.kind == "parameter":
++            return (
++                f"Parameter '{self.old_parameter}' of {self.target} is deprecated"
++                + (f" since {self.since}" if self.since else "")
++                + f"; use '{self.new_parameter}' instead."
++            )
++
++        raise ValueError(f"Unknown deprecation kind: {self.kind}")
++
++
++def deprecated(
++    *,
++    replacement: str | None = None,
++    since: str | None = None,
++    removed_in: str | None = None,
++) -> Callable[[Callable[P, R]], Callable[P, R]]:
++    """Mark a function as deprecated.
++
++    Args:
++        replacement: Fully-qualified name of the replacement callable, e.g.
++            ``"deeplabcut.utils.auxfun_videos.list_videos_in_folder"``.
++        since: Version in which the function was deprecated.
++        removed_in: Version in which the function will be removed.
++    """
++
++    def decorator(fn: Callable[P, R]) -> Callable[P, R]:
++        info = DeprecationInfo(
++            kind="callable",
++            target=fn.__qualname__,
++            replacement=replacement,
++            since=since,
++            removed_in=removed_in,
++        )
++        message = info.format_message()
++
++        @functools.wraps(fn)
++        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
++            warnings.warn(message, DLCDeprecationWarning, stacklevel=2)
++            return fn(*args, **kwargs)
++
++        wrapper.__doc__ = f"Deprecated. {message}\n\n" + (fn.__doc__ or "")
++        wrapper.__deprecated_info__ = info
++        return wrapper
++
++    return decorator
++
++
++def renamed_parameter(
++    *,
++    old: str,
++    new: str,
++    since: str | None = None,
++) -> Callable[[Callable[P, R]], Callable[P, R]]:
++    """Support a renamed keyword argument while warning callers to update.
++
++    Args:
++        old: The old parameter name that callers may still pass.
++        new: The current parameter name the function actually accepts.
++        since: Version when the rename happened.
++    """
++
++    def decorator(fn: Callable[P, R]) -> Callable[P, R]:
++        info = DeprecationInfo(
++            kind="parameter",
++            target=fn.__qualname__,
++            since=since,
++            old_parameter=old,
++            new_parameter=new,
++        )
++        message = info.format_message()
++
++        @functools.wraps(fn)
++        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
++            if old in kwargs:
++                if new in kwargs:
++                    raise TypeError(f"{fn.__qualname__} received both '{old}' and '{new}'. Use only '{new}'.")
++                warnings.warn(message, DLCDeprecationWarning, stacklevel=2)
++                kwargs[new] = kwargs.pop(old)
++            return fn(*args, **kwargs)
++
++        existing = getattr(fn, "__deprecated_params__", ())
++        wrapper.__deprecated_params__ = (*existing, info)
++        return wrapper
++
++    return decorator
+diff --git a/deeplabcut/utils/make_labeled_video.py b/deeplabcut/utils/make_labeled_video.py
+--- a/deeplabcut/utils/make_labeled_video.py
++++ b/deeplabcut/utils/make_labeled_video.py
+@@ -30,7 +30,7 @@
+ # Dependencies
+ ####################################################
+ import os.path
+-from collections.abc import Callable, Iterable
++from collections.abc import Callable, Iterable, Sequence
+ from functools import partial
+ from multiprocessing import Pool, get_start_method
+ from pathlib import Path
+@@ -48,7 +48,7 @@
+ 
+ from deeplabcut.core.engine import Engine
+ from deeplabcut.utils import auxfun_multianimal, auxiliaryfunctions, visualization
+-from deeplabcut.utils.auxfun_videos import VideoWriter
++from deeplabcut.utils.auxfun_videos import VideoWriter, collect_video_paths
+ from deeplabcut.utils.video_processor import (
+     VideoProcessorCV as vp,
+ )  # used to CreateVideo
+@@ -393,7 +393,7 @@ def CreateVideoSlow(
+ def create_labeled_video(
+     config: str,
+     videos: list[str],
+-    videotype: str = "",
++    videotype: str | Sequence[str] | None = None,
+     shuffle: int = 1,
+     trainingsetindex: int = 0,
+     filtered: bool = False,
+@@ -441,11 +441,14 @@ def create_labeled_video(
+         A list of strings containing the full paths to videos for analysis or a path
+         to the directory, where all the videos with same extension are stored.
+ 
+-    videotype: str, optional, default=""
+-        Checks for the extension of the video in case the input to the video is a
+-        directory. Only videos with this extension are analyzed.
+-        If left unspecified, videos with common extensions
+-        ('avi', 'mp4', 'mov', 'mpeg', 'mkv') are kept.
++    videotype : str | Sequence[str] | None, optional, default=None
++        Controls how ``videos`` are filtered, based on file extension.
++        File paths and directory contents are treated differently:
++        - ``None`` (default): file paths are accepted as-is; directories are
++          scanned for files with a recognized video extension.
++        - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++          both file paths and directory contents are filtered by the given
++          extension(s).
+ 
+     shuffle : int, optional, default=1
+         Number of shuffles of training dataset.
+@@ -733,7 +736,7 @@ def create_labeled_video(
+         skeleton_color = None
+ 
+     start_path = os.getcwd()
+-    Videos = auxiliaryfunctions.get_list_of_videos(videos, videotype)
++    Videos = collect_video_paths(videos, extensions=videotype)
+ 
+     if not Videos:
+         return []
+@@ -1147,7 +1150,7 @@ def create_video_with_keypoints_only(
+ def create_video_with_all_detections(
+     config,
+     videos,
+-    videotype="",
++    videotype: str | Sequence[str] | None = None,
+     shuffle=1,
+     trainingsetindex=0,
+     displayedbodyparts="all",
+@@ -1169,10 +1172,14 @@ def create_video_with_all_detections(
+         A list of strings containing the full paths to videos for analysis or a path to the directory,
+         where all the videos with same extension are stored.
+ 
+-    videotype: string, optional
+-        Checks for the extension of the video in case the input to the video is a directory.\n
+-        Only videos with this extension are analyzed.
+-        If left unspecified, videos with common extensions ('avi', 'mp4', 'mov', 'mpeg', 'mkv') are kept.
++    videotype : str | Sequence[str] | None, optional, default=None
++        Controls how ``videos`` are filtered, based on file extension.
++        File paths and directory contents are treated differently:
++        - ``None`` (default): file paths are accepted as-is; directories are
++          scanned for files with a recognized video extension.
++        - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++          both file paths and directory contents are filtered by the given
++          extension(s).
+ 
+     shuffle : int, optional
+         Number of shuffles of training dataset. Default is set to 1.
+@@ -1225,7 +1232,7 @@ def create_video_with_all_detections(
+         **kwargs,
+     )
+ 
+-    videos = auxiliaryfunctions.get_list_of_videos(videos, videotype)
++    videos = collect_video_paths(videos, extensions=videotype)
+     if not videos:
+         return
+ 
+diff --git a/deeplabcut/utils/plotting.py b/deeplabcut/utils/plotting.py
+--- a/deeplabcut/utils/plotting.py
++++ b/deeplabcut/utils/plotting.py
+@@ -28,6 +28,7 @@
+ ####################################################
+ import os.path
+ import pickle
++from collections.abc import Sequence
+ from pathlib import Path
+ 
+ import matplotlib.pyplot as plt
+@@ -36,6 +37,7 @@
+ 
+ from deeplabcut.core import crossvalutils
+ from deeplabcut.utils import auxfun_multianimal, auxiliaryfunctions, visualization
++from deeplabcut.utils.auxfun_videos import collect_video_paths
+ 
+ 
+ def Histogram(vector, color, bins, ax=None, linewidth=1.0):
+@@ -170,7 +172,7 @@ def PlottingResults(
+ def plot_trajectories(
+     config,
+     videos,
+-    videotype="",
++    videotype: str | Sequence[str] | None = None,
+     shuffle=1,
+     trainingsetindex=0,
+     filtered=False,
+@@ -197,11 +199,14 @@ def plot_trajectories(
+         Full paths to videos for analysis or a path to the directory, where all the
+         videos with same extension are stored.
+ 
+-    videotype: str, optional, default=""
+-        Checks for the extension of the video in case the input to the video is a
+-        directory. Only videos with this extension are analyzed.
+-        If left unspecified, videos with common extensions
+-        ('avi', 'mp4', 'mov', 'mpeg', 'mkv') are kept.
++    videotype : str | Sequence[str] | None, optional, default=None
++        Controls how ``videos`` are filtered, based on file extension.
++        File paths and directory contents are treated differently:
++        - ``None`` (default): file paths are accepted as-is; directories are
++          scanned for files with a recognized video extension.
++        - ``str`` or ``Sequence[str]`` (e.g. ``"mp4"`` or ``["mp4", "avi"]``):
++          both file paths and directory contents are filtered by the given
++          extension(s).
+ 
+     shuffle: int, optional, default=1
+         Integer specifying the shuffle index of the training dataset.
+@@ -288,7 +293,7 @@ def plot_trajectories(
+     )  # automatically loads corresponding model (even training iteration based on snapshot index)
+     bodyparts = auxiliaryfunctions.intersection_of_body_parts_and_ones_given_by_user(cfg, displayedbodyparts)
+     individuals = auxfun_multianimal.IntersectionofIndividualsandOnesGivenbyUser(cfg, displayedindividuals)
+-    Videos = auxiliaryfunctions.get_list_of_videos(videos, videotype)
++    Videos = collect_video_paths(videos, extensions=videotype)
+     if not len(Videos):
+         print("No videos found. Make sure you passed a list of videos and that *videotype* is right.")
+         return
+diff --git a/pyproject.toml b/pyproject.toml
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -42,6 +42,7 @@ dependencies = [
+   "networkx>=2.6",
+   "numba>=0.54",
+   "numpy>=1.18.5,<2",
++  "packaging>=26",
+   "pandas[hdf5,performance]>=2.2,<3",
+   "pillow>=7.1",
+   "pycocotools",
+@@ -67,7 +68,6 @@ email = "alexander@deeplabcut.org"
+ [project.optional-dependencies]
+ gui = [
+   "napari-deeplabcut>=0.2.1.6",
+-  "packaging>=26",
+   "pyside6; platform_system!='Linux' or platform_machine!='x86_64'",
+   # Avoid 6.10.0 only on Linux x86_64 (fails for older glib versions)
+   "pyside6<6.10; platform_system=='Linux' and platform_machine=='x86_64'",
+@@ -214,4 +214,5 @@ markers = [
+   "fmpose3d: tests for fmpose3d integration",
+   "unittest: fast unit-level tests",
+   "functional: functional/integration-style tests",
++  "deprecated: tests for deprecated APIs kept for backward-compatibility",
+ ]
+diff --git a/uv.lock b/uv.lock
+--- a/uv.lock
++++ b/uv.lock
+@@ -1201,6 +1201,7 @@ dependencies = [
+     { name = "networkx", version = "3.6.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' or (extra == 'extra-10-deeplabcut-apple-mchips' and extra == 'extra-10-deeplabcut-tf') or (extra == 'extra-10-deeplabcut-apple-mchips' and extra == 'extra-10-deeplabcut-tf-cu11') or (extra == 'extra-10-deeplabcut-apple-mchips' and extra == 'extra-10-deeplabcut-tf-cu12') or (extra == 'extra-10-deeplabcut-apple-mchips' and extra == 'extra-10-deeplabcut-tf-latest') or (extra == 'extra-10-deeplabcut-fmpose3d' and extra == 'extra-10-deeplabcut-tf-cu11') or (extra == 'extra-10-deeplabcut-fmpose3d' and extra == 'extra-10-deeplabcut-tf-cu12') or (extra == 'extra-10-deeplabcut-tf' and extra == 'extra-10-deeplabcut-tf-cu11') or (extra == 'extra-10-deeplabcut-tf' and extra == 'extra-10-deeplabcut-tf-cu12') or (extra == 'extra-10-deeplabcut-tf' and extra == 'extra-10-deeplabcut-tf-latest') or (extra == 'extra-10-deeplabcut-tf-cu11' and extra == 'extra-10-deeplabcut-tf-cu12') or (extra == 'extra-10-deeplabcut-tf-cu11' and extra == 'extra-10-deeplabcut-tf-latest') or (extra == 'extra-10-deeplabcut-tf-cu12' and extra == 'extra-10-deeplabcut-tf-latest')" },
+     { name = "numba" },
+     { name = "numpy" },
++    { name = "packaging" },
+     { name = "pandas", extra = ["hdf5", "performance"] },
+     { name = "pillow" },
+     { name = "pycocotools" },
+@@ -1247,7 +1248,6 @@ fmpose3d = [
+ ]
+ gui = [
+     { name = "napari-deeplabcut" },
+-    { name = "packaging" },
+     { name = "pyside6" },
+     { name = "qdarkstyle" },
+ ]
+@@ -1335,7 +1335,7 @@ requires-dist = [
+     { name = "numpy", specifier = ">=1.18.5,<2" },
+     { name = "numpydoc", marker = "extra == 'docs'" },
+     { name = "openvino-dev", marker = "extra == 'openvino'", specifier = "==2022.1" },
+-    { name = "packaging", marker = "extra == 'gui'", specifier = ">=26" },
++    { name = "packaging", specifier = ">=26" },
+     { name = "pandas", extras = ["hdf5", "performance"], specifier = ">=2.2,<3" },
+     { name = "pillow", specifier = ">=7.1" },
+     { name = "protobuf", marker = "sys_platform == 'darwin' and extra == 'apple-mchips'", specifier = "<7" },
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

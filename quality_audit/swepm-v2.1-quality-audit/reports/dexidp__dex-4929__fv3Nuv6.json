@@ -1,0 +1,56 @@
+{
+  "instance_id": "dexidp__dex-4929",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.7,
+  "gold_patch_assessment": "The gold patch is a comprehensive refactoring that correctly addresses all aspects of the stated issue: (1) creates oauth2.IssuerURL type with AbsPath/AbsURL methods to replace per-handler helpers, (2) moves passwordDB, ConnectorConfig, LocalConnector, and Resolver to server/connectors package, (3) moves ConnectorsConfig map to server/connector.go, (4) stores discovery.Handler once on Server instead of rebuilding it, (5) changes gRPC API to accept *discovery.Handler with nil guard, (6) removes many mutable fields from Server struct, (7) creates router.New() to replace the inline routeMux. The refactoring preserves all observable behavior.",
+  "base_vs_gold_expectation": "The test patch would fail to compile on the unmodified base because it references types and functions that only exist after the gold patch: oauth2.IssuerURL (new type), connectors.NewPasswordDB (new function), connectors.LocalConnector (new constant), connectors.Resolver (new function), s.issuerURL.AbsPath/AbsURL (methods on new type), srv.discovery.GrantTypes (new field on Server). This guarantees the verifier correctly rejects the unpatched base.",
+  "too_narrow_risks": [
+    "The instruction explicitly requires 'If discovery support is not configured, GetDiscovery should return an error indicating that discovery is not configured rather than panicking', but no test verifies this behavior. server_api_cache_test.go passes nil for discovery but never calls GetDiscovery.",
+    "No test verifies that router.New() correctly prefixes routes with the issuer path, adds headers, or applies CORS — the entire router.Config/mountMux refactoring is untested in isolation.",
+    "No test verifies that connectors.Resolver correctly delegates to the config map for non-local connector types.",
+    "The cmd/dex config.go changes (ConnectorConfig type change, LocalConnector constant source change) are not tested — no test exercises config unmarshaling with the new connectors.ConnectorConfig type."
+  ],
+  "too_broad_risks": [],
+  "implementation_coupling": [
+    "Tests require the exact type name oauth2.IssuerURL with embedded url.URL — any alternative type name or structure fails compilation.",
+    "Tests require connectors.NewPasswordDB as a public function in that specific package — an equivalent refactoring placing it elsewhere (e.g., server/passwords) would fail.",
+    "Tests require connectors.LocalConnector as a constant in server/connectors — the instruction doesn't prescribe the exact package location.",
+    "Tests require connectors.Resolver as a public function — the instruction says 'usable independently of Server' but doesn't mandate this specific API shape.",
+    "Tests access srv.discovery.GrantTypes directly — this couples to the specific field name on discovery.Handler, which the instruction doesn't prescribe.",
+    "Tests use s.connectors.Open(conn) instead of s.OpenConnector(conn) — an implementation that keeps the wrapper method on Server would fail.",
+    "Tests construct tokens.NewIssuer directly without Server — coupled to Server no longer needing signer/now/idTokensValidFor fields."
+  ],
+  "environment_risks": [
+    "The test runs 12 test files across 5 Go packages sequentially with -p 1. With a 3600s timeout this should be fine, but compilation of the large patch touching many packages could be slow on constrained resources.",
+    "The gold patch creates 4 new files — if any candidate solution creates them with slightly different content, the git apply of the test patch may fail on context lines that reference the new imports or structures."
+  ],
+  "mismatches": [
+    "The instruction mentions 'GetDiscovery should return an error indicating that discovery is not configured rather than panicking' but no test validates this requirement.",
+    "The instruction says 'the local password database connector must also remain available under the same local connector identifier' — while TestPasswordDB exists, it doesn't test the full integration path through connectors.Resolver with LocalConnector type matching."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/dexidp__dex-4929/instruction.md",
+      "detail": "Instruction prescribes 'oauth2.IssuerURL{URL: parsedURL}' by name, heavily constraining implementations, but many other API names (Resolver, NewPasswordDB, discovery.GrantTypes) are not prescribed."
+    },
+    {
+      "file": "/audit_tasks/dexidp__dex-4929/tests/eval.sh",
+      "detail": "Test patch modifies 12 test files to use gold-patch-specific APIs. All would fail to compile on base due to missing types/functions."
+    },
+    {
+      "file": "/audit_tasks/dexidp__dex-4929/solution/solve.sh",
+      "detail": "Gold patch creates 4 new files and heavily modifies server.go, moving ~200 lines of code to new packages."
+    },
+    {
+      "file": "/testbed/server/server_api_cache_test.go",
+      "detail": "Test passes nil for discovery handler (line 164 in test patch) but never calls GetDiscovery, so the nil-guard behavior required by the instruction is untested."
+    },
+    {
+      "file": "/testbed/server/server_test.go",
+      "detail": "Line 1835 in base uses srv.supportedGrantTypes; test patch changes to srv.discovery.GrantTypes — tightly couples to specific field location on discovery.Handler."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch is a well-structured refactoring that correctly addresses all stated requirements. However, tests are heavily coupled to the specific implementation: they require exact type names (oauth2.IssuerURL), function names (connectors.NewPasswordDB, connectors.Resolver), constant locations (connectors.LocalConnector), and field names (srv.discovery.GrantTypes) that are not all prescribed by the instruction. An alternative refactoring achieving identical observable behavior but with different package organization or naming would fail these tests. Additionally, the instruction explicitly requires GetDiscovery to return an error (not panic) when discovery is not configured, but no test validates this. The tests are mostly adaptations of existing tests ensuring backward compatibility, which is appropriate for a refactoring task, but the missing nil-discovery test and heavy implementation coupling make the instance questionable. Recommend adding a test for the nil-discovery error case and considering whether some test assertions could be relaxed to check behavior rather than specific API structure."
+}

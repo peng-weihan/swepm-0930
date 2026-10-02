@@ -1,0 +1,72 @@
+Checking patch tests/_guardrails/test_module_size_ratchet.py...
+Checking patch tests/_guardrails/test_no_raw_positional_rpc_indexing.py...
+error: while searching for:
+
+# Baseline of BELOW-FACADE feature files that open-code a *single-level*
+# integer-literal subscript (``x[i]``) of a decoded RPC payload (issue #1491).
+# Many of these reads are genuine but already-guarded inner reads -- the
+# single-level gate is a RATCHET, not an immediate ban: these files are
+# grandfathered so the gate is green on ``main``, but a single-level subscript
+# in any in-scope file NOT on this list fails the gate. Above-facade files
+# (``cli/`` / ``_app/`` / ``_auth/`` / ``utils.py`` / ``_version_check.py``)
+# are excluded from the scan entirely (see the scope constants above) and MUST
+# NOT appear here (pinned by
+# ``test_single_level_allowlist_has_no_above_facade_entries``).
+#
+# The chat wire parser (``_chat/wire.py``) and the ``suggest_reports`` row decode
+# in ``_artifacts.py`` were the largest un-adapted surfaces; ``_chat/wire.py`` is
+# fully migrated behind ``_row_adapters/chat.py`` and is DELIBERATELY ABSENT from
+# this list so the gate re-protects it. ``_artifacts.py`` keeps its remaining
+# envelope-unwrap / request-param reads (only its ``suggest_reports`` row decode
+# moved behind ``ReportSuggestionRow``), so it stays listed for now.
+# ``_types/artifacts.py`` is likewise ABSENT: ``Artifact.from_mind_map``'s last
+# inline ``[1][2][2][0]`` timestamp descent moved behind ``NoteRow.created_at``
+# (issue #1529), so the gate re-protects it.
+#
+# DO NOT add new entries to grow the debt. The burndown (drain this list by
+# migrating each file behind ``_row_adapters/`` + ``safe_index``, or binding the
+# already-guarded inner list to a named local) is a follow-up to #1491.
+SINGLE_LEVEL_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        "_artifact/downloads.py",
+        "_artifact/formatters.py",
+        "_artifact/listing.py",
+        "_artifact/polling.py",
+        "_artifacts.py",
+        "_chat/api.py",
+        "_chat/notes.py",
+        "_labels.py",
+        "_mind_maps_api.py",
+        "_note_service.py",
+        "_notebooks.py",
+        "_research.py",
+        "_source/add.py",
+        "_source/content.py",
+        "_source/listing.py",
+        "_source/upload.py",
+        "_types/notebooks.py",
+        "_types/sharing.py",
+        "_types/sources.py",
+    }
+)
+
+# The enumerated facade methods that return RAW (untyped / positional) RPC
+# payloads instead of typed objects. Verified by introspection at
+
+error: patch failed: tests/_guardrails/test_no_raw_positional_rpc_indexing.py:134
+error: tests/_guardrails/test_no_raw_positional_rpc_indexing.py: patch does not apply
+Checking patch tests/unit/test_artifacts_helpers.py...
+error: while searching for:
+
+    assert headers == ["Col1", "Col2"]
+    assert rows == [["A", "B"]]
+
+error: patch failed: tests/unit/test_artifacts_helpers.py:149
+error: tests/unit/test_artifacts_helpers.py: patch does not apply
+Checking patch tests/unit/test_artifacts_row_adapter.py...
+Checking patch tests/unit/test_chat_row_adapter.py...
+Checking patch tests/unit/test_mind_maps_api.py...
+Hunk #1 succeeded at 619 (offset 9 lines).
+Checking patch tests/unit/test_research_row_adapter.py...
+Checking patch tests/unit/test_sharing_types.py...
+Checking patch tests/unit/test_sources_row_adapter.py...

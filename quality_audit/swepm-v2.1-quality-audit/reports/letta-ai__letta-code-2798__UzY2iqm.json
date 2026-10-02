@@ -1,0 +1,67 @@
+{
+  "instance_id": "letta-ai__letta-code-2798",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.72,
+  "gold_patch_assessment": "The gold patch comprehensively renames 78 files from 'extension' to 'mod' terminology across the codebase. It renames files (via git renames), updates imports, renames exported symbols (e.g., ExtensionAdapter->ModAdapter, createExtensionAdapter->createModAdapter), updates user-facing strings, and introduces new files like src/mods/paths.ts with legacy fallback logic (resolveDefaultGlobalModsDirectory). The patch addresses the issue requirements: module renames, API renames, CLI option renames (--no-extensions to --no-mods), env var renames (LETTA_DISABLE_EXTENSIONS to LETTA_DISABLE_MODS with legacy support), and user-facing message updates. The patch is behavior-preserving as intended.",
+  "base_vs_gold_expectation": "The test patch applies on both base and base+gold (since it only renames/modifies test files, which gold doesn't touch). However, tests will fail on base because test imports reference @/mods/... modules that only exist after the gold patch creates them. With gold applied, all 21 test files should compile and pass. This correctly discriminates base from gold.",
+  "too_narrow_risks": [
+    "The specific error message change from 'provider extension' to 'provider mod' in pi-model-factory.ts is not directly tested. The existing test only checks the substring 'Model provider \"kilo\" is not registered' which matches both old and new messages.",
+    "No test verifies that the old src/extensions/ directory is actually cleaned up (deleted or emptied) after the rename.",
+    "The .github/workflows/pr-title.yml change (feat(extensions) -> feat(mods) in example) is not tested.",
+    "The SKILL.md documentation renames under src/skills/builtin/ are not tested.",
+    "No test verifies the user-facing statusline terminology changes."
+  ],
+  "too_broad_risks": [
+    "The test patch introduces entirely new test files (paths.test.ts, disable.test.ts) that test new functionality (legacy path fallback, LEGACY_LETTA_DISABLE_EXTENSIONS_ENV) that goes beyond a pure terminology rename — these are new features added by the gold patch, and tests are tightly coupled to the gold's specific implementation approach.",
+    "A candidate that renames test files themselves (a reasonable interpretation of the instruction 'renamed test files/imports should compile against the new mod APIs') would cause the test patch to fail to apply, since the test patch expects old test file paths to exist for its rename operations. This rejects reasonable alternative implementations.",
+    "21 test files running with --timeout 15000 across many modules creates a large surface area where pre-existing flaky tests could cause false negatives."
+  ],
+  "implementation_coupling": [
+    "paths.test.ts imports specific function names (getGlobalModsDirectory, getLegacyGlobalExtensionsDirectory, resolveDefaultGlobalModsDirectory, getModCacheDirectory) from @/mods/paths — a module that doesn't exist in the base and is entirely new in the gold patch. A candidate could reasonably implement path resolution differently (e.g., inline in mod-engine.ts, different function names).",
+    "disable.test.ts imports specific symbols (areModsDisabled, LEGACY_LETTA_DISABLE_EXTENSIONS_ENV, LETTA_DISABLE_MODS_ENV, shouldDisableMods) that are specific to the gold patch's decomposition. A candidate might choose different names or combine these differently.",
+    "Tests reference exact new API names (createModAdapter, clearModTools, registerModTool, ModToolStartEvent, clearModPermissions, registerModPermission, DISABLED_MOD_CAPABILITIES, LISTENER_MOD_CAPABILITIES, etc.) — while the issue describes these names, the tight binding to exact export names means minor naming variations would fail.",
+    "The test patch's rename operations (rename from src/extensions/*.test.ts to src/mods/*.test.ts) assume the candidate did NOT rename test files, which couples the test strategy to the gold patch's specific decision to leave test files untouched."
+  ],
+  "environment_risks": [
+    "bun version 1.3.0 is installed; test runner behavior may vary across bun versions.",
+    "node_modules exist but bun.lockb may need regeneration after the gold patch changes import paths — no explicit install step in eval.sh.",
+    "The test patch uses 'git apply' with a fallback to 'patch --fuzz=5', which is permissive and could mask application issues."
+  ],
+  "mismatches": [
+    "The instruction says 'Test and coverage scripts should discover tests under src/mods instead of src/extensions, and renamed test files/imports should compile against the new mod APIs' — this implies candidates should rename test files. However, the gold patch deliberately does NOT rename test files (the test patch handles that). A candidate following the instructions literally would rename test files, causing the test patch to fail.",
+    "The instruction says 'Modules and imports under src/extensions should be moved/renamed to src/mods' — but the gold patch creates some files as new (delete + create) rather than rename, and keeps some files in src/extensions/ as deleted. The test patch then creates new test files at @/mods/ paths. The interaction is fragile."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/letta-ai__letta-code-2798/instruction.md",
+      "detail": "Issue states 'renamed test files/imports should compile against the new mod APIs' implying candidates should also rename test files, but gold patch does not rename any test files."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch renames 9 test files from extensions/ to mods/ paths, creates 3 new test files (paths.test.ts, disable.test.ts, command-runtime.test.ts), and modifies 9 existing test files in place."
+    },
+    {
+      "file": "/audit_tasks/letta-ai__letta-code-2798/solution/solve.sh",
+      "detail": "Gold patch modifies 78 files but touches zero test files, leaving all test renames to the test patch."
+    },
+    {
+      "file": "/audit_tasks/letta-ai__letta-code-2798/tests/eval.sh",
+      "detail": "Eval runs 21 test files via 'bun test' with 15s timeout. Test patch is applied before tests run."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "paths.test.ts (new file) imports getGlobalModsDirectory, getLegacyGlobalExtensionsDirectory, resolveDefaultGlobalModsDirectory from @/mods/paths — a module entirely new in the gold patch with specific function signatures."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "disable.test.ts (new file) imports areModsDisabled, LEGACY_LETTA_DISABLE_EXTENSIONS_ENV, shouldDisableMods — gold-patch-specific symbols."
+    },
+    {
+      "file": "/testbed/src/backend/pi-model-factory.test.ts",
+      "detail": "Line 500: existing test checks substring 'Model provider \"kilo\" is not registered' which passes regardless of whether the full message says 'provider extension' or 'provider mod'."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "This is a large-scale terminology rename (extension -> mod) with 78 files changed. The gold patch correctly addresses the issue. Tests cover 21 files across many subsystems, providing good breadth. However, there are significant coupling issues: (1) The test patch assumes candidates do NOT rename test files, but the instruction implies they should, creating a mismatch that would reject reasonable alternative implementations. (2) New test files (paths.test.ts, disable.test.ts) are tightly coupled to gold-patch-specific function names and module decomposition that go beyond the rename. (3) The error message change from 'provider extension' to 'provider mod' is not directly tested. Recommended: revise the test patch to be more tolerant of candidates that also rename test files, and reduce coupling to gold-specific new module structures."
+}

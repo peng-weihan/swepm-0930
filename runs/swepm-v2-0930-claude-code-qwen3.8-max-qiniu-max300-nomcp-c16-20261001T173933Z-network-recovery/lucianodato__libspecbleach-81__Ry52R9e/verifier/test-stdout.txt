@@ -1,0 +1,196 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch tests/meson.build...
+error: while searching for:
+test('adaptive_noise_estimator_null', test_adaptive_noise_estimator_null)
+test('nlm_filter', test_nlm_filter)
+
+test_louizou = executable('test_louizou',
+  sources: ['test_louizou_noise_estimator.c'],
+  dependencies: [libspecbleach_dep, m_dep],
+  c_args: test_c_args,
+  link_args: test_link_args,
+  include_directories: inc
+)
+test('louizou', test_louizou)
+
+test_spp_mmse = executable('test_spp_mmse',
+  sources: ['test_spp_mmse_noise_estimator.c'],
+
+error: patch failed: tests/meson.build:176
+error: tests/meson.build: patch does not apply
+Checking patch tests/test_adaptive_noise_estimator_null.c...
+error: while searching for:
+
+  // Adaptive Noise Estimators
+  adaptive_estimator_free(NULL);
+  AdaptiveNoiseEstimator* le = adaptive_estimator_initialize(
+      real_spectrum_size, sample_rate, fft_size, LOUIZOU_METHOD);
+  adaptive_estimator_free(le);
+
+  AdaptiveNoiseEstimator* spp = adaptive_estimator_initialize(
+      real_spectrum_size, sample_rate, fft_size, SPP_MMSE_METHOD);
+
+error: patch failed: tests/test_adaptive_noise_estimator_null.c:74
+error: tests/test_adaptive_noise_estimator_null.c: patch does not apply
+Checking patch tests/test_audio_regression.c...
+error: while searching for:
+  printf("✓ Adaptive denoiser test passed\n");
+}
+
+// Test that both noise estimation methods work correctly
+// Test that both noise estimation methods work correctly
+void test_noise_estimation_methods(void) {
+  printf("Testing noise estimation methods (Louizou vs SPP-MMSE)...\n");
+
+  float frame_size_ms = 20.0f;
+  float* input = calloc(TEST_SAMPLES, sizeof(float));
+  float* output_louizou = calloc(TEST_SAMPLES, sizeof(float));
+  float* output_spp_mmse = calloc(TEST_SAMPLES, sizeof(float));
+  TEST_ASSERT(input && output_louizou && output_spp_mmse,
+              "Failed to allocate test buffers");
+
+  // Generate noisy signal
+  generate_test_signal(input, TEST_SAMPLES, 12345);
+
+  // Process with Louizou method (default)
+  SpectralBleachDenoiserParameters params_louizou =
+      (SpectralBleachDenoiserParameters){.reduction_amount = 20.0f,
+                                         .smoothing_factor = 0.0f,
+                                         .noise_rescale = 0.0f,
+                                         .noise_scaling_type = 0,
+                                         .post_filter_threshold = 0.0f,
+                                         .residual_listen = false,
+                                         .whitening_factor = 0.0f,
+                                         .adaptive_noise = 1,
+                                         .noise_estimation_method = 0};
+
+  SpectralBleachHandle handle_louizou =
+      specbleach_initialize(SAMPLE_RATE, frame_size_ms);
+  TEST_ASSERT(handle_louizou != NULL, "Failed to initialize Louizou denoiser");
+
+  specbleach_load_parameters(handle_louizou, params_louizou);
+
+  for (int i = 0; i < TEST_SAMPLES; i += BLOCK_SIZE) {
+    int block_size =
+        (i + BLOCK_SIZE > TEST_SAMPLES) ? TEST_SAMPLES - i : BLOCK_SIZE;
+    TEST_ASSERT(specbleach_process(handle_louizou, block_size, input + i,
+                                   output_louizou + i),
+                "Failed to process with Louizou method");
+  }
+
+  specbleach_free(handle_louizou);
+
+  // Process with SPP-MMSE method
+  SpectralBleachDenoiserParameters params_spp_mmse =
+      (SpectralBleachDenoiserParameters){.reduction_amount = 20.0f,
+                                         .smoothing_factor = 0.0f,
+                                         .noise_rescale = 0.0f,
+                                         .noise_scaling_type = 0,
+                                         .post_filter_threshold = 0.0f,
+                                         .residual_listen = false,
+                                         .whitening_factor = 0.0f,
+                                         .adaptive_noise = 1,
+                                         .noise_estimation_method = 1};
+
+  SpectralBleachHandle handle_spp_mmse =
+      specbleach_initialize(SAMPLE_RATE, frame_size_ms);
+
+error: patch failed: tests/test_audio_regression.c:338
+error: tests/test_audio_regression.c: patch does not apply
+Checking patch tests/test_brandt_noise_estimator.c...
+error: tests/test_brandt_noise_estimator.c: already exists in working directory
+Checking patch tests/test_louizou_noise_estimator.c...
+error: tests/test_louizou_noise_estimator.c: No such file or directory
+Checking patch tests/test_martin_noise_estimator.c...
+error: tests/test_martin_noise_estimator.c: already exists in working directory
+patching file tests/meson.build
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_adaptive_noise_estimator_null.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+patching file tests/test_audio_regression.c
+Reversed (or previously applied) patch detected!  Assuming -R.
+The next patch would create the file tests/test_brandt_noise_estimator.c,
+which already exists!  Assuming -R.
+patching file tests/test_brandt_noise_estimator.c
+The next patch would delete the file tests/test_louizou_noise_estimator.c,
+which does not exist!  Assuming -R.
+patching file tests/test_louizou_noise_estimator.c
+The next patch would create the file tests/test_martin_noise_estimator.c,
+which already exists!  Assuming -R.
+patching file tests/test_martin_noise_estimator.c
+Directory already configured.
+
+Just run your build command (e.g. ninja) and Meson will regenerate as necessary.
+If ninja fails, run "ninja reconfigure" or "meson --reconfigure"
+to force Meson to regenerate.
+
+If build failures persist, run "meson setup --wipe" to rebuild from scratch
+using the same options as passed when configuring the build.
+To change option values, run "meson configure" instead.
+ninja: Entering directory `/testbed/build'
+[0/1] /usr/bin/meson --internal regenerate /testbed /testbed/build --backend ninja
+Cleaning... 4 files.
+The Meson build system
+Version: 0.61.2
+Source dir: /testbed
+Build dir: /testbed/build
+Build type: native build
+Project name: libspecbleach
+Project version: 0.2.1
+C compiler for the host machine: cc (gcc 11.4.0 "cc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0")
+C linker for the host machine: cc ld.bfd 2.38
+Host machine cpu family: x86_64
+Host machine cpu: x86_64
+Compiler for C supports arguments -Wall: YES (cached)
+Compiler for C supports arguments -Wextra: YES (cached)
+Compiler for C supports arguments -Wpedantic: YES (cached)
+Compiler for C supports arguments -Wno-unused-parameter: YES (cached)
+Compiler for C supports arguments -Wno-unused-variable: YES (cached)
+Compiler for C supports arguments -msse: YES (cached)
+Compiler for C supports arguments -msse2: YES (cached)
+Compiler for C supports arguments -mfpmath=sse: YES (cached)
+Compiler for C supports arguments -ffast-math: YES (cached)
+Compiler for C supports arguments -fomit-frame-pointer: YES (cached)
+Compiler for C supports arguments -fno-finite-math-only: YES (cached)
+Library m found: YES
+Dependency fftw3f found: YES 3.3.8 (cached)
+Dependency sndfile found: YES 1.0.31 (cached)
+Build targets in project: 21
+
+libspecbleach 0.2.1
+
+  User defined options
+    backend     : ninja
+    enable_tests: true
+
+Found ninja-1.10.1 at /usr/bin/ninja
+[1/6] cc -Itests/test_adaptive_noise_estimator_null.p -Itests -I../tests -Iinclude -I../include -Isrc -I../src -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o -MF tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o.d -o tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o -c ../tests/test_adaptive_noise_estimator_null.c
+FAILED: tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o 
+cc -Itests/test_adaptive_noise_estimator_null.p -Itests -I../tests -Iinclude -I../include -Isrc -I../src -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o -MF tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o.d -o tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o -c ../tests/test_adaptive_noise_estimator_null.c
+../tests/test_adaptive_noise_estimator_null.c: In function ‘main’:
+../tests/test_adaptive_noise_estimator_null.c:78:50: error: ‘LOUIZOU_METHOD’ undeclared (first use in this function)
+   78 |       real_spectrum_size, sample_rate, fft_size, LOUIZOU_METHOD);
+      |                                                  ^~~~~~~~~~~~~~
+../tests/test_adaptive_noise_estimator_null.c:78:50: note: each undeclared identifier is reported only once for each function it appears in
+[2/6] cc -Itests/test_louizou.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_louizou.p/test_louizou_noise_estimator.c.o -MF tests/test_louizou.p/test_louizou_noise_estimator.c.o.d -o tests/test_louizou.p/test_louizou_noise_estimator.c.o -c ../tests/test_louizou_noise_estimator.c
+FAILED: tests/test_louizou.p/test_louizou_noise_estimator.c.o 
+cc -Itests/test_louizou.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_louizou.p/test_louizou_noise_estimator.c.o -MF tests/test_louizou.p/test_louizou_noise_estimator.c.o.d -o tests/test_louizou.p/test_louizou_noise_estimator.c.o -c ../tests/test_louizou_noise_estimator.c
+../tests/test_louizou_noise_estimator.c:12:10: fatal error: ../src/shared/noise_estimation/louizou_noise_estimator.h: No such file or directory
+   12 | #include "../src/shared/noise_estimation/louizou_noise_estimator.h"
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+compilation terminated.
+[3/6] cc -Itests/test_audio_regression.p -Itests -I../tests -Iinclude -I../include -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_audio_regression.p/test_audio_regression.c.o -MF tests/test_audio_regression.p/test_audio_regression.c.o.d -o tests/test_audio_regression.p/test_audio_regression.c.o -c ../tests/test_audio_regression.c
+ninja: build stopped: subcommand failed.
+ninja: Entering directory `/testbed/build'
+[1/3] Compiling C object tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o
+FAILED: tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o 
+cc -Itests/test_adaptive_noise_estimator_null.p -Itests -I../tests -Iinclude -I../include -Isrc -I../src -fdiagnostics-color=always -D_FILE_OFFSET_BITS=64 -Wall -Winvalid-pch -Wextra -std=c17 -g -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-unused-variable -msse -msse2 -mfpmath=sse -ffast-math -fomit-frame-pointer -fno-finite-math-only '-DTEST_DATA_DIR="/testbed/tests/test_data/"' -MD -MQ tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o -MF tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o.d -o tests/test_adaptive_noise_estimator_null.p/test_adaptive_noise_estimator_null.c.o -c ../tests/test_adaptive_noise_estimator_null.c
+../tests/test_adaptive_noise_estimator_null.c: In function ‘main’:
+../tests/test_adaptive_noise_estimator_null.c:78:50: error: ‘LOUIZOU_METHOD’ undeclared (first use in this function)
+   78 |       real_spectrum_size, sample_rate, fft_size, LOUIZOU_METHOD);
+      |                                                  ^~~~~~~~~~~~~~
+../tests/test_adaptive_noise_estimator_null.c:78:50: note: each undeclared identifier is reported only once for each function it appears in
+[2/3] Linking target tests/test_audio_regression
+ninja: build stopped: subcommand failed.
+Could not rebuild /testbed/build
+OMNIGRIL_EXIT_CODE=125

@@ -1,0 +1,4049 @@
+#!/bin/bash
+set -euo pipefail
+cd /testbed
+cat > /tmp/gold.patch <<'__SWEPMV2_GOLD_PATCH_EOF__'
+diff --git a/backend/plugins/rootly/api/blueprint_v200.go b/backend/plugins/rootly/api/blueprint_v200.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/api/blueprint_v200.go
+@@ -0,0 +1,103 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package api
++
++import (
++	"github.com/apache/incubator-devlake/core/errors"
++	coreModels "github.com/apache/incubator-devlake/core/models"
++	"github.com/apache/incubator-devlake/core/models/domainlayer/didgen"
++	"github.com/apache/incubator-devlake/core/models/domainlayer/ticket"
++	"github.com/apache/incubator-devlake/core/plugin"
++	"github.com/apache/incubator-devlake/core/utils"
++	"github.com/apache/incubator-devlake/helpers/pluginhelper/api"
++	"github.com/apache/incubator-devlake/helpers/srvhelper"
++	"github.com/apache/incubator-devlake/plugins/rootly/models"
++	"github.com/apache/incubator-devlake/plugins/rootly/tasks"
++)
++
++func MakeDataSourcePipelinePlanV200(
++	subtaskMetas []plugin.SubTaskMeta,
++	connectionId uint64,
++	bpScopes []*coreModels.BlueprintScope,
++) (coreModels.PipelinePlan, []plugin.Scope, errors.Error) {
++	connection, err := dsHelper.ConnSrv.FindByPk(connectionId)
++	if err != nil {
++		return nil, nil, err
++	}
++	scopeDetails, err := dsHelper.ScopeSrv.MapScopeDetails(connectionId, bpScopes)
++	if err != nil {
++		return nil, nil, err
++	}
++	plan, err := makePipelinePlanV200(subtaskMetas, scopeDetails, connection)
++	if err != nil {
++		return nil, nil, err
++	}
++	scopes, err := makeScopesV200(scopeDetails, connection)
++	return plan, scopes, err
++}
++
++func makePipelinePlanV200(
++	subtaskMetas []plugin.SubTaskMeta,
++	scopeDetails []*srvhelper.ScopeDetail[models.Service, models.RootlyScopeConfig],
++	connection *models.RootlyConnection,
++) (coreModels.PipelinePlan, errors.Error) {
++	plan := make(coreModels.PipelinePlan, len(scopeDetails))
++	for i, scopeDetail := range scopeDetails {
++		stage := plan[i]
++		if stage == nil {
++			stage = coreModels.PipelineStage{}
++		}
++
++		scope, scopeConfig := scopeDetail.Scope, scopeDetail.ScopeConfig
++		task, err := api.MakePipelinePlanTask(
++			"rootly",
++			subtaskMetas,
++			scopeConfig.Entities,
++			tasks.RootlyOptions{
++				ConnectionId: connection.ID,
++				ServiceId:    scope.Id,
++			},
++		)
++		if err != nil {
++			return nil, err
++		}
++		stage = append(stage, task)
++		plan[i] = stage
++	}
++
++	return plan, nil
++}
++
++func makeScopesV200(
++	scopeDetails []*srvhelper.ScopeDetail[models.Service, models.RootlyScopeConfig],
++	connection *models.RootlyConnection,
++) ([]plugin.Scope, errors.Error) {
++	scopes := make([]plugin.Scope, 0, len(scopeDetails))
++
++	idgen := didgen.NewDomainIdGenerator(&models.Service{})
++	for _, scopeDetail := range scopeDetails {
++		scope, scopeConfig := scopeDetail.Scope, scopeDetail.ScopeConfig
++		id := idgen.Generate(connection.ID, scope.Id)
++
++		if utils.StringsContains(scopeConfig.Entities, plugin.DOMAIN_TYPE_TICKET) {
++			scopes = append(scopes, ticket.NewBoard(id, scope.Name))
++		}
++	}
++
++	return scopes, nil
++}
+diff --git a/backend/plugins/rootly/api/connection_api.go b/backend/plugins/rootly/api/connection_api.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/api/connection_api.go
+@@ -0,0 +1,155 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package api
++
++import (
++	"context"
++	"net/http"
++
++	"github.com/apache/incubator-devlake/core/errors"
++	"github.com/apache/incubator-devlake/core/plugin"
++	"github.com/apache/incubator-devlake/helpers/pluginhelper/api"
++	"github.com/apache/incubator-devlake/plugins/rootly/models"
++)
++
++func testConnection(ctx context.Context, connection models.RootlyConn) (*plugin.ApiResourceOutput, errors.Error) {
++	if vld != nil {
++		if err := vld.Struct(connection); err != nil {
++			return nil, errors.Default.Wrap(err, "error validating target")
++		}
++	}
++	apiClient, err := api.NewApiClientFromConnection(ctx, basicRes, &connection)
++	if err != nil {
++		return nil, err
++	}
++	response, err := apiClient.Get("users/me", nil, nil)
++	if err != nil {
++		return nil, err
++	}
++	if response.StatusCode == http.StatusUnauthorized {
++		return nil, errors.HttpStatus(http.StatusBadRequest).New("StatusUnauthorized error while testing connection")
++	}
++	if response.StatusCode == http.StatusOK {
++		return &plugin.ApiResourceOutput{Body: nil, Status: http.StatusOK}, nil
++	}
++	return &plugin.ApiResourceOutput{Body: nil, Status: response.StatusCode}, errors.HttpStatus(response.StatusCode).Wrap(err, "could not validate connection")
++}
++
++// TestConnection test rootly connection
++// @Summary test rootly connection
++// @Description Test Rootly Connection
++// @Tags plugins/rootly
++// @Param body body models.RootlyConn true "json body"
++// @Success 200  {object} shared.ApiBody "Success"
++// @Failure 400  {string} errcode.Error "Bad Request"
++// @Failure 500  {string} errcode.Error "Internal Error"
++// @Router /plugins/rootly/test [POST]
++func TestConnection(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	var connection models.RootlyConn
++	err := api.Decode(input.Body, &connection, vld)
++	if err != nil {
++		return nil, err
++	}
++	testConnectionResult, testConnectionErr := testConnection(context.TODO(), connection)
++	if testConnectionErr != nil {
++		return nil, plugin.WrapTestConnectionErrResp(basicRes, testConnectionErr)
++	}
++	return testConnectionResult, nil
++}
++
++// TestExistingConnection test rootly connection
++// @Summary test rootly connection
++// @Description Test Rootly Connection
++// @Tags plugins/rootly
++// @Param connectionId path int true "connection ID"
++// @Success 200  {object} shared.ApiBody "Success"
++// @Failure 400  {string} errcode.Error "Bad Request"
++// @Failure 500  {string} errcode.Error "Internal Error"
++// @Router /plugins/rootly/connections/{connectionId}/test [POST]
++func TestExistingConnection(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	connection, err := dsHelper.ConnApi.GetMergedConnection(input)
++	if err != nil {
++		return nil, errors.BadInput.Wrap(err, "find connection from db")
++	}
++	if err := api.DecodeMapStruct(input.Body, connection, false); err != nil {
++		return nil, err
++	}
++	testConnectionResult, testConnectionErr := testConnection(context.TODO(), connection.RootlyConn)
++	if testConnectionErr != nil {
++		return nil, plugin.WrapTestConnectionErrResp(basicRes, testConnectionErr)
++	}
++	return testConnectionResult, nil
++}
++
++// @Summary create rootly connection
++// @Description Create Rootly connection
++// @Tags plugins/rootly
++// @Param body body models.RootlyConnection true "json body"
++// @Success 200  {object} models.RootlyConnection
++// @Failure 400  {string} errcode.Error "Bad Request"
++// @Failure 500  {string} errcode.Error "Internal Error"
++// @Router /plugins/rootly/connections [POST]
++func PostConnections(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	return dsHelper.ConnApi.Post(input)
++}
++
++// @Summary patch rootly connection
++// @Description Patch Rootly connection
++// @Tags plugins/rootly
++// @Param body body models.RootlyConnection true "json body"
++// @Success 200  {object} models.RootlyConnection
++// @Failure 400  {string} errcode.Error "Bad Request"
++// @Failure 500  {string} errcode.Error "Internal Error"
++// @Router /plugins/rootly/connections/{connectionId} [PATCH]
++func PatchConnection(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	return dsHelper.ConnApi.Patch(input)
++}
++
++// @Summary delete rootly connection
++// @Description Delete Rootly connection
++// @Tags plugins/rootly
++// @Success 200  {object} models.RootlyConnection
++// @Failure 400  {string} errcode.Error "Bad Request"
++// @Failure 409  {object} services.BlueprintProjectPairs "References exist to this connection"
++// @Failure 500  {string} errcode.Error "Internal Error"
++// @Router /plugins/rootly/connections/{connectionId} [DELETE]
++func DeleteConnection(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	return dsHelper.ConnApi.Delete(input)
++}
++
++// @Summary list rootly connections
++// @Description List Rootly connections
++// @Tags plugins/rootly
++// @Success 200  {object} models.RootlyConnection
++// @Failure 400  {string} errcode.Error "Bad Request"
++// @Failure 500  {string} errcode.Error "Internal Error"
++// @Router /plugins/rootly/connections [GET]
++func ListConnections(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	return dsHelper.ConnApi.GetAll(input)
++}
++
++// @Summary get rootly connection
++// @Description Get Rootly connection
++// @Tags plugins/rootly
++// @Success 200  {object} models.RootlyConnection
++// @Failure 400  {string} errcode.Error "Bad Request"
++// @Failure 500  {string} errcode.Error "Internal Error"
++// @Router /plugins/rootly/connections/{connectionId} [GET]
++func GetConnection(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	return dsHelper.ConnApi.GetDetail(input)
++}
+diff --git a/backend/plugins/rootly/api/init.go b/backend/plugins/rootly/api/init.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/api/init.go
+@@ -0,0 +1,55 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package api
++
++import (
++	"github.com/apache/incubator-devlake/core/context"
++	"github.com/apache/incubator-devlake/core/plugin"
++	"github.com/apache/incubator-devlake/helpers/pluginhelper/api"
++	"github.com/apache/incubator-devlake/plugins/rootly/models"
++	"github.com/go-playground/validator/v10"
++)
++
++var vld *validator.Validate
++var basicRes context.BasicRes
++
++var dsHelper *api.DsHelper[models.RootlyConnection, models.Service, models.RootlyScopeConfig]
++var raProxy *api.DsRemoteApiProxyHelper[models.RootlyConnection]
++var raScopeList *api.DsRemoteApiScopeListHelper[models.RootlyConnection, models.Service, RootlyRemotePagination]
++
++var raScopeSearch *api.DsRemoteApiScopeSearchHelper[models.RootlyConnection, models.Service]
++
++func Init(br context.BasicRes, p plugin.PluginMeta) {
++	vld = validator.New()
++	basicRes = br
++	dsHelper = api.NewDataSourceHelper[
++		models.RootlyConnection, models.Service, models.RootlyScopeConfig,
++	](
++		br,
++		p.Name(),
++		[]string{"name"},
++		func(c models.RootlyConnection) models.RootlyConnection {
++			return c.Sanitize()
++		},
++		nil,
++		nil,
++	)
++	raProxy = api.NewDsRemoteApiProxyHelper[models.RootlyConnection](dsHelper.ConnApi.ModelApiHelper)
++	raScopeList = api.NewDsRemoteApiScopeListHelper[models.RootlyConnection, models.Service, RootlyRemotePagination](raProxy, listRootlyRemoteScopes)
++	raScopeSearch = api.NewDsRemoteApiScopeSearchHelper[models.RootlyConnection, models.Service](raProxy, searchRootlyRemoteScopes)
++}
+diff --git a/backend/plugins/rootly/api/remote_api.go b/backend/plugins/rootly/api/remote_api.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/api/remote_api.go
+@@ -0,0 +1,189 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package api
++
++import (
++	"net/http"
++	"net/url"
++	"strconv"
++	"time"
++
++	"github.com/apache/incubator-devlake/core/models/common"
++
++	"github.com/apache/incubator-devlake/core/errors"
++	"github.com/apache/incubator-devlake/core/plugin"
++	"github.com/apache/incubator-devlake/helpers/pluginhelper/api"
++	dsmodels "github.com/apache/incubator-devlake/helpers/pluginhelper/api/models"
++	"github.com/apache/incubator-devlake/plugins/rootly/models"
++)
++
++type RootlyRemotePagination struct {
++	Page    int `json:"page"`
++	PerPage int `json:"per_page"`
++}
++
++type ServiceResponse struct {
++	Data []struct {
++		Id         string `json:"id"`
++		Type       string `json:"type"`
++		Attributes struct {
++			Name        string     `json:"name"`
++			Slug        string     `json:"slug"`
++			Description *string    `json:"description"`
++			HtmlUrl     *string    `json:"html_url"`
++			CreatedAt   *time.Time `json:"created_at"`
++		} `json:"attributes"`
++	} `json:"data"`
++	Meta struct {
++		TotalCount  int `json:"total_count"`
++		TotalPages  int `json:"total_pages"`
++		CurrentPage int `json:"current_page"`
++	} `json:"meta"`
++}
++
++func queryRootlyRemoteScopes(
++	apiClient plugin.ApiClient,
++	_ string,
++	page RootlyRemotePagination,
++	search string,
++) (
++	children []dsmodels.DsRemoteApiScopeListEntry[models.Service],
++	nextPage *RootlyRemotePagination,
++	err errors.Error,
++) {
++	if page.PerPage == 0 {
++		page.PerPage = 50
++	}
++	if page.Page == 0 {
++		page.Page = 1
++	}
++	query := url.Values{
++		"page[number]": {strconv.Itoa(page.Page)},
++		"page[size]":   {strconv.Itoa(page.PerPage)},
++	}
++	if search != "" {
++		query.Set("filter[search]", search)
++	}
++	var res *http.Response
++	res, err = apiClient.Get("services", query, nil)
++	if err != nil {
++		return
++	}
++	response := &ServiceResponse{}
++	err = api.UnmarshalResponse(res, response)
++	if err != nil {
++		return
++	}
++	for _, item := range response.Data {
++		htmlUrl := ""
++		if item.Attributes.HtmlUrl != nil {
++			htmlUrl = *item.Attributes.HtmlUrl
++		}
++		entry := dsmodels.DsRemoteApiScopeListEntry[models.Service]{
++			Type:     api.RAS_ENTRY_TYPE_SCOPE,
++			Id:       item.Id,
++			Name:     item.Attributes.Name,
++			FullName: item.Attributes.Name,
++			Data: &models.Service{
++				Url:  htmlUrl,
++				Id:   item.Id,
++				Name: item.Attributes.Name,
++				Scope: common.Scope{
++					NoPKModel: common.NoPKModel{},
++				},
++			},
++		}
++		if item.Attributes.CreatedAt != nil {
++			entry.Data.Scope.NoPKModel.CreatedAt = *item.Attributes.CreatedAt
++		}
++		children = append(children, entry)
++	}
++
++	if page.Page < response.Meta.TotalPages {
++		nextPage = &RootlyRemotePagination{
++			Page:    page.Page + 1,
++			PerPage: page.PerPage,
++		}
++	}
++
++	return
++}
++
++func listRootlyRemoteScopes(
++	connection *models.RootlyConnection,
++	apiClient plugin.ApiClient,
++	groupId string,
++	page RootlyRemotePagination,
++) (
++	[]dsmodels.DsRemoteApiScopeListEntry[models.Service],
++	*RootlyRemotePagination,
++	errors.Error,
++) {
++	return queryRootlyRemoteScopes(apiClient, groupId, page, "")
++}
++
++func searchRootlyRemoteScopes(
++	apiClient plugin.ApiClient,
++	params *dsmodels.DsRemoteApiScopeSearchParams,
++) (
++	children []dsmodels.DsRemoteApiScopeListEntry[models.Service],
++	err errors.Error,
++) {
++	page := params.Page
++	if page == 0 {
++		page = 1
++	}
++	children, _, err = queryRootlyRemoteScopes(apiClient, "", RootlyRemotePagination{
++		Page:    page,
++		PerPage: params.PageSize,
++	}, params.Search)
++	return
++}
++
++// RemoteScopes list all available scopes (services) for this connection
++// @Summary list all available scopes (services) for this connection
++// @Description list all available scopes (services) for this connection
++// @Tags plugins/rootly
++// @Accept application/json
++// @Param connectionId path int false "connection ID"
++// @Param groupId query string false "group ID"
++// @Param pageToken query string false "page Token"
++// @Success 200  {object} RemoteScopesOutput
++// @Failure 400  {object} shared.ApiBody "Bad Request"
++// @Failure 500  {object} shared.ApiBody "Internal Error"
++// @Router /plugins/rootly/connections/{connectionId}/remote-scopes [GET]
++func RemoteScopes(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	return raScopeList.Get(input)
++}
++
++// SearchRemoteScopes use the Search API and only return project
++// @Summary use the Search API and only return project
++// @Description use the Search API and only return project
++// @Tags plugins/rootly
++// @Accept application/json
++// @Param connectionId path int false "connection ID"
++// @Param search query string false "search"
++// @Param page query int false "page number"
++// @Param pageSize query int false "page size per page"
++// @Success 200  {object} SearchRemoteScopesOutput
++// @Failure 400  {object} shared.ApiBody "Bad Request"
++// @Failure 500  {object} shared.ApiBody "Internal Error"
++// @Router /plugins/rootly/connections/{connectionId}/search-remote-scopes [GET]
++func SearchRemoteScopes(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	return raScopeSearch.Get(input)
++}
+diff --git a/backend/plugins/rootly/api/scope_api.go b/backend/plugins/rootly/api/scope_api.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/api/scope_api.go
+@@ -0,0 +1,107 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package api
++
++import (
++	"github.com/apache/incubator-devlake/core/errors"
++	"github.com/apache/incubator-devlake/core/plugin"
++	"github.com/apache/incubator-devlake/helpers/pluginhelper/api"
++	"github.com/apache/incubator-devlake/plugins/rootly/models"
++)
++
++type PutScopesReqBody api.PutScopesReqBody[models.Service]
++type ScopeDetail api.ScopeDetail[models.Service, models.RootlyScopeConfig]
++
++// PutScopes create or update rootly service
++// @Summary create or update rootly service
++// @Description Create or update rootly service
++// @Tags plugins/rootly
++// @Accept application/json
++// @Param connectionId path int true "connection ID"
++// @Param scope body ScopeReq true "json"
++// @Success 200  {object} []ScopeDetail
++// @Failure 400  {object} shared.ApiBody "Bad Request"
++// @Failure 500  {object} shared.ApiBody "Internal Error"
++// @Router /plugins/rootly/connections/{connectionId}/scopes [PUT]
++func PutScopes(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	return dsHelper.ScopeApi.PutMultiple(input)
++}
++
++// PatchScope patch to rootly service
++// @Summary patch to rootly service
++// @Description patch to rootly service
++// @Tags plugins/rootly
++// @Accept application/json
++// @Param connectionId path int true "connection ID"
++// @Param scopeId path string true "scope ID"
++// @Param scope body models.Service true "json"
++// @Success 200  {object} models.Service
++// @Failure 400  {object} shared.ApiBody "Bad Request"
++// @Failure 500  {object} shared.ApiBody "Internal Error"
++// @Router /plugins/rootly/connections/{connectionId}/scopes/{scopeId} [PATCH]
++func PatchScope(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	return dsHelper.ScopeApi.Patch(input)
++}
++
++// GetScopeList get Rootly services
++// @Summary get Rootly services
++// @Description get Rootly services
++// @Tags plugins/rootly
++// @Param connectionId path int true "connection ID"
++// @Param searchTerm query string false "search term for scope name"
++// @Param pageSize query int false "page size, default 50"
++// @Param page query int false "page size, default 1"
++// @Param blueprints query bool false "also return blueprints using these scopes as part of the payload"
++// @Success 200  {object} []ScopeDetail
++// @Failure 400  {object} shared.ApiBody "Bad Request"
++// @Failure 500  {object} shared.ApiBody "Internal Error"
++// @Router /plugins/rootly/connections/{connectionId}/scopes/ [GET]
++func GetScopeList(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	return dsHelper.ScopeApi.GetPage(input)
++}
++
++// GetScope get one Rootly service
++// @Summary get one Rootly service
++// @Description get one Rootly service
++// @Tags plugins/rootly
++// @Param connectionId path int true "connection ID"
++// @Param scopeId path string true "scope ID"
++// @Param blueprints query bool false "also return blueprints using this scope as part of the payload"
++// @Success 200  {object} ScopeDetail
++// @Failure 400  {object} shared.ApiBody "Bad Request"
++// @Failure 500  {object} shared.ApiBody "Internal Error"
++// @Router /plugins/rootly/connections/{connectionId}/scopes/{scopeId} [GET]
++func GetScope(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	return dsHelper.ScopeApi.GetScopeDetail(input)
++}
++
++// DeleteScope delete plugin data associated with the scope and optionally the scope itself
++// @Summary delete plugin data associated with the scope and optionally the scope itself
++// @Description delete data associated with plugin scope
++// @Tags plugins/rootly
++// @Param connectionId path int true "connection ID"
++// @Param scopeId path string true "scope ID"
++// @Param delete_data_only query bool false "Only delete the scope data, not the scope itself"
++// @Success 200
++// @Failure 400  {object} shared.ApiBody "Bad Request"
++// @Failure 409  {object} api.ScopeRefDoc "References exist to this scope"
++// @Failure 500  {object} shared.ApiBody "Internal Error"
++// @Router /plugins/rootly/connections/{connectionId}/scopes/{scopeId} [DELETE]
++func DeleteScope(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	return dsHelper.ScopeApi.Delete(input)
++}
+diff --git a/backend/plugins/rootly/api/scope_state_api.go b/backend/plugins/rootly/api/scope_state_api.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/api/scope_state_api.go
+@@ -0,0 +1,37 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package api
++
++import (
++	"github.com/apache/incubator-devlake/core/errors"
++	"github.com/apache/incubator-devlake/core/plugin"
++)
++
++// GetScopeLatestSyncState get one rootly service's latest sync state
++// @Summary get one rootly service's latest sync state
++// @Description get one rootly service's latest sync state
++// @Tags plugins/rootly
++// @Param connectionId path int true "connection ID"
++// @Param scopeId path string true "scope ID"
++// @Success 200  {object} []models.LatestSyncState
++// @Failure 400  {object} shared.ApiBody "Bad Request"
++// @Failure 500  {object} shared.ApiBody "Internal Error"
++// @Router /plugins/rootly/connections/{connectionId}/scopes/{scopeId}/latest-sync-state [GET]
++func GetScopeLatestSyncState(input *plugin.ApiResourceInput) (*plugin.ApiResourceOutput, errors.Error) {
++	return dsHelper.ScopeApi.GetScopeLatestSyncState(input)
++}
+diff --git a/backend/plugins/rootly/api/swagger.go b/backend/plugins/rootly/api/swagger.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/api/swagger.go
+@@ -0,0 +1,32 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package api
++
++import (
++	"github.com/apache/incubator-devlake/plugins/rootly/tasks"
++)
++
++type RootlyTaskOptions tasks.RootlyOptions
++
++// @Summary rootly task options for pipelines
++// @Description This is a dummy API to demonstrate the available task options for rootly pipelines
++// @Tags plugins/rootly
++// @Accept application/json
++// @Param pipeline body RootlyTaskOptions true "json"
++// @Router /pipelines/rootly/pipeline-task [post]
++func _() {}
+diff --git a/backend/plugins/rootly/e2e/raw_tables/_raw_rootly_incidents.csv b/backend/plugins/rootly/e2e/raw_tables/_raw_rootly_incidents.csv
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/e2e/raw_tables/_raw_rootly_incidents.csv
+@@ -0,0 +1,7 @@
++id,params,data,url,input,created_at
++1,"{""ConnectionId"":1,""ScopeId"":""svc_01""}","{""id"":""inc_01"",""type"":""incidents"",""attributes"":{""sequential_id"":101,""title"":""Payment processor outage"",""summary"":""Payments are timing out"",""url"":""https://rootly.com/account/incidents/inc_01"",""status"":""triage"",""severity"":{""data"":{""id"":""sev-uuid-0"",""type"":""severities"",""attributes"":{""slug"":""sev0"",""name"":""SEV0"",""severity"":""critical""}}},""started_at"":""2026-05-01T10:00:00Z"",""updated_at"":""2026-05-01T10:05:00Z"",""user"":{""data"":{""id"":""u1"",""type"":""users"",""attributes"":{""email"":""alice@example.com"",""full_name"":""Alice""}}}},""relationships"":{""services"":{""data"":[{""id"":""svc_01"",""type"":""services""}]}}}",,null,2026-05-01T10:05:00.000+00:00
++2,"{""ConnectionId"":1,""ScopeId"":""svc_01""}","{""id"":""inc_02"",""type"":""incidents"",""attributes"":{""sequential_id"":102,""title"":""Latency spike"",""summary"":""p99 latency above SLO"",""url"":""https://rootly.com/account/incidents/inc_02"",""status"":""mitigated"",""severity"":{""data"":{""id"":""sev-uuid-1"",""type"":""severities"",""attributes"":{""slug"":""sev1"",""name"":""SEV1"",""severity"":""high""}}},""started_at"":""2026-05-02T09:00:00Z"",""mitigated_at"":""2026-05-02T09:45:00Z"",""updated_at"":""2026-05-02T09:45:00Z"",""user"":{""data"":{""id"":""u1"",""type"":""users"",""attributes"":{""email"":""alice@example.com"",""full_name"":""Alice""}}},""started_by"":{""data"":{""id"":""u2"",""type"":""users"",""attributes"":{""email"":""bob@example.com"",""full_name"":""Bob""}}},""mitigated_by"":{""data"":{""id"":""u2"",""type"":""users"",""attributes"":{""email"":""bob@example.com"",""full_name"":""Bob""}}}},""relationships"":{""services"":{""data"":[{""id"":""svc_01"",""type"":""services""}]}}}",,null,2026-05-02T09:45:00.000+00:00
++3,"{""ConnectionId"":1,""ScopeId"":""svc_01""}","{""id"":""inc_03"",""type"":""incidents"",""attributes"":{""sequential_id"":103,""title"":""Queue backlog"",""summary"":""Worker queue backed up"",""url"":""https://rootly.com/account/incidents/inc_03"",""status"":""resolved"",""severity"":{""data"":{""id"":""sev-uuid-2"",""type"":""severities"",""attributes"":{""slug"":""sev2"",""name"":""SEV2"",""severity"":""medium""}}},""started_at"":""2026-05-03T12:00:00Z"",""resolved_at"":""2026-05-03T13:30:00Z"",""updated_at"":""2026-05-03T13:30:00Z"",""user"":{""data"":{""id"":""u1"",""type"":""users"",""attributes"":{""email"":""alice@example.com"",""full_name"":""Alice""}}},""resolved_by"":{""data"":{""id"":""u1"",""type"":""users"",""attributes"":{""email"":""alice@example.com"",""full_name"":""Alice""}}}},""relationships"":{""services"":{""data"":[{""id"":""svc_01"",""type"":""services""}]}}}",,null,2026-05-03T13:30:00.000+00:00
++4,"{""ConnectionId"":1,""ScopeId"":""svc_01""}","{""id"":""inc_04"",""type"":""incidents"",""attributes"":{""sequential_id"":201,""title"":""Wrong-service incident"",""summary"":""This incident belongs to svc_02"",""url"":""https://rootly.com/account/incidents/inc_04"",""status"":""closed"",""severity"":{""data"":{""id"":""sev-uuid-3"",""type"":""severities"",""attributes"":{""slug"":""sev3"",""name"":""SEV3"",""severity"":""low""}}},""started_at"":""2026-05-04T08:00:00Z"",""resolved_at"":""2026-05-04T08:30:00Z"",""updated_at"":""2026-05-04T08:30:00Z"",""user"":{""data"":{""id"":""u2"",""type"":""users"",""attributes"":{""email"":""bob@example.com"",""full_name"":""Bob""}}}},""relationships"":{""services"":{""data"":[{""id"":""svc_02"",""type"":""services""}]}}}",,null,2026-05-04T08:30:00.000+00:00
++5,"{""ConnectionId"":1,""ScopeId"":""svc_01""}","{""id"":""inc_05"",""type"":""incidents"",""attributes"":{""sequential_id"":104,""title"":""False alarm"",""summary"":""Cancelled after triage"",""url"":""https://rootly.com/account/incidents/inc_05"",""status"":""cancelled"",""severity"":{""data"":{""id"":""sev-uuid-4"",""type"":""severities"",""attributes"":{""slug"":""sev4"",""name"":""SEV4"",""severity"":""low""}}},""started_at"":""2026-05-05T14:00:00Z"",""updated_at"":""2026-05-05T14:05:00Z""},""relationships"":{""services"":{""data"":[{""id"":""svc_01"",""type"":""services""}]}}}",,null,2026-05-05T14:05:00.000+00:00
++6,"{""ConnectionId"":1,""ScopeId"":""svc_01""}","{""id"":""inc_06"",""type"":""incidents"",""attributes"":{""sequential_id"":105,""title"":""Odd state"",""summary"":""Status from future Rootly version"",""url"":""https://rootly.com/account/incidents/inc_06"",""status"":""investigating"",""severity"":{""data"":{""id"":""sev-uuid-x"",""type"":""severities"",""attributes"":{""slug"":""blocker"",""name"":""Blocker"",""severity"":""critical""}}},""started_at"":""2026-05-06T11:00:00Z"",""updated_at"":""2026-05-06T11:10:00Z"",""user"":{""data"":{""id"":""u3"",""type"":""users"",""attributes"":{""email"":""carol@example.com"",""full_name"":""Carol""}}}},""relationships"":{""services"":{""data"":[{""id"":""svc_01"",""type"":""services""}]}}}",,null,2026-05-06T11:10:00.000+00:00
+diff --git a/backend/plugins/rootly/e2e/snapshot_tables/_tool_rootly_incidents.csv b/backend/plugins/rootly/e2e/snapshot_tables/_tool_rootly_incidents.csv
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/e2e/snapshot_tables/_tool_rootly_incidents.csv
+@@ -0,0 +1,6 @@
++connection_id,id,number,service_id,url,title,summary,status,severity,started_date,acknowledged_date,mitigated_date,resolved_date,updated_date,creator_user_id,started_by_user_id,mitigated_by_user_id,resolved_by_user_id,closed_by_user_id
++1,inc_01,101,svc_01,https://rootly.com/account/incidents/inc_01,Payment processor outage,Payments are timing out,triage,sev0,2026-05-01T10:00:00.000+00:00,,,,2026-05-01T10:05:00.000+00:00,u1,,,,
++1,inc_02,102,svc_01,https://rootly.com/account/incidents/inc_02,Latency spike,p99 latency above SLO,mitigated,sev1,2026-05-02T09:00:00.000+00:00,,2026-05-02T09:45:00.000+00:00,,2026-05-02T09:45:00.000+00:00,u1,u2,u2,,
++1,inc_03,103,svc_01,https://rootly.com/account/incidents/inc_03,Queue backlog,Worker queue backed up,resolved,sev2,2026-05-03T12:00:00.000+00:00,,,2026-05-03T13:30:00.000+00:00,2026-05-03T13:30:00.000+00:00,u1,,,u1,
++1,inc_05,104,svc_01,https://rootly.com/account/incidents/inc_05,False alarm,Cancelled after triage,cancelled,sev4,2026-05-05T14:00:00.000+00:00,,,,2026-05-05T14:05:00.000+00:00,,,,,
++1,inc_06,105,svc_01,https://rootly.com/account/incidents/inc_06,Odd state,Status from future Rootly version,investigating,blocker,2026-05-06T11:00:00.000+00:00,,,,2026-05-06T11:10:00.000+00:00,u3,,,,
+diff --git a/backend/plugins/rootly/e2e/snapshot_tables/_tool_rootly_services.csv b/backend/plugins/rootly/e2e/snapshot_tables/_tool_rootly_services.csv
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/e2e/snapshot_tables/_tool_rootly_services.csv
+@@ -0,0 +1,2 @@
++connection_id,id,url,name
++1,svc_01,https://rootly.com/account/services/svc_01,Payments
+diff --git a/backend/plugins/rootly/e2e/snapshot_tables/_tool_rootly_users.csv b/backend/plugins/rootly/e2e/snapshot_tables/_tool_rootly_users.csv
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/e2e/snapshot_tables/_tool_rootly_users.csv
+@@ -0,0 +1,4 @@
++connection_id,id,email,name,url
++1,u1,alice@example.com,Alice,
++1,u2,bob@example.com,Bob,
++1,u3,carol@example.com,Carol,
+diff --git a/backend/plugins/rootly/e2e/snapshot_tables/board_issues.csv b/backend/plugins/rootly/e2e/snapshot_tables/board_issues.csv
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/e2e/snapshot_tables/board_issues.csv
+@@ -0,0 +1,6 @@
++board_id,issue_id
++rootly:Service:1:svc_01,rootly:Incident:1:inc_01
++rootly:Service:1:svc_01,rootly:Incident:1:inc_02
++rootly:Service:1:svc_01,rootly:Incident:1:inc_03
++rootly:Service:1:svc_01,rootly:Incident:1:inc_05
++rootly:Service:1:svc_01,rootly:Incident:1:inc_06
+diff --git a/backend/plugins/rootly/e2e/snapshot_tables/boards.csv b/backend/plugins/rootly/e2e/snapshot_tables/boards.csv
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/e2e/snapshot_tables/boards.csv
+@@ -0,0 +1,2 @@
++id,name,description,url,created_date,type
++rootly:Service:1:svc_01,Payments,,https://rootly.com/account/services/svc_01,,
+diff --git a/backend/plugins/rootly/e2e/snapshot_tables/issue_assignees.csv b/backend/plugins/rootly/e2e/snapshot_tables/issue_assignees.csv
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/e2e/snapshot_tables/issue_assignees.csv
+@@ -0,0 +1,6 @@
++issue_id,assignee_id,assignee_name
++rootly:Incident:1:inc_01,rootly:User:1:u1,Alice
++rootly:Incident:1:inc_02,rootly:User:1:u1,Alice
++rootly:Incident:1:inc_02,rootly:User:1:u2,Bob
++rootly:Incident:1:inc_03,rootly:User:1:u1,Alice
++rootly:Incident:1:inc_06,rootly:User:1:u3,Carol
+diff --git a/backend/plugins/rootly/e2e/snapshot_tables/issues.csv b/backend/plugins/rootly/e2e/snapshot_tables/issues.csv
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/e2e/snapshot_tables/issues.csv
+@@ -0,0 +1,6 @@
++id,url,icon_url,issue_key,title,description,epic_key,type,original_type,status,original_status,story_point,resolution_date,created_date,updated_date,lead_time_minutes,original_estimate_minutes,time_spent_minutes,time_remaining_minutes,creator_id,creator_name,assignee_id,assignee_name,parent_issue_id,priority,severity,urgency,component,is_subtask,due_date,fix_versions
++rootly:Incident:1:inc_01,https://rootly.com/account/incidents/inc_01,,101,Payment processor outage,Payments are timing out,,INCIDENT,,TODO,triage,,,2026-05-01T10:00:00.000+00:00,2026-05-01T10:05:00.000+00:00,,,,,rootly:User:1:u1,Alice,rootly:User:1:u1,Alice,,CRITICAL,sev0,,,0,,
++rootly:Incident:1:inc_02,https://rootly.com/account/incidents/inc_02,,102,Latency spike,p99 latency above SLO,,INCIDENT,,IN_PROGRESS,mitigated,,,2026-05-02T09:00:00.000+00:00,2026-05-02T09:45:00.000+00:00,,,,,rootly:User:1:u1,Alice,rootly:User:1:u1,Alice,,HIGH,sev1,,,0,,
++rootly:Incident:1:inc_03,https://rootly.com/account/incidents/inc_03,,103,Queue backlog,Worker queue backed up,,INCIDENT,,DONE,resolved,,2026-05-03T13:30:00.000+00:00,2026-05-03T12:00:00.000+00:00,2026-05-03T13:30:00.000+00:00,90,,,,rootly:User:1:u1,Alice,rootly:User:1:u1,Alice,,MEDIUM,sev2,,,0,,
++rootly:Incident:1:inc_05,https://rootly.com/account/incidents/inc_05,,104,False alarm,Cancelled after triage,,INCIDENT,,DONE,cancelled,,,2026-05-05T14:00:00.000+00:00,2026-05-05T14:05:00.000+00:00,,,,,,,,,,LOW,sev4,,,0,,
++rootly:Incident:1:inc_06,https://rootly.com/account/incidents/inc_06,,105,Odd state,Status from future Rootly version,,INCIDENT,,IN_PROGRESS,investigating,,,2026-05-06T11:00:00.000+00:00,2026-05-06T11:10:00.000+00:00,,,,,rootly:User:1:u3,Carol,rootly:User:1:u3,Carol,,blocker,blocker,,,0,,
+diff --git a/backend/plugins/rootly/impl/impl.go b/backend/plugins/rootly/impl/impl.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/impl/impl.go
+@@ -0,0 +1,190 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package impl
++
++import (
++	"fmt"
++
++	"github.com/apache/incubator-devlake/core/context"
++	"github.com/apache/incubator-devlake/core/dal"
++	"github.com/apache/incubator-devlake/core/errors"
++	coreModels "github.com/apache/incubator-devlake/core/models"
++	"github.com/apache/incubator-devlake/core/plugin"
++	helper "github.com/apache/incubator-devlake/helpers/pluginhelper/api"
++	"github.com/apache/incubator-devlake/plugins/rootly/api"
++	"github.com/apache/incubator-devlake/plugins/rootly/models"
++	"github.com/apache/incubator-devlake/plugins/rootly/models/migrationscripts"
++	"github.com/apache/incubator-devlake/plugins/rootly/tasks"
++)
++
++// make sure interface is implemented
++
++var _ interface {
++	plugin.PluginMeta
++	plugin.PluginInit
++	plugin.PluginTask
++	plugin.PluginApi
++	plugin.PluginModel
++	plugin.DataSourcePluginBlueprintV200
++	plugin.CloseablePluginTask
++	plugin.PluginSource
++} = (*Rootly)(nil)
++
++type Rootly struct{}
++
++func (p Rootly) Description() string {
++	return "collect Rootly incident data"
++}
++
++func (p Rootly) Name() string {
++	return "rootly"
++}
++
++func (p Rootly) Init(basicRes context.BasicRes) errors.Error {
++	api.Init(basicRes, p)
++	return nil
++}
++
++func (p Rootly) Connection() dal.Tabler {
++	return &models.RootlyConnection{}
++}
++
++func (p Rootly) Scope() plugin.ToolLayerScope {
++	return &models.Service{}
++}
++
++func (p Rootly) ScopeConfig() dal.Tabler {
++	return &models.RootlyScopeConfig{}
++}
++
++func (p Rootly) SubTaskMetas() []plugin.SubTaskMeta {
++	// Convert services before incidents so the domain Board row exists
++	// before the BoardIssue rows that reference it; the opposite order
++	// (PagerDuty / Opsgenie convention) works too because BoardIssue
++	// has no FK enforcement, but ours is explicit about the dependency.
++	return []plugin.SubTaskMeta{
++		tasks.CollectServicesMeta,
++		tasks.ExtractServicesMeta,
++		tasks.CollectIncidentsMeta,
++		tasks.ExtractIncidentsMeta,
++		tasks.ConvertServicesMeta,
++		tasks.ConvertIncidentsMeta,
++	}
++}
++
++func (p Rootly) GetTablesInfo() []dal.Tabler {
++	return []dal.Tabler{
++		&models.Service{},
++		&models.Incident{},
++		&models.User{},
++		&models.RootlyConnection{},
++		&models.RootlyScopeConfig{},
++	}
++}
++
++func (p Rootly) PrepareTaskData(taskCtx plugin.TaskContext, options map[string]interface{}) (interface{}, errors.Error) {
++	op, err := tasks.DecodeAndValidateTaskOptions(options)
++	if err != nil {
++		return nil, err
++	}
++	connectionHelper := helper.NewConnectionHelper(
++		taskCtx,
++		nil,
++		p.Name(),
++	)
++	connection := &models.RootlyConnection{}
++	err = connectionHelper.FirstById(connection, op.ConnectionId)
++	if err != nil {
++		return nil, errors.Default.Wrap(err, "unable to get Rootly connection by the given connection ID")
++	}
++
++	client, err := helper.NewApiClientFromConnection(taskCtx.GetContext(), taskCtx, connection)
++	if err != nil {
++		return nil, err
++	}
++	asyncClient, err := helper.CreateAsyncApiClient(taskCtx, client, nil)
++	if err != nil {
++		return nil, err
++	}
++	return &tasks.RootlyTaskData{
++		Options: op,
++		Client:  asyncClient,
++	}, nil
++}
++
++// RootPkgPath information lost when compiled as plugin(.so)
++func (p Rootly) RootPkgPath() string {
++	return "github.com/apache/incubator-devlake/plugins/rootly"
++}
++
++func (p Rootly) MigrationScripts() []plugin.MigrationScript {
++	return migrationscripts.All()
++}
++
++func (p Rootly) ApiResources() map[string]map[string]plugin.ApiResourceHandler {
++	return map[string]map[string]plugin.ApiResourceHandler{
++		"test": {
++			"POST": api.TestConnection,
++		},
++		"connections": {
++			"POST": api.PostConnections,
++			"GET":  api.ListConnections,
++		},
++		"connections/:connectionId": {
++			"GET":    api.GetConnection,
++			"PATCH":  api.PatchConnection,
++			"DELETE": api.DeleteConnection,
++		},
++		"connections/:connectionId/test": {
++			"POST": api.TestExistingConnection,
++		},
++		"connections/:connectionId/remote-scopes": {
++			"GET": api.RemoteScopes,
++		},
++		"connections/:connectionId/search-remote-scopes": {
++			"GET": api.SearchRemoteScopes,
++		},
++		"connections/:connectionId/scopes": {
++			"GET": api.GetScopeList,
++			"PUT": api.PutScopes,
++		},
++		"connections/:connectionId/scopes/:scopeId": {
++			"GET":    api.GetScope,
++			"PATCH":  api.PatchScope,
++			"DELETE": api.DeleteScope,
++		},
++		"connections/:connectionId/scopes/:scopeId/latest-sync-state": {
++			"GET": api.GetScopeLatestSyncState,
++		},
++	}
++}
++
++func (p Rootly) MakeDataSourcePipelinePlanV200(
++	connectionId uint64,
++	scopes []*coreModels.BlueprintScope,
++) (coreModels.PipelinePlan, []plugin.Scope, errors.Error) {
++	return api.MakeDataSourcePipelinePlanV200(p.SubTaskMetas(), connectionId, scopes)
++}
++
++func (p Rootly) Close(taskCtx plugin.TaskContext) errors.Error {
++	_, ok := taskCtx.GetData().(*tasks.RootlyTaskData)
++	if !ok {
++		return errors.Default.New(fmt.Sprintf("GetData failed when try to close %+v", taskCtx))
++	}
++	return nil
++}
+diff --git a/backend/plugins/rootly/models/connection.go b/backend/plugins/rootly/models/connection.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/models/connection.go
+@@ -0,0 +1,74 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package models
++
++import (
++	"fmt"
++	"net/http"
++
++	"github.com/apache/incubator-devlake/core/errors"
++	"github.com/apache/incubator-devlake/core/utils"
++	helper "github.com/apache/incubator-devlake/helpers/pluginhelper/api"
++)
++
++type RootlyAccessToken helper.AccessToken
++
++func (at *RootlyAccessToken) SetupAuthentication(request *http.Request) errors.Error {
++	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", at.Token))
++	return nil
++}
++
++type RootlyConn struct {
++	helper.RestConnection `mapstructure:",squash"`
++	RootlyAccessToken     `mapstructure:",squash"`
++}
++
++func (connection RootlyConn) Sanitize() RootlyConn {
++	connection.Token = utils.SanitizeString(connection.Token)
++	return connection
++}
++
++type RootlyConnection struct {
++	helper.BaseConnection `mapstructure:",squash"`
++	RootlyConn            `mapstructure:",squash"`
++}
++
++// MergeFromRequest preserves the existing token when an incoming PATCH
++// body omits it or echoes the sanitized form. The config-UI sends the
++// sanitized token back on every PATCH to avoid round-tripping the
++// secret; this guard is what makes that pattern safe.
++func (connection *RootlyConnection) MergeFromRequest(target *RootlyConnection, body map[string]interface{}) error {
++	token := target.Token
++	if err := helper.DecodeMapStruct(body, target, true); err != nil {
++		return err
++	}
++	modifiedToken := target.Token
++	if modifiedToken == "" || modifiedToken == utils.SanitizeString(token) {
++		target.Token = token
++	}
++	return nil
++}
++
++func (RootlyConnection) TableName() string {
++	return "_tool_rootly_connections"
++}
++
++func (connection RootlyConnection) Sanitize() RootlyConnection {
++	connection.Token = utils.SanitizeString(connection.Token)
++	return connection
++}
+diff --git a/backend/plugins/rootly/models/incident.go b/backend/plugins/rootly/models/incident.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/models/incident.go
+@@ -0,0 +1,62 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package models
++
++import (
++	"time"
++
++	"github.com/apache/incubator-devlake/core/models/common"
++)
++
++type Incident struct {
++	common.NoPKModel
++	ConnectionId      uint64 `gorm:"primaryKey"`
++	Id                string `gorm:"primaryKey;autoIncrement:false"`
++	Number            int
++	ServiceId         string `gorm:"index"`
++	Url               string
++	Title             string
++	Summary           string
++	Status            string
++	Severity          string
++	StartedDate       time.Time
++	AcknowledgedDate  *time.Time
++	MitigatedDate     *time.Time
++	ResolvedDate      *time.Time
++	UpdatedDate       time.Time
++	CreatorUserId     string
++	StartedByUserId   string
++	MitigatedByUserId string
++	ResolvedByUserId  string
++	ClosedByUserId    string
++}
++
++func (Incident) TableName() string { return "_tool_rootly_incidents" }
++
++// RoleUserIds returns the five role-bearing user ids on the incident
++// in lifecycle order (creator, started_by, mitigated_by, resolved_by,
++// closed_by). Empty strings are included; callers filter or dedup.
++func (i *Incident) RoleUserIds() []string {
++	return []string{
++		i.CreatorUserId,
++		i.StartedByUserId,
++		i.MitigatedByUserId,
++		i.ResolvedByUserId,
++		i.ClosedByUserId,
++	}
++}
+diff --git a/backend/plugins/rootly/models/migrationscripts/20260512_add_init_tables.go b/backend/plugins/rootly/models/migrationscripts/20260512_add_init_tables.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/models/migrationscripts/20260512_add_init_tables.go
+@@ -0,0 +1,45 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package migrationscripts
++
++import (
++	"github.com/apache/incubator-devlake/core/context"
++	"github.com/apache/incubator-devlake/core/errors"
++	"github.com/apache/incubator-devlake/helpers/migrationhelper"
++	"github.com/apache/incubator-devlake/plugins/rootly/models/migrationscripts/archived"
++)
++
++type addInitTables struct{}
++
++func (*addInitTables) Up(baseRes context.BasicRes) errors.Error {
++	return migrationhelper.AutoMigrateTables(baseRes,
++		&archived.Connection{},
++		&archived.Service{},
++		&archived.Incident{},
++		&archived.User{},
++		&archived.ScopeConfig{},
++	)
++}
++
++func (*addInitTables) Version() uint64 {
++	return 20260512000001
++}
++
++func (*addInitTables) Name() string {
++	return "Rootly init schemas"
++}
+diff --git a/backend/plugins/rootly/models/migrationscripts/archived/connection.go b/backend/plugins/rootly/models/migrationscripts/archived/connection.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/models/migrationscripts/archived/connection.go
+@@ -0,0 +1,35 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package archived
++
++import (
++	"github.com/apache/incubator-devlake/core/models/migrationscripts/archived"
++)
++
++type Connection struct {
++	archived.Model
++	Name             string `gorm:"type:varchar(100);uniqueIndex" json:"name" validate:"required"`
++	Endpoint         string `mapstructure:"endpoint" validate:"required" json:"endpoint"`
++	Proxy            string `mapstructure:"proxy" json:"proxy"`
++	RateLimitPerHour int    `comment:"api request rate limit per hour" json:"rateLimitPerHour"`
++	Token            string `mapstructure:"token" env:"ROOTLY_AUTH" validate:"required" encrypt:"yes"`
++}
++
++func (Connection) TableName() string {
++	return "_tool_rootly_connections"
++}
+diff --git a/backend/plugins/rootly/models/migrationscripts/archived/incident.go b/backend/plugins/rootly/models/migrationscripts/archived/incident.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/models/migrationscripts/archived/incident.go
+@@ -0,0 +1,51 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package archived
++
++import (
++	"time"
++
++	"github.com/apache/incubator-devlake/core/models/migrationscripts/archived"
++)
++
++type Incident struct {
++	archived.NoPKModel
++	ConnectionId      uint64 `gorm:"primaryKey"`
++	Id                string `gorm:"primaryKey;autoIncrement:false"`
++	Number            int
++	ServiceId         string `gorm:"index"`
++	Url               string
++	Title             string
++	Summary           string
++	Status            string
++	Severity          string
++	StartedDate       time.Time
++	AcknowledgedDate  *time.Time
++	MitigatedDate     *time.Time
++	ResolvedDate      *time.Time
++	UpdatedDate       time.Time
++	CreatorUserId     string
++	StartedByUserId   string
++	MitigatedByUserId string
++	ResolvedByUserId  string
++	ClosedByUserId    string
++}
++
++func (Incident) TableName() string {
++	return "_tool_rootly_incidents"
++}
+diff --git a/backend/plugins/rootly/models/migrationscripts/archived/scope_config.go b/backend/plugins/rootly/models/migrationscripts/archived/scope_config.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/models/migrationscripts/archived/scope_config.go
+@@ -0,0 +1,35 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package archived
++
++import (
++	"github.com/apache/incubator-devlake/core/models/migrationscripts/archived"
++)
++
++// ConnectionId and Name come from `common.ScopeConfig` on the live
++// model; the archived `archived.ScopeConfig` base only carries
++// Model + Entities, so declare them explicitly.
++type ScopeConfig struct {
++	archived.ScopeConfig `mapstructure:",squash" json:",inline" gorm:"embedded"`
++	ConnectionId         uint64 `json:"connectionId" gorm:"index" validate:"required" mapstructure:"connectionId,omitempty"`
++	Name                 string `mapstructure:"name" json:"name" gorm:"type:varchar(255);uniqueIndex" validate:"required"`
++}
++
++func (ScopeConfig) TableName() string {
++	return "_tool_rootly_scope_configs"
++}
+diff --git a/backend/plugins/rootly/models/migrationscripts/archived/service.go b/backend/plugins/rootly/models/migrationscripts/archived/service.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/models/migrationscripts/archived/service.go
+@@ -0,0 +1,37 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package archived
++
++import (
++	"github.com/apache/incubator-devlake/core/models/migrationscripts/archived"
++)
++
++// ScopeConfigId mirrors the column that live `models.Service` gets via
++// embedded `common.Scope`; the archived `NoPKModel` doesn't include it.
++type Service struct {
++	archived.NoPKModel
++	ConnectionId  uint64 `gorm:"primaryKey"`
++	ScopeConfigId uint64 `json:"scopeConfigId,omitempty" mapstructure:"scopeConfigId,omitempty"`
++	Id            string `gorm:"primaryKey;autoIncrement:false"`
++	Url           string
++	Name          string
++}
++
++func (Service) TableName() string {
++	return "_tool_rootly_services"
++}
+diff --git a/backend/plugins/rootly/models/migrationscripts/archived/user.go b/backend/plugins/rootly/models/migrationscripts/archived/user.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/models/migrationscripts/archived/user.go
+@@ -0,0 +1,32 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package archived
++
++import "github.com/apache/incubator-devlake/core/models/migrationscripts/archived"
++
++type User struct {
++	archived.NoPKModel
++	ConnectionId uint64 `gorm:"primaryKey"`
++	Id           string `gorm:"primaryKey;autoIncrement:false"`
++	Email        string
++	Name         string
++}
++
++func (User) TableName() string {
++	return "_tool_rootly_users"
++}
+diff --git a/backend/plugins/rootly/models/migrationscripts/register.go b/backend/plugins/rootly/models/migrationscripts/register.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/models/migrationscripts/register.go
+@@ -0,0 +1,29 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package migrationscripts
++
++import (
++	"github.com/apache/incubator-devlake/core/plugin"
++)
++
++// All returns all the migration scripts for the rootly plugin
++func All() []plugin.MigrationScript {
++	return []plugin.MigrationScript{
++		new(addInitTables),
++	}
++}
+diff --git a/backend/plugins/rootly/models/raw/incident.go b/backend/plugins/rootly/models/raw/incident.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/models/raw/incident.go
+@@ -0,0 +1,87 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package raw
++
++import (
++	"time"
++)
++
++type Incident struct {
++	Id            string                `json:"id"`
++	Type          string                `json:"type"`
++	Attributes    IncidentAttributes    `json:"attributes"`
++	Relationships IncidentRelationships `json:"relationships"`
++}
++
++type IncidentRelationships struct {
++	Services struct {
++		Data []ServiceRef `json:"data"`
++	} `json:"services"`
++}
++
++type ServiceRef struct {
++	Id   string `json:"id"`
++	Type string `json:"type"`
++}
++
++type IncidentAttributes struct {
++	SequentialId   *int       `json:"sequential_id"`
++	Title          string     `json:"title"`
++	Summary        *string    `json:"summary"`
++	Url            *string    `json:"url"`
++	Status         string     `json:"status"`
++	StartedAt      time.Time  `json:"started_at"`
++	AcknowledgedAt *time.Time `json:"acknowledged_at"`
++	MitigatedAt    *time.Time `json:"mitigated_at"`
++	ResolvedAt     *time.Time `json:"resolved_at"`
++	UpdatedAt      time.Time  `json:"updated_at"`
++
++	Severity *SeverityEnvelope `json:"severity"`
++
++	User        *UserEnvelope `json:"user"`
++	StartedBy   *UserEnvelope `json:"started_by"`
++	MitigatedBy *UserEnvelope `json:"mitigated_by"`
++	ResolvedBy  *UserEnvelope `json:"resolved_by"`
++	ClosedBy    *UserEnvelope `json:"closed_by"`
++}
++
++type SeverityEnvelope struct {
++	Data struct {
++		Id         string             `json:"id"`
++		Type       string             `json:"type"`
++		Attributes SeverityAttributes `json:"attributes"`
++	} `json:"data"`
++}
++
++type SeverityAttributes struct {
++	Slug string `json:"slug"`
++}
++
++type UserEnvelope struct {
++	Data struct {
++		Id         string         `json:"id"`
++		Type       string         `json:"type"`
++		Attributes UserAttributes `json:"attributes"`
++	} `json:"data"`
++}
++
++type UserAttributes struct {
++	Name     string `json:"name"`
++	FullName string `json:"full_name"`
++	Email    string `json:"email"`
++}
+diff --git a/backend/plugins/rootly/models/raw/service.go b/backend/plugins/rootly/models/raw/service.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/models/raw/service.go
+@@ -0,0 +1,35 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package raw
++
++import "time"
++
++type Service struct {
++	Id         string            `json:"id"`
++	Type       string            `json:"type"`
++	Attributes ServiceAttributes `json:"attributes"`
++}
++
++type ServiceAttributes struct {
++	Name        string     `json:"name"`
++	Slug        *string    `json:"slug"`
++	Description *string    `json:"description"`
++	HtmlUrl     *string    `json:"html_url"`
++	CreatedAt   *time.Time `json:"created_at"`
++	UpdatedAt   *time.Time `json:"updated_at"`
++}
+diff --git a/backend/plugins/rootly/models/scope_config.go b/backend/plugins/rootly/models/scope_config.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/models/scope_config.go
+@@ -0,0 +1,30 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package models
++
++import (
++	"github.com/apache/incubator-devlake/core/models/common"
++)
++
++type RootlyScopeConfig struct {
++	common.ScopeConfig `mapstructure:",squash" json:",inline" gorm:"embedded"`
++}
++
++func (RootlyScopeConfig) TableName() string {
++	return "_tool_rootly_scope_configs"
++}
+diff --git a/backend/plugins/rootly/models/service.go b/backend/plugins/rootly/models/service.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/models/service.go
+@@ -0,0 +1,60 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package models
++
++import (
++	"github.com/apache/incubator-devlake/core/models/common"
++	"github.com/apache/incubator-devlake/core/plugin"
++)
++
++type RootlyParams struct {
++	ConnectionId uint64
++	ScopeId      string
++}
++
++type Service struct {
++	common.Scope `mapstructure:",squash"`
++	Id           string `json:"id" mapstructure:"id" gorm:"primaryKey;autoIncrement:false" `
++	Url          string `json:"url" mapstructure:"url"`
++	Name         string `json:"name" mapstructure:"name"`
++}
++
++func (s Service) ScopeId() string {
++	return s.Id
++}
++
++func (s Service) ScopeName() string {
++	return s.Name
++}
++
++func (s Service) ScopeFullName() string {
++	return s.Name
++}
++
++func (s Service) ScopeParams() interface{} {
++	return &RootlyParams{
++		ConnectionId: s.ConnectionId,
++		ScopeId:      s.Id,
++	}
++}
++
++func (s Service) TableName() string {
++	return "_tool_rootly_services"
++}
++
++var _ plugin.ToolLayerScope = (*Service)(nil)
+diff --git a/backend/plugins/rootly/models/user.go b/backend/plugins/rootly/models/user.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/models/user.go
+@@ -0,0 +1,30 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package models
++
++import "github.com/apache/incubator-devlake/core/models/common"
++
++type User struct {
++	common.NoPKModel
++	ConnectionId uint64 `gorm:"primaryKey"`
++	Id           string `gorm:"primaryKey;autoIncrement:false"`
++	Email        string
++	Name         string
++}
++
++func (User) TableName() string { return "_tool_rootly_users" }
+diff --git a/backend/plugins/rootly/rootly.go b/backend/plugins/rootly/rootly.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/rootly.go
+@@ -0,0 +1,38 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package main
++
++import (
++	"github.com/apache/incubator-devlake/core/runner"
++	"github.com/apache/incubator-devlake/plugins/rootly/impl"
++	"github.com/spf13/cobra"
++)
++
++// PluginEntry Export a variable named PluginEntry for Framework to search and load
++var PluginEntry impl.Rootly //nolint
++
++// standalone mode for debugging
++func main() {
++	cmd := &cobra.Command{Use: "rootly"}
++	timeAfter := cmd.Flags().StringP("timeAfter", "a", "", "collect data that are created after specified time, ie 2006-01-02T15:04:05Z")
++
++	cmd.Run = func(cmd *cobra.Command, args []string) {
++		runner.DirectRun(cmd, args, PluginEntry, map[string]interface{}{}, *timeAfter)
++	}
++	runner.RunCmd(cmd)
++}
+diff --git a/backend/plugins/rootly/tasks/incidents_collector.go b/backend/plugins/rootly/tasks/incidents_collector.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/tasks/incidents_collector.go
+@@ -0,0 +1,138 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package tasks
++
++import (
++	"encoding/json"
++	"fmt"
++	"net/http"
++	"net/url"
++	"time"
++
++	"github.com/apache/incubator-devlake/core/errors"
++	"github.com/apache/incubator-devlake/core/plugin"
++	"github.com/apache/incubator-devlake/helpers/pluginhelper/api"
++)
++
++const RAW_INCIDENTS_TABLE = "rootly_incidents"
++
++var _ plugin.SubTaskEntryPoint = CollectIncidents
++
++type collectedIncidents struct {
++	Data  []json.RawMessage   `json:"data"`
++	Meta  *collectedListMeta  `json:"meta"`
++	Links *collectedListLinks `json:"links"`
++}
++
++type collectedListMeta struct {
++	CurrentPage *int `json:"current_page"`
++	TotalPages  *int `json:"total_pages"`
++}
++
++type collectedListLinks struct {
++	Next *string `json:"next"`
++}
++
++var CollectIncidentsMeta = plugin.SubTaskMeta{
++	Name:             "collectIncidents",
++	EntryPoint:       CollectIncidents,
++	EnabledByDefault: true,
++	Description:      "Collect Rootly incidents",
++	DomainTypes:      []string{plugin.DOMAIN_TYPE_TICKET},
++	ProductTables:    []string{RAW_INCIDENTS_TABLE},
++}
++
++func CollectIncidents(taskCtx plugin.SubTaskContext) errors.Error {
++	data := taskCtx.GetData().(*RootlyTaskData)
++	args := api.RawDataSubTaskArgs{
++		Ctx:     taskCtx,
++		Options: data.Options,
++		Table:   RAW_INCIDENTS_TABLE,
++	}
++	// Pagination state captured during ResponseParser and consulted in
++	// GetNextPageCustomData. Required because prevPageResponse.Body is
++	// a single-read stream and is already drained by the time the
++	// next-page hook fires.
++	var lastPage *collectedListMeta
++	var lastLinksNext *string
++
++	collector, err := api.NewStatefulApiCollectorForFinalizableEntity(api.FinalizableApiCollectorArgs{
++		RawDataSubTaskArgs: args,
++		ApiClient:          data.Client,
++		CollectNewRecordsByList: api.FinalizableApiCollectorListArgs{
++			PageSize: 100,
++			GetNextPageCustomData: func(prevReqData *api.RequestData, prevPageResponse *http.Response) (interface{}, errors.Error) {
++				// Safety cap against an upstream that returns full pages forever
++				// without populating either meta.total_pages or links.next.
++				const maxPages = 10000
++				if prevReqData.Pager.Page >= maxPages {
++					return nil, api.ErrFinishCollect
++				}
++				if lastLinksNext != nil && *lastLinksNext != "" {
++					return nil, nil
++				}
++				if lastPage != nil && lastPage.CurrentPage != nil && lastPage.TotalPages != nil {
++					if *lastPage.CurrentPage >= *lastPage.TotalPages {
++						return nil, api.ErrFinishCollect
++					}
++				}
++				return nil, nil
++			},
++			FinalizableApiCollectorCommonArgs: api.FinalizableApiCollectorCommonArgs{
++				UrlTemplate: "incidents",
++				Query: func(reqData *api.RequestData, createdAfter *time.Time) (url.Values, errors.Error) {
++					return buildIncidentsQuery(data.Options.ServiceId, reqData.Pager.Size, reqData.Pager.Page, createdAfter), nil
++				},
++				ResponseParser: func(res *http.Response) ([]json.RawMessage, errors.Error) {
++					rawResult := collectedIncidents{}
++					if err := api.UnmarshalResponse(res, &rawResult); err != nil {
++						return nil, err
++					}
++					lastPage = rawResult.Meta
++					if rawResult.Links != nil {
++						lastLinksNext = rawResult.Links.Next
++					} else {
++						lastLinksNext = nil
++					}
++					return rawResult.Data, nil
++				},
++			},
++		},
++	})
++	if err != nil {
++		return err
++	}
++	return collector.Execute()
++}
++
++// buildIncidentsQuery is the pure-function core of the Query closure
++// above so a regression in the filter parameter name (we shipped with
++// `filter[services]` once and got 0 results back; the correct param is
++// `filter[service_ids]`) is caught by a unit test.
++func buildIncidentsQuery(serviceId string, pageSize, pageNumber int, createdAfter *time.Time) url.Values {
++	query := url.Values{}
++	query.Set("filter[service_ids]", serviceId)
++	query.Set("page[size]", fmt.Sprintf("%d", pageSize))
++	// Rootly's JSON:API pagination is 1-based.
++	query.Set("page[number]", fmt.Sprintf("%d", pageNumber))
++	query.Set("sort", "-updated_at")
++	if createdAfter != nil {
++		query.Set("filter[updated_at][gt]", createdAfter.UTC().Format(time.RFC3339))
++	}
++	return query
++}
+diff --git a/backend/plugins/rootly/tasks/incidents_converter.go b/backend/plugins/rootly/tasks/incidents_converter.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/tasks/incidents_converter.go
+@@ -0,0 +1,206 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package tasks
++
++import (
++	"fmt"
++	"reflect"
++	"strings"
++	"time"
++
++	"github.com/apache/incubator-devlake/core/dal"
++	"github.com/apache/incubator-devlake/core/errors"
++	"github.com/apache/incubator-devlake/core/models/domainlayer"
++	"github.com/apache/incubator-devlake/core/models/domainlayer/didgen"
++	"github.com/apache/incubator-devlake/core/models/domainlayer/ticket"
++	"github.com/apache/incubator-devlake/core/plugin"
++	helper "github.com/apache/incubator-devlake/helpers/pluginhelper/api"
++	"github.com/apache/incubator-devlake/plugins/rootly/models"
++)
++
++var _ plugin.SubTaskEntryPoint = ConvertIncidents
++
++var ConvertIncidentsMeta = plugin.SubTaskMeta{
++	Name:             "convertIncidents",
++	EntryPoint:       ConvertIncidents,
++	EnabledByDefault: true,
++	Description:      "Convert Rootly incidents into domain-layer ticket issues",
++	DomainTypes:      []string{plugin.DOMAIN_TYPE_TICKET},
++}
++
++func ConvertIncidents(taskCtx plugin.SubTaskContext) errors.Error {
++	db := taskCtx.GetDal()
++	data := taskCtx.GetData().(*RootlyTaskData)
++	logger := taskCtx.GetLogger()
++
++	var userRows []models.User
++	if err := db.All(
++		&userRows,
++		dal.Where("connection_id = ?", data.Options.ConnectionId),
++	); err != nil {
++		return err
++	}
++	userNames := make(map[string]string, len(userRows))
++	for _, u := range userRows {
++		userNames[u.Id] = u.Name
++	}
++
++	cursor, err := db.Cursor(
++		dal.From(&models.Incident{}),
++		dal.Where("connection_id = ? AND service_id = ?", data.Options.ConnectionId, data.Options.ServiceId),
++	)
++	if err != nil {
++		return err
++	}
++	defer cursor.Close()
++
++	idGen := didgen.NewDomainIdGenerator(&models.Incident{})
++	serviceIdGen := didgen.NewDomainIdGenerator(&models.Service{})
++	userIdGen := didgen.NewDomainIdGenerator(&models.User{})
++	boardId := serviceIdGen.Generate(data.Options.ConnectionId, data.Options.ServiceId)
++
++	converter, err := helper.NewDataConverter(helper.DataConverterArgs{
++		RawDataSubTaskArgs: helper.RawDataSubTaskArgs{
++			Ctx:     taskCtx,
++			Options: data.Options,
++			Table:   RAW_INCIDENTS_TABLE,
++		},
++		InputRowType: reflect.TypeOf(models.Incident{}),
++		Input:        cursor,
++		Convert: func(inputRow interface{}) ([]interface{}, errors.Error) {
++			incident := inputRow.(*models.Incident)
++
++			status, known := mapStatus(incident.Status)
++			if !known {
++				logger.Warn(nil, "unknown rootly incident status: %s", incident.Status)
++			}
++
++			leadTime, resolutionDate := computeLeadTime(incident.StartedDate, incident.ResolvedDate)
++
++			domainIssueId := idGen.Generate(data.Options.ConnectionId, incident.Id)
++
++			var creatorDomainId, creatorName string
++			if incident.CreatorUserId != "" {
++				creatorDomainId = userIdGen.Generate(data.Options.ConnectionId, incident.CreatorUserId)
++				creatorName = userNames[incident.CreatorUserId]
++			}
++
++			domainIssue := &ticket.Issue{
++				DomainEntity: domainlayer.DomainEntity{
++					Id: domainIssueId,
++				},
++				Url:             incident.Url,
++				IssueKey:        issueKeyFor(incident),
++				Title:           incident.Title,
++				Description:     incident.Summary,
++				Type:            ticket.INCIDENT,
++				Status:          status,
++				OriginalStatus:  incident.Status,
++				ResolutionDate:  resolutionDate,
++				CreatedDate:     &incident.StartedDate,
++				UpdatedDate:     &incident.UpdatedDate,
++				LeadTimeMinutes: leadTime,
++				Priority:        mapSeverityToPriority(incident.Severity),
++				Severity:        incident.Severity,
++				CreatorId:       creatorDomainId,
++				CreatorName:     creatorName,
++				AssigneeId:      creatorDomainId,
++				AssigneeName:    creatorName,
++			}
++
++			results := []interface{}{domainIssue}
++
++			seenAssignees := map[string]bool{}
++			for _, toolUserId := range incident.RoleUserIds() {
++				if toolUserId == "" || seenAssignees[toolUserId] {
++					continue
++				}
++				seenAssignees[toolUserId] = true
++				results = append(results, &ticket.IssueAssignee{
++					IssueId:      domainIssueId,
++					AssigneeId:   userIdGen.Generate(data.Options.ConnectionId, toolUserId),
++					AssigneeName: userNames[toolUserId],
++				})
++			}
++
++			results = append(results, &ticket.BoardIssue{
++				BoardId: boardId,
++				IssueId: domainIssueId,
++			})
++
++			return results, nil
++		},
++	})
++	if err != nil {
++		return err
++	}
++	return converter.Execute()
++}
++
++// Unknown statuses fall through to IN_PROGRESS rather than panicking
++// (PagerDuty panics). Rootly's status enum is more volatile, so a new
++// value from upstream shouldn't crash a production pipeline.
++func mapStatus(status string) (mapped string, known bool) {
++	switch status {
++	case "triage", "started":
++		return ticket.TODO, true
++	case "mitigated":
++		return ticket.IN_PROGRESS, true
++	case "resolved", "closed", "cancelled":
++		return ticket.DONE, true
++	default:
++		return ticket.IN_PROGRESS, false
++	}
++}
++
++func mapSeverityToPriority(severity string) string {
++	switch strings.ToLower(severity) {
++	case "sev0":
++		return "CRITICAL"
++	case "sev1":
++		return "HIGH"
++	case "sev2":
++		return "MEDIUM"
++	case "sev3", "sev4":
++		return "LOW"
++	default:
++		return severity
++	}
++}
++
++func computeLeadTime(started time.Time, resolved *time.Time) (*uint, *time.Time) {
++	if resolved == nil {
++		return nil, nil
++	}
++	// Clock skew / backfill can place resolved before started. A naive
++	// uint() cast on a negative duration wraps to huge garbage and
++	// silently corrupts MTTR; treat as unresolved instead.
++	if resolved.Before(started) {
++		return nil, nil
++	}
++	minutes := uint(resolved.Sub(started).Minutes())
++	resolutionDate := *resolved
++	return &minutes, &resolutionDate
++}
++
++func issueKeyFor(incident *models.Incident) string {
++	if incident.Number > 0 {
++		return fmt.Sprintf("%d", incident.Number)
++	}
++	return incident.Id
++}
+diff --git a/backend/plugins/rootly/tasks/incidents_extractor.go b/backend/plugins/rootly/tasks/incidents_extractor.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/tasks/incidents_extractor.go
+@@ -0,0 +1,157 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package tasks
++
++import (
++	"encoding/json"
++
++	"github.com/apache/incubator-devlake/core/errors"
++	"github.com/apache/incubator-devlake/core/plugin"
++	"github.com/apache/incubator-devlake/helpers/pluginhelper/api"
++	"github.com/apache/incubator-devlake/plugins/rootly/models"
++	"github.com/apache/incubator-devlake/plugins/rootly/models/raw"
++)
++
++var _ plugin.SubTaskEntryPoint = ExtractIncidents
++
++var ExtractIncidentsMeta = plugin.SubTaskMeta{
++	Name:             "extractIncidents",
++	EntryPoint:       ExtractIncidents,
++	EnabledByDefault: true,
++	Description:      "Extract Rootly incidents",
++	DomainTypes:      []string{plugin.DOMAIN_TYPE_TICKET},
++	ProductTables:    []string{models.Incident{}.TableName(), models.User{}.TableName()},
++}
++
++func ExtractIncidents(taskCtx plugin.SubTaskContext) errors.Error {
++	data := taskCtx.GetData().(*RootlyTaskData)
++	extractor, err := api.NewApiExtractor(api.ApiExtractorArgs{
++		RawDataSubTaskArgs: api.RawDataSubTaskArgs{
++			Ctx:     taskCtx,
++			Options: data.Options,
++			Table:   RAW_INCIDENTS_TABLE,
++		},
++		Extract: func(row *api.RawData) ([]interface{}, errors.Error) {
++			return extractRootlyIncident(row.Data, data.Options)
++		},
++	})
++	if err != nil {
++		return err
++	}
++	return extractor.Execute()
++}
++
++func extractRootlyIncident(rawData []byte, op *RootlyOptions) ([]interface{}, errors.Error) {
++	rawIncident := &raw.Incident{}
++	if err := errors.Convert(json.Unmarshal(rawData, rawIncident)); err != nil {
++		return nil, err
++	}
++
++	// Safety net: filter[service_ids] in the collector is the primary
++	// scope filter, but a regression there would let multi-service
++	// incidents leak into a wrong scope's tool table.
++	if services := rawIncident.Relationships.Services.Data; len(services) > 0 && !containsServiceId(services, op.ServiceId) {
++		return nil, nil
++	}
++
++	if rawIncident.Attributes.StartedAt.IsZero() {
++		return nil, errors.Default.New("rootly incident missing started_at")
++	}
++
++	incident := &models.Incident{
++		ConnectionId:     op.ConnectionId,
++		Id:               rawIncident.Id,
++		Number:           resolve(rawIncident.Attributes.SequentialId),
++		ServiceId:        op.ServiceId,
++		Url:              resolve(rawIncident.Attributes.Url),
++		Title:            rawIncident.Attributes.Title,
++		Summary:          resolve(rawIncident.Attributes.Summary),
++		Status:           rawIncident.Attributes.Status,
++		Severity:         resolveSeverity(rawIncident.Attributes.Severity),
++		StartedDate:      rawIncident.Attributes.StartedAt,
++		AcknowledgedDate: rawIncident.Attributes.AcknowledgedAt,
++		MitigatedDate:    rawIncident.Attributes.MitigatedAt,
++		ResolvedDate:     rawIncident.Attributes.ResolvedAt,
++		UpdatedDate:      rawIncident.Attributes.UpdatedAt,
++	}
++
++	results := []interface{}{incident}
++	seen := map[string]bool{}
++	addUser := func(u *raw.UserEnvelope, setRoleId func(string)) {
++		if u == nil || u.Data.Id == "" {
++			return
++		}
++		setRoleId(u.Data.Id)
++		if seen[u.Data.Id] {
++			return
++		}
++		seen[u.Data.Id] = true
++		name := pickUserName(u.Data.Attributes)
++		// Skip rows with no useful data so a sibling scope task that has
++		// fuller data for the same user doesn't get overwritten with blanks.
++		if name == "" && u.Data.Attributes.Email == "" {
++			return
++		}
++		results = append(results, &models.User{
++			ConnectionId: op.ConnectionId,
++			Id:           u.Data.Id,
++			Email:        u.Data.Attributes.Email,
++			Name:         name,
++		})
++	}
++	addUser(rawIncident.Attributes.User, func(id string) { incident.CreatorUserId = id })
++	addUser(rawIncident.Attributes.StartedBy, func(id string) { incident.StartedByUserId = id })
++	addUser(rawIncident.Attributes.MitigatedBy, func(id string) { incident.MitigatedByUserId = id })
++	addUser(rawIncident.Attributes.ResolvedBy, func(id string) { incident.ResolvedByUserId = id })
++	addUser(rawIncident.Attributes.ClosedBy, func(id string) { incident.ClosedByUserId = id })
++
++	return results, nil
++}
++
++func pickUserName(u raw.UserAttributes) string {
++	if u.FullName != "" {
++		return u.FullName
++	}
++	if u.Name != "" {
++		return u.Name
++	}
++	return u.Email
++}
++
++func containsServiceId(services []raw.ServiceRef, serviceId string) bool {
++	for _, s := range services {
++		if s.Id == serviceId {
++			return true
++		}
++	}
++	return false
++}
++
++func resolveSeverity(s *raw.SeverityEnvelope) string {
++	if s == nil {
++		return ""
++	}
++	return s.Data.Attributes.Slug
++}
++
++func resolve[T any](t *T) T {
++	if t == nil {
++		return *new(T)
++	}
++	return *t
++}
+diff --git a/backend/plugins/rootly/tasks/service_converter.go b/backend/plugins/rootly/tasks/service_converter.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/tasks/service_converter.go
+@@ -0,0 +1,82 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package tasks
++
++import (
++	"reflect"
++
++	"github.com/apache/incubator-devlake/core/dal"
++	"github.com/apache/incubator-devlake/core/errors"
++	"github.com/apache/incubator-devlake/core/models/domainlayer"
++	"github.com/apache/incubator-devlake/core/models/domainlayer/didgen"
++	"github.com/apache/incubator-devlake/core/models/domainlayer/ticket"
++	"github.com/apache/incubator-devlake/core/plugin"
++	helper "github.com/apache/incubator-devlake/helpers/pluginhelper/api"
++	"github.com/apache/incubator-devlake/plugins/rootly/models"
++)
++
++var ConvertServicesMeta = plugin.SubTaskMeta{
++	Name:             "convertServices",
++	EntryPoint:       ConvertServices,
++	EnabledByDefault: true,
++	Description:      "Convert Rootly services",
++	DomainTypes:      []string{plugin.DOMAIN_TYPE_TICKET},
++}
++
++func ConvertServices(taskCtx plugin.SubTaskContext) errors.Error {
++	db := taskCtx.GetDal()
++	data := taskCtx.GetData().(*RootlyTaskData)
++	rawDataSubTaskArgs := &helper.RawDataSubTaskArgs{
++		Ctx:     taskCtx,
++		Options: data.Options,
++		Table:   RAW_SERVICES_TABLE,
++	}
++	clauses := []dal.Clause{
++		dal.Select("services.*"),
++		dal.From("_tool_rootly_services services"),
++		dal.Where("id = ? and connection_id = ?", data.Options.ServiceId, data.Options.ConnectionId),
++	}
++	cursor, err := db.Cursor(clauses...)
++	if err != nil {
++		return err
++	}
++	defer cursor.Close()
++
++	converter, err := helper.NewDataConverter(helper.DataConverterArgs{
++		RawDataSubTaskArgs: *rawDataSubTaskArgs,
++		InputRowType:       reflect.TypeOf(models.Service{}),
++		Input:              cursor,
++		Convert: func(inputRow interface{}) ([]interface{}, errors.Error) {
++			service := inputRow.(*models.Service)
++			domainBoard := &ticket.Board{
++				DomainEntity: domainlayer.DomainEntity{
++					Id: didgen.NewDomainIdGenerator(service).Generate(service.ConnectionId, service.Id),
++				},
++				Name: service.Name,
++				Url:  service.Url,
++			}
++			return []interface{}{
++				domainBoard,
++			}, nil
++		},
++	})
++	if err != nil {
++		return err
++	}
++	return converter.Execute()
++}
+diff --git a/backend/plugins/rootly/tasks/services_collector.go b/backend/plugins/rootly/tasks/services_collector.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/tasks/services_collector.go
+@@ -0,0 +1,76 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package tasks
++
++import (
++	"encoding/json"
++	"net/http"
++
++	"github.com/apache/incubator-devlake/core/errors"
++	"github.com/apache/incubator-devlake/core/plugin"
++	"github.com/apache/incubator-devlake/helpers/pluginhelper/api"
++)
++
++const RAW_SERVICES_TABLE = "rootly_services"
++
++// singleServiceResponse is the JSON:API envelope returned by
++// GET /services/{id}. Unlike list responses, `data` is an object,
++// not an array.
++type singleServiceResponse struct {
++	Data json.RawMessage `json:"data"`
++}
++
++var _ plugin.SubTaskEntryPoint = CollectServices
++
++var CollectServicesMeta = plugin.SubTaskMeta{
++	Name:             "collectServices",
++	EntryPoint:       CollectServices,
++	EnabledByDefault: true,
++	Description:      "Collect Rootly services",
++	DomainTypes:      []string{plugin.DOMAIN_TYPE_TICKET},
++	ProductTables:    []string{RAW_SERVICES_TABLE},
++}
++
++func CollectServices(taskCtx plugin.SubTaskContext) errors.Error {
++	data := taskCtx.GetData().(*RootlyTaskData)
++	collector, err := api.NewApiCollector(api.ApiCollectorArgs{
++		RawDataSubTaskArgs: api.RawDataSubTaskArgs{
++			Ctx:     taskCtx,
++			Options: data.Options,
++			Table:   RAW_SERVICES_TABLE,
++		},
++		ApiClient:   data.Client,
++		UrlTemplate: "services/{{ .Params.ScopeId }}",
++		Query:       nil,
++		ResponseParser: func(res *http.Response) ([]json.RawMessage, errors.Error) {
++			rawResult := singleServiceResponse{}
++			err := api.UnmarshalResponse(res, &rawResult)
++			if err != nil {
++				return nil, err
++			}
++			if len(rawResult.Data) == 0 {
++				return []json.RawMessage{}, nil
++			}
++			return []json.RawMessage{rawResult.Data}, nil
++		},
++	})
++	if err != nil {
++		return err
++	}
++	return collector.Execute()
++}
+diff --git a/backend/plugins/rootly/tasks/services_extractor.go b/backend/plugins/rootly/tasks/services_extractor.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/tasks/services_extractor.go
+@@ -0,0 +1,78 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package tasks
++
++import (
++	"encoding/json"
++
++	"github.com/apache/incubator-devlake/core/dal"
++	"github.com/apache/incubator-devlake/core/errors"
++	"github.com/apache/incubator-devlake/core/plugin"
++	"github.com/apache/incubator-devlake/helpers/pluginhelper/api"
++	"github.com/apache/incubator-devlake/plugins/rootly/models"
++	"github.com/apache/incubator-devlake/plugins/rootly/models/raw"
++)
++
++var _ plugin.SubTaskEntryPoint = ExtractServices
++
++var ExtractServicesMeta = plugin.SubTaskMeta{
++	Name:             "extractServices",
++	EntryPoint:       ExtractServices,
++	EnabledByDefault: true,
++	Description:      "Extract Rootly services",
++	DomainTypes:      []string{plugin.DOMAIN_TYPE_TICKET},
++	ProductTables:    []string{models.Service{}.TableName()},
++}
++
++func ExtractServices(taskCtx plugin.SubTaskContext) errors.Error {
++	data := taskCtx.GetData().(*RootlyTaskData)
++	db := taskCtx.GetDal()
++	extractor, err := api.NewApiExtractor(api.ApiExtractorArgs{
++		RawDataSubTaskArgs: api.RawDataSubTaskArgs{
++			Ctx:     taskCtx,
++			Options: data.Options,
++			Table:   RAW_SERVICES_TABLE,
++		},
++		Extract: func(row *api.RawData) ([]interface{}, errors.Error) {
++			rawService := &raw.Service{}
++			if err := errors.Convert(json.Unmarshal(row.Data, rawService)); err != nil {
++				return nil, err
++			}
++			url := ""
++			if rawService.Attributes.HtmlUrl != nil {
++				url = *rawService.Attributes.HtmlUrl
++			}
++			service := &models.Service{
++				Id:   rawService.Id,
++				Name: rawService.Attributes.Name,
++				Url:  url,
++			}
++			service.ConnectionId = data.Options.ConnectionId
++			// Preserve operator-set ScopeConfigId across re-collections.
++			existing := &models.Service{}
++			if err := db.First(existing, dal.Where("connection_id = ? AND id = ?", data.Options.ConnectionId, rawService.Id)); err == nil {
++				service.ScopeConfigId = existing.ScopeConfigId
++			}
++			return []interface{}{service}, nil
++		},
++	})
++	if err != nil {
++		return err
++	}
++	return extractor.Execute()
++}
+diff --git a/backend/plugins/rootly/tasks/task_data.go b/backend/plugins/rootly/tasks/task_data.go
+new file mode 100644
+--- /dev/null
++++ b/backend/plugins/rootly/tasks/task_data.go
+@@ -0,0 +1,75 @@
++/*
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++*/
++
++package tasks
++
++import (
++	"github.com/apache/incubator-devlake/core/errors"
++	"github.com/apache/incubator-devlake/helpers/pluginhelper/api"
++	"github.com/apache/incubator-devlake/plugins/rootly/models"
++)
++
++type RootlyOptions struct {
++	ConnectionId  uint64                    `json:"connectionId" mapstructure:"connectionId,omitempty"`
++	ServiceId     string                    `json:"serviceId,omitempty" mapstructure:"serviceId,omitempty"`
++	ServiceName   string                    `json:"serviceName,omitempty" mapstructure:"serviceName,omitempty"`
++	ScopeConfigId uint64                    `json:"scopeConfigId,omitempty" mapstructure:"scopeConfigId,omitempty"`
++	ScopeConfig   *models.RootlyScopeConfig `json:"scopeConfig,omitempty" mapstructure:"scopeConfig,omitempty"`
++}
++
++type RootlyTaskData struct {
++	Options *RootlyOptions
++	Client  api.RateLimitedApiClient
++}
++
++func (p *RootlyOptions) GetParams() any {
++	return models.RootlyParams{
++		ConnectionId: p.ConnectionId,
++		ScopeId:      p.ServiceId,
++	}
++}
++
++func DecodeAndValidateTaskOptions(options map[string]interface{}) (*RootlyOptions, errors.Error) {
++	op, err := DecodeTaskOptions(options)
++	if err != nil {
++		return nil, err
++	}
++	err = ValidateTaskOptions(op)
++	if err != nil {
++		return nil, err
++	}
++	return op, nil
++}
++
++func DecodeTaskOptions(options map[string]interface{}) (*RootlyOptions, errors.Error) {
++	var op RootlyOptions
++	err := api.Decode(options, &op, nil)
++	if err != nil {
++		return nil, err
++	}
++	return &op, nil
++}
++
++func ValidateTaskOptions(op *RootlyOptions) errors.Error {
++	if op.ServiceId == "" {
++		return errors.BadInput.New("not enough info for Rootly execution")
++	}
++	if op.ConnectionId == 0 {
++		return errors.BadInput.New("connectionId is invalid")
++	}
++	return nil
++}
+diff --git a/config-ui/src/plugins/register/index.ts b/config-ui/src/plugins/register/index.ts
+--- a/config-ui/src/plugins/register/index.ts
++++ b/config-ui/src/plugins/register/index.ts
+@@ -31,6 +31,7 @@ import { GitLabConfig } from './gitlab';
+ import { JenkinsConfig } from './jenkins';
+ import { JiraConfig } from './jira';
+ import { PagerDutyConfig } from './pagerduty';
++import { RootlyConfig } from './rootly';
+ import { SonarQubeConfig } from './sonarqube';
+ import { TAPDConfig } from './tapd';
+ import { WebhookConfig } from './webhook';
+@@ -56,6 +57,7 @@ export const pluginConfigs: IPluginConfig[] = [
+   JenkinsConfig,
+   JiraConfig,
+   PagerDutyConfig,
++  RootlyConfig,
+   SlackConfig,
+   QDevConfig,
+   SonarQubeConfig,
+diff --git a/config-ui/src/plugins/register/rootly/assets/icon.svg b/config-ui/src/plugins/register/rootly/assets/icon.svg
+new file mode 100644
+--- /dev/null
++++ b/config-ui/src/plugins/register/rootly/assets/icon.svg
+@@ -0,0 +1,28 @@
++<!--
++Licensed to the Apache Software Foundation (ASF) under one or more
++contributor license agreements.  See the NOTICE file distributed with
++this work for additional information regarding copyright ownership.
++The ASF licenses this file to You under the Apache License, Version 2.0
++(the "License"); you may not use this file except in compliance with
++the License.  You may obtain a copy of the License at
++
++    http://www.apache.org/licenses/LICENSE-2.0
++
++Unless required by applicable law or agreed to in writing, software
++distributed under the License is distributed on an "AS IS" BASIS,
++WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++See the License for the specific language governing permissions and
++limitations under the License.
++-->
++<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 250 250" fill="currentColor">
++  <g fill-rule="nonzero">
++    <path d="M 111.835938 226.8125 C 111.835938 218.625 108.957031 211.957031 102.890625 206.496094 C 81.359375 186.9375 27.082031 187.695312 7.976562 189.667969 L 5.855469 169.046875 C 9.039062 168.742188 83.9375 161.464844 116.6875 191.03125 C 127.152344 200.433594 132.457031 212.410156 132.457031 226.664062 "/>
++    <path d="M 115.324219 226.8125 C 115.324219 212.5625 120.628906 200.585938 131.09375 191.183594 C 163.84375 161.617188 238.894531 168.894531 241.925781 169.199219 L 239.804688 189.667969 C 220.699219 187.695312 166.421875 186.9375 144.890625 206.496094 C 138.824219 211.957031 135.945312 218.628906 135.945312 226.8125 "/>
++    <path d="M 205.082031 66.855469 C 205.082031 66.855469 170.96875 57.148438 158.382812 75.800781 C 145.648438 94.144531 180.21875 119.921875 205.082031 66.855469 Z M 205.082031 66.855469 "/>
++    <path d="M 227.523438 118.253906 C 227.523438 118.253906 195.835938 102.484375 179.914062 118.40625 C 163.996094 134.324219 193.257812 166.015625 227.523438 118.253906 Z M 227.523438 118.253906 "/>
++    <path d="M 121.691406 23.1875 C 121.691406 23.1875 99.707031 50.933594 111.988281 69.734375 C 124.269531 88.535156 161.265625 66.398438 121.691406 23.1875 Z M 121.691406 23.1875 "/>
++    <path d="M 122.148438 100.816406 C 122.148438 100.816406 99.402344 127.957031 111.078125 147.0625 C 122.753906 166.164062 160.355469 145.242188 122.148438 100.816406 Z M 122.148438 100.816406 "/>
++    <path d="M 40.574219 66.851562 C 40.574219 66.851562 74.691406 57.148438 87.273438 75.796875 C 99.859375 94.449219 65.441406 119.921875 40.574219 66.851562 Z M 40.574219 66.851562 "/>
++    <path d="M 18.136719 118.253906 C 18.136719 118.253906 49.824219 102.484375 65.742188 118.40625 C 81.664062 134.324219 52.25 166.015625 18.136719 118.253906 Z M 18.136719 118.253906 "/>
++  </g>
++</svg>
+diff --git a/config-ui/src/plugins/register/rootly/config.tsx b/config-ui/src/plugins/register/rootly/config.tsx
+new file mode 100644
+--- /dev/null
++++ b/config-ui/src/plugins/register/rootly/config.tsx
+@@ -0,0 +1,58 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++import { DOC_URL } from '@/release';
++import { IPluginConfig } from '@/types';
++
++import Icon from './assets/icon.svg?react';
++
++export const RootlyConfig: IPluginConfig = {
++  plugin: 'rootly',
++  name: 'Rootly',
++  icon: ({ color }) => <Icon fill={color} />,
++  sort: 16,
++  isBeta: true,
++  connection: {
++    docLink: DOC_URL.PLUGIN.ROOTLY.BASIS,
++    initialValues: {
++      endpoint: 'https://api.rootly.com/v1/',
++    },
++    fields: [
++      'name',
++      {
++        key: 'endpoint',
++        multipleVersions: {
++          cloud: 'https://api.rootly.com/v1/',
++          server: '',
++        },
++      },
++      'token',
++      'proxy',
++      {
++        key: 'rateLimitPerHour',
++        subLabel:
++          'By default, DevLake uses 3,600 requests/hour for data collection for Rootly. But you can adjust the collection speed by setting up your desirable rate limit.',
++        learnMore: DOC_URL.PLUGIN.ROOTLY.RATE_LIMIT,
++        defaultValue: 3600,
++      },
++    ],
++  },
++  dataScope: {
++    title: 'Services',
++  },
++};
+diff --git a/config-ui/src/plugins/register/rootly/index.ts b/config-ui/src/plugins/register/rootly/index.ts
+new file mode 100644
+--- /dev/null
++++ b/config-ui/src/plugins/register/rootly/index.ts
+@@ -0,0 +1,19 @@
++/*
++ * Licensed to the Apache Software Foundation (ASF) under one or more
++ * contributor license agreements.  See the NOTICE file distributed with
++ * this work for additional information regarding copyright ownership.
++ * The ASF licenses this file to You under the Apache License, Version 2.0
++ * (the "License"); you may not use this file except in compliance with
++ * the License.  You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ *
++ */
++
++export * from './config';
+diff --git a/config-ui/src/release/stable.ts b/config-ui/src/release/stable.ts
+--- a/config-ui/src/release/stable.ts
++++ b/config-ui/src/release/stable.ts
+@@ -107,6 +107,10 @@ const URLS = {
+       BASIS: 'https://devlake.apache.org/docs/Configuration/PagerDuty',
+       RATE_LIMIT: 'https://devlake.apache.org/docs/Configuration/PagerDuty/#custom-rate-limit-optional',
+     },
++    ROOTLY: {
++      BASIS: 'https://devlake.apache.org/docs/Configuration/Rootly',
++      RATE_LIMIT: 'https://devlake.apache.org/docs/Configuration/Rootly#fixed-rate-limit-optional',
++    },
+     SLACK: {
+       BASIS: 'https://devlake.apache.org/docs/Configuration/Slack',
+       RATE_LIMIT: 'https://devlake.apache.org/docs/Configuration/Slack#custom-rate-limit-optional',
+diff --git a/grafana/dashboards/Rootly.json b/grafana/dashboards/Rootly.json
+new file mode 100644
+--- /dev/null
++++ b/grafana/dashboards/Rootly.json
+@@ -0,0 +1,1295 @@
++{
++  "annotations": {
++    "list": [
++      {
++        "builtIn": 1,
++        "datasource": {
++          "type": "datasource",
++          "uid": "grafana"
++        },
++        "enable": true,
++        "hide": true,
++        "iconColor": "rgba(0, 211, 255, 1)",
++        "name": "Annotations & Alerts",
++        "type": "dashboard"
++      }
++    ]
++  },
++  "editable": true,
++  "fiscalYearStartMonth": 0,
++  "graphTooltip": 0,
++  "id": 20,
++  "links": [
++    {
++      "asDropdown": false,
++      "icon": "bolt",
++      "includeVars": false,
++      "keepTime": true,
++      "tags": [],
++      "targetBlank": false,
++      "title": "Homepage",
++      "tooltip": "",
++      "type": "link",
++      "url": "/grafana/d/Lv1XbLHnk/data-specific-dashboards-homepage"
++    },
++    {
++      "asDropdown": false,
++      "icon": "external link",
++      "includeVars": false,
++      "keepTime": true,
++      "tags": [
++        "Data Source Specific Dashboard"
++      ],
++      "targetBlank": false,
++      "title": "Metric dashboards",
++      "tooltip": "",
++      "type": "dashboards",
++      "url": ""
++    }
++  ],
++  "liveNow": false,
++  "panels": [
++    {
++      "datasource": {
++        "type": "datasource",
++        "uid": "grafana"
++      },
++      "gridPos": {
++        "h": 3,
++        "w": 13,
++        "x": 0,
++        "y": 0
++      },
++      "id": 128,
++      "links": [
++        {
++          "targetBlank": true,
++          "title": "Rootly",
++          "url": "https://devlake.apache.org/docs/Configuration/Rootly"
++        }
++      ],
++      "options": {
++        "code": {
++          "language": "plaintext",
++          "showLineNumbers": false,
++          "showMiniMap": false
++        },
++        "content": "- Use Cases: This dashboard shows the incident data from Rootly.\n- Data Source Required: Rootly",
++        "mode": "markdown"
++      },
++      "pluginVersion": "9.5.15",
++      "targets": [
++        {
++          "datasource": {
++            "type": "datasource",
++            "uid": "grafana"
++          },
++          "queryType": "randomWalk",
++          "refId": "A"
++        }
++      ],
++      "title": "Dashboard Introduction",
++      "type": "text"
++    },
++    {
++      "datasource": {
++        "type": "datasource",
++        "uid": "grafana"
++      },
++      "gridPos": {
++        "h": 1,
++        "w": 24,
++        "x": 0,
++        "y": 3
++      },
++      "id": 126,
++      "targets": [
++        {
++          "datasource": {
++            "type": "datasource",
++            "uid": "grafana"
++          },
++          "refId": "A"
++        }
++      ],
++      "title": "1. Incident Resolution Status",
++      "type": "row"
++    },
++    {
++      "datasource": "mysql",
++      "description": "1. Total number of incidents created.\n2. The requirements being calculated are filtered by \"requirement creation time\" (time filter at the upper-right corner) and \"Jira board\" (\"Choose Board\" filter at the upper-left corner)",
++      "fieldConfig": {
++        "defaults": {
++          "color": {
++            "mode": "thresholds"
++          },
++          "mappings": [],
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "green",
++                "value": null
++              }
++            ]
++          }
++        },
++        "overrides": []
++      },
++      "gridPos": {
++        "h": 6,
++        "w": 4,
++        "x": 0,
++        "y": 4
++      },
++      "id": 114,
++      "links": [
++        {
++          "targetBlank": true,
++          "title": "Requirement Count",
++          "url": "https://devlake.apache.org/docs/Metrics/RequirementCount"
++        }
++      ],
++      "options": {
++        "colorMode": "value",
++        "graphMode": "area",
++        "justifyMode": "auto",
++        "orientation": "auto",
++        "reduceOptions": {
++          "calcs": [
++            "lastNotNull"
++          ],
++          "fields": "",
++          "values": false
++        },
++        "text": {},
++        "textMode": "auto"
++      },
++      "pluginVersion": "9.5.15",
++      "targets": [
++        {
++          "datasource": "mysql",
++          "editorMode": "code",
++          "format": "table",
++          "group": [],
++          "metricColumn": "none",
++          "queryType": "randomWalk",
++          "rawQuery": true,
++          "rawSql": "select \r\n  count(distinct i.id) as value\r\nfrom issues i\r\n  join board_issues bi on i.id = bi.issue_id\r\nwhere \r\n  $__timeFilter(i.created_date)\r\n  and bi.board_id in (${board_id})",
++          "refId": "A",
++          "select": [
++            [
++              {
++                "params": [
++                  "value"
++                ],
++                "type": "column"
++              }
++            ]
++          ],
++          "sql": {
++            "columns": [
++              {
++                "parameters": [],
++                "type": "function"
++              }
++            ],
++            "groupBy": [
++              {
++                "property": {
++                  "type": "string"
++                },
++                "type": "groupBy"
++              }
++            ],
++            "limit": 50
++          },
++          "timeColumn": "time",
++          "where": [
++            {
++              "name": "$__timeFilter",
++              "params": [],
++              "type": "macro"
++            }
++          ]
++        }
++      ],
++      "title": "Number of Incidents [Created in Selected Time Range]",
++      "type": "stat"
++    },
++    {
++      "datasource": "mysql",
++      "description": "",
++      "fieldConfig": {
++        "defaults": {
++          "color": {
++            "mode": "thresholds"
++          },
++          "mappings": [],
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "green",
++                "value": null
++              }
++            ]
++          },
++          "unit": "none"
++        },
++        "overrides": []
++      },
++      "gridPos": {
++        "h": 6,
++        "w": 4,
++        "x": 4,
++        "y": 4
++      },
++      "id": 116,
++      "links": [
++        {
++          "targetBlank": true,
++          "title": "Requirement Count",
++          "url": "https://devlake.apache.org/docs/Metrics/RequirementCount"
++        }
++      ],
++      "options": {
++        "colorMode": "value",
++        "graphMode": "area",
++        "justifyMode": "auto",
++        "orientation": "auto",
++        "reduceOptions": {
++          "calcs": [
++            "lastNotNull"
++          ],
++          "fields": "",
++          "values": false
++        },
++        "text": {},
++        "textMode": "auto"
++      },
++      "pluginVersion": "9.5.15",
++      "targets": [
++        {
++          "datasource": "mysql",
++          "editorMode": "code",
++          "format": "table",
++          "group": [],
++          "metricColumn": "none",
++          "queryType": "randomWalk",
++          "rawQuery": true,
++          "rawSql": "select \r\n  count(distinct i.id) as value\r\nfrom issues i\r\n  join board_issues bi on i.id = bi.issue_id\r\nwhere \r\n  i.original_status = 'resolved'\r\n  and $__timeFilter(i.created_date)\r\n  and bi.board_id in (${board_id})",
++          "refId": "A",
++          "select": [
++            [
++              {
++                "params": [
++                  "value"
++                ],
++                "type": "column"
++              }
++            ]
++          ],
++          "sql": {
++            "columns": [
++              {
++                "parameters": [],
++                "type": "function"
++              }
++            ],
++            "groupBy": [
++              {
++                "property": {
++                  "type": "string"
++                },
++                "type": "groupBy"
++              }
++            ],
++            "limit": 50
++          },
++          "timeColumn": "time",
++          "where": [
++            {
++              "name": "$__timeFilter",
++              "params": [],
++              "type": "macro"
++            }
++          ]
++        }
++      ],
++      "title": "Number of Resolved Incidents [Created in Selected Time Range]",
++      "type": "stat"
++    },
++    {
++      "datasource": "mysql",
++      "description": "1. Total number of incidents created.\n2. The requirements being calculated are filtered by \"requirement creation time\" (time filter at the upper-right corner) and \"Jira board\" (\"Choose Board\" filter at the upper-left corner)",
++      "fieldConfig": {
++        "defaults": {
++          "color": {
++            "mode": "thresholds"
++          },
++          "custom": {
++            "align": "auto",
++            "cellOptions": {
++              "type": "auto"
++            },
++            "inspect": false
++          },
++          "mappings": [],
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "green",
++                "value": null
++              }
++            ]
++          }
++        },
++        "overrides": [
++          {
++            "matcher": {
++              "id": "byFrameRefID",
++              "options": "A"
++            },
++            "properties": [
++              {
++                "id": "custom.filterable",
++                "value": true
++              }
++            ]
++          }
++        ]
++      },
++      "gridPos": {
++        "h": 6,
++        "w": 16,
++        "x": 8,
++        "y": 4
++      },
++      "id": 131,
++      "links": [
++        {
++          "targetBlank": true,
++          "title": "Requirement Count",
++          "url": "https://devlake.apache.org/docs/Metrics/RequirementCount"
++        }
++      ],
++      "options": {
++        "cellHeight": "sm",
++        "footer": {
++          "countRows": false,
++          "fields": "",
++          "reducer": [
++            "sum"
++          ],
++          "show": false
++        },
++        "showHeader": true,
++        "sortBy": []
++      },
++      "pluginVersion": "9.5.15",
++      "targets": [
++        {
++          "datasource": "mysql",
++          "editorMode": "code",
++          "format": "table",
++          "group": [],
++          "metricColumn": "none",
++          "queryType": "randomWalk",
++          "rawQuery": true,
++          "rawSql": "select \r\n  b.name as service,\r\n  i.issue_key,\r\n  i.description,\r\n  i.original_status,\r\n  i.priority,\r\n  i.created_date,\r\n  i.updated_date,\r\n  round((i.lead_time_minutes/1440),1) as lead_time_days,\r\n  i.url\r\nfrom issues i\r\n  join board_issues bi on i.id = bi.issue_id\r\n  join boards b on bi.board_id = b.id\r\nwhere \r\n  $__timeFilter(i.created_date)\r\n  and bi.board_id in (${board_id})",
++          "refId": "A",
++          "select": [
++            [
++              {
++                "params": [
++                  "value"
++                ],
++                "type": "column"
++              }
++            ]
++          ],
++          "sql": {
++            "columns": [
++              {
++                "parameters": [],
++                "type": "function"
++              }
++            ],
++            "groupBy": [
++              {
++                "property": {
++                  "type": "string"
++                },
++                "type": "groupBy"
++              }
++            ],
++            "limit": 50
++          },
++          "timeColumn": "time",
++          "where": [
++            {
++              "name": "$__timeFilter",
++              "params": [],
++              "type": "macro"
++            }
++          ]
++        }
++      ],
++      "title": "List of Incidents [Created in Selected Time Range]",
++      "type": "table"
++    },
++    {
++      "datasource": "mysql",
++      "description": "",
++      "fieldConfig": {
++        "defaults": {
++          "color": {
++            "mode": "thresholds"
++          },
++          "mappings": [],
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "red",
++                "value": null
++              },
++              {
++                "color": "green",
++                "value": 0.8
++              }
++            ]
++          },
++          "unit": "percentunit"
++        },
++        "overrides": []
++      },
++      "gridPos": {
++        "h": 6,
++        "w": 8,
++        "x": 0,
++        "y": 10
++      },
++      "id": 117,
++      "links": [
++        {
++          "targetBlank": true,
++          "title": "Incident Age",
++          "url": "https://devlake.apache.org/docs/Metrics/IncidentAge"
++        }
++      ],
++      "options": {
++        "colorMode": "value",
++        "graphMode": "area",
++        "justifyMode": "auto",
++        "orientation": "auto",
++        "reduceOptions": {
++          "calcs": [
++            "lastNotNull"
++          ],
++          "fields": "",
++          "values": false
++        },
++        "text": {},
++        "textMode": "auto"
++      },
++      "pluginVersion": "9.5.15",
++      "targets": [
++        {
++          "datasource": "mysql",
++          "editorMode": "code",
++          "format": "time_series",
++          "group": [],
++          "metricColumn": "none",
++          "queryType": "randomWalk",
++          "rawQuery": true,
++          "rawSql": "with _requirements as(\r\n  select\r\n    count(distinct i.id) as total_count,\r\n    count(distinct case when i.original_status = 'resolved' then i.id else null end) as resolved_count\r\n  from issues i\r\n    join board_issues bi on i.id = bi.issue_id\r\n  where \r\n    $__timeFilter(i.created_date)\r\n    and bi.board_id in (${board_id})\r\n)\r\n\r\nselect \r\n  now() as time,\r\n  1.0 * resolved_count/total_count as requirement_delivery_rate\r\nfrom _requirements",
++          "refId": "A",
++          "select": [
++            [
++              {
++                "params": [
++                  "value"
++                ],
++                "type": "column"
++              }
++            ]
++          ],
++          "sql": {
++            "columns": [
++              {
++                "parameters": [],
++                "type": "function"
++              }
++            ],
++            "groupBy": [
++              {
++                "property": {
++                  "type": "string"
++                },
++                "type": "groupBy"
++              }
++            ],
++            "limit": 50
++          },
++          "timeColumn": "time",
++          "where": [
++            {
++              "name": "$__timeFilter",
++              "params": [],
++              "type": "macro"
++            }
++          ]
++        }
++      ],
++      "title": "Incident Resolution Rate [Incidents created in the selected time range]",
++      "type": "stat"
++    },
++    {
++      "datasource": "mysql",
++      "description": "",
++      "fieldConfig": {
++        "defaults": {
++          "color": {
++            "mode": "palette-classic"
++          },
++          "custom": {
++            "axisCenteredZero": false,
++            "axisColorMode": "text",
++            "axisLabel": "Resolution Rate(%)",
++            "axisPlacement": "auto",
++            "barAlignment": 0,
++            "drawStyle": "line",
++            "fillOpacity": 0,
++            "gradientMode": "none",
++            "hideFrom": {
++              "legend": false,
++              "tooltip": false,
++              "viz": false
++            },
++            "lineInterpolation": "linear",
++            "lineWidth": 1,
++            "pointSize": 12,
++            "scaleDistribution": {
++              "type": "linear"
++            },
++            "showPoints": "auto",
++            "spanNulls": false,
++            "stacking": {
++              "group": "A",
++              "mode": "none"
++            },
++            "thresholdsStyle": {
++              "mode": "off"
++            }
++          },
++          "mappings": [],
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "red",
++                "value": null
++              },
++              {
++                "color": "green",
++                "value": 0.8
++              }
++            ]
++          },
++          "unit": "percentunit"
++        },
++        "overrides": []
++      },
++      "gridPos": {
++        "h": 6,
++        "w": 16,
++        "x": 8,
++        "y": 10
++      },
++      "id": 121,
++      "links": [
++        {
++          "targetBlank": true,
++          "title": "Incident Age",
++          "url": "https://devlake.apache.org/docs/Metrics/IncidentAge"
++        }
++      ],
++      "options": {
++        "legend": {
++          "calcs": [],
++          "displayMode": "list",
++          "placement": "bottom",
++          "showLegend": true
++        },
++        "tooltip": {
++          "mode": "single",
++          "sort": "none"
++        }
++      },
++      "pluginVersion": "8.0.6",
++      "targets": [
++        {
++          "datasource": "mysql",
++          "editorMode": "code",
++          "format": "time_series",
++          "group": [],
++          "metricColumn": "none",
++          "queryType": "randomWalk",
++          "rawQuery": true,
++          "rawSql": "with _requirements as(\r\n  select\r\n    DATE_ADD(date(i.created_date), INTERVAL -DAYOFMONTH(date(i.created_date))+1 DAY) as time,\r\n    1.0 * count(distinct case when i.original_status = 'resolved' then i.id else null end)/count(distinct i.id) as resolved_rate\r\n  from issues i\r\n    join board_issues bi on i.id = bi.issue_id\r\n  where \r\n    $__timeFilter(i.created_date)\r\n    and bi.board_id in (${board_id})\r\n  group by 1\r\n)\r\n\r\nselect\r\n  time,\r\n  resolved_rate\r\nfrom _requirements\r\norder by time",
++          "refId": "A",
++          "select": [
++            [
++              {
++                "params": [
++                  "value"
++                ],
++                "type": "column"
++              }
++            ]
++          ],
++          "sql": {
++            "columns": [
++              {
++                "parameters": [],
++                "type": "function"
++              }
++            ],
++            "groupBy": [
++              {
++                "property": {
++                  "type": "string"
++                },
++                "type": "groupBy"
++              }
++            ],
++            "limit": 50
++          },
++          "timeColumn": "time",
++          "where": [
++            {
++              "name": "$__timeFilter",
++              "params": [],
++              "type": "macro"
++            }
++          ]
++        }
++      ],
++      "title": "Incident Resolution Rate over Time [Incidents Created in Selected Time Range]",
++      "type": "timeseries"
++    },
++    {
++      "collapsed": false,
++      "datasource": {
++        "type": "datasource",
++        "uid": "grafana"
++      },
++      "gridPos": {
++        "h": 1,
++        "w": 24,
++        "x": 0,
++        "y": 16
++      },
++      "id": 110,
++      "panels": [],
++      "targets": [
++        {
++          "datasource": {
++            "type": "datasource",
++            "uid": "grafana"
++          },
++          "refId": "A"
++        }
++      ],
++      "title": "2. Mean Time to Resolve (MTTR)",
++      "type": "row"
++    },
++    {
++      "datasource": "mysql",
++      "description": "",
++      "fieldConfig": {
++        "defaults": {
++          "decimals": 1,
++          "mappings": [],
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "green",
++                "value": null
++              },
++              {
++                "color": "#EAB839",
++                "value": 1
++              },
++              {
++                "color": "red",
++                "value": 3
++              }
++            ]
++          },
++          "unit": "d"
++        },
++        "overrides": []
++      },
++      "gridPos": {
++        "h": 6,
++        "w": 4,
++        "x": 0,
++        "y": 17
++      },
++      "id": 12,
++      "links": [
++        {
++          "targetBlank": true,
++          "title": "Incident Age",
++          "url": "https://devlake.apache.org/docs/Metrics/IncidentAge"
++        }
++      ],
++      "options": {
++        "colorMode": "value",
++        "graphMode": "area",
++        "justifyMode": "auto",
++        "orientation": "auto",
++        "reduceOptions": {
++          "calcs": [
++            "mean"
++          ],
++          "fields": "/^value$/",
++          "values": false
++        },
++        "text": {},
++        "textMode": "auto"
++      },
++      "pluginVersion": "9.5.15",
++      "targets": [
++        {
++          "datasource": "mysql",
++          "editorMode": "code",
++          "format": "table",
++          "group": [],
++          "metricColumn": "none",
++          "rawQuery": true,
++          "rawSql": "select \r\n  avg(lead_time_minutes/1440) as value\r\nfrom issues i\r\n  join board_issues bi on i.id = bi.issue_id\r\nwhere \r\n  i.original_status = 'resolved'\r\n  and $__timeFilter(i.resolution_date)\r\n  and bi.board_id in (${board_id})",
++          "refId": "A",
++          "select": [
++            [
++              {
++                "params": [
++                  "progress"
++                ],
++                "type": "column"
++              }
++            ]
++          ],
++          "sql": {
++            "columns": [
++              {
++                "parameters": [],
++                "type": "function"
++              }
++            ],
++            "groupBy": [
++              {
++                "property": {
++                  "type": "string"
++                },
++                "type": "groupBy"
++              }
++            ],
++            "limit": 50
++          },
++          "table": "ca_analysis",
++          "timeColumn": "create_time",
++          "timeColumnType": "timestamp",
++          "where": [
++            {
++              "name": "$__timeFilter",
++              "params": [],
++              "type": "macro"
++            }
++          ]
++        }
++      ],
++      "title": "MTTR [Incidents Resolved in Select Time Range]",
++      "type": "stat"
++    },
++    {
++      "datasource": "mysql",
++      "description": "",
++      "fieldConfig": {
++        "defaults": {
++          "mappings": [],
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "green",
++                "value": null
++              },
++              {
++                "color": "#EAB839",
++                "value": 1
++              },
++              {
++                "color": "red",
++                "value": 3
++              }
++            ]
++          },
++          "unit": "d"
++        },
++        "overrides": []
++      },
++      "gridPos": {
++        "h": 6,
++        "w": 4,
++        "x": 4,
++        "y": 17
++      },
++      "id": 13,
++      "links": [
++        {
++          "targetBlank": true,
++          "title": "Incident Age",
++          "url": "https://devlake.apache.org/docs/Metrics/IncidentAge"
++        }
++      ],
++      "options": {
++        "colorMode": "value",
++        "graphMode": "area",
++        "justifyMode": "auto",
++        "orientation": "auto",
++        "reduceOptions": {
++          "calcs": [
++            "lastNotNull"
++          ],
++          "fields": "",
++          "values": false
++        },
++        "text": {},
++        "textMode": "auto"
++      },
++      "pluginVersion": "9.5.15",
++      "targets": [
++        {
++          "datasource": "mysql",
++          "editorMode": "code",
++          "format": "table",
++          "group": [],
++          "metricColumn": "none",
++          "rawQuery": true,
++          "rawSql": "with _ranks as(\r\n  select \r\n    i.lead_time_minutes,\r\n    percent_rank() over (order by lead_time_minutes asc) as ranks\r\n  from issues i\r\n    join board_issues bi on i.id = bi.issue_id\r\n  where \r\n    i.original_status = 'resolved'\r\n    and $__timeFilter(i.resolution_date)\r\n    and bi.board_id in (${board_id})\r\n)\r\n\r\nselect\r\n  max(lead_time_minutes/1440) as value\r\nfrom _ranks\r\nwhere \r\n  ranks <= 0.8",
++          "refId": "A",
++          "select": [
++            [
++              {
++                "params": [
++                  "progress"
++                ],
++                "type": "column"
++              }
++            ]
++          ],
++          "sql": {
++            "columns": [
++              {
++                "parameters": [],
++                "type": "function"
++              }
++            ],
++            "groupBy": [
++              {
++                "property": {
++                  "type": "string"
++                },
++                "type": "groupBy"
++              }
++            ],
++            "limit": 50
++          },
++          "table": "ca_analysis",
++          "timeColumn": "create_time",
++          "timeColumnType": "timestamp",
++          "where": [
++            {
++              "name": "$__timeFilter",
++              "params": [],
++              "type": "macro"
++            }
++          ]
++        }
++      ],
++      "title": "80% Incidents' MTTR are less than # [Incidents Resolved in Select Time Range]",
++      "type": "stat"
++    },
++    {
++      "datasource": "mysql",
++      "description": "",
++      "fieldConfig": {
++        "defaults": {
++          "color": {
++            "mode": "palette-classic"
++          },
++          "custom": {
++            "axisCenteredZero": false,
++            "axisColorMode": "text",
++            "axisLabel": "Incident Age(days)",
++            "axisPlacement": "auto",
++            "axisSoftMin": 0,
++            "fillOpacity": 80,
++            "gradientMode": "none",
++            "hideFrom": {
++              "legend": false,
++              "tooltip": false,
++              "viz": false
++            },
++            "lineWidth": 1,
++            "scaleDistribution": {
++              "type": "linear"
++            },
++            "thresholdsStyle": {
++              "mode": "off"
++            }
++          },
++          "mappings": [],
++          "thresholds": {
++            "mode": "absolute",
++            "steps": [
++              {
++                "color": "green",
++                "value": null
++              },
++              {
++                "color": "red",
++                "value": 80
++              }
++            ]
++          },
++          "unit": "short"
++        },
++        "overrides": []
++      },
++      "gridPos": {
++        "h": 6,
++        "w": 16,
++        "x": 8,
++        "y": 17
++      },
++      "id": 17,
++      "interval": "",
++      "links": [
++        {
++          "targetBlank": true,
++          "title": "Incident Age",
++          "url": "https://devlake.apache.org/docs/Metrics/IncidentAge"
++        }
++      ],
++      "options": {
++        "barRadius": 0,
++        "barWidth": 0.5,
++        "fullHighlight": false,
++        "groupWidth": 0.7,
++        "legend": {
++          "calcs": [],
++          "displayMode": "list",
++          "placement": "bottom",
++          "showLegend": true
++        },
++        "orientation": "auto",
++        "showValue": "auto",
++        "stacking": "none",
++        "text": {
++          "valueSize": 12
++        },
++        "tooltip": {
++          "mode": "single",
++          "sort": "none"
++        },
++        "xTickLabelRotation": 0,
++        "xTickLabelSpacing": 0
++      },
++      "pluginVersion": "8.0.6",
++      "targets": [
++        {
++          "datasource": "mysql",
++          "editorMode": "code",
++          "format": "table",
++          "group": [],
++          "metricColumn": "none",
++          "rawQuery": true,
++          "rawSql": "with _requirements as(\r\n  select \r\n    DATE_ADD(date(i.resolution_date), INTERVAL -DAYOFMONTH(date(i.resolution_date))+1 DAY) as time,\r\n    avg(lead_time_minutes/1440) as mean_incident_age\r\n  from issues i\r\n    join board_issues bi on i.id = bi.issue_id\r\n  where \r\n    i.original_status = 'resolved'\r\n    and $__timeFilter(i.resolution_date)\r\n    and bi.board_id in (${board_id})\r\n  group by 1\r\n)\r\n\r\nselect \r\n  date_format(time,'%M %Y') as month,\r\n  mean_incident_age\r\nfrom _requirements\r\norder by time asc",
++          "refId": "A",
++          "select": [
++            [
++              {
++                "params": [
++                  "progress"
++                ],
++                "type": "column"
++              }
++            ]
++          ],
++          "sql": {
++            "columns": [
++              {
++                "parameters": [],
++                "type": "function"
++              }
++            ],
++            "groupBy": [
++              {
++                "property": {
++                  "type": "string"
++                },
++                "type": "groupBy"
++              }
++            ],
++            "limit": 50
++          },
++          "table": "ca_analysis",
++          "timeColumn": "create_time",
++          "timeColumnType": "timestamp",
++          "where": [
++            {
++              "name": "$__timeFilter",
++              "params": [],
++              "type": "macro"
++            }
++          ]
++        }
++      ],
++      "title": "Mean MTTR [Incidents Resolved in Select Time Range]",
++      "type": "barchart"
++    },
++    {
++      "aliasColors": {},
++      "bars": false,
++      "dashLength": 10,
++      "dashes": false,
++      "datasource": "mysql",
++      "description": "1. The cumulative distribution of MTTR\n2. Each point refers to the percent rank of a distinct duration to resolve incidents.",
++      "fill": 0,
++      "fillGradient": 4,
++      "gridPos": {
++        "h": 6,
++        "w": 24,
++        "x": 0,
++        "y": 23
++      },
++      "hiddenSeries": false,
++      "id": 15,
++      "legend": {
++        "alignAsTable": false,
++        "avg": false,
++        "current": false,
++        "max": false,
++        "min": false,
++        "rightSide": false,
++        "show": false,
++        "total": false,
++        "values": false
++      },
++      "lines": true,
++      "linewidth": 8,
++      "links": [
++        {
++          "targetBlank": true,
++          "title": "Incident Age",
++          "url": "https://devlake.apache.org/docs/Metrics/IncidentAge"
++        }
++      ],
++      "nullPointMode": "null",
++      "options": {
++        "alertThreshold": false
++      },
++      "percentage": false,
++      "pluginVersion": "9.5.15",
++      "pointradius": 0.5,
++      "points": false,
++      "renderer": "flot",
++      "seriesOverrides": [],
++      "spaceLength": 10,
++      "stack": false,
++      "steppedLine": false,
++      "targets": [
++        {
++          "datasource": "mysql",
++          "editorMode": "code",
++          "format": "time_series",
++          "group": [],
++          "metricColumn": "none",
++          "rawQuery": true,
++          "rawSql": "with _ranks as(\r\n  select \r\n    round(i.lead_time_minutes/1440) as lead_time_day\r\n  from issues i\r\n    join board_issues bi on i.id = bi.issue_id\r\n  where \r\n    i.original_status = 'resolved'\r\n    and $__timeFilter(i.resolution_date)\r\n    and bi.board_id in (${board_id})\r\n  order by lead_time_day asc\r\n)\r\n\r\nselect \r\n  now() as time,\r\n  lpad(concat(lead_time_day,'d'), 4, ' ') as metric,\r\n  percent_rank() over (order by lead_time_day asc) as value\r\nfrom _ranks\r\norder by lead_time_day asc",
++          "refId": "A",
++          "select": [
++            [
++              {
++                "params": [
++                  "progress"
++                ],
++                "type": "column"
++              }
++            ]
++          ],
++          "sql": {
++            "columns": [
++              {
++                "parameters": [],
++                "type": "function"
++              }
++            ],
++            "groupBy": [
++              {
++                "property": {
++                  "type": "string"
++                },
++                "type": "groupBy"
++              }
++            ],
++            "limit": 50
++          },
++          "table": "ca_analysis",
++          "timeColumn": "create_time",
++          "timeColumnType": "timestamp",
++          "where": [
++            {
++              "name": "$__timeFilter",
++              "params": [],
++              "type": "macro"
++            }
++          ]
++        }
++      ],
++      "thresholds": [
++        {
++          "$$hashKey": "object:469",
++          "colorMode": "ok",
++          "fill": true,
++          "line": true,
++          "op": "lt",
++          "value": 0.8,
++          "yaxis": "right"
++        }
++      ],
++      "timeRegions": [],
++      "title": "Cumulative Distribution of MTTR [Incidents Resolved in Select Time Range]",
++      "tooltip": {
++        "shared": false,
++        "sort": 0,
++        "value_type": "individual"
++      },
++      "transformations": [],
++      "type": "graph",
++      "xaxis": {
++        "mode": "series",
++        "show": true,
++        "values": [
++          "current"
++        ]
++      },
++      "yaxes": [
++        {
++          "$$hashKey": "object:76",
++          "format": "percentunit",
++          "label": "Percent Rank (%)",
++          "logBase": 1,
++          "max": "1.2",
++          "show": true
++        },
++        {
++          "$$hashKey": "object:77",
++          "format": "short",
++          "logBase": 1,
++          "show": false
++        }
++      ],
++      "yaxis": {
++        "align": false
++      }
++    },
++    {
++      "datasource": {
++        "type": "datasource",
++        "uid": "grafana"
++      },
++      "gridPos": {
++        "h": 2,
++        "w": 24,
++        "x": 0,
++        "y": 29
++      },
++      "id": 130,
++      "options": {
++        "code": {
++          "language": "plaintext",
++          "showLineNumbers": false,
++          "showMiniMap": false
++        },
++        "content": "<br/>\n\nThis dashboard is created based on this [data schema](https://devlake.apache.org/docs/DataModels/DevLakeDomainLayerSchema). Want to add more metrics? Please follow the [guide](https://devlake.apache.org/docs/Configuration/Dashboards/GrafanaUserGuide).",
++        "mode": "markdown"
++      },
++      "pluginVersion": "9.5.15",
++      "targets": [
++        {
++          "datasource": {
++            "type": "datasource",
++            "uid": "grafana"
++          },
++          "queryType": "randomWalk",
++          "refId": "A"
++        }
++      ],
++      "type": "text"
++    }
++  ],
++  "refresh": "",
++  "schemaVersion": 38,
++  "style": "dark",
++  "tags": [
++    "Data Source Dashboard",
++    "Stable Data Sources"
++  ],
++  "templating": {
++    "list": [
++      {
++        "current": {
++          "selected": true,
++          "text": [
++            "All"
++          ],
++          "value": [
++            "$__all"
++          ]
++        },
++        "datasource": "mysql",
++        "definition": "select concat(name, '--', id) from boards where id like 'rootly%'",
++        "hide": 0,
++        "includeAll": true,
++        "label": "Choose Board",
++        "multi": true,
++        "name": "board_id",
++        "options": [],
++        "query": "select concat(name, '--', id) from boards where id like 'rootly%'",
++        "refresh": 1,
++        "regex": "/^(?<text>.*)--(?<value>.*)$/",
++        "skipUrlSync": false,
++        "sort": 0,
++        "type": "query"
++      }
++    ]
++  },
++  "time": {
++    "from": "now-6M",
++    "to": "now"
++  },
++  "timepicker": {},
++  "timezone": "utc",
++  "title": "Rootly",
++  "uid": "rootly-dashboard",
++  "version": 2,
++  "weekStart": ""
++}
+\ No newline at end of file
+__SWEPMV2_GOLD_PATCH_EOF__
+git apply --verbose --whitespace=nowarn /tmp/gold.patch

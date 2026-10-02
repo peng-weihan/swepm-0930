@@ -1,0 +1,56 @@
+{
+  "instance_id": "RakuenSoftware__aimee-2499",
+  "overall_quality": "good",
+  "test_scope": "balanced",
+  "confidence": 0.8,
+  "gold_patch_assessment": "The gold patch correctly moves handoff validation logic from inline C code in delegate_prompt.c to a new Go module stage (server-go/modules/delegates/handoff.go). It adds the handoff stage constants (StageHandoff=5, EventHandoff=6661), the ValidateHandoff function with full validation logic, the binary wire protocol handler (handleHandoff), registers the stage in main.go and process-contracts.json, adds a C-side provider registration mechanism (delegate_register_handoff_provider) so the C code delegates to the Go module, creates the module_stage_adapter in module_stage_adapters.c, and exposes wire helpers in module_api.h. The C code retains only prompt construction and wrapper calls, failing closed as NEEDS-REVIEW when the module is unavailable. This directly addresses every requirement in the issue statement.",
+  "base_vs_gold_expectation": "The base will fail: (1) Go tests in handoff_test.go reference types/constants (StageHandoff, EventHandoff, HandoffVerdict, handleHandoff) that don't exist without the gold patch, causing compilation failure. (2) The updated main_test.go expects event 6661 in the delegates module config, which is absent in the base. (3) C test files call delegate_register_handoff_provider which doesn't exist in the base header, causing C compilation failure. The gold patch provides all missing definitions, so tests will pass with it applied.",
+  "too_narrow_risks": [
+    "No direct test of the C-side wire format encode/decode functions in module_api.h (aimee_delegates_handoff_request_encode, aimee_delegates_handoff_field) — they are only tested indirectly through the module_stage_adapter integration.",
+    "No test verifying the C-side delegate_handoff_validate_text correctly falls back to needs_supervisor_review when no provider is registered (the fail-closed behavior documented in the gold patch comments).",
+    "The test patch's baseline/refactor/index.json SHA256 updates are not verified by any of the executed tests, but this is cosmetic and doesn't affect correctness."
+  ],
+  "too_broad_risks": [
+    "The eval.sh runs cmake --build build -j as a pre-test step; a build failure in unrelated C code could cause the entire verification to fail.",
+    "ctest runs test_server_compute which covers OAuth fallback handling and other server compute tests beyond handoff validation, though the test patch does update that file to register a handoff provider."
+  ],
+  "implementation_coupling": [
+    "Go tests in handoff_test.go directly reference the exported HandoffVerdict struct and its specific field names — an alternative implementation using different type names would fail.",
+    "Tests check specific wire protocol constants (handoffRequestMagic=0x444e4844, handoffResponseMagic=0x564e4844) and exact response buffer layout, coupling to the gold patch's wire format design.",
+    "Error message substring checks (e.g., 'empty delegate handoff', 'not valid JSON object', 'outside owned_files') couple tests to the gold patch's exact error wording, though these are reasonable since they define the API contract."
+  ],
+  "environment_risks": [
+    "Requires both Go toolchain and CMake/C build environment to be functional in the Docker image.",
+    "cmake --build build -j depends on the build directory being pre-configured correctly in the Docker image.",
+    "Go tests run with CGO_ENABLED=0, which should be fine for pure Go code but could mask issues if the module ever needs cgo."
+  ],
+  "mismatches": [],
+  "evidence": [
+    {
+      "file": "/testbed/server-go/modules/delegates/delegates.go",
+      "detail": "Base has no StageHandoff or handleHandoff — only StageInvoke, StageCapabilities, StageChain, StagePaths are handled. Gold patch adds the handoff branch."
+    },
+    {
+      "file": "/testbed/src/headers/cmd_agent_delegate_impl.h",
+      "detail": "Base has no delegate_handoff_provider_fn typedef or delegate_register_handoff_provider declaration. Gold patch adds both at line 105-111."
+    },
+    {
+      "file": "/testbed/src/modules/process-contracts.json",
+      "detail": "Base delegates module has stages 1-4 (events 6657-6660). Gold patch adds stage 5 (event 6661) for delegate-handoff-validation."
+    },
+    {
+      "file": "/testbed/src/tests/test_delegate_handoff.c",
+      "detail": "Base has 7 inline C validation tests. Test patch removes them (validation moved to Go), keeps prompt contract and JSON field tests, and the Go handoff_test.go replaces them with equivalent coverage."
+    },
+    {
+      "file": "/testbed/src/modules/delegates/delegate_prompt.c",
+      "detail": "Base has ~150 lines of inline C validation logic. Gold patch replaces it with provider delegation and fail-closed fallback."
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Test patch creates handoff_test.go with 10 test functions covering valid parsing, malformed rejection, supervisor_actions optionality, verification downgrade, both pass spellings, ownership checks, admitted touch counting, unscoped ownership, ownership outranking verification, and invalid envelope handling."
+    }
+  ],
+  "recommended_action": "keep",
+  "summary": "Well-constructed instance that moves handoff validation from C to a Go module stage. The gold patch is comprehensive and directly addresses the issue. Tests cover the core validation logic thoroughly in Go (10 test functions with diverse scenarios) while adapting C-side tests to use provider registration. The base will fail compilation due to missing types and functions. Minor implementation coupling exists around type names and wire format constants, but these are part of the defined module API contract. Environment risks are standard for a multi-language C+Go project with a CMake build system."
+}

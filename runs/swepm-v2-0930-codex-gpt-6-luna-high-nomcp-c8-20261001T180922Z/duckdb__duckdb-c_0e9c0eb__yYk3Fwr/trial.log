@@ -1,0 +1,63 @@
+Running command: test -x /usr/local/bin/codex-code-mode-host && codex --version
+Command outputs captured
+Running command: mkdir -p "$CODEX_HOME" /opt/swepm-runtime/secrets /logs/agent
+Command outputs captured
+Codex auth: using auth.json from [REDACTED]
+Running command: ln -sf /opt/swepm-runtime/secrets/auth.json "$CODEX_HOME/auth.json"
+
+Command outputs captured
+Running command: if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi; codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-6-luna --json --enable unified_exec -c model_reasoning_effort=high -- 'INSERT statements should be represented in the parser as a QueryNode, analogous to the existing DeleteStatement/DeleteQueryNode and UpdateStatement/UpdateQueryNode split.
+
+Currently, INSERT-specific parse state is stored directly on InsertStatement, which prevents INSERT from fully participating in the QueryNode hierarchy and causes missing or incomplete behavior for operations that work on QueryNode objects, such as copying, equality checks, stringification, serialization/deserialization, and use as a CTE body.
+
+Refactor the parser representation so InsertStatement is a thin SQLStatement wrapper around an InsertQueryNode. InsertQueryNode must be a QueryNode with type QueryNodeType::INSERT_QUERY_NODE and must contain the INSERT-specific fields and behavior, including the target catalog/schema/table, optional table reference, select/value source, column list, InsertColumnOrder, DEFAULT VALUES flag, CTE map, RETURNING list, and optional OnConflictInfo.
+
+The following behavior should work through InsertQueryNode:
+
+Parsing `INSERT INTO t VALUES (1, 2, 3)` should produce an InsertStatement whose `node` is non-null, has `type == QueryNodeType::INSERT_QUERY_NODE`, and stores `table == "t"`.
+
+`InsertStatement::ToString()` and `InsertQueryNode::ToString()` should preserve and round-trip supported INSERT forms, including column lists, RETURNING clauses, CTEs, DEFAULT VALUES, `INSERT OR REPLACE`, `INSERT BY NAME`, and `ON CONFLICT DO NOTHING`.
+
+`InsertQueryNode::Copy()` must perform a deep copy, and `InsertQueryNode::Equals()` must compare all relevant INSERT fields so that two equivalent parsed INSERT statements compare equal and statements targeting different tables do not.
+
+Binary serialization and deserialization through `BinarySerializer::Serialize(static_cast<QueryNode &>(node), stream)` and `BinaryDeserializer::Deserialize<QueryNode>(stream)` must support QueryNodeType::INSERT_QUERY_NODE and preserve the full InsertQueryNode contents. This includes INSERT statements with RETURNING and statements with conflict handling such as `INSERT OR REPLACE INTO t VALUES (1, 2)`.
+
+OnConflictInfo must also support copying, equality, string conversion, and binary serialization/deserialization, preserving at least the conflict action, indexed columns, optional update set info, and optional condition. Conflict actions such as REPLACE, NOTHING, UPDATE, and THROW should be handled consistently.
+
+Existing INSERT execution behavior must remain unchanged. The following SQL forms should continue to parse, bind, execute, and stringify correctly:
+
+`INSERT INTO t VALUES (...)`
+
+`INSERT INTO t (a, b, c) VALUES (...)`
+
+`INSERT INTO t VALUES (...) RETURNING a, b, c`
+
+`WITH vals AS (...) INSERT INTO t SELECT * FROM vals RETURNING a`
+
+`INSERT INTO t DEFAULT VALUES`
+
+`INSERT INTO t SELECT ...`
+
+`INSERT INTO schema_name.table_name VALUES (...)`
+
+`INSERT OR REPLACE INTO t VALUES (...)`
+
+`INSERT INTO t BY NAME SELECT ...`
+
+`INSERT INTO t VALUES (...) ON CONFLICT DO NOTHING`
+
+`INSERT INTO t VALUES (...) ON CONFLICT (id) DO UPDATE SET val = excluded.val`
+
+All consumers of parsed INSERT statements, including binding, statement simplification, expression iteration, appender usage, autocomplete parsing, and serialization, should access INSERT-specific state through the InsertQueryNode while preserving existing public behavior of InsertStatement.
+' 2>&1 </dev/null | tee /logs/agent/codex.txt
+Command outputs captured
+Running command: mkdir -p /logs/agent
+if [ -d "$CODEX_HOME/sessions" ]; then
+  rm -rf /logs/agent/sessions
+  cp -R "$CODEX_HOME/sessions" /logs/agent/sessions
+fi
+Command outputs captured
+Running command: rm -rf /opt/swepm-runtime/secrets "$CODEX_HOME"
+Command outputs captured
+Wrote Codex trajectory to /data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-codex-gpt-6-luna-high-nomcp-c8-20261001T180922Z/duckdb__duckdb-c_0e9c0eb__yYk3Fwr/agent/trajectory.json
+Collecting main service artifacts

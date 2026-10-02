@@ -1,0 +1,114 @@
+[
+  {
+    "task": "DeepLabCut__DeepLabCut-3303",
+    "models": [
+      "qwen3.8-max-qiniu",
+      "glm-5.3-siflow"
+    ],
+    "category": "confirmed_verifier_reversal_removes_tests",
+    "finding": "verifier 反向应用已存在的新测试，随后找不到 tests/utils/test_collect_video_paths.py，collected 0 items，exit 4。Qwen 轨迹 step 43 成功 cherry-pick 上游提交并加入测试；此前运行测试有通过记录。",
+    "contrast": "Kimi 和 Luna 则实际运行34个测试，33通过、1个空字符串扩展名的弃用警告断言失败，不能把这两组失败直接归因环境。"
+  },
+  {
+    "task": "babarot__afx-69",
+    "models": [
+      "qwen3.8-max-qiniu",
+      "glm-5.3-siflow",
+      "kimi-k3-qiniu",
+      "gpt-6-luna"
+    ],
+    "category": "confirmed_verifier_patch_setup_failure",
+    "finding": "题目要求 pkg -> internal。轨迹中 Qwen/Luna 已完成移动并运行 go test；verifier 从基线恢复 cmd/meta_test.go，然后因旧 pkg/ 下的重命名源文件不存在，git apply 失败但继续测试，遗留旧 github.com/babarot/afx/pkg/config 导入。四组同样 setup failed。",
+    "evidence": "tests/eval.sh:614 git apply; no errexit; verifier stdout lines 2-8."
+  },
+  {
+    "task": "cmu-phil__tetrad-c_d0e10cd",
+    "models": [
+      "glm-5.3-siflow",
+      "kimi-k3-qiniu",
+      "gpt-6-luna"
+    ],
+    "category": "confirmed_external_dependency_network_failure",
+    "finding": "Maven Central 对 Surefire/commons-rng 依赖返回 HTTP 429，构建/测试被依赖解析阻断。Kimi轨迹使用镜像后自测通过，但 verifier 回到原仓库再次429。GLM还叠加300轮上限；Qwen是编译错误，不能把4组都归因429。"
+  },
+  {
+    "task": "apache__devlake-8877",
+    "models": [
+      "qwen3.8-max-qiniu",
+      "glm-5.3-siflow",
+      "kimi-k3-qiniu",
+      "gpt-6-luna"
+    ],
+    "category": "confirmed_incomplete_test_environment_and_contract_errors",
+    "finding": "E2E_DB_URL 缺失，两个E2E包跳过。Rootly任务测试另外发生函数签名不符；Kimi还遇到 agent 自建测试和注入测试函数同名 redeclared。不能将其0分单独归因缺数据库。Luna轨迹同时记录 gofmt不可见，未运行Go测试；verifier则能调用Go。"
+  },
+  {
+    "task": "duckdb__duckdb-21978",
+    "models": [
+      "kimi-k3-qiniu",
+      "gpt-6-luna"
+    ],
+    "category": "mixed_verifier_build_failure",
+    "finding": "agent 阶段有成功构建记录，verifier阶段出现补丁反向/部分拒绝、const编译错误以及 cc1plus 被Killed。编译子进程被杀未必使agent终止。不能把所有编译错误都归为OOM，或仅凭日志断言全部由verifier造成。"
+  },
+  {
+    "task": "lucianodato__libspecbleach-81",
+    "models": [
+      "glm-5.3-siflow",
+      "gpt-6-luna"
+    ],
+    "category": "confirmed_no_solution_attempt_plus_verifier_build_errors",
+    "finding": "GLM没有执行工具，回复只有PR标题且当前目录/非仓库，请用户提供位置；Harbor仍正常完成并评分0。Luna修改了代码但未运行测试；verifier有补丁应用异常，随后测试源代码重定义/编译失败。"
+  },
+  {
+    "task": "RakuenSoftware__aimee-2499",
+    "models": [
+      "qwen3.8-max-qiniu",
+      "glm-5.3-siflow",
+      "kimi-k3-qiniu",
+      "gpt-6-luna"
+    ],
+    "category": "mixed_build_setup_and_patch_failure",
+    "finding": "四组verifier都出现 sandbox.h / rules.h 缺失、CMake构建失败与Go断言失败，并带补丁应用异常。Qwen/Luna轨迹使用原Make目标有测试通过记录，verifier使用 cmake --build build -j；构建流程/目标差异需单独修验，现有日志不足以把所有错误归为镜像缺依赖。"
+  },
+  {
+    "task": "get-bb__bb-c_cd3c6ef",
+    "models": [
+      "qwen3.8-max-qiniu",
+      "glm-5.3-siflow",
+      "kimi-k3-qiniu",
+      "gpt-6-luna"
+    ],
+    "category": "mixed_module_resolution_and_assertion_failures",
+    "finding": "四组verifier均报 Cannot find module ../../src/data/queued-thread-messages.js，同时235/234/234/233个测试通过且13/14/14/15个失败；四组均有补丁应用异常。此路径属于题目要求重构的代码，不能直接标成缺第三方依赖。"
+  },
+  {
+    "task": "katspaugh__wavesurfer.js-4340",
+    "models": [
+      "kimi-k3-qiniu",
+      "gpt-6-luna"
+    ],
+    "category": "mixed_test_patch_and_behavior_failures",
+    "finding": "Kimi轨迹step41成功 cherry-pick 上游修复，删除旧模块/旧测试；verifier发生反向补丁，159个执行到的测试都通过但6个suite加载失败。Luna222个测试中13失败，不能仅凭与Kimi同为0认定同因。"
+  },
+  {
+    "task": "CherryHQ__cherry-studio-13430",
+    "models": [
+      "qwen3.8-max-qiniu",
+      "glm-5.3-siflow",
+      "kimi-k3-qiniu",
+      "gpt-6-luna"
+    ],
+    "category": "mixed_api_mock_and_behavior_failures",
+    "finding": "四组失败数不同，有 db.delete is not a function、迁移日志对象内容和UI元素断言失败；仅Qwen/GLM有补丁拒绝标记。不能把测试mock/API不符自动归为环境未安装依赖，仍需对照测试契约。"
+  },
+  {
+    "task": "letta-ai__letta-code-3687",
+    "models": [
+      "qwen3.8-max-qiniu",
+      "gpt-6-luna"
+    ],
+    "category": "mixed_test_contract_and_baseline_failures",
+    "finding": "Qwen轨迹成功应用上游提交，自测目标测试通过；还在旧commit worktree重现MCP OAuth和package-installer失败。verifier却出现旧导出缺失和断言失败。Luna未运行测试，verifier缺题目域模块/导出；不能全归为网络故障。"
+  }
+]

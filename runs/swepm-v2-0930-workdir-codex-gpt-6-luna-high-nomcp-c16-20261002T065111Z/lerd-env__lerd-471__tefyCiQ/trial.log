@@ -1,0 +1,33 @@
+Running command: test -x /usr/local/bin/codex-code-mode-host && codex --version
+Command outputs captured
+Running command: mkdir -p "$CODEX_HOME" /opt/swepm-runtime/secrets /logs/agent
+Command outputs captured
+Codex auth: using auth.json from [REDACTED]
+Running command: ln -sf /opt/swepm-runtime/secrets/auth.json "$CODEX_HOME/auth.json"
+
+Command outputs captured
+Running command: if [ -s ~/.nvm/nvm.sh ]; then . ~/.nvm/nvm.sh; fi; codex exec --dangerously-bypass-approvals-and-sandbox --skip-git-repo-check --model gpt-6-luna --json --enable unified_exec -c model_reasoning_effort=high -- 'Horizon auto-reload should be driven by the project and framework worker definitions rather than by a global machine-wide setting or by rewriting hard-coded command strings.
+
+For framework workers, the definition format should support an optional reload variant, exposed as `FrameworkWorker.ReloadCommand` and documented in framework definition YAML as `reload_command`. When a project opts a worker into reload mode, lerd should run that worker’s declared `reload_command` instead of its normal `command`. If a worker has no reload command, it must continue to run its normal command. Laravel Horizon’s worker definition should declare `php artisan horizon:listen` as the reload command for the standard `php artisan horizon` worker.
+
+The `lerd horizon:reload [on|off]` command should operate on the current project only. With no argument it should print the current state as `Horizon auto-reload (horizon:listen): on` or `Horizon auto-reload (horizon:listen): off`. With `on` or `off`, it should persist the preference in the current project’s `.lerd.yaml` under `reload_workers`, using the worker name `horizon`. It should no longer read or write the global `workers.horizon_reload` setting. Enabling should print `Horizon auto-reload enabled, Horizon will restart workers on file changes.` and disabling should print `Horizon auto-reload disabled, Horizon runs in standard mode.` Invalid arguments should still produce an error like `expected '"'"'on'"'"' or '"'"'off'"'"', got "<value>"`. If Horizon is not installed in the current project, the command should fail with the existing guidance to install `laravel/horizon`.
+
+When toggling the project preference, only the current project’s running Horizon worker should be restarted so the command change applies immediately. Other projects’ Horizon workers must not be restarted or affected.
+
+Worker command resolution should use the project’s `.lerd.yaml reload_workers` list and the framework worker’s declared reload command. For a Horizon worker with reload enabled and `node_modules/chokidar` present in the project, the command should be `php artisan horizon:listen`, with `--poll` appended only on macOS. On native Linux, `--poll` should not be appended. If `chokidar` is missing, lerd should keep the standard `php artisan horizon` command rather than attempting to start `horizon:listen`. This chokidar prerequisite applies to Horizon’s watcher because it resolves chokidar from the project’s `node_modules`.
+
+The dashboard should no longer expose Horizon auto-reload as a global System tab setting. Instead, each site that has Horizon should expose a per-site reload toggle next to the Horizon worker control. Site data returned to the UI should include the per-project Horizon reload state, and toggling it should call the site action for `horizon:reload` with an `enabled=true` or `enabled=false` query parameter. The toggle should reflect the project’s `reload_workers` preference and should be independent per project.
+
+Documentation and localized UI strings should describe the new per-project behavior, the `.lerd.yaml reload_workers` storage, the per-worker dashboard toggle, Horizon’s `horizon:listen` reload command, and the platform-specific `--poll` behavior: macOS needs polling because workers run inside a container in the podman VM and host filesystem events do not reach the watcher, while native Linux should rely on inotify without polling.
+' 2>&1 </dev/null | tee /logs/agent/codex.txt
+Command outputs captured
+Running command: mkdir -p /logs/agent
+if [ -d "$CODEX_HOME/sessions" ]; then
+  rm -rf /logs/agent/sessions
+  cp -R "$CODEX_HOME/sessions" /logs/agent/sessions
+fi
+Command outputs captured
+Running command: rm -rf /opt/swepm-runtime/secrets "$CODEX_HOME"
+Command outputs captured
+Wrote Codex trajectory to /data/swepmv2-harbor-runtime/jobs/swepm-v2-0930-workdir-codex-gpt-6-luna-high-nomcp-c16-20261002T065111Z/lerd-env__lerd-471__tefyCiQ/agent/trajectory.json
+Collecting main service artifacts

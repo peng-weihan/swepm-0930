@@ -1,0 +1,196 @@
+SPECBUILD_RESOLVED_PYTHON=/testbed/.venv/bin/python
+Checking patch test/main/services/team/ChangeExtractorService.test.ts...
+Checking patch test/main/services/team/TaskBoundaryParser.test.ts...
+Checking patch test/main/services/team/TeamMcpConfigBuilder.test.ts...
+Checking patch test/renderer/store/changeReviewSlice.test.ts...
+Checking patch test/renderer/store/extensionsSlice.test.ts...
+Checking patch test/renderer/utils/taskChangeRequest.test.ts...
+Checking patch test/shared/utils/extensionNormalizers.test.ts...
+Applied patch test/main/services/team/ChangeExtractorService.test.ts cleanly.
+Applied patch test/main/services/team/TaskBoundaryParser.test.ts cleanly.
+Applied patch test/main/services/team/TeamMcpConfigBuilder.test.ts cleanly.
+Applied patch test/renderer/store/changeReviewSlice.test.ts cleanly.
+Applied patch test/renderer/store/extensionsSlice.test.ts cleanly.
+Applied patch test/renderer/utils/taskChangeRequest.test.ts cleanly.
+Applied patch test/shared/utils/extensionNormalizers.test.ts cleanly.
+
+ RUN  v3.2.4 /testbed
+
+ ✓ test/shared/utils/extensionNormalizers.test.ts (22 tests) 49ms
+ ❯ test/renderer/store/changeReviewSlice.test.ts (3 tests | 3 failed) 11ms
+   × changeReviewSlice task changes > does not cache errors as negative task-change results 7ms
+     → expected "spy" to be called 2 times, but got 1 times
+   × changeReviewSlice task changes > negative-caches confirmed empty results per request signature 1ms
+     → expected "spy" to be called 2 times, but got 0 times
+   × changeReviewSlice task changes > ignores stale fetchTaskChanges responses when a newer task request wins 2ms
+     → expected '1' to be '2' // Object.is equality
+ ❯ test/main/services/team/TaskBoundaryParser.test.ts (3 tests | 1 failed) 21ms
+   ✓ TaskBoundaryParser > detects MCP task boundaries for modern runtime sessions 8ms
+   ✓ TaskBoundaryParser > ignores legacy teamctl bash markers and keeps modern MCP markers only 3ms
+   × TaskBoundaryParser > accepts task_id for TaskUpdate and MCP task markers 8ms
+     → expected [] to have a length of 2 but got +0
+ ❯ test/main/services/team/TeamMcpConfigBuilder.test.ts (5 tests | 1 failed) 72ms
+   ✓ TeamMcpConfigBuilder > prefers the source MCP entry when workspace source is available 55ms
+   × TeamMcpConfigBuilder > merges top-level user MCP with generated agent-teams config 10ms
+     → expected [ 'agent-teams' ] to deeply equal [ 'agent-teams', …(2) ]
+   ✓ TeamMcpConfigBuilder > does not inline project MCP config to preserve native Claude precedence 2ms
+   ✓ TeamMcpConfigBuilder > generated agent-teams server overrides same-named user MCP entry 2ms
+   ✓ TeamMcpConfigBuilder > ignores malformed user MCP file 2ms
+ ❯ test/main/services/team/ChangeExtractorService.test.ts (2 tests | 2 failed) 24ms
+   × ChangeExtractorService > does not reuse detailed task-change cache across different scope inputs 16ms
+     → expected [] to have a length of 1 but got +0
+   × ChangeExtractorService > merges fallback changes for the same Windows file across slash variants 7ms
+     → expected [ { …(7) }, { …(7) } ] to have a length of 1 but got 2
+ ✓ test/renderer/store/extensionsSlice.test.ts (15 tests) 99ms
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/renderer/utils/taskChangeRequest.test.ts [ test/renderer/utils/taskChangeRequest.test.ts ]
+Error: Failed to resolve import "@renderer/utils/taskChangeRequest" from "test/renderer/utils/taskChangeRequest.test.ts". Does the file exist?
+  Plugin: vite:import-analysis
+  File: /testbed/test/renderer/utils/taskChangeRequest.test.ts:7:7
+  4  |    buildTaskChangeRequestOptions,
+  5  |    deriveTaskSince
+  6  |  } from "@renderer/utils/taskChangeRequest";
+     |          ^
+  7  |  describe("taskChangeRequest", () => {
+  8  |    it("derives since from the earliest known task timestamp with grace window", () => {
+ ❯ TransformPluginContext._formatError node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49258:41
+ ❯ TransformPluginContext.error node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49253:16
+ ❯ normalizeUrl node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64307:23
+ ❯ node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64439:39
+ ❯ TransformPluginContext.transform node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:64366:7
+ ❯ PluginContainer.transform node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:49099:18
+ ❯ loadAndTransform node_modules/.pnpm/vite@5.4.21_@types+node@25.0.7_terser@5.46.0/node_modules/vite/dist/node/chunks/dep-BK3b2jBa.js:51978:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/8]⎯
+
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 7 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/renderer/store/changeReviewSlice.test.ts > changeReviewSlice task changes > does not cache errors as negative task-change results
+AssertionError: expected "spy" to be called 2 times, but got 1 times
+ ❯ test/renderer/store/changeReviewSlice.test.ts:78:36
+     76|     await store.getState().checkTaskHasChanges('team-a', '1', OPTIONS_…
+     77| 
+     78|     expect(hoisted.getTaskChanges).toHaveBeenCalledTimes(2);
+       |                                    ^
+     79|   });
+     80| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/8]⎯
+
+ FAIL  test/renderer/store/changeReviewSlice.test.ts > changeReviewSlice task changes > negative-caches confirmed empty results per request signature
+AssertionError: expected "spy" to be called 2 times, but got 0 times
+ ❯ test/renderer/store/changeReviewSlice.test.ts:110:36
+    108|     await store.getState().checkTaskHasChanges('team-a', '1', OPTIONS_…
+    109| 
+    110|     expect(hoisted.getTaskChanges).toHaveBeenCalledTimes(2);
+       |                                    ^
+    111|   });
+    112| 
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/8]⎯
+
+ FAIL  test/renderer/store/changeReviewSlice.test.ts > changeReviewSlice task changes > ignores stale fetchTaskChanges responses when a newer task request wins
+AssertionError: expected '1' to be '2' // Object.is equality
+
+Expected: [32m"2"[39m
+Received: [31m"1"[39m
+
+ ❯ test/renderer/store/changeReviewSlice.test.ts:170:54
+    168|     await firstFetch;
+    169| 
+    170|     expect(store.getState().activeChangeSet?.taskId).toBe('2');
+       |                                                      ^
+    171|     expect(store.getState().selectedReviewFilePath).toBe('/repo/new.ts…
+    172|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/8]⎯
+
+ FAIL  test/main/services/team/ChangeExtractorService.test.ts > ChangeExtractorService > does not reuse detailed task-change cache across different scope inputs
+AssertionError: expected [] to have a length of 1 but got +0
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1[39m
+[31m+ 0[39m
+
+ ❯ test/main/services/team/ChangeExtractorService.test.ts:71:29
+     69| 
+     70|     expect(empty.files).toHaveLength(0);
+     71|     expect(populated.files).toHaveLength(1);
+       |                             ^
+     72|     expect(findLogsForTask).toHaveBeenCalledTimes(2);
+     73|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/8]⎯
+
+ FAIL  test/main/services/team/ChangeExtractorService.test.ts > ChangeExtractorService > merges fallback changes for the same Windows file across slash variants
+AssertionError: expected [ { …(7) }, { …(7) } ] to have a length of 1 but got 2
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 1[39m
+[31m+ 2[39m
+
+ ❯ test/main/services/team/ChangeExtractorService.test.ts:144:26
+    142|     });
+    143| 
+    144|     expect(result.files).toHaveLength(1);
+       |                          ^
+    145|     expect(result.files[0]?.relativePath).toBe('src/same.ts');
+    146|     expect(result.totalLinesAdded).toBe(2);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/8]⎯
+
+ FAIL  test/main/services/team/TaskBoundaryParser.test.ts > TaskBoundaryParser > accepts task_id for TaskUpdate and MCP task markers
+AssertionError: expected [] to have a length of 2 but got +0
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- 2[39m
+[31m+ 0[39m
+
+ ❯ test/main/services/team/TaskBoundaryParser.test.ts:156:31
+    154|     const result = await new TaskBoundaryParser().parseBoundaries(json…
+    155| 
+    156|     expect(result.boundaries).toHaveLength(2);
+       |                               ^
+    157|     expect(result.boundaries.map((entry) => entry.taskId)).toEqual(['t…
+    158|     expect(result.boundaries.map((entry) => entry.event)).toEqual(['st…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/8]⎯
+
+ FAIL  test/main/services/team/TeamMcpConfigBuilder.test.ts > TeamMcpConfigBuilder > merges top-level user MCP with generated agent-teams config
+AssertionError: expected [ 'agent-teams' ] to deeply equal [ 'agent-teams', …(2) ]
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[2m  [[22m
+[2m    "agent-teams",[22m
+[32m-   "duplicateServer",[39m
+[32m-   "globalOnly",[39m
+[2m  ][22m
+
+ ❯ test/main/services/team/TeamMcpConfigBuilder.test.ts:104:51
+    102|     };
+    103| 
+    104|     expect(Object.keys(parsed.mcpServers).sort()).toEqual([
+       |                                                   ^
+    105|       'agent-teams',
+    106|       'duplicateServer',
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/8]⎯
+
+
+ Test Files  5 failed | 2 passed (7)
+      Tests  7 failed | 43 passed (50)
+   Start at  18:12:21
+   Duration  7.70s (transform 1.52s, setup 92ms, collect 2.55s, tests 276ms, environment 3.87s, prepare 5.04s)
+
+OMNIGRIL_EXIT_CODE=1

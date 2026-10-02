@@ -1,0 +1,71 @@
+{
+  "instance_id": "qicosmos__iguana-383",
+  "overall_quality": "questionable",
+  "test_scope": "both",
+  "confidence": 0.72,
+  "gold_patch_assessment": "The gold patch is extremely large (30 files changed, ~5200 lines added/removed) covering C++26 reflection support, new protobuf helper APIs (pb_bytes_field, pb_zigzag_field, pb_fixed_field, pb_optional_field, pb_timestamp_field, pb_duration_field, pb_oneof_field, pb_field_ex, pb_unknown_fields_field), XML required-field exact-match bug fix, JSON alias-without-macro support, clang-format script, CI workflows, conformance testing, and documentation. The patch addresses many of the stated issue requirements but the scope is enormous for a single SWE benchmark instance.",
+  "base_vs_gold_expectation": "Base will fail: the test patch adds structs in test_pb.cpp that reference APIs (pb_bytes_field, pb_oneof_field, pb_members, etc.) that do not exist in the base code. These are not guarded by #ifdef, so test_pb will fail to compile. The XML required-field overlap test will also fail on base because the base uses substring matching (key_set.find) instead of exact matching. However, some new tests (test_some alias test, unit_test changes) might pass on partial implementations. Gold should pass all tests.",
+  "too_narrow_risks": [
+    "C++26 reflection tests are all guarded by #ifdef YLT_USE_CXX26_REFLECTION, which is not defined in the C++20 build used by eval.sh. All C++26-specific features (annotation aliases, skip_field, struct_name, xml_required annotation, pb_field annotation, etc.) are completely untested by the verifier.",
+    "test_reflection is modified by the test patch but NOT included in the ctest regex pattern ('^(test_some|test_ut|test_json_files|test_xml|test_pb|test_proto)$'). Reflection test changes are never verified.",
+    "The clang-format script (scripts/check-clang-format.sh) is a stated requirement but has no test coverage in the verifier.",
+    "The conformance testee (iguana_conformance) is created by the test patch but not built or tested by eval.sh.",
+    "CMake ENABLE_CXX26_REFLECTION option is a stated requirement but never exercised by the build.",
+    "The github_events test is moved from test_json_files.cpp to a new test_github_events.cpp but test_github_events is not in the ctest regex, so the moved test is not run.",
+    "Proto field number validation (valid range [1, 2^29-1], excluding [19000, 19999]) is stated in the issue but has no direct test case."
+  ],
+  "too_broad_risks": [
+    "The issue statement is enormously broad - covering CMake changes, C++26 reflection, JSON aliases, XML required-field validation, protobuf wire behavior, conformance testing, and clang-format scripting. This makes it unreasonably difficult for a candidate to produce a correct solution.",
+    "The gold patch modifies 30 files with ~5200 lines of changes. A candidate would need to replicate essentially the exact same architectural decisions across all these areas.",
+    "The test_proto tests require the Protobuf library to be installed and proto files to compile. This is an external dependency that could cause spurious failures."
+  ],
+  "implementation_coupling": [
+    "The protobuf legacy helper API tests are tightly coupled to the gold patch's specific API design: pb_bytes_field, pb_zigzag_field, pb_fixed_field, etc. An alternative implementation using different helper names or different API patterns would fail even if functionally equivalent.",
+    "The to_proto schema tests check exact string patterns like 'bytes  payload = 3;' (with specific whitespace), coupling to the gold patch's schema generation formatting.",
+    "The test_pb_legacy_oneof struct uses the exact API signature pb_oneof_field<&T::field, 5, 8>(\"result\") - an alternative API design would fail."
+  ],
+  "environment_risks": [
+    "Protobuf library must be found by CMake for test_proto to build. The Docker image has protobuf 3.12.4 installed, which should work.",
+    "The eval.sh builds with -DCMAKE_CXX_STANDARD=20. Some test code uses C++20 features that require compatible compiler support.",
+    "test_json_files and test_github_events read data files from the test/data directory. The ctest working directory may not be set correctly without the gold patch's CMakeLists.txt changes, though these tests may still work if the build directory is directly under the repo root."
+  ],
+  "mismatches": [
+    "The issue states requirements for C++26 reflection support, but eval.sh builds with C++20 only (-DCMAKE_CXX_STANDARD=20), making all C++26 requirements unverifiable.",
+    "The issue requires a clang-format check script and CI workflow, but the verifier has no tests for these.",
+    "The issue requires a conformance testee executable, but eval.sh does not build or test it.",
+    "The issue requires CTest working directory configuration for data-reading tests, but eval.sh doesn't verify this.",
+    "The ctest regex excludes test_reflection and test_github_events, which are modified/created by the test patch but never run."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/qicosmos__iguana-383/tests/eval.sh",
+      "detail": "Line 44: builds with -DCMAKE_CXX_STANDARD=20, so all #ifdef YLT_USE_CXX26_REFLECTION blocks in test patch are dead code"
+    },
+    {
+      "file": "/audit_tasks/qicosmos__iguana-383/tests/eval.sh",
+      "detail": "Line 49: ctest regex '^(test_some|test_ut|test_json_files|test_xml|test_pb|test_proto)$' excludes test_reflection and test_github_events"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "test_pb.cpp adds structs using pb_bytes_field, pb_oneof_field etc. (lines 2225-2294) that won't compile without gold patch, ensuring base rejection"
+    },
+    {
+      "file": "/audit_tasks/qicosmos__iguana-383/solution/solve.sh",
+      "detail": "Gold patch is 6562 lines across 30 files - extremely large for a single benchmark instance"
+    },
+    {
+      "file": "/testbed/iguana/xml_reader.hpp",
+      "detail": "Line 387: base has buggy key_set.find(item) substring matching for required field validation"
+    },
+    {
+      "file": "/tmp/test.patch",
+      "detail": "Lines 3797-3803: XML required_overlap_book test specifically catches the substring matching bug"
+    },
+    {
+      "file": "/audit_tasks/qicosmos__iguana-383/instruction.md",
+      "detail": "Issue covers at least 7 distinct feature areas: CMake, C++26 reflection, JSON aliases, XML validation, protobuf wire behavior, conformance testing, clang-format"
+    }
+  ],
+  "recommended_action": "revise_instance",
+  "summary": "This instance has a massive scope problem: the issue covers 7+ distinct feature areas, the gold patch modifies 30 files with ~5200 lines of changes, and the test verifier only exercises a fraction of the stated requirements. Most C++26 features are completely unverifiable because eval.sh builds with C++20 only. The ctest regex misses test_reflection and test_github_events. The tests that DO run are heavily coupled to the gold patch's specific API design (pb_bytes_field, pb_oneof_field, etc.), rejecting reasonable alternative implementations. The XML required-field overlap test is well-designed and targets a real bug, but it's buried among tests for an unreasonably broad set of changes. The instance should be split into smaller, focused instances with targeted test coverage."
+}

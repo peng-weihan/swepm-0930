@@ -1,0 +1,56 @@
+{
+  "instance_id": "babarot__afx-69",
+  "overall_quality": "questionable",
+  "test_scope": "too_narrow",
+  "confidence": 0.75,
+  "gold_patch_assessment": "The gold patch correctly addresses the stated issue: it moves all pkg/ packages to internal/, extracts a shared runner package from duplicated concurrency code in install/check/update commands, creates internal/helpers/path with the ExpandTilda helper, adds HasReleaseBlock() to the Package interface, updates all imports throughout cmd/ and internal/, and renames the package declarations from 'config' to 'pkg'. The patch is comprehensive and well-structured.",
+  "base_vs_gold_expectation": "The base state will definitely fail: the test patch moves test files to internal/ paths and updates imports to github.com/babarot/afx/internal/..., but in the base state no internal/ source packages exist. The go test compilation will fail for every package. The gold patch creates all required internal/ source packages, so tests pass after patching.",
+  "too_narrow_risks": [
+    "No tests for the internal/runner package (runner.go, progress.go) despite it being a key requirement in the issue ('factored out into an internal runner package'). The Execute function, NewProgress with []string, and the Package/TaskFunc/Result types are all untested.",
+    "The test patch actually removes TestCountRemaining and TestNewProgress from config_test.go but never re-adds equivalent tests for the runner package. These functions moved to internal/runner/progress.go but have no test coverage.",
+    "An alternative solution that simply moves pkg/ to internal/ without creating the runner package (keeping inline concurrency in cmd files) would pass all tests, since no test verifies the runner package exists or is used.",
+    "No explicit verification that old pkg/ import paths are no longer used anywhere in production code. A solution could leave stale pkg/ files and still pass.",
+    "No go build ./... or go vet ./... step — compilation is only checked for packages that have test files."
+  ],
+  "too_broad_risks": [
+    "Tests cover a large number of packages (26 test files across 17 directories) which increases the surface for unrelated failures, though each is directly relevant to the migration task."
+  ],
+  "implementation_coupling": [
+    "Tests are tightly coupled to the exact package path 'github.com/babarot/afx/internal/pkg' — an alternative name like 'internal/config' would fail. However, this path is explicitly specified in the issue requirements, so this coupling is justified.",
+    "The test patch uses the specific import alias 'afxpkg' matching the gold patch exactly, though Go allows any alias.",
+    "cmd/meta_test.go references specific type names (afxpkg.Package, afxpkg.GitHub, afxpkg.Config, afxpkg.Main, afxpkg.Gist) which must match the gold patch's package naming."
+  ],
+  "environment_risks": [
+    "go 1.25.0 is specified in go.mod — the Docker image must have this Go version available or the build will fail regardless of the solution.",
+    "The test runner uses -json flag and PIPESTATUS which requires bash; eval.sh uses bash explicitly so this should be fine.",
+    "Some tests (github_test.go, update_test.go) use httpmock which starts local HTTP servers — these could be fragile but are from the base test suite and pre-existing."
+  ],
+  "mismatches": [
+    "The issue explicitly requires the runner factoring ('The duplicated concurrent execution/progress handling in install and check should be factored out into an internal runner package'), but the tests have zero coverage for the runner package, creating a gap between issue requirements and test verification.",
+    "The issue mentions 'afx check' and 'afx install' should 'still support cancellation via context and preserve the previous concurrency limit/progress behavior' — none of this behavioral preservation is tested."
+  ],
+  "evidence": [
+    {
+      "file": "/audit_tasks/babarot__afx-69/tests/eval.sh",
+      "detail": "RUNNABLE_TEST_FILES list contains no internal/runner test files. grep for 'runner' in eval.sh returns zero matches."
+    },
+    {
+      "file": "/audit_tasks/babarot__afx-69/tests/eval.sh",
+      "detail": "Test patch removes TestCountRemaining and TestNewProgress from config_test.go (lines 328-435 of the embedded patch) without adding runner package tests."
+    },
+    {
+      "file": "/audit_tasks/babarot__afx-69/solution/solve.sh",
+      "detail": "Gold patch creates internal/runner/runner.go (79 lines) and internal/runner/progress.go (renamed from pkg/config/status.go) — both completely untested."
+    },
+    {
+      "file": "/audit_tasks/babarot__afx-69/instruction.md",
+      "detail": "Lines 9-10 explicitly require: 'The duplicated concurrent execution/progress handling in install and check should be factored out into an internal runner package used by both commands.'"
+    },
+    {
+      "file": "/testbed/pkg/config/github.go",
+      "detail": "Base state confirms pkg/ structure exists; internal/ directory does not exist, confirming base will fail the tests."
+    }
+  ],
+  "recommended_action": "revise_tests",
+  "summary": "The gold patch correctly implements the pkg-to-internal migration including a new runner package. The tests adequately verify the package migration by checking compilation and functionality of all moved packages. However, the tests have a significant gap: no coverage for the internal/runner package, which is a key requirement (concurrent execution factoring). A solution that merely moves pkg/ to internal/ without extracting the runner would pass all tests. The test patch also removes runner-related tests (TestCountRemaining, TestNewProgress) without replacement. Recommend adding runner package tests and optionally a go build ./... check."
+}

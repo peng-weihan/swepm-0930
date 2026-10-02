@@ -1,0 +1,89 @@
+Checking patch src/js/runtime/test_shell.rs...
+error: while searching for:
+        Context, EvalResult, Handle, PropertyDescriptor, PropertyKey, Realm, Value,
+        abstract_operations::{create_data_property_or_throw, define_property_or_throw},
+        alloc_error::AllocResult,
+        array_object::array_create_in_realm,
+        builtin_function::BuiltinFunction,
+        console_object::ConsoleObject,
+        error::syntax_parse_error,
+        eval::eval::evaluate_script,
+        gc_object::GcObject,
+        intrinsic_builder::IntrinsicBuilder,
+        intrinsics::{
+            array_buffer_object::ArrayBufferObject, error_object::ErrorObject,
+            intrinsics::Intrinsic, rust_runtime::RuntimeFunctionPtr,
+        },
+        object_value::ObjectValue,
+        ordinary_object::ObjectBuilder,
+
+error: patch failed: src/js/runtime/test_shell.rs:11
+error: src/js/runtime/test_shell.rs: patch does not apply
+   Compiling writeable v0.6.2
+   Compiling tinystr v0.8.3
+   Compiling icu_locale_core v2.2.0
+   Compiling potential_utf v0.1.4
+   Compiling icu_collections v2.2.0
+   Compiling icu_provider v2.2.0
+   Compiling icu_properties v2.2.0
+   Compiling icu_locale v2.2.0
+   Compiling icu_normalizer v2.2.0
+   Compiling icu_provider_baked v2.2.0
+   Compiling icu_provider_adapters v2.2.0
+   Compiling icu_collator v2.2.0
+   Compiling icu_casemap v2.2.0
+   Compiling brimstone_icu_collections v0.1.0 (/testbed/src/brimstone_icu_collections)
+   Compiling brimstone_core v0.1.0 (/testbed/src/js)
+error[E0308]: mismatched types
+   --> src/js/runtime/test_shell.rs:122:65
+    |
+122 |         let array = must_a!(array_create_in_realm(cx, realm, 0, None));
+    |                             ---------------------               ^^^^ expected `ArrayCreateShape`, found `Option<_>`
+    |                             |
+    |                             arguments to this function are incorrect
+    |
+    = note: expected enum `ArrayCreateShape`
+               found enum `Option<_>`
+note: function defined here
+   --> src/js/runtime/array_object.rs:162:8
+    |
+162 | pub fn array_create_in_realm(
+    |        ^^^^^^^^^^^^^^^^^^^^^
+...
+166 |     shape: ArrayCreateShape,
+    |     -----------------------
+help: try wrapping the expression in `runtime::array_object::ArrayCreateShape::Proto`
+    |
+122 |         let array = must_a!(array_create_in_realm(cx, realm, 0, runtime::array_object::ArrayCreateShape::Proto(None)));
+    |                                                                 +++++++++++++++++++++++++++++++++++++++++++++++    +
+
+error[E0308]: mismatched types
+   --> src/js/runtime/test_shell.rs:260:43
+    |
+260 |         ErrorObject::new_with_message(cx, format!("failed to read {}", path.to_string_lossy()))?;
+    |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `CommonShape`, found `String`
+
+error[E0061]: this function takes 4 arguments but 2 arguments were supplied
+   --> src/js/runtime/test_shell.rs:260:9
+    |
+260 |         ErrorObject::new_with_message(cx, format!("failed to read {}", path.to_string_lossy()))?;
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^---------------------------------------------------------- two arguments of type `Handle<StringValue>` and `bool` are missing
+    |
+note: associated function defined here
+   --> src/js/runtime/intrinsics/error_object.rs:53:12
+    |
+ 53 |     pub fn new_with_message(
+    |            ^^^^^^^^^^^^^^^^
+...
+ 56 |         message: Handle<StringValue>,
+    |         ----------------------------
+ 57 |         skip_current_frame: bool,
+    |         ------------------------
+help: provide the arguments
+    |
+260 |         ErrorObject::new_with_message(cx, format!("failed to read {}", path.to_string_lossy()), /* Handle<StringValue> */, /* bool */)?;
+    |                                                                                               +++++++++++++++++++++++++++++++++++++++
+
+Some errors have detailed explanations: E0061, E0308.
+For more information about an error, try `rustc --explain E0061`.
+error: could not compile `brimstone_core` (lib test) due to 3 previous errors
