@@ -1,0 +1,5 @@
+The Ollama and Copilot model-listing implementations currently decode `GET /models` response bodies with provider-local `serde_json::from_slice` calls for their `ListModelsResponse` types. This creates special-case JSON parsing paths that have to be exempted in `crates/rig-core/tests/serde_policy_allowlist.txt`, alongside streaming-frame parsing exceptions, even though model listing is a normal unary response.
+
+Update the model listing code so Ollama’s lister and Copilot’s lister no longer need serde-policy allowlist entries for lines like `ListModelsResponse = serde_json::from_slice(&body)`. The observable behavior of model listing should remain unchanged: successful list-model responses should still deserialize into the same public `ModelList`/model entries, and non-successful or malformed provider responses should still surface through the existing model-listing error flow with provider response details preserved where applicable.
+
+After the change, the serde policy allowlist should not contain exceptions for Ollama or Copilot list-model response decoding, while the rest of the allowed unary and streaming JSON parsing entries remain unaffected.

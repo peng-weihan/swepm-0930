@@ -1,0 +1,2304 @@
+diff --git a/packages/core/src/Url.test.ts b/internals/utils/src/Url.test.ts
+similarity index 100%
+rename from packages/core/src/Url.test.ts
+rename to internals/utils/src/Url.test.ts
+diff --git a/packages/adapter-oas/src/adapter.test.ts b/packages/adapter-oas/src/adapter.test.ts
+index 843378aad..d10fdc085 100644
+--- a/packages/adapter-oas/src/adapter.test.ts
++++ b/packages/adapter-oas/src/adapter.test.ts
+@@ -28,43 +28,20 @@ const minimalSpec = {
+   },
+ } as const
+ 
+-describe('adapterOas.stream', () => {
+-  it('yields each schema lazily via for await', async () => {
++describe('adapterOas.parse', () => {
++  it('parses each schema', async () => {
+     const adapter = adapterOas({ validate: false })
+ 
+-    const node = await adapter.stream!({ type: 'data', data: minimalSpec })
+-    const schemas: Array<ast.SchemaNode> = []
+-    for await (const schema of node.schemas) {
+-      schemas.push(schema)
+-    }
++    const node = await adapter.parse({ type: 'data', data: minimalSpec })
+ 
+-    expect(schemas.map((s) => s.name)).toStrictEqual(['Pet', 'Category'])
++    expect(node.schemas.map((s) => s.name)).toStrictEqual(['Pet', 'Category'])
+   })
+ 
+-  it('each for await on schemas creates a fresh independent pass', async () => {
++  it('parses operations', async () => {
+     const adapter = adapterOas({ validate: false })
+-    const node = await adapter.stream!({ type: 'data', data: minimalSpec })
++    const node = await adapter.parse({ type: 'data', data: minimalSpec })
+ 
+-    const first: Array<ast.SchemaNode> = []
+-    for await (const schema of node.schemas) first.push(schema)
+-
+-    const second: Array<ast.SchemaNode> = []
+-    for await (const schema of node.schemas) second.push(schema)
+-
+-    expect(first.map((s) => s.name)).toStrictEqual(['Pet', 'Category'])
+-    expect(second.map((s) => s.name)).toStrictEqual(first.map((s) => s.name))
+-  })
+-
+-  it('yields operations lazily via for await', async () => {
+-    const adapter = adapterOas({ validate: false })
+-    const node = await adapter.stream!({ type: 'data', data: minimalSpec })
+-
+-    const operations: Array<ast.OperationNode> = []
+-    for await (const op of node.operations) {
+-      operations.push(op)
+-    }
+-
+-    expect(operations.map((operation) => operation.operationId)).toStrictEqual(['listPets'])
++    expect(node.operations.map((operation) => operation.operationId)).toStrictEqual(['listPets'])
+   })
+ 
+   it('parses each source when one adapter instance is reused across configs', async () => {
+@@ -79,22 +56,17 @@ describe('adapterOas.stream', () => {
+     // its own document instead of replaying the first one.
+     const adapter = adapterOas({ validate: false })
+ 
+-    const first = await adapter.stream!({ type: 'data', data: minimalSpec })
+-    const firstNames: Array<string> = []
+-    for await (const schema of first.schemas) if (schema.name) firstNames.push(schema.name)
+-
+-    const second = await adapter.stream!({ type: 'data', data: other })
+-    const secondNames: Array<string> = []
+-    for await (const schema of second.schemas) if (schema.name) secondNames.push(schema.name)
++    const first = await adapter.parse({ type: 'data', data: minimalSpec })
++    const second = await adapter.parse({ type: 'data', data: other })
+ 
+-    expect(firstNames).toStrictEqual(['Pet', 'Category'])
+-    expect(secondNames).toStrictEqual(['Order'])
++    expect(first.schemas.map((s) => s.name)).toStrictEqual(['Pet', 'Category'])
++    expect(second.schemas.map((s) => s.name)).toStrictEqual(['Order'])
+     expect(second.meta?.title).toBe('Other API')
+   })
+ 
+-  it('exposes meta before the first yield', async () => {
++  it('exposes meta', async () => {
+     const adapter = adapterOas({ validate: false })
+-    const node = await adapter.stream!({ type: 'data', data: minimalSpec })
++    const node = await adapter.parse({ type: 'data', data: minimalSpec })
+ 
+     expect(node.meta).toMatchObject({
+       baseURL: null,
+diff --git a/packages/adapter-oas/src/resolvers.test.ts b/packages/adapter-oas/src/resolvers.test.ts
+index 9921d34c5..69673d2a6 100644
+--- a/packages/adapter-oas/src/resolvers.test.ts
++++ b/packages/adapter-oas/src/resolvers.test.ts
+@@ -1,5 +1,6 @@
+ import { describe, expect, expectTypeOf, it } from 'vitest'
+ import { DEFAULT_PARSER_OPTIONS } from './constants.ts'
++import { parseFromConfig } from './factory.ts'
+ import {
+   buildSchemaNode,
+   extractSchemaFromContent,
+@@ -8,11 +9,73 @@ import {
+   getPrimitiveType,
+   getSchemas,
+   getSchemaType,
++  resolveBaseUrl,
+   resolveServerUrl,
+   sortSchemas,
+ } from './resolvers.ts'
+ import type { Document } from './types.ts'
+ 
++const minimalSpec: Document = {
++  openapi: '3.0.0',
++  info: { title: 'Test API', version: '1.0.0' },
++  servers: [{ url: 'https://api.example.com/v1' }],
++  paths: {
++    '/pets': {
++      get: {
++        operationId: 'listPets',
++        responses: { '200': { description: 'ok' } },
++      },
++    },
++  },
++  components: {
++    schemas: {
++      Pet: {
++        type: 'object',
++        properties: { id: { type: 'string' }, name: { type: 'string' } },
++        required: ['id'],
++      },
++    },
++  },
++}
++
++describe('resolveBaseUrl', () => {
++  it('returns the server URL at the given index', async () => {
++    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
++    const url = resolveBaseUrl({ document, server: { index: 0 } })
++    expect(url).toBe('https://api.example.com/v1')
++  })
++
++  it('returns null when no server index is provided', async () => {
++    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
++    const url = resolveBaseUrl({ document, server: {} })
++    expect(url).toBeNull()
++  })
++
++  it('returns null when no server is provided', async () => {
++    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
++    const url = resolveBaseUrl({ document })
++    expect(url).toBeNull()
++  })
++
++  it('returns null when the server index is out of range', async () => {
++    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
++    const url = resolveBaseUrl({ document, server: { index: 99 } })
++    expect(url).toBeNull()
++  })
++
++  it('substitutes server variables into the resolved URL', async () => {
++    const document = await parseFromConfig({
++      type: 'data',
++      data: {
++        ...minimalSpec,
++        servers: [{ url: 'https://api.{env}.example.com', variables: { env: { default: 'dev' } } }],
++      },
++    })
++    const url = resolveBaseUrl({ document, server: { index: 0, variables: { env: 'prod' } } })
++    expect(url).toBe('https://api.prod.example.com')
++  })
++})
++
+ describe('getSchemaType', () => {
+   it('returns the SchemaType for a known format', () => {
+     expect(getSchemaType('uuid')).toBe('uuid')
+diff --git a/packages/adapter-oas/src/stream.test.ts b/packages/adapter-oas/src/stream.test.ts
+deleted file mode 100644
+index 0e91ed86a..000000000
+--- a/packages/adapter-oas/src/stream.test.ts
++++ /dev/null
+@@ -1,311 +0,0 @@
+-import { ast } from '@kubb/ast'
+-import { describe, expect, it } from 'vitest'
+-import { DEFAULT_PARSER_OPTIONS } from './constants.ts'
+-import { parseFromConfig } from './factory.ts'
+-import { createSchemaParser } from './parser.ts'
+-import { createInputStream, preScan } from './stream.ts'
+-import { resolveBaseUrl } from './resolvers.ts'
+-import type { Document, SchemaObject } from './types.ts'
+-
+-const minimalSpec: Document = {
+-  openapi: '3.0.0',
+-  info: { title: 'Test API', version: '1.0.0' },
+-  servers: [{ url: 'https://api.example.com/v1' }],
+-  paths: {
+-    '/pets': {
+-      get: {
+-        operationId: 'listPets',
+-        responses: { '200': { description: 'ok' } },
+-      },
+-    },
+-  },
+-  components: {
+-    schemas: {
+-      Pet: {
+-        type: 'object',
+-        properties: { id: { type: 'string' }, name: { type: 'string' } },
+-        required: ['id'],
+-      },
+-      Category: {
+-        type: 'object',
+-        properties: { id: { type: 'integer' } },
+-      },
+-      Status: {
+-        type: 'string',
+-        enum: ['active', 'inactive'],
+-      },
+-    },
+-  },
+-}
+-
+-const parserOptions = { ...DEFAULT_PARSER_OPTIONS }
+-
+-// Typed schema fixtures — avoids `as unknown as SchemaObject` casts throughout tests.
+-const petSchema: SchemaObject = { type: 'object', properties: { id: { type: 'string' }, name: { type: 'string' } }, required: ['id'] }
+-const categorySchema: SchemaObject = { type: 'object', properties: { id: { type: 'integer' } } }
+-const statusSchema: SchemaObject = { type: 'string', enum: ['active', 'inactive'] }
+-
+-describe('resolveBaseUrl', () => {
+-  it('returns the server URL at the given index', async () => {
+-    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
+-    const url = resolveBaseUrl({ document, server: { index: 0 } })
+-    expect(url).toBe('https://api.example.com/v1')
+-  })
+-
+-  it('returns null when no server index is provided', async () => {
+-    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
+-    const url = resolveBaseUrl({ document, server: {} })
+-    expect(url).toBeNull()
+-  })
+-
+-  it('returns null when no server is provided', async () => {
+-    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
+-    const url = resolveBaseUrl({ document })
+-    expect(url).toBeNull()
+-  })
+-
+-  it('returns null when the server index is out of range', async () => {
+-    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
+-    const url = resolveBaseUrl({ document, server: { index: 99 } })
+-    expect(url).toBeNull()
+-  })
+-
+-  it('substitutes server variables into the resolved URL', async () => {
+-    const document = await parseFromConfig({
+-      type: 'data',
+-      data: {
+-        ...minimalSpec,
+-        servers: [{ url: 'https://api.{env}.example.com', variables: { env: { default: 'dev' } } }],
+-      },
+-    })
+-    const url = resolveBaseUrl({ document, server: { index: 0, variables: { env: 'prod' } } })
+-    expect(url).toBe('https://api.prod.example.com')
+-  })
+-})
+-
+-describe('preScan', () => {
+-  const schemas: Record<string, SchemaObject> = {
+-    Pet: petSchema,
+-    Status: statusSchema,
+-    PetAlias: { $ref: '#/components/schemas/Pet' },
+-  }
+-  // The real parser sets `name` to the referenced schema name (not the alias key).
+-  // That is how `node.name !== name` detects top-level $ref aliases.
+-  const makeParseSchema =
+-    () =>
+-    ({ name, schema }: { schema: SchemaObject; name: string }): ast.SchemaNode => {
+-      if ('enum' in schema && schema.enum) return ast.factory.createSchema({ type: 'enum', name, members: schema.enum.map(String) })
+-      if ('$ref' in schema) {
+-        const refName = (schema.$ref as string).split('/').pop() ?? name
+-        return ast.factory.createSchema({ type: 'ref', name: refName, ref: schema.$ref as string })
+-      }
+-      return ast.factory.createSchema({ type: 'object', name })
+-    }
+-
+-  it('collects enum schema names', () => {
+-    const { enumNames } = preScan({
+-      schemas,
+-      parseSchema: makeParseSchema(),
+-      parserOptions,
+-      discriminator: 'preserve',
+-    })
+-    expect(enumNames).toStrictEqual(['Status'])
+-  })
+-
+-  it('builds refAliasMap for pure $ref alias schemas only', () => {
+-    const { refAliasMap } = preScan({
+-      schemas,
+-      parseSchema: makeParseSchema(),
+-      parserOptions,
+-      discriminator: 'preserve',
+-    })
+-    expect([...refAliasMap.keys()]).toStrictEqual(['PetAlias'])
+-  })
+-
+-  it('detects circular schema names', async () => {
+-    const circularSchemas: Record<string, SchemaObject> = {
+-      Cat: { type: 'object', properties: { enemy: { $ref: '#/components/schemas/Dog' } } },
+-      Dog: { type: 'object', properties: { enemy: { $ref: '#/components/schemas/Cat' } } },
+-    }
+-    // The parser document must declare the schemas it scans, as it does in real generation — a `$ref`
+-    // to a component the document never defines now resolves to `unknown` rather than a ref node.
+-    const document = await parseFromConfig({ type: 'data', data: { ...minimalSpec, components: { schemas: circularSchemas } } })
+-    const { parseSchema } = createSchemaParser({ document })
+-
+-    const { circularNames } = preScan({
+-      schemas: circularSchemas,
+-      parseSchema,
+-      parserOptions,
+-      discriminator: 'preserve',
+-    })
+-    expect(circularNames).toStrictEqual(['Cat', 'Dog'])
+-  })
+-
+-  it('returns null discriminatorChildMap when discriminator is preserve', () => {
+-    const { discriminatorChildMap } = preScan({
+-      schemas,
+-      parseSchema: makeParseSchema(),
+-      parserOptions,
+-      discriminator: 'preserve',
+-    })
+-    expect(discriminatorChildMap).toBeNull()
+-  })
+-
+-  it('builds discriminatorChildMap when discriminator is propagate', async () => {
+-    const unionSpec: Document = {
+-      openapi: '3.0.0',
+-      info: { title: 'Test API', version: '1.0.0' },
+-      paths: {},
+-      components: {
+-        schemas: {
+-          Cat: { type: 'object', properties: { type: { type: 'string' }, indoor: { type: 'boolean' } } },
+-          Dog: { type: 'object', properties: { type: { type: 'string' }, name: { type: 'string' } } },
+-          Animal: {
+-            oneOf: [{ $ref: '#/components/schemas/Cat' }, { $ref: '#/components/schemas/Dog' }],
+-            discriminator: { propertyName: 'type', mapping: { cat: '#/components/schemas/Cat', dog: '#/components/schemas/Dog' } },
+-          },
+-        },
+-      },
+-    }
+-    const document = await parseFromConfig({ type: 'data', data: unionSpec })
+-    const { parseSchema } = createSchemaParser({ document })
+-
+-    const { discriminatorChildMap } = preScan({
+-      schemas: unionSpec.components!.schemas as Record<string, SchemaObject>,
+-      parseSchema,
+-      document,
+-      parserOptions,
+-      discriminator: 'propagate',
+-    })
+-
+-    expect(discriminatorChildMap?.get('Cat')).toStrictEqual({ propertyName: 'type', enumValues: ['cat'] })
+-    expect(discriminatorChildMap?.get('Dog')).toStrictEqual({ propertyName: 'type', enumValues: ['dog'] })
+-  })
+-})
+-
+-describe('createInputStream', () => {
+-  it('yields schemas lazily via for await', async () => {
+-    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
+-    const { parseSchema, parseOperation } = createSchemaParser({ document })
+-    const schemas = { Pet: petSchema }
+-
+-    const node = createInputStream({
+-      schemas,
+-      parseSchema,
+-      parseOperation,
+-      document,
+-      parserOptions,
+-      refAliasMap: new Map(),
+-      discriminatorChildMap: null,
+-      meta: { circularNames: [], enumNames: [] },
+-    })
+-
+-    const collected: Array<ast.SchemaNode> = []
+-    for await (const schema of node.schemas) collected.push(schema)
+-
+-    expect(collected).toHaveLength(1)
+-    expect(collected[0]?.name).toBe('Pet')
+-  })
+-
+-  it('each for await creates an independent pass', async () => {
+-    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
+-    const { parseSchema, parseOperation } = createSchemaParser({ document })
+-    const schemas = { Pet: petSchema, Category: categorySchema }
+-
+-    const node = createInputStream({
+-      schemas,
+-      parseSchema,
+-      parseOperation,
+-      document,
+-      parserOptions,
+-      refAliasMap: new Map(),
+-      discriminatorChildMap: null,
+-      meta: { circularNames: [], enumNames: [] },
+-    })
+-
+-    const first: Array<string> = []
+-    for await (const s of node.schemas) first.push(s.name ?? '')
+-
+-    const second: Array<string> = []
+-    for await (const s of node.schemas) second.push(s.name ?? '')
+-
+-    expect(second).toStrictEqual(first)
+-    expect(first).toStrictEqual(['Pet', 'Category'])
+-  })
+-
+-  it('resolves $ref alias schemas using refAliasMap', async () => {
+-    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
+-    const { parseSchema, parseOperation } = createSchemaParser({ document })
+-
+-    const schemas: Record<string, SchemaObject> = {
+-      Pet: petSchema,
+-      PetAlias: { $ref: '#/components/schemas/Pet' },
+-    }
+-
+-    const aliasNode = ast.factory.createSchema({ type: 'ref', name: 'Pet', ref: '#/components/schemas/Pet' })
+-    const refAliasMap = new Map([['PetAlias', aliasNode]])
+-
+-    const node = createInputStream({
+-      schemas,
+-      parseSchema,
+-      parseOperation,
+-      document,
+-      parserOptions,
+-      refAliasMap,
+-      discriminatorChildMap: null,
+-      meta: { circularNames: [], enumNames: [] },
+-    })
+-
+-    const collected: Array<ast.SchemaNode> = []
+-    for await (const s of node.schemas) collected.push(s)
+-
+-    const alias = collected.find((s) => s.name === 'PetAlias')
+-    expect(alias?.type).toBe('object')
+-  })
+-
+-  it('yields operations', async () => {
+-    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
+-    const { parseSchema, parseOperation } = createSchemaParser({ document })
+-
+-    const node = createInputStream({
+-      schemas: {},
+-      parseSchema,
+-      parseOperation,
+-      document,
+-      parserOptions,
+-      refAliasMap: new Map(),
+-      discriminatorChildMap: null,
+-      meta: { circularNames: [], enumNames: [] },
+-    })
+-
+-    const operations: Array<ast.OperationNode> = []
+-    for await (const op of node.operations) operations.push(op)
+-
+-    expect(operations).toHaveLength(1)
+-    expect(operations[0]?.operationId).toBe('listPets')
+-  })
+-
+-  it('carries meta through to the returned node', async () => {
+-    const document = await parseFromConfig({ type: 'data', data: minimalSpec })
+-    const { parseSchema, parseOperation } = createSchemaParser({ document })
+-    const meta: ast.InputMeta = { title: 'My API', version: '2.0.0', circularNames: ['Cat'], enumNames: ['Status'] }
+-
+-    const node = createInputStream({
+-      schemas: {},
+-      parseSchema,
+-      parseOperation,
+-      document,
+-      parserOptions,
+-      refAliasMap: new Map(),
+-      discriminatorChildMap: null,
+-      meta,
+-    })
+-
+-    expect(node.meta).toMatchObject({
+-      circularNames: ['Cat'],
+-      enumNames: ['Status'],
+-      title: 'My API',
+-      version: '2.0.0',
+-    })
+-  })
+-})
+diff --git a/packages/cli/src/loggers/utils.test.ts b/packages/cli/src/loggers/utils.test.ts
+index f91e2d2db..dee9d6937 100644
+--- a/packages/cli/src/loggers/utils.test.ts
++++ b/packages/cli/src/loggers/utils.test.ts
+@@ -80,13 +80,4 @@ describe('createHookTimer', () => {
+ 
+     expect(timer.end('a')).toBeUndefined()
+   })
+-
+-  it('clear drops pending starts', () => {
+-    const timer = createHookTimer()
+-
+-    timer.start('a')
+-    timer.clear()
+-
+-    expect(timer.end('a')).toBeUndefined()
+-  })
+ })
+diff --git a/packages/cli/src/runners/generate/getConfigs.test.ts b/packages/cli/src/runners/generate/getConfigs.test.ts
+deleted file mode 100644
+index 52a4c4ba5..000000000
+--- a/packages/cli/src/runners/generate/getConfigs.test.ts
++++ /dev/null
+@@ -1,40 +0,0 @@
+-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+-import { tmpdir } from 'node:os'
+-import { join } from 'node:path'
+-import { afterEach, describe, expect, it } from 'vitest'
+-import { getConfigs } from './utils.ts'
+-
+-describe('getConfigs', () => {
+-  let dir: string
+-
+-  afterEach(async () => {
+-    if (dir) await rm(dir, { recursive: true, force: true })
+-  })
+-
+-  it('loads an explicit ESM config path and defaults plugins to an empty array', async () => {
+-    dir = await mkdtemp(join(tmpdir(), 'kubb-cfg-'))
+-    const configPath = join(dir, 'kubb.config.mjs')
+-    await writeFile(configPath, `export default { root: '.', input: { path: './pets.yaml' }, output: { path: './gen' } }\n`)
+-
+-    const { configPath: resolved, configs } = await getConfigs({ configPath })
+-
+-    expect(resolved).toBe(configPath)
+-    expect(configs).toHaveLength(1)
+-    expect(configs[0]?.plugins).toStrictEqual([])
+-  })
+-
+-  it('calls a config function with the CLI options', async () => {
+-    dir = await mkdtemp(join(tmpdir(), 'kubb-cfg-'))
+-    const configPath = join(dir, 'kubb.config.mjs')
+-    await writeFile(configPath, `export default ({ input }) => ({ root: '.', input: { path: input }, output: { path: './gen' } })\n`)
+-
+-    const { configs } = await getConfigs({ configPath, input: './from-cli.yaml' })
+-
+-    expect(configs[0]).toMatchObject({ input: { path: './from-cli.yaml' } })
+-  })
+-
+-  it('throws a clear error when no config is found', async () => {
+-    dir = await mkdtemp(join(tmpdir(), 'kubb-cfg-'))
+-    await expect(getConfigs({ configPath: join(dir, 'missing.config.ts') })).rejects.toThrow(/Config/)
+-  })
+-})
+diff --git a/packages/cli/src/runners/generate/utils.test.ts b/packages/cli/src/runners/generate/utils.test.ts
+index 7ef84cdf7..8b3f95251 100644
+--- a/packages/cli/src/runners/generate/utils.test.ts
++++ b/packages/cli/src/runners/generate/utils.test.ts
+@@ -1,7 +1,10 @@
++import { mkdtemp, rm, writeFile } from 'node:fs/promises'
++import { tmpdir } from 'node:os'
++import { join } from 'node:path'
+ import process from 'node:process'
+ import { AsyncEventEmitter, type KubbHooks } from '@kubb/core'
+-import { describe, expect, it } from 'vitest'
+-import { isNewerVersion, runHook } from './utils.ts'
++import { afterEach, describe, expect, it } from 'vitest'
++import { getConfigs, isNewerVersion, runHook } from './utils.ts'
+ 
+ const node = process.execPath
+ 
+@@ -139,3 +142,38 @@ describe('isNewerVersion', () => {
+     expect(isNewerVersion('5.9.0', 'not-a-version')).toBe(false)
+   })
+ })
++
++describe('getConfigs', () => {
++  let dir: string
++
++  afterEach(async () => {
++    if (dir) await rm(dir, { recursive: true, force: true })
++  })
++
++  it('loads an explicit ESM config path and defaults plugins to an empty array', async () => {
++    dir = await mkdtemp(join(tmpdir(), 'kubb-cfg-'))
++    const configPath = join(dir, 'kubb.config.mjs')
++    await writeFile(configPath, `export default { root: '.', input: { path: './pets.yaml' }, output: { path: './gen' } }\n`)
++
++    const { configPath: resolved, configs } = await getConfigs({ configPath })
++
++    expect(resolved).toBe(configPath)
++    expect(configs).toHaveLength(1)
++    expect(configs[0]?.plugins).toStrictEqual([])
++  })
++
++  it('calls a config function with the CLI options', async () => {
++    dir = await mkdtemp(join(tmpdir(), 'kubb-cfg-'))
++    const configPath = join(dir, 'kubb.config.mjs')
++    await writeFile(configPath, `export default ({ input }) => ({ root: '.', input: { path: input }, output: { path: './gen' } })\n`)
++
++    const { configs } = await getConfigs({ configPath, input: './from-cli.yaml' })
++
++    expect(configs[0]).toMatchObject({ input: { path: './from-cli.yaml' } })
++  })
++
++  it('throws a clear error when no config is found', async () => {
++    dir = await mkdtemp(join(tmpdir(), 'kubb-cfg-'))
++    await expect(getConfigs({ configPath: join(dir, 'missing.config.ts') })).rejects.toThrow(/Config/)
++  })
++})
+diff --git a/packages/cli/src/runners/validate/run.test.ts b/packages/cli/src/runners/validate/run.test.ts
+index f37225451..01278a1fc 100644
+--- a/packages/cli/src/runners/validate/run.test.ts
++++ b/packages/cli/src/runners/validate/run.test.ts
+@@ -25,25 +25,25 @@ describe('runValidate', () => {
+ 
+   it('validates input when @kubb/adapter-oas is available', async () => {
+     const validate = vi.fn(async () => undefined)
++    vi.doMock('@kubb/adapter-oas', () => ({
++      adapterOas: () => ({ validate }),
++    }))
+     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+ 
+     const { run: runValidate } = await import('./run.ts')
+ 
+-    await runValidate(
+-      { input: 'spec.yaml', version: '1.0.0' },
+-      {
+-        loadValidateModule: async () =>
+-          ({
+-            adapterOas: () => ({ validate }),
+-          }) as unknown as Awaited<ReturnType<(typeof import('./run.ts'))['loadValidateModule']>>,
+-      },
+-    )
++    await runValidate({ input: 'spec.yaml', version: '1.0.0' })
+ 
+     expect(validate).toHaveBeenCalledWith('spec.yaml', { throwOnError: true })
+     expect(logSpy).toHaveBeenCalledWith('✅ Validation success')
+   })
+ 
+   it('prints install guidance when @kubb/adapter-oas is missing', async () => {
++    vi.doMock('@kubb/adapter-oas', () => ({
++      adapterOas: () => {
++        throw new Error("Cannot find module '@kubb/adapter-oas'")
++      },
++    }))
+     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
+       throw new Error('process.exit')
+@@ -51,16 +51,7 @@ describe('runValidate', () => {
+ 
+     const { run: runValidate } = await import('./run.ts')
+ 
+-    await expect(
+-      runValidate(
+-        { input: 'spec.yaml', version: '1.0.0' },
+-        {
+-          loadValidateModule: async () => {
+-            throw new Error("Cannot find module '@kubb/adapter-oas'")
+-          },
+-        },
+-      ),
+-    ).rejects.toThrow('process.exit')
++    await expect(runValidate({ input: 'spec.yaml', version: '1.0.0' })).rejects.toThrow('process.exit')
+ 
+     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining('The @kubb/adapter-oas package is not installed.'))
+     expect(errorSpy).toHaveBeenCalledWith('Install it with:')
+diff --git a/packages/core/src/FileManager.test.ts b/packages/core/src/FileManager.test.ts
+index d29d697b0..bf84ebdab 100644
+--- a/packages/core/src/FileManager.test.ts
++++ b/packages/core/src/FileManager.test.ts
+@@ -1,11 +1,15 @@
+-import { ast } from '@kubb/ast'
+-import { describe, expect, it, vi } from 'vitest'
++import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
++import { tmpdir } from 'node:os'
++import path from 'node:path'
++import { ast, type FileNode } from '@kubb/ast'
++import { afterEach, describe, expect, it, vi } from 'vitest'
+ import { FileManager } from './FileManager.ts'
++import { memoryStorage } from './storages/memoryStorage.ts'
+ 
+-function makeFile(path: string, sourceValue?: string, extra?: Partial<Parameters<typeof ast.factory.createFile>[0]>) {
++function makeFile(filePath: string, sourceValue?: string, extra?: Partial<Parameters<typeof ast.factory.createFile>[0]>) {
+   return ast.factory.createFile({
+-    path,
+-    baseName: path.split('/').pop() as `${string}.${string}`,
++    path: filePath,
++    baseName: filePath.split('/').pop() as `${string}.${string}`,
+     sources: sourceValue ? [ast.factory.createSource({ nodes: [ast.factory.createText(sourceValue)] })] : [],
+     imports: [],
+     exports: [],
+@@ -13,6 +17,16 @@ function makeFile(path: string, sourceValue?: string, extra?: Partial<Parameters
+   })
+ }
+ 
++function makeFileWithSources(filePath: string, sources: Array<string> = []) {
++  return ast.factory.createFile({
++    path: filePath,
++    baseName: filePath.split('/').pop() as `${string}.${string}`,
++    sources: sources.map((value) => ast.factory.createSource({ nodes: [ast.factory.createText(value)] })),
++    imports: [],
++    exports: [],
++  })
++}
++
+ describe('FileManager', () => {
+   it('starts with an empty file list', () => {
+     const manager = new FileManager()
+@@ -110,37 +124,6 @@ describe('FileManager', () => {
+     })
+   })
+ 
+-  describe('getByPath', () => {
+-    it('returns the file for a known path', () => {
+-      const manager = new FileManager()
+-      manager.add(makeFile('/src/foo.ts'))
+-      const file = manager.getByPath('/src/foo.ts')
+-      expect(file).not.toBeNull()
+-      expect(file?.path).toBe('/src/foo.ts')
+-    })
+-
+-    it('returns null for an unknown path', () => {
+-      const manager = new FileManager()
+-      expect(manager.getByPath('/src/unknown.ts')).toBeNull()
+-    })
+-  })
+-
+-  describe('deleteByPath', () => {
+-    it('removes the file with the given path', () => {
+-      const manager = new FileManager()
+-      manager.add(makeFile('/src/foo.ts'))
+-      manager.deleteByPath('/src/foo.ts')
+-      expect(manager.files).toHaveLength(0)
+-    })
+-
+-    it('is a no-op for an unknown path', () => {
+-      const manager = new FileManager()
+-      manager.add(makeFile('/src/foo.ts'))
+-      manager.deleteByPath('/src/other.ts')
+-      expect(manager.files).toHaveLength(1)
+-    })
+-  })
+-
+   describe('clear', () => {
+     it('removes all stored files', () => {
+       const manager = new FileManager()
+@@ -169,50 +152,222 @@ describe('FileManager', () => {
+     })
+   })
+ 
+-  describe('hooks.upsert', () => {
+-    it('fires once per file resolved through upsert', () => {
++  describe('dispose', () => {
++    it('clears all stored files', () => {
+       const manager = new FileManager()
+-      const listener = vi.fn()
+-      manager.hooks.on('upsert', listener)
++      manager.add(makeFile('/src/a.ts'))
++      manager.dispose()
+ 
+-      manager.upsert(makeFile('/src/a.ts'), makeFile('/src/b.ts'))
++      expect(manager.files).toHaveLength(0)
++    })
++  })
+ 
+-      expect(listener).toHaveBeenCalledTimes(2)
+-      expect(listener.mock.calls[0]?.[0].path).toBe('/src/a.ts')
+-      expect(listener.mock.calls[1]?.[0].path).toBe('/src/b.ts')
++  describe('parse', () => {
++    it('joins source values when no parsers are provided', async () => {
++      const manager = new FileManager()
++      const file = makeFileWithSources('/src/foo.ts', ['const a = 1', 'const b = 2'])
++      const result = await manager.parse(file)
++      expect(result).toBe('const a = 1\n\nconst b = 2')
+     })
+ 
+-    it('fires when files land through add', () => {
++    it('joins source values when no matching parser is registered', async () => {
+       const manager = new FileManager()
+-      const listener = vi.fn()
+-      manager.hooks.on('upsert', listener)
++      const file = makeFileWithSources('/src/foo.ts', ['const a = 1'])
++      const result = await manager.parse(file, { parsers: new Map() })
++      expect(result).toBe('const a = 1')
++    })
+ 
+-      manager.add(makeFile('/src/a.ts'))
++    it('calls the registered parser for a matching extension', async () => {
++      const file = makeFileWithSources('/src/foo.ts', ['const a = 1'])
++      const mockParse = vi.fn().mockResolvedValue('// formatted\nconst a = 1')
++      const parser = {
++        name: 'ts',
++        type: 'parser' as const,
++        extNames: ['.ts' as const],
++        install: vi.fn(),
++        parse: mockParse,
++        print: vi.fn().mockReturnValue(''),
++      }
++      const parsers = new Map([['.ts' as const, parser]])
++      const manager = new FileManager()
++      const result = await manager.parse(file, { parsers })
++      expect(mockParse).toHaveBeenCalledWith(file, { extname: undefined })
++      expect(result).toBe('// formatted\nconst a = 1')
++    })
++
++    describe('copy', () => {
++      let dir: string | undefined
++
++      afterEach(() => {
++        if (dir) rmSync(dir, { recursive: true, force: true })
++        dir = undefined
++      })
+ 
+-      expect(listener).toHaveBeenCalledOnce()
+-      expect(listener.mock.calls[0]?.[0].path).toBe('/src/a.ts')
++      it('copies a real file verbatim and bypasses the parser', async () => {
++        dir = mkdtempSync(path.join(tmpdir(), 'kubb-copy-'))
++        const template = path.join(dir, 'template.ts')
++        const content = "import a from 'b'\nexport const z = 1\nimport c from 'd'\n"
++        writeFileSync(template, content)
++
++        const parse = vi.fn().mockReturnValue('SHOULD NOT RUN')
++        const parser = { name: 'ts', type: 'parser' as const, extNames: ['.ts' as const], install: vi.fn(), parse, print: vi.fn().mockReturnValue('') }
++        const manager = new FileManager()
++
++        const file = ast.factory.createFile({ path: '/src/client.ts', baseName: 'client.ts', copy: template })
++        const result = await manager.parse(file, { parsers: new Map([['.ts' as const, parser]]) })
++
++        expect(parse).not.toHaveBeenCalled()
++        expect(result).toBe(content.trimEnd())
++      })
++
++      it('wraps the copied content with banner and footer', async () => {
++        dir = mkdtempSync(path.join(tmpdir(), 'kubb-copy-'))
++        const template = path.join(dir, 'template.ts')
++        writeFileSync(template, 'export const z = 1')
++
++        const manager = new FileManager()
++        const file = ast.factory.createFile({ path: '/src/client.ts', baseName: 'client.ts', copy: template, banner: '/* top */', footer: '/* bottom */' })
++        const result = await manager.parse(file)
++
++        expect(result).toBe('/* top */\nexport const z = 1\n/* bottom */')
++      })
++
++      it('throws a clear error when the file is missing', async () => {
++        const manager = new FileManager()
++        const file = ast.factory.createFile({ path: '/src/client.ts', baseName: 'client.ts', copy: '/does/not/exist.ts' })
++
++        await expect(manager.parse(file)).rejects.toThrow(/Could not copy file into output/)
++      })
+     })
++  })
+ 
+-    it('stops firing after off detaches the listener', () => {
++  describe('write', () => {
++    it('is a no-op for an empty batch', async () => {
++      const storage = memoryStorage()
++      const setItem = vi.spyOn(storage, 'setItem')
+       const manager = new FileManager()
+-      const listener = vi.fn()
+-      manager.hooks.on('upsert', listener)
+-      manager.hooks.off('upsert', listener)
+ 
+-      manager.upsert(makeFile('/src/a.ts'))
++      await manager.write([], { storage })
+ 
+-      expect(listener).not.toHaveBeenCalled()
++      expect(setItem).not.toHaveBeenCalled()
+     })
+ 
+-    it('clears every listener on dispose', () => {
++    it('writes every file in the batch', async () => {
++      const storage = memoryStorage()
+       const manager = new FileManager()
+-      const listener = vi.fn()
+-      manager.hooks.on('upsert', listener)
+-      manager.dispose()
+ 
+-      manager.upsert(makeFile('/src/a.ts'))
++      await manager.write([makeFileWithSources('a.ts', ['/* a.ts */']), makeFileWithSources('b.ts', ['/* b.ts */'])], { storage })
++
++      expect(await storage.getItem('a.ts')).toContain('/* a.ts */')
++      expect(await storage.getItem('b.ts')).toContain('/* b.ts */')
++    })
++
++    it('parses each file before writing it', async () => {
++      const parsed: Array<string> = []
++      const written: Array<string> = []
++      const storage = memoryStorage()
++      const realSetItem = storage.setItem.bind(storage)
++      storage.setItem = async (itemPath: string, source: string) => {
++        written.push(itemPath)
++        await realSetItem(itemPath, source)
++      }
++      const parser = {
++        name: 'ts',
++        type: 'parser' as const,
++        extNames: ['.ts' as const],
++        install: vi.fn(),
++        parse: vi.fn((file: FileNode) => {
++          parsed.push(file.path)
++          return `/* ${file.path} */`
++        }),
++        print: vi.fn().mockReturnValue(''),
++      }
++      const manager = new FileManager()
++
++      await manager.write([makeFileWithSources('a.ts', ['/* a */']), makeFileWithSources('b.ts', ['/* b */'])], {
++        storage,
++        parsers: new Map([['.ts' as const, parser]]),
++      })
++
++      expect(parsed.toSorted()).toStrictEqual(['a.ts', 'b.ts'])
++      expect(written.toSorted()).toStrictEqual(['a.ts', 'b.ts'])
++    })
++
++    it('fires start once, update per file, then end once, writing every file concurrently', async () => {
++      const events: Array<string> = []
++      const storage = memoryStorage()
++      const manager = new FileManager()
++      manager.hooks.on('start', (files) => {
++        events.push(`start:${files.length}`)
++      })
++      manager.hooks.on('update', (item) => {
++        events.push(`update:${item.file.path}`)
++      })
++      manager.hooks.on('end', (files) => {
++        events.push(`end:${files.length}`)
++      })
++
++      await manager.write([makeFileWithSources('a.ts', ['/* a */']), makeFileWithSources('b.ts', ['/* b */'])], { storage })
++
++      expect(events[0]).toBe('start:2')
++      expect(events.at(-1)).toBe('end:2')
++      expect(events.slice(1, -1).toSorted()).toStrictEqual(['update:a.ts', 'update:b.ts'])
++    })
++
++    it('runs writes concurrently instead of pacing itself between files', async () => {
++      const { promise: blockA, resolve: unblockA } = Promise.withResolvers<void>()
++      const storage = memoryStorage()
++      const realSetItem = storage.setItem.bind(storage)
++      const started: Array<string> = []
++      storage.setItem = async (itemPath: string, source: string) => {
++        started.push(itemPath)
++        if (itemPath === 'a.ts') await blockA
++        await realSetItem(itemPath, source)
++      }
++      const manager = new FileManager()
++
++      const writing = manager.write([makeFileWithSources('a.ts', ['/* a */']), makeFileWithSources('b.ts', ['/* b */'])], { storage })
++      await new Promise((resolve) => setTimeout(resolve, 5))
++
++      // b.ts's write started without waiting for a.ts's still-blocked write to finish.
++      expect(started.toSorted()).toStrictEqual(['a.ts', 'b.ts'])
++
++      unblockA()
++      await writing
++    })
++
++    it('waits for every write to finish before resolving', async () => {
++      const { promise: blocker, resolve: unblock } = Promise.withResolvers<void>()
++      const storage = memoryStorage()
++      const realSetItem = storage.setItem.bind(storage)
++      let settled = false
++      storage.setItem = async (itemPath: string, source: string) => {
++        await blocker
++        await realSetItem(itemPath, source)
++      }
++      const manager = new FileManager()
++
++      const writing = manager.write([makeFileWithSources('a.ts', ['/* a */'])], { storage }).then(() => {
++        settled = true
++      })
++      await new Promise((resolve) => setTimeout(resolve, 5))
++      expect(settled).toBe(false)
++
++      unblock()
++      await writing
++
++      expect(settled).toBe(true)
++      expect(await storage.getItem('a.ts')).toContain('/* a */')
++    })
++
++    it('rejects when a write fails', async () => {
++      const storage = memoryStorage()
++      storage.setItem = async () => {
++        throw new Error('disk full')
++      }
++      const manager = new FileManager()
+ 
+-      expect(listener).not.toHaveBeenCalled()
++      await expect(manager.write([makeFileWithSources('a.ts', ['/* a */'])], { storage })).rejects.toThrow('disk full')
+     })
+   })
+ })
+diff --git a/packages/core/src/FileProcessor.test.ts b/packages/core/src/FileProcessor.test.ts
+deleted file mode 100644
+index 0f87e7eca..000000000
+--- a/packages/core/src/FileProcessor.test.ts
++++ /dev/null
+@@ -1,382 +0,0 @@
+-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+-import { tmpdir } from 'node:os'
+-import path from 'node:path'
+-import { ast, type FileNode } from '@kubb/ast'
+-import { afterEach, describe, expect, it, vi } from 'vitest'
+-import { FileProcessor } from './FileProcessor.ts'
+-import { memoryStorage } from './storages/memoryStorage.ts'
+-
+-function makeFile(path: string, sources: Array<string> = []) {
+-  return ast.factory.createFile({
+-    path,
+-    baseName: path.split('/').pop() as `${string}.${string}`,
+-    sources: sources.map((value) => ast.factory.createSource({ nodes: [ast.factory.createText(value)] })),
+-    imports: [],
+-    exports: [],
+-  })
+-}
+-
+-describe('FileProcessor', () => {
+-  describe('parse', () => {
+-    it('joins source values when no parsers are provided', async () => {
+-      const processor = new FileProcessor({ storage: memoryStorage() })
+-      const file = makeFile('/src/foo.ts', ['const a = 1', 'const b = 2'])
+-      const result = await processor.parse(file)
+-      expect(result).toBe('const a = 1\n\nconst b = 2')
+-    })
+-
+-    it('joins source values when no matching parser is registered', async () => {
+-      const processor = new FileProcessor({ storage: memoryStorage(), parsers: new Map() })
+-      const file = makeFile('/src/foo.ts', ['const a = 1'])
+-      const result = await processor.parse(file)
+-      expect(result).toBe('const a = 1')
+-    })
+-
+-    it('calls the registered parser for a matching extension', async () => {
+-      const file = makeFile('/src/foo.ts', ['const a = 1'])
+-      const mockParse = vi.fn().mockResolvedValue('// formatted\nconst a = 1')
+-      const parser = {
+-        name: 'ts',
+-        type: 'parser' as const,
+-        extNames: ['.ts' as const],
+-        install: vi.fn(),
+-        parse: mockParse,
+-        print: vi.fn().mockReturnValue(''),
+-      }
+-      const parsers = new Map([['.ts' as const, parser]])
+-      const processor = new FileProcessor({ storage: memoryStorage(), parsers })
+-      const result = await processor.parse(file)
+-      expect(mockParse).toHaveBeenCalledWith(file, { extname: undefined })
+-      expect(result).toBe('// formatted\nconst a = 1')
+-    })
+-
+-    describe('copy', () => {
+-      let dir: string | undefined
+-
+-      afterEach(() => {
+-        if (dir) rmSync(dir, { recursive: true, force: true })
+-        dir = undefined
+-      })
+-
+-      it('copies a real file verbatim and bypasses the parser', async () => {
+-        dir = mkdtempSync(path.join(tmpdir(), 'kubb-copy-'))
+-        const template = path.join(dir, 'template.ts')
+-        const content = "import a from 'b'\nexport const z = 1\nimport c from 'd'\n"
+-        writeFileSync(template, content)
+-
+-        const parse = vi.fn().mockReturnValue('SHOULD NOT RUN')
+-        const parser = { name: 'ts', type: 'parser' as const, extNames: ['.ts' as const], install: vi.fn(), parse, print: vi.fn().mockReturnValue('') }
+-        const processor = new FileProcessor({ storage: memoryStorage(), parsers: new Map([['.ts' as const, parser]]) })
+-
+-        const file = ast.factory.createFile({ path: '/src/client.ts', baseName: 'client.ts', copy: template })
+-        const result = await processor.parse(file)
+-
+-        expect(parse).not.toHaveBeenCalled()
+-        expect(result).toBe(content.trimEnd())
+-      })
+-
+-      it('wraps the copied content with banner and footer', async () => {
+-        dir = mkdtempSync(path.join(tmpdir(), 'kubb-copy-'))
+-        const template = path.join(dir, 'template.ts')
+-        writeFileSync(template, 'export const z = 1')
+-
+-        const processor = new FileProcessor({ storage: memoryStorage() })
+-        const file = ast.factory.createFile({ path: '/src/client.ts', baseName: 'client.ts', copy: template, banner: '/* top */', footer: '/* bottom */' })
+-        const result = await processor.parse(file)
+-
+-        expect(result).toBe('/* top */\nexport const z = 1\n/* bottom */')
+-      })
+-
+-      it('throws a clear error when the file is missing', async () => {
+-        const processor = new FileProcessor({ storage: memoryStorage() })
+-        const file = ast.factory.createFile({ path: '/src/client.ts', baseName: 'client.ts', copy: '/does/not/exist.ts' })
+-
+-        await expect(processor.parse(file)).rejects.toThrow(/Could not copy file into output/)
+-      })
+-    })
+-  })
+-
+-  describe('run', () => {
+-    it('emits start and end events with the full files list', async () => {
+-      const processor = new FileProcessor({ storage: memoryStorage() })
+-      const files = [makeFile('/src/a.ts', ['a']), makeFile('/src/b.ts', ['b'])]
+-      const onStart = vi.fn()
+-      const onEnd = vi.fn()
+-
+-      processor.hooks.on('start', onStart)
+-      processor.hooks.on('end', onEnd)
+-
+-      await processor.run(files)
+-
+-      expect(onStart).toHaveBeenCalledWith(files)
+-      expect(onEnd).toHaveBeenCalledWith(files)
+-    })
+-
+-    it('emits update event once per file', async () => {
+-      const processor = new FileProcessor({ storage: memoryStorage() })
+-      const files = [makeFile('/src/a.ts', ['a']), makeFile('/src/b.ts', ['b'])]
+-      const onUpdate = vi.fn()
+-
+-      processor.hooks.on('update', onUpdate)
+-
+-      await processor.run(files)
+-
+-      expect(onUpdate).toHaveBeenCalledTimes(2)
+-    })
+-
+-    it('passes correct percentage and processed count via update event', async () => {
+-      const processor = new FileProcessor({ storage: memoryStorage() })
+-      const files = [makeFile('/src/a.ts', ['a']), makeFile('/src/b.ts', ['b'])]
+-      const updates: Array<{
+-        processed: number
+-        percentage: number
+-        total: number
+-      }> = []
+-
+-      processor.hooks.on('update', ({ processed, percentage, total }) => {
+-        updates.push({ processed, percentage, total })
+-      })
+-
+-      await processor.run(files)
+-
+-      expect(updates[0]).toStrictEqual({ processed: 1, percentage: 50, total: 2 })
+-      expect(updates[1]).toStrictEqual({ processed: 2, percentage: 100, total: 2 })
+-    })
+-
+-    it('returns the original files array', async () => {
+-      const processor = new FileProcessor({ storage: memoryStorage() })
+-      const files = [makeFile('/src/a.ts')]
+-      const result = await processor.run(files)
+-      expect(result).toBe(files)
+-    })
+-
+-    it('processes files sequentially by default', async () => {
+-      const processor = new FileProcessor({ storage: memoryStorage() })
+-      const order: Array<string> = []
+-      const files = [makeFile('/src/a.ts', ['a']), makeFile('/src/b.ts', ['b'])]
+-
+-      processor.hooks.on('update', ({ file }) => {
+-        order.push(file.path)
+-      })
+-
+-      await processor.run(files)
+-
+-      expect(order).toStrictEqual(['/src/a.ts', '/src/b.ts'])
+-    })
+-
+-    it('runs without errors', async () => {
+-      const processor = new FileProcessor({ storage: memoryStorage() })
+-      const files = [makeFile('/src/a.ts', ['a']), makeFile('/src/b.ts', ['b'])]
+-      const onUpdate = vi.fn()
+-
+-      processor.hooks.on('update', onUpdate)
+-
+-      await processor.run(files)
+-
+-      expect(onUpdate).toHaveBeenCalledTimes(2)
+-    })
+-
+-    it('handles an empty files array', async () => {
+-      const processor = new FileProcessor({ storage: memoryStorage() })
+-      const onStart = vi.fn()
+-      const onEnd = vi.fn()
+-      const onUpdate = vi.fn()
+-
+-      processor.hooks.on('start', onStart)
+-      processor.hooks.on('end', onEnd)
+-      processor.hooks.on('update', onUpdate)
+-
+-      const result = await processor.run([])
+-
+-      expect(onStart).toHaveBeenCalledWith([])
+-      expect(onEnd).toHaveBeenCalledWith([])
+-      expect(onUpdate).not.toHaveBeenCalled()
+-      expect(result).toStrictEqual([])
+-    })
+-  })
+-})
+-
+-function makeQueueProcessor(overrides: { storage?: ReturnType<typeof memoryStorage> } = {}) {
+-  const storage = overrides.storage ?? memoryStorage()
+-  const processor = new FileProcessor({ storage })
+-  return { processor, storage }
+-}
+-
+-describe('FileProcessor — queue: enqueue', () => {
+-  it('dedupes files by path so a second enqueue replaces the first', () => {
+-    const { processor } = makeQueueProcessor()
+-
+-    processor.enqueue(makeFile('a.ts'))
+-    processor.enqueue(makeFile('a.ts'))
+-    processor.enqueue(makeFile('b.ts'))
+-
+-    expect(processor.size).toBe(2)
+-  })
+-
+-  it('fires the enqueue event for every call', () => {
+-    const { processor } = makeQueueProcessor()
+-    const onEnqueue = vi.fn()
+-    processor.hooks.on('enqueue', onEnqueue)
+-
+-    processor.enqueue(makeFile('a.ts'))
+-    processor.enqueue(makeFile('a.ts'))
+-
+-    expect(onEnqueue).toHaveBeenCalledTimes(2)
+-  })
+-})
+-
+-describe('FileProcessor — queue: flush', () => {
+-  it('is a no-op when nothing is queued', async () => {
+-    const { processor, storage } = makeQueueProcessor()
+-    const setItem = vi.spyOn(storage, 'setItem')
+-
+-    await processor.flush()
+-
+-    expect(setItem).not.toHaveBeenCalled()
+-  })
+-
+-  it('clears pending and writes every file in the batch', async () => {
+-    const { processor, storage } = makeQueueProcessor()
+-    processor.enqueue(makeFile('a.ts', ['/* a.ts */']))
+-    processor.enqueue(makeFile('b.ts', ['/* b.ts */']))
+-
+-    await processor.flush()
+-    await processor.drain()
+-
+-    expect(processor.size).toBe(0)
+-    expect(await storage.getItem('a.ts')).toContain('/* a.ts */')
+-    expect(await storage.getItem('b.ts')).toContain('/* b.ts */')
+-  })
+-
+-  it('returns before the in-flight batch finishes so the caller can pipeline', async () => {
+-    const { promise: firstWriteBlocker, resolve: resolveFirstWrite } = Promise.withResolvers<void>()
+-    const storage = memoryStorage()
+-    const realSetItem = storage.setItem.bind(storage)
+-    storage.setItem = async (path: string, source: string) => {
+-      if (path === 'a.ts') await firstWriteBlocker
+-      await realSetItem(path, source)
+-    }
+-    const { processor } = makeQueueProcessor({ storage })
+-
+-    processor.enqueue(makeFile('a.ts', ['/* a.ts */']))
+-    await processor.flush()
+-
+-    expect(processor.size).toBe(0)
+-    expect(await storage.getItem('a.ts')).toBeNull()
+-
+-    resolveFirstWrite()
+-    await processor.drain()
+-    expect(await storage.getItem('a.ts')).toContain('/* a.ts */')
+-  })
+-
+-  it('runs in-flight batches one at a time: a second flush waits for the first', async () => {
+-    const order: Array<string> = []
+-    const { promise: firstBlocker, resolve: resolveFirst } = Promise.withResolvers<void>()
+-    const storage = memoryStorage()
+-    const realSetItem = storage.setItem.bind(storage)
+-    storage.setItem = async (path: string, source: string) => {
+-      order.push(`set:${path}`)
+-      if (path === 'first.ts') await firstBlocker
+-      await realSetItem(path, source)
+-      order.push(`done:${path}`)
+-    }
+-    const { processor } = makeQueueProcessor({ storage })
+-
+-    processor.enqueue(makeFile('first.ts', ['/* first */']))
+-    await processor.flush()
+-
+-    processor.enqueue(makeFile('second.ts', ['/* second */']))
+-    const secondFlush = processor.flush()
+-
+-    await new Promise((resolve) => setTimeout(resolve, 5))
+-    expect(order).toStrictEqual(['set:first.ts'])
+-
+-    resolveFirst()
+-    await secondFlush
+-    await processor.drain()
+-
+-    expect(order).toStrictEqual(['set:first.ts', 'done:first.ts', 'set:second.ts', 'done:second.ts'])
+-  })
+-})
+-
+-describe('FileProcessor — queue: streaming writes', () => {
+-  it('starts writing a file before parsing the next one', async () => {
+-    const order: Array<string> = []
+-    const storage = memoryStorage()
+-    const realSetItem = storage.setItem.bind(storage)
+-    storage.setItem = async (path: string, source: string) => {
+-      order.push(`set:${path}`)
+-      await realSetItem(path, source)
+-    }
+-    const parser = {
+-      name: 'ts',
+-      type: 'parser' as const,
+-      extNames: ['.ts' as const],
+-      install: vi.fn(),
+-      parse: vi.fn((file: FileNode) => {
+-        order.push(`parse:${file.path}`)
+-        return `/* ${file.path} */`
+-      }),
+-      print: vi.fn().mockReturnValue(''),
+-    }
+-    const processor = new FileProcessor({ storage, parsers: new Map([['.ts' as const, parser]]) })
+-
+-    processor.enqueue(makeFile('a.ts', ['/* a */']))
+-    processor.enqueue(makeFile('b.ts', ['/* b */']))
+-    await processor.drain()
+-
+-    expect(order).toStrictEqual(['parse:a.ts', 'set:a.ts', 'parse:b.ts', 'set:b.ts'])
+-  })
+-
+-  it('fires end only after the last write has finished', async () => {
+-    const events: Array<string> = []
+-    const { promise: blocker, resolve: unblock } = Promise.withResolvers<void>()
+-    const storage = memoryStorage()
+-    const realSetItem = storage.setItem.bind(storage)
+-    storage.setItem = async (path: string, source: string) => {
+-      await blocker
+-      await realSetItem(path, source)
+-      events.push(`done:${path}`)
+-    }
+-    const { processor } = makeQueueProcessor({ storage })
+-    processor.hooks.on('end', () => {
+-      events.push('end')
+-    })
+-
+-    processor.enqueue(makeFile('a.ts', ['/* a */']))
+-    const draining = processor.drain()
+-    await new Promise((resolve) => setTimeout(resolve, 5))
+-    expect(events).toStrictEqual([])
+-
+-    unblock()
+-    await draining
+-
+-    expect(events).toStrictEqual(['done:a.ts', 'end'])
+-  })
+-})
+-
+-describe('FileProcessor — queue: drain', () => {
+-  it('writes everything still pending and waits for the in-flight batch', async () => {
+-    const { processor, storage } = makeQueueProcessor()
+-    processor.enqueue(makeFile('a.ts', ['/* a */']))
+-    await processor.flush()
+-    processor.enqueue(makeFile('b.ts', ['/* b */']))
+-
+-    await processor.drain()
+-
+-    expect(processor.size).toBe(0)
+-    expect(await storage.getItem('a.ts')).toContain('/* a */')
+-    expect(await storage.getItem('b.ts')).toContain('/* b */')
+-  })
+-
+-  it('fires the drain event once everything is written', async () => {
+-    const { processor } = makeQueueProcessor()
+-    const onDrain = vi.fn()
+-    processor.hooks.on('drain', onDrain)
+-
+-    processor.enqueue(makeFile('a.ts', ['/* a */']))
+-    await processor.drain()
+-
+-    expect(onDrain).toHaveBeenCalledOnce()
+-  })
+-})
+diff --git a/packages/core/src/KubbDriver.test.ts b/packages/core/src/KubbDriver.test.ts
+index 047ca407e..327bb8eff 100644
+--- a/packages/core/src/KubbDriver.test.ts
++++ b/packages/core/src/KubbDriver.test.ts
+@@ -214,23 +214,7 @@ describe('KubbDriver#dispatch', () => {
+     expect(upsert).not.toHaveBeenCalled()
+   })
+ 
+-  it('routes element results through the renderer stream when present', () => {
+-    const driver = makeDriver()
+-    const rendered = [file('rendered-1'), file('rendered-2')]
+-    const renderer = vi.fn(() => ({
+-      stream: vi.fn(function* () {
+-        yield* rendered
+-      }),
+-      [Symbol.dispose]: () => {},
+-    }))
+-
+-    driver.dispatch({ result: { kind: 'element' }, renderer: renderer as never })
+-
+-    expect(renderer).toHaveBeenCalledOnce()
+-    expect(driver.fileManager.files.map((f) => f.name)).toStrictEqual(['rendered-1', 'rendered-2'])
+-  })
+-
+-  it('routes element results through the async render path when no stream is exposed', async () => {
++  it('routes element results through the renderer, upserting its files', async () => {
+     const driver = makeDriver()
+     const renderer = {
+       render: vi.fn(async () => {}),
+@@ -239,8 +223,7 @@ describe('KubbDriver#dispatch', () => {
+     }
+     const factory = vi.fn(() => renderer)
+ 
+-    const result = driver.dispatch({ result: { kind: 'element' }, renderer: factory as never })
+-    await result
++    await driver.dispatch({ result: { kind: 'element' }, renderer: factory as never })
+ 
+     expect(renderer.render).toHaveBeenCalledOnce()
+     expect(driver.fileManager.files.map((f) => f.name)).toStrictEqual(['async-1'])
+diff --git a/packages/core/src/Transform.test.ts b/packages/core/src/Transform.test.ts
+index 58eda8d2e..97e85065e 100644
+--- a/packages/core/src/Transform.test.ts
++++ b/packages/core/src/Transform.test.ts
+@@ -114,25 +114,12 @@ describe('Transform — memoization', () => {
+ })
+ 
+ describe('Transform — registry', () => {
+-  it('tracks size and exposes get', () => {
+-    const transforms = new Transform()
+-
+-    expect(transforms.size).toBe(0)
+-    expect(transforms.get('a')).toBeUndefined()
+-
+-    transforms.set('a', [{ name: 'a', schema: () => undefined }])
+-
+-    expect(transforms.size).toBe(1)
+-    expect(transforms.get('a')).toBeDefined()
+-  })
+-
+   it('overwrites a previous macro list for the same plugin', () => {
+     const transforms = new Transform()
+ 
+     transforms.set('a', [{ name: 'first', schema: (node) => ({ ...node, name: 'first' }) }])
+     transforms.set('a', [{ name: 'second', schema: (node) => ({ ...node, name: 'second' }) }])
+ 
+-    expect(transforms.size).toBe(1)
+     expect(transforms.applyTo('a', namedSchema('original')).name).toBe('second')
+   })
+ 
+@@ -142,8 +129,6 @@ describe('Transform — registry', () => {
+ 
+     transforms.dispose()
+ 
+-    expect(transforms.size).toBe(0)
+-    expect(transforms.get('a')).toBeUndefined()
+     expect(transforms.applyTo('a', namedSchema('Pet')).name).toBe('Pet')
+   })
+ })
+diff --git a/packages/core/src/createKubb.test.ts b/packages/core/src/createKubb.test.ts
+index 73395b572..7eed9baea 100644
+--- a/packages/core/src/createKubb.test.ts
++++ b/packages/core/src/createKubb.test.ts
+@@ -5,7 +5,6 @@ import { createKubb } from './createKubb.ts'
+ import { Diagnostics } from './Diagnostics.ts'
+ import { definePlugin } from './definePlugin.ts'
+ import type { Config, KubbHooks, Plugin, UserConfig } from './types.ts'
+-import { GENERATE_FLUSH_EVERY, STREAM_FLUSH_EVERY } from './constants.ts'
+ import { fsStorage } from './storages/fsStorage.ts'
+ import { memoryStorage } from './storages/memoryStorage.ts'
+ import { AsyncEventEmitter } from './asyncEventEmitter.ts'
+@@ -222,7 +221,7 @@ describe('createKubb', () => {
+     expect(endSpy).toHaveBeenCalled()
+   })
+ 
+-  it('flushes generated files per plugin so kubb:plugin:end fires progressively', async () => {
++  it('writes every generated file in one batch after plugin:end fires for each plugin', async () => {
+     const hooks = new AsyncEventEmitter<KubbHooks>()
+     const batches: Array<number> = []
+     hooks.on('kubb:files:processing:start', ({ files }) => {
+@@ -273,10 +272,10 @@ describe('createKubb', () => {
+ 
+     const { files } = await createKubb(streamingConfig, { hooks }).build()
+ 
+-    // Each plugin runs its generator pass sequentially, so its file batch flushes
+-    // before the next plugin starts. Two plugins, two single-file flushes — and the
+-    // `plugin:end` order matches that progression, which drives the CLI counter.
+-    expect(batches).toStrictEqual([1, 1])
++    // Plugins still run their generator pass sequentially, so `plugin:end` fires in
++    // declaration order, which drives the CLI counter. Writing to storage happens once,
++    // after every plugin (and post-processing) has finished generating.
++    expect(batches).toStrictEqual([2])
+     expect(endOrder).toStrictEqual(['plugin-one', 'plugin-two'])
+     expect(files.map((file) => file.path)).toStrictEqual(['/workspace/src/gen/one.ts', '/workspace/src/gen/two.ts'])
+   })
+@@ -352,8 +351,8 @@ describe('createKubb', () => {
+       }))()
+     }
+ 
+-    it('generates all files when schema count exceeds GENERATE_FLUSH_EVERY', async () => {
+-      const count = GENERATE_FLUSH_EVERY * 3 + 1
++    it('generates all files when the schema count spans several write batches', async () => {
++      const count = 25
+       const schemas = Array.from({ length: count }, (_, i) => ast.factory.createSchema({ name: `Schema${i}`, type: 'string' }))
+       const generatedPaths: Array<string> = []
+ 
+@@ -380,7 +379,7 @@ describe('createKubb', () => {
+     })
+ 
+     it('passes operations to gen.operations() in insertion order', async () => {
+-      const opCount = GENERATE_FLUSH_EVERY * 2 + 3
++      const opCount = 19
+       const operations = Array.from({ length: opCount }, (_, i) =>
+         ast.factory.createOperation({ operationId: `op${i}`, method: 'GET', path: `/path${i}`, parameters: [], responses: [], tags: [] }),
+       )
+@@ -420,42 +419,6 @@ describe('createKubb', () => {
+ 
+       expect(receivedOrder).toStrictEqual(operations.map((o) => o.operationId))
+     })
+-
+-    it('processes schemas from adapter.stream() across batches', async () => {
+-      const count = GENERATE_FLUSH_EVERY * 2 + 1
+-      const schemas = Array.from({ length: count }, (_, i) => ast.factory.createSchema({ name: `StreamSchema${i}`, type: 'string' }))
+-      const generatedPaths: Array<string> = []
+-
+-      async function* asyncSchemas() {
+-        for (const s of schemas) yield s
+-      }
+-      async function* asyncOps() {}
+-
+-      const streamAdapter = createMockedAdapter({
+-        parse: async () => ({
+-          kind: 'Input' as const,
+-          meta: { circularNames: [] as Array<string>, enumNames: [] as Array<string> },
+-          schemas: [],
+-          operations: [],
+-        }),
+-      })
+-      Object.assign(streamAdapter, {
+-        stream: async () => ast.factory.createInput({ stream: true, schemas: asyncSchemas(), operations: asyncOps() }),
+-      })
+-
+-      const { files } = await createKubb(
+-        {
+-          ...config,
+-          storage: memoryStorage(),
+-          adapter: streamAdapter,
+-          plugins: [makeBatchPlugin(generatedPaths) as unknown as Plugin],
+-        },
+-        { hooks: new AsyncEventEmitter<KubbHooks>() },
+-      ).build()
+-
+-      expect(files).toHaveLength(count)
+-      expect(generatedPaths).toHaveLength(count)
+-    })
+   })
+ 
+   describe('per-node options and transform reuse', () => {
+@@ -546,14 +509,14 @@ describe('createKubb', () => {
+     })
+   })
+ 
+-  describe('streaming flush during generation', () => {
+-    it('flushes files mid-generation when schema count exceeds STREAM_FLUSH_EVERY', async () => {
+-      const count = STREAM_FLUSH_EVERY + 10
++  describe('write batch after generation', () => {
++    it('writes all generated files in a single batch, regardless of schema count', async () => {
++      const count = 60
+       const schemas = Array.from({ length: count }, (_, i) => ast.factory.createSchema({ name: `FlushSchema${i}`, type: 'string' }))
+       const hooks = new AsyncEventEmitter<KubbHooks>()
+-      const flushEvents: Array<number> = []
++      const batches: Array<number> = []
+       hooks.on('kubb:files:processing:start', ({ files }) => {
+-        flushEvents.push(files.length)
++        batches.push(files.length)
+       })
+ 
+       const flushPlugin = definePlugin(() => ({
+@@ -596,13 +559,13 @@ describe('createKubb', () => {
+       ).build()
+ 
+       expect(files).toHaveLength(count)
+-      expect(flushEvents.length).toBeGreaterThanOrEqual(2)
++      expect(batches).toStrictEqual([count])
+     })
+   })
+ 
+-  describe('parallel file writes', () => {
+-    it('writes all files correctly when flush batch exceeds STREAM_FLUSH_EVERY', async () => {
+-      const fileCount = STREAM_FLUSH_EVERY * 2 + 5
++  describe('large file writes', () => {
++    it('writes every file exactly once', async () => {
++      const fileCount = 105
+       const writtenPaths: Array<string> = []
+       const storage = memoryStorage()
+       const originalSetItem = storage.setItem.bind(storage)
+diff --git a/packages/core/src/defineResolver.test.ts b/packages/core/src/createResolver.test.ts
+similarity index 61%
+rename from packages/core/src/defineResolver.test.ts
+rename to packages/core/src/createResolver.test.ts
+index 4f5667b18..d15fdef3a 100644
+--- a/packages/core/src/defineResolver.test.ts
++++ b/packages/core/src/createResolver.test.ts
+@@ -1,8 +1,8 @@
+ import { camelCase } from '@internals/utils'
+ import { ast, type InputMeta } from '@kubb/ast'
+ import { describe, expect, it } from 'vitest'
+-import { defaultResolveBanner, defaultResolveFile, defaultResolveFooter, defaultResolvePath, defineResolver } from './defineResolver.ts'
+-import type { Config, Resolver, ResolverContext } from './types.ts'
++import { createResolver, Resolver } from './createResolver.ts'
++import type { Config, ResolverContext } from './types.ts'
+ 
+ type TestResolver = Resolver & {
+   greet(name: string): string
+@@ -16,87 +16,161 @@ type TestPluginFactory = {
+   resolver: TestResolver
+ }
+ 
++const baseResolver = new Resolver({ pluginName: 'test' })
++
+ const context: ResolverContext = {
+   root: '/root',
+   output: { path: 'types' },
+   group: undefined,
+ }
+ 
+-describe('defineResolver', () => {
+-  it('injects default and resolveOptions', () => {
+-    const resolver = defineResolver<TestPluginFactory>(() => ({
++describe('createResolver', () => {
++  it('injects the default machinery and top-level name/file', () => {
++    const resolver = createResolver<TestPluginFactory>({
+       pluginName: 'test',
+-      name: 'test',
+       greet(name) {
+         return `Hello ${name}`
+       },
+       farewell(name) {
+         return `Goodbye ${name}`
+       },
+-    }))
+-
+-    expect(resolver.default).toBeTypeOf('function')
+-    expect(resolver.resolveOptions).toBeTypeOf('function')
+-    expect(resolver.resolvePath).toBeTypeOf('function')
+-    expect(resolver.resolveFile).toBeTypeOf('function')
+-    expect(resolver.name).toBe('test')
+-  })
+-
+-  it('build function values override defaults', () => {
+-    const resolver = defineResolver<TestPluginFactory>(() => {
+-      const build = {
+-        pluginName: 'test' as const,
+-        name: 'custom',
+-        default(name: string) {
+-          return name.toUpperCase()
+-        },
+-        greet(name: string) {
+-          return build.default(name)
++    })
++
++    expect(resolver.default.name).toBeTypeOf('function')
++    expect(resolver.default.options).toBeTypeOf('function')
++    expect(resolver.default.path).toBeTypeOf('function')
++    expect(resolver.default.file).toBeTypeOf('function')
++    expect(resolver.name).toBeTypeOf('function')
++    expect(resolver.file).toBeTypeOf('function')
++    // the injected top-level name delegates to the built-in camelCase default
++    expect(resolver.name('list pets')).toBe('listPets')
++    expect(resolver).toBeInstanceOf(Resolver)
++  })
++
++  it('a plugin overrides the top-level name; default.name keeps the built-in casing', () => {
++    const resolver = createResolver<TestPluginFactory>({
++      pluginName: 'test',
++      name(name) {
++        return name.toUpperCase()
++      },
++      greet(name) {
++        return this.name(name)
++      },
++      farewell(name) {
++        return `bye ${this.name(name)}`
++      },
++    })
++
++    expect(resolver.name('hello')).toBe('HELLO')
++    expect(resolver.greet('world')).toBe('WORLD')
++    expect(resolver.default.name('list pets')).toBe('listPets')
++  })
++
++  it('a namespace method reaches the resolver root through `this`', () => {
++    type SchemaResolver = Resolver & { schema: { name(name: string): string; typeName(name: string): string } }
++    type SchemaFactory = { name: 'test'; options: {}; resolvedOptions: {}; resolver: SchemaResolver }
++
++    const resolver = createResolver<SchemaFactory>({
++      pluginName: 'test',
++      schema: {
++        name(name) {
++          return `${this.name(name)}Schema`
+         },
+-        farewell(name: string) {
+-          return `bye ${build.default(name)}`
++        typeName(name) {
++          return `${this.name(name)}SchemaType`
+         },
+-      }
+-      return build
++      },
+     })
+ 
+-    expect(resolver.default('hello')).toBe('HELLO')
+-    expect(resolver.greet('world')).toBe('WORLD')
++    expect(resolver.schema.name('list pets')).toBe('listPetsSchema')
++    expect(resolver.schema.typeName('list pets')).toBe('listPetsSchemaType')
++  })
++
++  it('a file override threads a custom caser through default.file', () => {
++    const resolver = createResolver<TestPluginFactory>({
++      pluginName: 'test',
++      file(params, ctx) {
++        return this.default.file({ ...params, resolveName: (name) => `${name.toLowerCase()}.gen` }, ctx)
++      },
++      greet: (name: string) => name,
++      farewell: (name: string) => name,
++    })
++
++    const file = resolver.file({ name: 'Pet', extname: '.ts' }, context)
++    expect(file.baseName).toBe('pet.gen.ts')
+   })
+ 
+   it('resolveOptions does not throw when options is not an object', () => {
+-    const resolver = defineResolver<TestPluginFactory>(() => ({
++    const resolver = createResolver<TestPluginFactory>({
+       pluginName: 'test',
+-      name: 'test',
+       greet: (name: string) => name,
+       farewell: (name: string) => name,
+-    }))
++    })
+ 
+     const node = ast.factory.createFile({ baseName: 'pet.ts', path: 'src/pet.ts' })
+ 
+     // A re-instantiated plugin can hand back a falsy-but-not-nullish `options` (e.g. `false`).
+     // `resolveOptions` caches by `options` identity in a `WeakMap`, which only accepts object
+     // keys, so this must fall back to computing directly instead of throwing.
+-    expect(() => resolver.resolveOptions<boolean>(node, { options: false })).not.toThrow()
+-    expect(resolver.resolveOptions<boolean>(node, { options: false })).toBe(false)
++    expect(() => resolver.default.options<boolean>(node, { options: false })).not.toThrow()
++    expect(resolver.default.options<boolean>(node, { options: false })).toBe(false)
++  })
++
++  it('Resolver.merge() rebuilds helpers on a new instance', () => {
++    type SchemaResolver = Resolver & { schema: { label(name: string): string } }
++    type SchemaFactory = { name: 'test'; options: {}; resolvedOptions: {}; resolver: SchemaResolver }
++
++    const base = createResolver<SchemaFactory>({
++      pluginName: 'test',
++      schema: {
++        label(name) {
++          return `base:${this.name(name)}`
++        },
++      },
++    })
++
++    const merged = Resolver.merge(base, {
++      name(name) {
++        return name.toUpperCase()
++      },
++    })
++
++    expect(merged).not.toBe(base)
++    expect(merged).toBeInstanceOf(Resolver)
++    expect(merged.name('hello')).toBe('HELLO')
++    expect(merged.schema.label('pets')).toBe('base:PETS')
++  })
++
++  it('supports top-level helpers like typeName', () => {
++    type TypeResolver = Resolver & { typeName(name: string): string }
++    type TypeFactory = { name: 'test'; options: {}; resolvedOptions: {}; resolver: TypeResolver }
++
++    const resolver = createResolver<TypeFactory>({
++      pluginName: 'test',
++      typeName(name) {
++        return `${this.name(name)}Type`
++      },
++    })
++
++    expect(resolver.typeName('list pets')).toBe('listPetsType')
+   })
+ })
+ 
+-describe('defaultResolvePath', () => {
++describe('default.path', () => {
+   it('resolves flat path (directory mode)', () => {
+-    const result = defaultResolvePath({ baseName: 'petTypes.ts' }, { root: '/root', output: { path: 'types' }, group: undefined })
++    const result = baseResolver.default.path({ baseName: 'petTypes.ts' }, { root: '/root', output: { path: 'types' }, group: undefined })
+ 
+     expect(result).toBe('/root/types/petTypes.ts')
+   })
+ 
+   it('returns the output file as-is in file mode', () => {
+-    const result = defaultResolvePath({ baseName: 'petTypes.ts' }, { root: '/root', output: { path: 'types.ts', mode: 'file' }, group: undefined })
++    const result = baseResolver.default.path({ baseName: 'petTypes.ts' }, { root: '/root', output: { path: 'types.ts', mode: 'file' }, group: undefined })
+ 
+     expect(result).toBe('/root/types.ts')
+   })
+ 
+   it('groups by tag using the plain camelCased tag by default', () => {
+-    const result = defaultResolvePath(
++    const result = baseResolver.default.path(
+       { baseName: 'petTypes.ts', tag: 'pet store' },
+       {
+         root: '/root',
+@@ -109,7 +183,7 @@ describe('defaultResolvePath', () => {
+   })
+ 
+   it('groups by path when group.type is path', () => {
+-    const result = defaultResolvePath(
++    const result = baseResolver.default.path(
+       { baseName: 'petTypes.ts', path: '/pets/list' },
+       {
+         root: '/root',
+@@ -127,7 +201,7 @@ describe('defaultResolvePath', () => {
+   })
+ 
+   it('uses custom group.name when provided', () => {
+-    const result = defaultResolvePath(
++    const result = baseResolver.default.path(
+       { baseName: 'petTypes.ts', tag: 'pets' },
+       {
+         root: '/root',
+@@ -140,7 +214,7 @@ describe('defaultResolvePath', () => {
+   })
+ 
+   it('falls back to flat path when group present but no tag or path given', () => {
+-    const result = defaultResolvePath(
++    const result = baseResolver.default.path(
+       { baseName: 'petTypes.ts', tag: 'pets' },
+       {
+         root: '/root',
+@@ -158,7 +232,7 @@ describe('defaultResolvePath', () => {
+   })
+ 
+   it('sanitizes traversal segments in default path-based grouping', () => {
+-    const result = defaultResolvePath(
++    const result = baseResolver.default.path(
+       { baseName: 'petTypes.ts', path: '../../etc/passwd' },
+       {
+         root: '/root',
+@@ -176,7 +250,7 @@ describe('defaultResolvePath', () => {
+ 
+   it('throws when a custom group.name returns a path outside the output directory', () => {
+     expect(() =>
+-      defaultResolvePath(
++      baseResolver.default.path(
+         { baseName: 'petTypes.ts', path: '/pets' },
+         {
+           root: '/root',
+@@ -188,22 +262,21 @@ describe('defaultResolvePath', () => {
+   })
+ 
+   it('throws when baseName contains a traversal sequence', () => {
+-    expect(() => defaultResolvePath({ baseName: '../../etc/passwd' }, { root: '/root', output: { path: 'types' }, group: undefined })).toThrow(
++    expect(() => baseResolver.default.path({ baseName: '../../etc/passwd' }, { root: '/root', output: { path: 'types' }, group: undefined })).toThrow(
+       'outside the output directory',
+     )
+   })
+ })
+ 
+-describe('defaultResolveFile', () => {
+-  const resolver = defineResolver<TestPluginFactory>(() => ({
+-    name: 'test',
++describe('default.file', () => {
++  const resolver = createResolver<TestPluginFactory>({
+     pluginName: 'test',
+     greet: () => '',
+     farewell: () => '',
+-  }))
++  })
+ 
+   it('resolves a file with correct baseName and path', () => {
+-    const file = defaultResolveFile.call(resolver, { name: 'pet', extname: '.ts' }, context)
++    const file = resolver.default.file({ name: 'pet', extname: '.ts' }, context)
+ 
+     expect(file.baseName).toBe('pet.ts')
+     expect(file.path).toBe('/root/types/pet.ts')
+@@ -212,8 +285,8 @@ describe('defaultResolveFile', () => {
+     expect(file.exports).toStrictEqual([])
+   })
+ 
+-  it('uses PascalCase file name via resolver.default', () => {
+-    const file = defaultResolveFile.call(resolver, { name: 'list pets', extname: '.ts' }, context)
++  it('uses the default toFilePath casing for the file name', () => {
++    const file = resolver.default.file({ name: 'list pets', extname: '.ts' }, context)
+ 
+     expect(file.baseName).toBe('listPets.ts')
+   })
+@@ -227,14 +300,13 @@ describe('defaultResolveFile', () => {
+     // leading dots must not escape the output directory
+     ['..Schema', '/root/types/schema.ts'],
+   ])('nests dotted file name %s into %s', (name, expected) => {
+-    const file = defaultResolveFile.call(resolver, { name, extname: '.ts' }, context)
++    const file = resolver.default.file({ name, extname: '.ts' }, context)
+ 
+     expect(file.path).toBe(expected)
+   })
+ 
+   it('omits the file name and writes to the output file in file mode', () => {
+-    const file = defaultResolveFile.call(
+-      resolver,
++    const file = resolver.default.file(
+       { name: 'pet', extname: '.ts' },
+       {
+         ...context,
+@@ -251,8 +323,7 @@ describe('defaultResolveFile', () => {
+   })
+ 
+   it('groups by tag when resolver is tag-grouped', () => {
+-    const file = defaultResolveFile.call(
+-      resolver,
++    const file = resolver.default.file(
+       { name: 'pet', extname: '.ts', tag: 'pets' },
+       {
+         root: '/root',
+@@ -270,9 +341,9 @@ const mockConfig = {
+   output: { path: 'src/generated', defaultBanner: true },
+ } as unknown as Config
+ 
+-describe('defaultResolveBanner', () => {
++describe('default.banner', () => {
+   it('returns default banner when no output.banner is configured', () => {
+-    const result = defaultResolveBanner(undefined, { config: mockConfig })
++    const result = baseResolver.default.banner(undefined, { config: mockConfig })
+     expect(result).toContain('Generated by Kubb')
+     expect(result).toContain('petStore.yaml')
+   })
+@@ -282,7 +353,7 @@ describe('defaultResolveBanner', () => {
+       ...mockConfig,
+       output: { ...mockConfig.output, defaultBanner: 'simple' },
+     } as unknown as Config
+-    const result = defaultResolveBanner(undefined, { config })
++    const result = baseResolver.default.banner(undefined, { config })
+     expect(result).toBe('/**\n* Generated by Kubb (https://kubb.dev/).\n* Do not edit manually.\n*/\n')
+   })
+ 
+@@ -291,12 +362,12 @@ describe('defaultResolveBanner', () => {
+       ...mockConfig,
+       output: { ...mockConfig.output, defaultBanner: false },
+     } as unknown as Config
+-    const result = defaultResolveBanner(undefined, { config })
++    const result = baseResolver.default.banner(undefined, { config })
+     expect(result).toBeNull()
+   })
+ 
+   it('user string banner overrides the Kubb default', () => {
+-    const result = defaultResolveBanner(undefined, {
++    const result = baseResolver.default.banner(undefined, {
+       config: mockConfig,
+       output: { banner: '// custom banner' },
+     })
+@@ -305,7 +376,7 @@ describe('defaultResolveBanner', () => {
+ 
+   it('user function banner overrides the Kubb default when meta is provided', () => {
+     const meta: InputMeta = { title: 'Petstore', description: 'Test API', version: '1.0.0', circularNames: [], enumNames: [] }
+-    const result = defaultResolveBanner(meta, {
++    const result = baseResolver.default.banner(meta, {
+       config: mockConfig,
+       output: { banner: (m?: InputMeta) => `// title: ${m?.title}` },
+     })
+@@ -314,7 +385,7 @@ describe('defaultResolveBanner', () => {
+ 
+   it('includes meta title and version (but not description) in the Kubb banner when meta is provided', () => {
+     const meta: InputMeta = { title: 'Pet API', description: 'A very long description', version: '2.0.0', circularNames: [], enumNames: [] }
+-    const result = defaultResolveBanner(meta, {
++    const result = baseResolver.default.banner(meta, {
+       config: mockConfig,
+     })
+     expect(result).toContain('Pet API')
+@@ -325,17 +396,17 @@ describe('defaultResolveBanner', () => {
+   it('function banner receives per-file context and can skip aggregation files', () => {
+     const banner = (m: { isBarrel: boolean; isAggregation: boolean }) => (m.isBarrel || m.isAggregation ? '' : "'use server'")
+ 
+-    const aggregation = defaultResolveBanner(undefined, {
++    const aggregation = baseResolver.default.banner(undefined, {
+       config: mockConfig,
+       output: { banner },
+       file: { path: 'src/gen/clients/stocks/stocks.ts', baseName: 'stocks.ts', isAggregation: true },
+     })
+-    const barrel = defaultResolveBanner(undefined, {
++    const barrel = baseResolver.default.banner(undefined, {
+       config: mockConfig,
+       output: { banner },
+       file: { path: 'src/gen/clients/index.ts', baseName: 'index.ts', isBarrel: true },
+     })
+-    const source = defaultResolveBanner(undefined, {
++    const source = baseResolver.default.banner(undefined, {
+       config: mockConfig,
+       output: { banner },
+       file: { path: 'src/gen/clients/getStock.ts', baseName: 'getStock.ts' },
+@@ -347,7 +418,7 @@ describe('defaultResolveBanner', () => {
+   })
+ 
+   it('function banner receives filePath and baseName from the file context', () => {
+-    const result = defaultResolveBanner(undefined, {
++    const result = baseResolver.default.banner(undefined, {
+       config: mockConfig,
+       output: { banner: (m) => `// ${m.baseName} @ ${m.filePath}` },
+       file: { path: 'a/b.ts', baseName: 'b.ts' },
+@@ -356,7 +427,7 @@ describe('defaultResolveBanner', () => {
+   })
+ 
+   it('per-file fields default to false/empty when no file context is provided', () => {
+-    const result = defaultResolveBanner(undefined, {
++    const result = baseResolver.default.banner(undefined, {
+       config: mockConfig,
+       output: { banner: (m) => `${m.isBarrel}-${m.isAggregation}-[${m.filePath}]-[${m.baseName}]` },
+     })
+@@ -364,14 +435,14 @@ describe('defaultResolveBanner', () => {
+   })
+ })
+ 
+-describe('defaultResolveFooter', () => {
++describe('default.footer', () => {
+   it('returns null when no output.footer is configured', () => {
+-    const result = defaultResolveFooter(undefined, { config: mockConfig })
++    const result = baseResolver.default.footer(undefined, { config: mockConfig })
+     expect(result).toBeNull()
+   })
+ 
+   it('returns static string footer from output.footer', () => {
+-    const result = defaultResolveFooter(undefined, {
++    const result = baseResolver.default.footer(undefined, {
+       config: mockConfig,
+       output: { footer: '// end of file' },
+     })
+@@ -380,7 +451,7 @@ describe('defaultResolveFooter', () => {
+ 
+   it('calls output.footer function with meta when meta is provided', () => {
+     const meta: InputMeta = { title: 'Petstore', circularNames: [], enumNames: [] }
+-    const result = defaultResolveFooter(meta, {
++    const result = baseResolver.default.footer(meta, {
+       config: mockConfig,
+       output: { footer: (m?: InputMeta) => `// footer for ${m?.title}` },
+     })
+@@ -388,7 +459,7 @@ describe('defaultResolveFooter', () => {
+   })
+ 
+   it('calls output.footer function with undefined when meta is undefined', () => {
+-    const result = defaultResolveFooter(undefined, {
++    const result = baseResolver.default.footer(undefined, {
+       config: mockConfig,
+       output: { footer: (_m?: InputMeta) => '// called' },
+     })
+@@ -396,7 +467,7 @@ describe('defaultResolveFooter', () => {
+   })
+ 
+   it('function footer receives per-file context', () => {
+-    const result = defaultResolveFooter(undefined, {
++    const result = baseResolver.default.footer(undefined, {
+       config: mockConfig,
+       output: { footer: (m) => (m.isBarrel ? '// barrel' : `// ${m.baseName}`) },
+       file: { path: 'src/gen/index.ts', baseName: 'index.ts', isBarrel: true },
+diff --git a/packages/core/src/definePlugin.test.ts b/packages/core/src/definePlugin.test.ts
+index 3b81231a4..b539d74f5 100644
+--- a/packages/core/src/definePlugin.test.ts
++++ b/packages/core/src/definePlugin.test.ts
+@@ -252,8 +252,8 @@ describe('PluginDriver — hook-style plugin registration', () => {
+       hooks: {
+         'kubb:plugin:setup'(ctx) {
+           ctx.setResolver({
+-            default() {
+-              return 'CustomTypeName'
++            name() {
++              return 'CustomName'
+             },
+           })
+         },
+@@ -268,9 +268,9 @@ describe('PluginDriver — hook-style plugin registration', () => {
+     await driver.emitSetupHooks()
+ 
+     const resolver = driver.getResolver('hook-plugin')
+-    expect(resolver.default('any value', 'type')).toBe('CustomTypeName')
++    expect(resolver.name('any value')).toBe('CustomName')
+     expect(
+-      resolver.resolvePath(
++      resolver.default.path(
+         { baseName: 'pets.ts' },
+         {
+           root: '/tmp/root',
+@@ -286,7 +286,7 @@ describe('PluginDriver — hook-style plugin registration', () => {
+       hooks: {
+         'kubb:plugin:setup'(ctx) {
+           ctx.setResolver({
+-            default() {
++            name() {
+               return 'FromPlugin'
+             },
+           })
+@@ -303,7 +303,7 @@ describe('PluginDriver — hook-style plugin registration', () => {
+ 
+     const plugin = driver.plugins.get('hook-plugin')!
+     expect(plugin.resolver).toBeDefined()
+-    expect(plugin.resolver!.default('test', 'type')).toBe('FromPlugin')
++    expect(plugin.resolver!.name('test')).toBe('FromPlugin')
+   })
+ 
+   it('uses default resolver when setResolver() is never called', async () => {
+@@ -319,7 +319,7 @@ describe('PluginDriver — hook-style plugin registration', () => {
+     await driver.setup()
+ 
+     const resolver = driver.getResolver('hook-plugin')
+-    expect(resolver.default('my custom type', 'type')).toBe('MyCustomType')
++    expect(resolver.name('my custom type')).toBe('myCustomType')
+   })
+ 
+   it('setOptions() merges resolved options into the normalized plugin', async () => {
+@@ -538,7 +538,7 @@ describe('PluginDriver — generator event dispatch', () => {
+   it('registerGenerator() receives the resolved resolver on ctx.resolver', async () => {
+     const capturedResolverResult = vi.fn()
+     const schemaMock = vi.fn(function (_node: SchemaNode, ctx: GeneratorContext) {
+-      capturedResolverResult(ctx.resolver.default('pet schema', 'type'))
++      capturedResolverResult(ctx.resolver.name('pet schema'))
+       return undefined
+     })
+ 
+@@ -547,7 +547,7 @@ describe('PluginDriver — generator event dispatch', () => {
+       hooks: {
+         'kubb:plugin:setup'(ctx) {
+           ctx.setResolver({
+-            default() {
++            name() {
+               return 'ResolvedFromSetup'
+             },
+           })
+diff --git a/packages/kubb/src/defineConfig.test.ts b/packages/kubb/src/defineConfig.test.ts
+index 9407ca91b..71110990a 100644
+--- a/packages/kubb/src/defineConfig.test.ts
++++ b/packages/kubb/src/defineConfig.test.ts
+@@ -144,7 +144,7 @@ describe('defineConfig', () => {
+     expect(barrelCount).toBe(1)
+   })
+ 
+-  test('does not default barrel when pluginBarrel is not in plugins', () => {
++  test('appends pluginBarrel and defaults barrel when plugins omit it', () => {
+     const customPlugin = createMockedPlugin({ name: 'custom', options: undefined as any })
+     const config = defineConfig({
+       root: '.',
+@@ -154,9 +154,6 @@ describe('defineConfig', () => {
+     } as UserConfig)
+     const resolved = config as UserConfig
+ 
+-    // pluginBarrel gets appended by default, so barrel IS defaulted here —
+-    // this test verifies the scenario where pluginBarrel is explicitly removed
+-    // cannot be expressed with the new approach (barrel always defaults unless barrel: false)
+     expect(resolved.plugins?.some((p) => p.name === pluginBarrelName)).toBe(true)
+     expect(resolved.output.barrel).toStrictEqual({ type: 'named' })
+   })
+diff --git a/packages/renderer-jsx/src/jsxRenderer.test.tsx b/packages/renderer-jsx/src/jsxRenderer.test.tsx
+index ffa3b53ed..b3b4ed271 100644
+--- a/packages/renderer-jsx/src/jsxRenderer.test.tsx
++++ b/packages/renderer-jsx/src/jsxRenderer.test.tsx
+@@ -1,4 +1,3 @@
+-import type { FileNode } from '@kubb/ast'
+ import { describe, expect, it } from 'vitest'
+ import { Const } from './components/js/Const.tsx'
+ import { File } from './components/File.tsx'
+@@ -61,133 +60,6 @@ describe('jsxRenderer', () => {
+     ).rejects.toThrow('render error')
+   })
+ 
+-  it('should stream files one at a time', async () => {
+-    const renderer = jsxRenderer()
+-    const order: Array<string> = []
+-
+-    const element = (
+-      <>
+-        <File baseName="first.ts" path="src/first.ts">
+-          <File.Source name="A" isExportable>
+-            <Const export name="A">
+-              {'"first"'}
+-            </Const>
+-          </File.Source>
+-        </File>
+-        <File baseName="second.ts" path="src/second.ts">
+-          <File.Source name="B" isExportable>
+-            <Const export name="B">
+-              {'"second"'}
+-            </Const>
+-          </File.Source>
+-        </File>
+-      </>
+-    )
+-
+-    for await (const file of renderer.stream(element)) {
+-      order.push(file.baseName as string)
+-    }
+-
+-    expect(order).toStrictEqual(['first.ts', 'second.ts'])
+-  })
+-
+-  it('should yield the first file before evaluating the second component', () => {
+-    const callOrder: Array<string> = []
+-
+-    function First() {
+-      callOrder.push('First called')
+-      return (
+-        <File baseName="first.ts" path="src/first.ts">
+-          <File.Source name="A" isExportable>
+-            <Const export name="A">
+-              {'"first"'}
+-            </Const>
+-          </File.Source>
+-        </File>
+-      )
+-    }
+-
+-    function Second() {
+-      callOrder.push('Second called')
+-      return (
+-        <File baseName="second.ts" path="src/second.ts">
+-          <File.Source name="B" isExportable>
+-            <Const export name="B">
+-              {'"second"'}
+-            </Const>
+-          </File.Source>
+-        </File>
+-      )
+-    }
+-
+-    const renderer = jsxRenderer()
+-    const gen = renderer.stream(
+-      <>
+-        <First />
+-        <Second />
+-      </>,
+-    )
+-
+-    const result1 = gen.next()
+-    expect(result1.done).toBe(false)
+-    expect((result1.value as FileNode).baseName).toBe('first.ts')
+-    expect(callOrder).toStrictEqual(['First called'])
+-
+-    const result2 = gen.next()
+-    expect(result2.done).toBe(false)
+-    expect((result2.value as FileNode).baseName).toBe('second.ts')
+-    expect(callOrder).toStrictEqual(['First called', 'Second called'])
+-
+-    expect(gen.next().done).toBe(true)
+-  })
+-
+-  it('should stream the same files as render produces', async () => {
+-    const element = (
+-      <>
+-        <File baseName="models.ts" path="src/models.ts">
+-          <File.Import name={['z']} path="zod" />
+-          <File.Export name={['Pet']} path="./models" isTypeOnly />
+-          <File.Source name="Pet" isExportable isIndexable isTypeOnly>
+-            <Type export name="Pet">
+-              {'{ id: number; name: string }'}
+-            </Type>
+-          </File.Source>
+-        </File>
+-        <File baseName="client.ts" path="src/client.ts">
+-          <File.Source name="getPet" isExportable>
+-            <Function export name="getPet" params="id: number" returnType="string">
+-              {'return String(id)'}
+-            </Function>
+-          </File.Source>
+-        </File>
+-      </>
+-    )
+-
+-    const streamRenderer = jsxRenderer()
+-    const streamed: Array<unknown> = []
+-    for await (const file of streamRenderer.stream(element)) {
+-      streamed.push(file)
+-    }
+-
+-    const batchRenderer = jsxRenderer()
+-    await batchRenderer.render(element)
+-
+-    expect(streamed).toStrictEqual(batchRenderer.files)
+-  })
+-
+-  it('should propagate errors thrown during stream', () => {
+-    const renderer = jsxRenderer()
+-    function BadComponent(): never {
+-      throw new Error('stream error')
+-    }
+-    const gen = renderer.stream(
+-      <File baseName="bad.ts" path="src/bad.ts">
+-        <BadComponent />
+-      </File>,
+-    )
+-    expect(() => gen.next()).toThrow('stream error')
+-  })
+-
+   it('should accumulate files across multiple render calls', async () => {
+     const renderer = jsxRenderer()
+ 

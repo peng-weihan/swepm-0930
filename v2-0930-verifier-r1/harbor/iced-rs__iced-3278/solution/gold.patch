@@ -1,0 +1,1187 @@
+diff --git a/benches/wgpu.rs b/benches/wgpu.rs
+--- a/benches/wgpu.rs
++++ b/benches/wgpu.rs
+@@ -80,6 +80,7 @@ fn benchmark<'a>(
+     use iced_wgpu::graphics::{Antialiasing, Shell};
+     use iced_wgpu::wgpu;
+     use iced_winit::core;
++    use iced_winit::core::renderer;
+     use iced_winit::runtime;
+ 
+     let format = wgpu::TextureFormat::Bgra8UnormSrgb;
+@@ -93,7 +94,7 @@ fn benchmark<'a>(
+         Shell::headless(),
+     );
+ 
+-    let mut renderer = Renderer::new(engine, Font::DEFAULT, Pixels::from(16));
++    let mut renderer = Renderer::new(engine, renderer::Settings::default());
+ 
+     let viewport = graphics::Viewport::with_physical_size(Size::new(3840, 2160), 2.0);
+ 
+diff --git a/core/src/renderer.rs b/core/src/renderer.rs
+--- a/core/src/renderer.rs
++++ b/core/src/renderer.rs
+@@ -128,11 +128,7 @@ impl Default for Style {
+ /// a window nor a compositor.
+ pub trait Headless {
+     /// Creates a new [`Headless`] renderer;
+-    fn new(
+-        default_font: Font,
+-        default_text_size: Pixels,
+-        backend: Option<&str>,
+-    ) -> impl Future<Output = Option<Self>>
++    fn new(settings: Settings, backend: Option<&str>) -> impl Future<Output = Option<Self>>
+     where
+         Self: Sized;
+ 
+@@ -151,3 +147,24 @@ pub trait Headless {
+         background_color: Color,
+     ) -> Vec<u8>;
+ }
++
++/// The settings of a [`Renderer`].
++#[derive(Debug, Clone, Copy, PartialEq)]
++pub struct Settings {
++    /// The default [`Font`] to use.
++    pub default_font: Font,
++
++    /// The default size of text.
++    ///
++    /// By default, it will be set to `16.0`.
++    pub default_text_size: Pixels,
++}
++
++impl Default for Settings {
++    fn default() -> Self {
++        Self {
++            default_font: Font::DEFAULT,
++            default_text_size: Pixels(16.0),
++        }
++    }
++}
+diff --git a/core/src/renderer/null.rs b/core/src/renderer/null.rs
+--- a/core/src/renderer/null.rs
++++ b/core/src/renderer/null.rs
+@@ -251,11 +251,7 @@ impl svg::Renderer for () {
+ }
+ 
+ impl renderer::Headless for () {
+-    async fn new(
+-        _default_font: Font,
+-        _default_text_size: Pixels,
+-        _backend: Option<&str>,
+-    ) -> Option<Self>
++    async fn new(_settings: renderer::Settings, _backend: Option<&str>) -> Option<Self>
+     where
+         Self: Sized,
+     {
+diff --git a/core/src/settings.rs b/core/src/settings.rs
+--- a/core/src/settings.rs
++++ b/core/src/settings.rs
+@@ -1,4 +1,5 @@
+ //! Configure your application.
++use crate::renderer;
+ use crate::{Font, Pixels};
+ 
+ use std::borrow::Cow;
+@@ -44,13 +45,24 @@ pub struct Settings {
+ 
+ impl Default for Settings {
+     fn default() -> Self {
++        let renderer = renderer::Settings::default();
++
+         Self {
+             id: None,
+             fonts: Vec::new(),
+-            default_font: Font::default(),
+-            default_text_size: Pixels(16.0),
++            default_font: renderer.default_font,
++            default_text_size: renderer.default_text_size,
+             antialiasing: true,
+             vsync: true,
+         }
+     }
+ }
++
++impl From<&Settings> for renderer::Settings {
++    fn from(settings: &Settings) -> Self {
++        Self {
++            default_font: settings.default_font,
++            default_text_size: settings.default_text_size,
++        }
++    }
++}
+diff --git a/examples/integration/src/main.rs b/examples/integration/src/main.rs
+--- a/examples/integration/src/main.rs
++++ b/examples/integration/src/main.rs
+@@ -11,7 +11,7 @@ use iced_winit::core::mouse;
+ use iced_winit::core::renderer;
+ use iced_winit::core::time::Instant;
+ use iced_winit::core::window;
+-use iced_winit::core::{Event, Font, Pixels, Size, Theme};
++use iced_winit::core::{Event, Size, Theme};
+ use iced_winit::futures;
+ use iced_winit::runtime::user_interface::{self, UserInterface};
+ use iced_winit::winit;
+@@ -145,7 +145,7 @@ pub fn main() -> Result<(), winit::error::EventLoopError> {
+                         Shell::headless(),
+                     );
+ 
+-                    Renderer::new(engine, Font::default(), Pixels::from(16))
++                    Renderer::new(engine, renderer::Settings::default())
+                 };
+ 
+                 // You should change this if you want to render continuously
+diff --git a/graphics/src/compositor.rs b/graphics/src/compositor.rs
+--- a/graphics/src/compositor.rs
++++ b/graphics/src/compositor.rs
+@@ -1,9 +1,11 @@
+ //! A compositor is responsible for initializing a renderer and managing window
+ //! surfaces.
++use crate::core;
+ use crate::core::Color;
+ use crate::core::font;
++use crate::core::renderer;
+ use crate::futures::{MaybeSend, MaybeSync};
+-use crate::{Error, Settings, Shell, Viewport};
++use crate::{Antialiasing, Error, Shell, Viewport};
+ 
+ use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+ use thiserror::Error;
+@@ -41,7 +43,7 @@ pub trait Compositor: Sized {
+     ) -> impl Future<Output = Result<Self, Error>>;
+ 
+     /// Creates a [`Self::Renderer`] for the [`Compositor`].
+-    fn create_renderer(&self) -> Self::Renderer;
++    fn create_renderer(&self, settings: renderer::Settings) -> Self::Renderer;
+ 
+     /// Crates a new [`Surface`] for the given window.
+     ///
+@@ -110,6 +112,38 @@ pub trait Compositor: Sized {
+     ) -> Vec<u8>;
+ }
+ 
++/// The settings of a [`Compositor`].
++#[derive(Debug, Clone, Copy, PartialEq)]
++pub struct Settings {
++    /// The antialiasing strategy that will be used for triangle primitives.
++    ///
++    /// By default, it is `None`.
++    pub antialiasing: Option<Antialiasing>,
++
++    /// Whether or not to synchronize frames.
++    ///
++    /// By default, it is `true`.
++    pub vsync: bool,
++}
++
++impl ::core::default::Default for Settings {
++    fn default() -> Settings {
++        Settings {
++            antialiasing: None,
++            vsync: true,
++        }
++    }
++}
++
++impl From<&core::Settings> for Settings {
++    fn from(settings: &core::Settings) -> Self {
++        Self {
++            antialiasing: settings.antialiasing.then_some(Antialiasing::MSAAx4),
++            vsync: settings.vsync,
++        }
++    }
++}
++
+ /// A window that can be used in a [`Compositor`].
+ ///
+ /// This is just a convenient super trait of the `raw-window-handle`
+@@ -176,7 +210,7 @@ impl Compositor for () {
+         Ok(())
+     }
+ 
+-    fn create_renderer(&self) -> Self::Renderer {}
++    fn create_renderer(&self, _settings: renderer::Settings) -> Self::Renderer {}
+ 
+     fn create_surface<W: Window + Clone>(
+         &mut self,
+diff --git a/graphics/src/lib.rs b/graphics/src/lib.rs
+--- a/graphics/src/lib.rs
++++ b/graphics/src/lib.rs
+@@ -9,7 +9,6 @@
+ )]
+ #![cfg_attr(docsrs, feature(doc_cfg))]
+ mod antialiasing;
+-mod settings;
+ mod viewport;
+ 
+ pub mod cache;
+@@ -35,7 +34,6 @@ pub use gradient::Gradient;
+ pub use image::Image;
+ pub use layer::Layer;
+ pub use mesh::Mesh;
+-pub use settings::Settings;
+ pub use shell::Shell;
+ pub use text::Text;
+ pub use viewport::Viewport;
+diff --git a/graphics/src/settings.rs b/graphics/src/settings.rs
+deleted file mode 100644
+--- a/graphics/src/settings.rs
++++ /dev/null
+@@ -1,52 +0,0 @@
+-use crate::Antialiasing;
+-use crate::core::{self, Font, Pixels};
+-
+-/// The settings of a renderer.
+-#[derive(Debug, Clone, Copy, PartialEq)]
+-pub struct Settings {
+-    /// The default [`Font`] to use.
+-    pub default_font: Font,
+-
+-    /// The default size of text.
+-    ///
+-    /// By default, it will be set to `16.0`.
+-    pub default_text_size: Pixels,
+-
+-    /// The antialiasing strategy that will be used for triangle primitives.
+-    ///
+-    /// By default, it is `None`.
+-    pub antialiasing: Option<Antialiasing>,
+-
+-    /// Whether or not to synchronize frames.
+-    ///
+-    /// By default, it is `true`.
+-    pub vsync: bool,
+-}
+-
+-impl Default for Settings {
+-    fn default() -> Settings {
+-        Settings {
+-            default_font: Font::default(),
+-            default_text_size: Pixels(16.0),
+-            antialiasing: None,
+-            vsync: true,
+-        }
+-    }
+-}
+-
+-impl From<core::Settings> for Settings {
+-    fn from(settings: core::Settings) -> Self {
+-        Self {
+-            default_font: if cfg!(all(target_arch = "wasm32", feature = "fira-sans"))
+-                && settings.default_font == Font::default()
+-            {
+-                Font::new("Fira Sans")
+-            } else {
+-                settings.default_font
+-            },
+-            default_text_size: settings.default_text_size,
+-            antialiasing: settings.antialiasing.then_some(Antialiasing::MSAAx4),
+-            vsync: settings.vsync,
+-        }
+-    }
+-}
+diff --git a/graphics/src/text.rs b/graphics/src/text.rs
+--- a/graphics/src/text.rs
++++ b/graphics/src/text.rs
+@@ -120,16 +120,22 @@ pub fn font_system() -> &'static RwLock<FontSystem> {
+     static FONT_SYSTEM: OnceLock<RwLock<FontSystem>> = OnceLock::new();
+ 
+     FONT_SYSTEM.get_or_init(|| {
++        #[allow(unused_mut)]
++        let mut raw = cosmic_text::FontSystem::new_with_fonts([
++            cosmic_text::fontdb::Source::Binary(Arc::new(
++                include_bytes!("../fonts/Iced-Icons.ttf").as_slice(),
++            )),
++            #[cfg(feature = "fira-sans")]
++            cosmic_text::fontdb::Source::Binary(Arc::new(
++                include_bytes!("../fonts/FiraSans-Regular.ttf").as_slice(),
++            )),
++        ]);
++
++        #[cfg(feature = "fira-sans")]
++        raw.db_mut().set_sans_serif_family("Fira Sans");
++
+         RwLock::new(FontSystem {
+-            raw: cosmic_text::FontSystem::new_with_fonts([
+-                cosmic_text::fontdb::Source::Binary(Arc::new(
+-                    include_bytes!("../fonts/Iced-Icons.ttf").as_slice(),
+-                )),
+-                #[cfg(feature = "fira-sans")]
+-                cosmic_text::fontdb::Source::Binary(Arc::new(
+-                    include_bytes!("../fonts/FiraSans-Regular.ttf").as_slice(),
+-                )),
+-            ]),
++            raw,
+             loaded_fonts: HashSet::new(),
+             version: Version::default(),
+         })
+diff --git a/renderer/src/fallback.rs b/renderer/src/fallback.rs
+--- a/renderer/src/fallback.rs
++++ b/renderer/src/fallback.rs
+@@ -3,9 +3,7 @@ use crate::core::font;
+ use crate::core::image;
+ use crate::core::renderer;
+ use crate::core::svg;
+-use crate::core::{
+-    self, Background, Color, Font, Image, Pixels, Point, Rectangle, Size, Svg, Transformation,
+-};
++use crate::core::{self, Background, Color, Image, Point, Rectangle, Size, Svg, Transformation};
+ use crate::graphics::compositor;
+ use crate::graphics::mesh;
+ use crate::graphics::text;
+@@ -254,7 +252,7 @@ where
+     type Surface = Surface<A::Surface, B::Surface>;
+ 
+     async fn with_backend(
+-        settings: graphics::Settings,
++        settings: compositor::Settings,
+         display: impl compositor::Display + Clone,
+         compatible_window: impl compositor::Window + Clone,
+         shell: Shell,
+@@ -318,10 +316,12 @@ where
+         Err(graphics::Error::List(errors))
+     }
+ 
+-    fn create_renderer(&self) -> Self::Renderer {
++    fn create_renderer(&self, settings: renderer::Settings) -> Self::Renderer {
+         match self {
+-            Self::Primary(compositor) => Renderer::Primary(compositor.create_renderer()),
+-            Self::Secondary(compositor) => Renderer::Secondary(compositor.create_renderer()),
++            Self::Primary(compositor) => Renderer::Primary(compositor.create_renderer(settings)),
++            Self::Secondary(compositor) => {
++                Renderer::Secondary(compositor.create_renderer(settings))
++            }
+         }
+     }
+ 
+@@ -629,18 +629,12 @@ where
+     A: renderer::Headless,
+     B: renderer::Headless,
+ {
+-    async fn new(
+-        default_font: Font,
+-        default_text_size: Pixels,
+-        backend: Option<&str>,
+-    ) -> Option<Self> {
+-        if let Some(renderer) = A::new(default_font, default_text_size, backend).await {
++    async fn new(settings: renderer::Settings, backend: Option<&str>) -> Option<Self> {
++        if let Some(renderer) = A::new(settings, backend).await {
+             return Some(Self::Primary(renderer));
+         }
+ 
+-        B::new(default_font, default_text_size, backend)
+-            .await
+-            .map(Self::Secondary)
++        B::new(settings, backend).await.map(Self::Secondary)
+     }
+ 
+     fn name(&self) -> String {
+diff --git a/runtime/src/font.rs b/runtime/src/font.rs
+--- a/runtime/src/font.rs
++++ b/runtime/src/font.rs
+@@ -1,19 +1,70 @@
+ //! Load and use fonts.
+-use crate::Action;
+-use crate::core::font::{Error, Family};
++use crate::core::Pixels;
++use crate::core::font::{Error, Family, Font};
++use crate::futures::futures::channel::oneshot;
+ use crate::task::{self, Task};
+ 
+ use std::borrow::Cow;
++use std::fmt;
++
++/// A font action.
++pub enum Action {
++    /// Load a font from its bytes.
++    Load {
++        /// The bytes of the font to load.
++        bytes: Cow<'static, [u8]>,
++        /// The channel to send back the load result.
++        channel: oneshot::Sender<Result<(), Error>>,
++    },
++
++    /// Lists all system font families.
++    List {
++        /// The channel to send back the list result.
++        channel: oneshot::Sender<Result<Vec<Family>, Error>>,
++    },
++
++    /// Sets the new font defaults for the running application.
++    SetDefaults {
++        /// The new default [`Font`].
++        font: Font,
++        /// The new default text size.
++        text_size: Pixels,
++    },
++}
++
++impl fmt::Debug for Action {
++    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
++        match self {
++            Self::Load { .. } => f.write_str("Load"),
++            Self::List { .. } => f.write_str("List"),
++            Self::SetDefaults { font, text_size } => f
++                .debug_struct("SetDefaults")
++                .field("font", font)
++                .field("text_size", text_size)
++                .finish(),
++        }
++    }
++}
+ 
+ /// Load a font from its bytes.
+ pub fn load(bytes: impl Into<Cow<'static, [u8]>>) -> Task<Result<(), Error>> {
+-    task::oneshot(|channel| Action::LoadFont {
+-        bytes: bytes.into(),
+-        channel,
++    task::oneshot(|channel| {
++        crate::Action::Font(Action::Load {
++            bytes: bytes.into(),
++            channel,
++        })
+     })
+ }
+ 
+ /// Lists all the available font families in the system.
+ pub fn list() -> Task<Result<Vec<Family>, Error>> {
+-    task::oneshot(|channel| Action::ListFonts { channel })
++    task::oneshot(|channel| crate::Action::Font(Action::List { channel }))
++}
++
++/// Sets a new default [`Font`] and text size for the running application.
++pub fn set_defaults<Message>(font: Font, text_size: impl Into<Pixels>) -> Task<Message> {
++    task::effect(crate::Action::Font(Action::SetDefaults {
++        font,
++        text_size: text_size.into(),
++    }))
+ }
+diff --git a/runtime/src/lib.rs b/runtime/src/lib.rs
+--- a/runtime/src/lib.rs
++++ b/runtime/src/lib.rs
+@@ -27,30 +27,14 @@ pub use user_interface::UserInterface;
+ pub use window::Window;
+ 
+ use crate::core::Event;
+-use crate::futures::futures::channel::oneshot;
+ 
+-use std::borrow::Cow;
+ use std::fmt;
+ 
+ /// An action that the iced runtime can perform.
+ pub enum Action<T> {
+     /// Output some value.
+     Output(T),
+ 
+-    /// Load a font from its bytes.
+-    LoadFont {
+-        /// The bytes of the font to load.
+-        bytes: Cow<'static, [u8]>,
+-        /// The channel to send back the load result.
+-        channel: oneshot::Sender<Result<(), core::font::Error>>,
+-    },
+-
+-    /// Lists all system font families.
+-    ListFonts {
+-        /// The channel to send back the list result.
+-        channel: oneshot::Sender<Result<Vec<core::font::Family>, core::font::Error>>,
+-    },
+-
+     /// Run a widget operation.
+     Widget(Box<dyn core::widget::Operation>),
+ 
+@@ -63,6 +47,9 @@ pub enum Action<T> {
+     /// Run a system action.
+     System(system::Action),
+ 
++    /// Run a font action.
++    Font(font::Action),
++
+     /// Run an image action.
+     Image(image::Action),
+ 
+@@ -96,12 +83,11 @@ impl<T> Action<T> {
+     fn output<O>(self) -> Result<T, Action<O>> {
+         match self {
+             Action::Output(output) => Ok(output),
+-            Action::LoadFont { bytes, channel } => Err(Action::LoadFont { bytes, channel }),
+-            Action::ListFonts { channel } => Err(Action::ListFonts { channel }),
+             Action::Widget(operation) => Err(Action::Widget(operation)),
+             Action::Clipboard(action) => Err(Action::Clipboard(action)),
+             Action::Window(action) => Err(Action::Window(action)),
+             Action::System(action) => Err(Action::System(action)),
++            Action::Font(action) => Err(Action::Font(action)),
+             Action::Image(action) => Err(Action::Image(action)),
+             Action::Event { window, event } => Err(Action::Event { window, event }),
+             Action::Tick => Err(Action::Tick),
+@@ -118,12 +104,6 @@ where
+     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+         match self {
+             Action::Output(output) => write!(f, "Action::Output({output:?})"),
+-            Action::LoadFont { .. } => {
+-                write!(f, "Action::LoadFont")
+-            }
+-            Action::ListFonts { .. } => {
+-                write!(f, "Action::ListFonts")
+-            }
+             Action::Widget { .. } => {
+                 write!(f, "Action::Widget")
+             }
+@@ -132,6 +112,9 @@ where
+             }
+             Action::Window(_) => write!(f, "Action::Window"),
+             Action::System(action) => write!(f, "Action::System({action:?})"),
++            Action::Font(action) => {
++                write!(f, "Action::Font({action:?})")
++            }
+             Action::Image(_) => write!(f, "Action::Image"),
+             Action::Event { window, event } => write!(
+                 f,
+diff --git a/tiny_skia/src/lib.rs b/tiny_skia/src/lib.rs
+--- a/tiny_skia/src/lib.rs
++++ b/tiny_skia/src/lib.rs
+@@ -5,7 +5,6 @@ pub mod window;
+ mod engine;
+ mod layer;
+ mod primitive;
+-mod settings;
+ mod text;
+ 
+ #[cfg(feature = "image")]
+@@ -23,7 +22,6 @@ pub use iced_graphics::core;
+ 
+ pub use layer::Layer;
+ pub use primitive::Primitive;
+-pub use settings::Settings;
+ 
+ #[cfg(feature = "geometry")]
+ pub use geometry::Geometry;
+@@ -41,17 +39,15 @@ use crate::graphics::text::{Editor, Paragraph};
+ /// [`iced`]: https://github.com/iced-rs/iced
+ #[derive(Debug)]
+ pub struct Renderer {
+-    default_font: Font,
+-    default_text_size: Pixels,
++    settings: renderer::Settings,
+     layers: layer::Stack,
+     engine: Engine, // TODO: Shared engine
+ }
+ 
+ impl Renderer {
+-    pub fn new(default_font: Font, default_text_size: Pixels) -> Self {
++    pub fn new(settings: renderer::Settings) -> Self {
+         Self {
+-            default_font,
+-            default_text_size,
++            settings,
+             layers: layer::Stack::new(),
+             engine: Engine::new(),
+         }
+@@ -255,11 +251,11 @@ impl core::text::Renderer for Renderer {
+     const SCROLL_RIGHT_ICON: char = '\u{e805}';
+ 
+     fn default_font(&self) -> Self::Font {
+-        self.default_font
++        self.settings.default_font
+     }
+ 
+     fn default_size(&self) -> Pixels {
+-        self.default_text_size
++        self.settings.default_text_size
+     }
+ 
+     fn fill_paragraph(
+@@ -392,16 +388,12 @@ impl compositor::Default for Renderer {
+ }
+ 
+ impl renderer::Headless for Renderer {
+-    async fn new(
+-        default_font: Font,
+-        default_text_size: Pixels,
+-        backend: Option<&str>,
+-    ) -> Option<Self> {
++    async fn new(settings: renderer::Settings, backend: Option<&str>) -> Option<Self> {
+         if backend.is_some_and(|backend| !["tiny-skia", "tiny_skia"].contains(&backend)) {
+             return None;
+         }
+ 
+-        Some(Self::new(default_font, default_text_size))
++        Some(Self::new(settings))
+     }
+ 
+     fn name(&self) -> String {
+diff --git a/tiny_skia/src/settings.rs b/tiny_skia/src/settings.rs
+deleted file mode 100644
+--- a/tiny_skia/src/settings.rs
++++ /dev/null
+@@ -1,34 +0,0 @@
+-use crate::core::{Font, Pixels};
+-use crate::graphics;
+-
+-/// The settings of a [`Compositor`].
+-///
+-/// [`Compositor`]: crate::window::Compositor
+-#[derive(Debug, Clone, Copy, PartialEq)]
+-pub struct Settings {
+-    /// The default [`Font`] to use.
+-    pub default_font: Font,
+-
+-    /// The default size of text.
+-    ///
+-    /// By default, it will be set to `16.0`.
+-    pub default_text_size: Pixels,
+-}
+-
+-impl Default for Settings {
+-    fn default() -> Settings {
+-        Settings {
+-            default_font: Font::default(),
+-            default_text_size: Pixels(16.0),
+-        }
+-    }
+-}
+-
+-impl From<graphics::Settings> for Settings {
+-    fn from(settings: graphics::Settings) -> Self {
+-        Self {
+-            default_font: settings.default_font,
+-            default_text_size: settings.default_text_size,
+-        }
+-    }
+-}
+diff --git a/tiny_skia/src/window/compositor.rs b/tiny_skia/src/window/compositor.rs
+--- a/tiny_skia/src/window/compositor.rs
++++ b/tiny_skia/src/window/compositor.rs
+@@ -1,16 +1,16 @@
++use crate::core::renderer;
+ use crate::core::{Color, Rectangle, Size};
+ use crate::graphics::compositor::{self, Information};
+ use crate::graphics::damage;
+ use crate::graphics::error::{self, Error};
+-use crate::graphics::{self, Shell, Viewport};
+-use crate::{Layer, Renderer, Settings};
++use crate::graphics::{Shell, Viewport};
++use crate::{Layer, Renderer};
+ 
+ use std::collections::VecDeque;
+ use std::num::NonZeroU32;
+ 
+ pub struct Compositor {
+     context: softbuffer::Context<Box<dyn compositor::Display>>,
+-    settings: Settings,
+ }
+ 
+ pub struct Surface {
+@@ -31,14 +31,14 @@ impl crate::graphics::Compositor for Compositor {
+     type Surface = Surface;
+ 
+     async fn with_backend(
+-        settings: graphics::Settings,
++        _settings: compositor::Settings,
+         display: impl compositor::Display,
+         _compatible_window: impl compositor::Window,
+         _shell: Shell,
+         backend: Option<&str>,
+     ) -> Result<Self, Error> {
+         match backend {
+-            None | Some("tiny-skia") | Some("tiny_skia") => Ok(new(settings.into(), display)),
++            None | Some("tiny-skia") | Some("tiny_skia") => Ok(new(display)),
+             Some(backend) => Err(Error::GraphicsAdapterNotFound {
+                 backend: "tiny-skia",
+                 reason: error::Reason::DidNotMatch {
+@@ -48,8 +48,8 @@ impl crate::graphics::Compositor for Compositor {
+         }
+     }
+ 
+-    fn create_renderer(&self) -> Self::Renderer {
+-        Renderer::new(self.settings.default_font, self.settings.default_text_size)
++    fn create_renderer(&self, settings: renderer::Settings) -> Self::Renderer {
++        Renderer::new(settings)
+     }
+ 
+     fn create_surface<W: compositor::Window + Clone>(
+@@ -122,12 +122,12 @@ impl crate::graphics::Compositor for Compositor {
+     }
+ }
+ 
+-pub fn new(settings: Settings, display: impl compositor::Display) -> Compositor {
++pub fn new(display: impl compositor::Display) -> Compositor {
+     #[allow(unsafe_code)]
+     let context =
+         softbuffer::Context::new(Box::new(display) as _).expect("Create softbuffer context");
+ 
+-    Compositor { context, settings }
++    Compositor { context }
+ }
+ 
+ pub fn present(
+diff --git a/wgpu/src/lib.rs b/wgpu/src/lib.rs
+--- a/wgpu/src/lib.rs
++++ b/wgpu/src/lib.rs
+@@ -24,7 +24,6 @@
+ #![allow(missing_docs)]
+ pub mod layer;
+ pub mod primitive;
+-pub mod settings;
+ pub mod window;
+ 
+ #[cfg(feature = "geometry")]
+@@ -56,7 +55,6 @@ pub use wgpu;
+ pub use engine::Engine;
+ pub use layer::Layer;
+ pub use primitive::Primitive;
+-pub use settings::Settings;
+ 
+ #[cfg(feature = "geometry")]
+ pub use geometry::Geometry;
+@@ -73,9 +71,8 @@ use crate::graphics::{Shell, Viewport};
+ /// [`iced`]: https://github.com/iced-rs/iced
+ pub struct Renderer {
+     engine: Engine,
++    settings: renderer::Settings,
+ 
+-    default_font: Font,
+-    default_text_size: Pixels,
+     layers: layer::Stack,
+     scale_factor: Option<f32>,
+ 
+@@ -95,10 +92,9 @@ pub struct Renderer {
+ }
+ 
+ impl Renderer {
+-    pub fn new(engine: Engine, default_font: Font, default_text_size: Pixels) -> Self {
++    pub fn new(engine: Engine, settings: renderer::Settings) -> Self {
+         Self {
+-            default_font,
+-            default_text_size,
++            settings,
+             layers: layer::Stack::new(),
+             scale_factor: None,
+ 
+@@ -706,11 +702,11 @@ impl core::text::Renderer for Renderer {
+     const SCROLL_RIGHT_ICON: char = '\u{e805}';
+ 
+     fn default_font(&self) -> Self::Font {
+-        self.default_font
++        self.settings.default_font
+     }
+ 
+     fn default_size(&self) -> Pixels {
+-        self.default_text_size
++        self.settings.default_text_size
+     }
+ 
+     fn fill_paragraph(
+@@ -869,11 +865,7 @@ impl graphics::compositor::Default for crate::Renderer {
+ }
+ 
+ impl renderer::Headless for Renderer {
+-    async fn new(
+-        default_font: Font,
+-        default_text_size: Pixels,
+-        backend: Option<&str>,
+-    ) -> Option<Self> {
++    async fn new(settings: renderer::Settings, backend: Option<&str>) -> Option<Self> {
+         if backend.is_some_and(|backend| backend != "wgpu") {
+             return None;
+         }
+@@ -921,7 +913,7 @@ impl renderer::Headless for Renderer {
+             Shell::headless(),
+         );
+ 
+-        Some(Self::new(engine, default_font, default_text_size))
++        Some(Self::new(engine, settings))
+     }
+ 
+     fn name(&self) -> String {
+diff --git a/wgpu/src/settings.rs b/wgpu/src/settings.rs
+deleted file mode 100644
+--- a/wgpu/src/settings.rs
++++ /dev/null
+@@ -1,84 +0,0 @@
+-//! Configure a renderer.
+-use crate::core::{Font, Pixels};
+-use crate::graphics::{self, Antialiasing};
+-
+-/// The settings of a [`Renderer`].
+-///
+-/// [`Renderer`]: crate::Renderer
+-#[derive(Debug, Clone, Copy, PartialEq)]
+-pub struct Settings {
+-    /// The present mode of the [`Renderer`].
+-    ///
+-    /// [`Renderer`]: crate::Renderer
+-    pub present_mode: wgpu::PresentMode,
+-
+-    /// The graphics backends to use.
+-    pub backends: wgpu::Backends,
+-
+-    /// The default [`Font`] to use.
+-    pub default_font: Font,
+-
+-    /// The default size of text.
+-    ///
+-    /// By default, it will be set to `16.0`.
+-    pub default_text_size: Pixels,
+-
+-    /// The antialiasing strategy that will be used for triangle primitives.
+-    ///
+-    /// By default, it is `None`.
+-    pub antialiasing: Option<Antialiasing>,
+-}
+-
+-impl Default for Settings {
+-    fn default() -> Settings {
+-        Settings {
+-            present_mode: wgpu::PresentMode::AutoVsync,
+-            backends: wgpu::Backends::all(),
+-            default_font: Font::default(),
+-            default_text_size: Pixels(16.0),
+-            antialiasing: None,
+-        }
+-    }
+-}
+-
+-impl From<graphics::Settings> for Settings {
+-    fn from(settings: graphics::Settings) -> Self {
+-        Self {
+-            present_mode: if settings.vsync {
+-                wgpu::PresentMode::AutoVsync
+-            } else {
+-                wgpu::PresentMode::AutoNoVsync
+-            },
+-            default_font: settings.default_font,
+-            default_text_size: settings.default_text_size,
+-            antialiasing: settings.antialiasing,
+-            ..Settings::default()
+-        }
+-    }
+-}
+-
+-/// Obtains a [`wgpu::PresentMode`] from the current environment
+-/// configuration, if set.
+-///
+-/// The value returned by this function can be changed by setting
+-/// the `ICED_PRESENT_MODE` env variable. The possible values are:
+-///
+-/// - `vsync` → [`wgpu::PresentMode::AutoVsync`]
+-/// - `no_vsync` → [`wgpu::PresentMode::AutoNoVsync`]
+-/// - `immediate` → [`wgpu::PresentMode::Immediate`]
+-/// - `fifo` → [`wgpu::PresentMode::Fifo`]
+-/// - `fifo_relaxed` → [`wgpu::PresentMode::FifoRelaxed`]
+-/// - `mailbox` → [`wgpu::PresentMode::Mailbox`]
+-pub fn present_mode_from_env() -> Option<wgpu::PresentMode> {
+-    let present_mode = std::env::var("ICED_PRESENT_MODE").ok()?;
+-
+-    match present_mode.to_lowercase().as_str() {
+-        "vsync" => Some(wgpu::PresentMode::AutoVsync),
+-        "no_vsync" => Some(wgpu::PresentMode::AutoNoVsync),
+-        "immediate" => Some(wgpu::PresentMode::Immediate),
+-        "fifo" => Some(wgpu::PresentMode::Fifo),
+-        "fifo_relaxed" => Some(wgpu::PresentMode::FifoRelaxed),
+-        "mailbox" => Some(wgpu::PresentMode::Mailbox),
+-        _ => None,
+-    }
+-}
+diff --git a/wgpu/src/window/compositor.rs b/wgpu/src/window/compositor.rs
+--- a/wgpu/src/window/compositor.rs
++++ b/wgpu/src/window/compositor.rs
+@@ -1,10 +1,10 @@
+ //! Connect a window with a renderer.
+ use crate::core::Color;
++use crate::core::renderer;
+ use crate::graphics::color;
+ use crate::graphics::compositor;
+ use crate::graphics::error;
+-use crate::graphics::{self, Shell, Viewport};
+-use crate::settings::{self, Settings};
++use crate::graphics::{self, Antialiasing, Shell, Viewport};
+ use crate::{Engine, Renderer};
+ 
+ /// A window graphics backend for iced powered by `wgpu`.
+@@ -256,7 +256,7 @@ impl graphics::Compositor for Compositor {
+     type Surface = wgpu::Surface<'static>;
+ 
+     async fn with_backend(
+-        settings: graphics::Settings,
++        settings: compositor::Settings,
+         _display: impl compositor::Display,
+         compatible_window: impl compositor::Window,
+         shell: Shell,
+@@ -270,7 +270,7 @@ impl graphics::Compositor for Compositor {
+                     settings.backends = backends;
+                 }
+ 
+-                if let Some(present_mode) = settings::present_mode_from_env() {
++                if let Some(present_mode) = present_mode_from_env() {
+                     settings.present_mode = present_mode;
+                 }
+ 
+@@ -285,12 +285,8 @@ impl graphics::Compositor for Compositor {
+         }
+     }
+ 
+-    fn create_renderer(&self) -> Self::Renderer {
+-        Renderer::new(
+-            self.engine.clone(),
+-            self.settings.default_font,
+-            self.settings.default_text_size,
+-        )
++    fn create_renderer(&self, settings: renderer::Settings) -> Self::Renderer {
++        Renderer::new(self.engine.clone(), settings)
+     }
+ 
+     fn create_surface<W: compositor::Window>(
+@@ -362,3 +358,70 @@ impl graphics::Compositor for Compositor {
+         renderer.screenshot(viewport, background_color)
+     }
+ }
++
++/// The settings of a [`Compositor`].
++#[derive(Debug, Clone, Copy, PartialEq)]
++pub struct Settings {
++    /// The present mode of the [`Renderer`].
++    ///
++    /// [`Renderer`]: crate::Renderer
++    pub present_mode: wgpu::PresentMode,
++
++    /// The graphics backends to use.
++    pub backends: wgpu::Backends,
++
++    /// The antialiasing strategy that will be used for triangle primitives.
++    ///
++    /// By default, it is `None`.
++    pub antialiasing: Option<Antialiasing>,
++}
++
++impl Default for Settings {
++    fn default() -> Settings {
++        Settings {
++            present_mode: wgpu::PresentMode::AutoVsync,
++            backends: wgpu::Backends::all(),
++            antialiasing: None,
++        }
++    }
++}
++
++impl From<compositor::Settings> for Settings {
++    fn from(settings: compositor::Settings) -> Self {
++        Self {
++            present_mode: if settings.vsync {
++                wgpu::PresentMode::AutoVsync
++            } else {
++                wgpu::PresentMode::AutoNoVsync
++            },
++            antialiasing: settings.antialiasing,
++            ..Settings::default()
++        }
++    }
++}
++
++/// Obtains a [`wgpu::PresentMode`] from the current environment
++/// configuration, if set.
++///
++/// The value returned by this function can be changed by setting
++/// the `ICED_PRESENT_MODE` env variable. The possible values are:
++///
++/// - `vsync` → [`wgpu::PresentMode::AutoVsync`]
++/// - `no_vsync` → [`wgpu::PresentMode::AutoNoVsync`]
++/// - `immediate` → [`wgpu::PresentMode::Immediate`]
++/// - `fifo` → [`wgpu::PresentMode::Fifo`]
++/// - `fifo_relaxed` → [`wgpu::PresentMode::FifoRelaxed`]
++/// - `mailbox` → [`wgpu::PresentMode::Mailbox`]
++pub fn present_mode_from_env() -> Option<wgpu::PresentMode> {
++    let present_mode = std::env::var("ICED_PRESENT_MODE").ok()?;
++
++    match present_mode.to_lowercase().as_str() {
++        "vsync" => Some(wgpu::PresentMode::AutoVsync),
++        "no_vsync" => Some(wgpu::PresentMode::AutoNoVsync),
++        "immediate" => Some(wgpu::PresentMode::Immediate),
++        "fifo" => Some(wgpu::PresentMode::Fifo),
++        "fifo_relaxed" => Some(wgpu::PresentMode::FifoRelaxed),
++        "mailbox" => Some(wgpu::PresentMode::Mailbox),
++        _ => None,
++    }
++}
+diff --git a/winit/src/lib.rs b/winit/src/lib.rs
+--- a/winit/src/lib.rs
++++ b/winit/src/lib.rs
+@@ -50,6 +50,7 @@ use crate::futures::futures::{Future, StreamExt};
+ use crate::futures::subscription;
+ use crate::futures::{Executor, Runtime};
+ use crate::graphics::{Compositor, Shell, compositor};
++use crate::runtime::font;
+ use crate::runtime::image;
+ use crate::runtime::system;
+ use crate::runtime::user_interface::{self, UserInterface};
+@@ -80,7 +81,8 @@ where
+         .build()
+         .expect("Create event loop");
+ 
+-    let graphics_settings = settings.clone().into();
++    let compositor_settings = compositor::Settings::from(&settings);
++    let renderer_settings = renderer::Settings::from(&settings);
+     let display_handle = event_loop.owned_display_handle();
+ 
+     let (proxy, worker) = Proxy::new(event_loop.create_proxy());
+@@ -134,7 +136,8 @@ where
+         control_sender,
+         display_handle,
+         is_daemon,
+-        graphics_settings,
++        compositor_settings,
++        renderer_settings,
+         settings.fonts,
+         system_theme_receiver,
+     ));
+@@ -473,7 +476,8 @@ async fn run_instance<P>(
+     mut control_sender: mpsc::UnboundedSender<Control>,
+     display_handle: winit::event_loop::OwnedDisplayHandle,
+     is_daemon: bool,
+-    graphics_settings: graphics::Settings,
++    compositor_settings: compositor::Settings,
++    mut renderer_settings: renderer::Settings,
+     default_fonts: Vec<Cow<'static, [u8]>>,
+     mut _system_theme: oneshot::Receiver<theme::Mode>,
+ ) where
+@@ -563,7 +567,7 @@ async fn run_instance<P>(
+ 
+                             let mut compositor =
+                                 <P::Renderer as compositor::Default>::Compositor::new(
+-                                    graphics_settings,
++                                    compositor_settings,
+                                     display_handle,
+                                     window,
+                                     shell,
+@@ -628,6 +632,7 @@ async fn run_instance<P>(
+                     window,
+                     &program,
+                     compositor.as_mut().expect("Compositor must be initialized"),
++                    renderer_settings,
+                     exit_on_close_request,
+                     system_theme,
+                 );
+@@ -727,6 +732,7 @@ async fn run_instance<P>(
+                             &mut ui_caches,
+                             &mut is_window_opening,
+                             &mut system_theme,
++                            &mut renderer_settings,
+                         );
+                         actions += 1;
+                     }
+@@ -843,6 +849,7 @@ async fn run_instance<P>(
+                                         &mut ui_caches,
+                                         &mut is_window_opening,
+                                         &mut system_theme,
++                                        &mut renderer_settings,
+                                     );
+                                 }
+ 
+@@ -1026,6 +1033,7 @@ async fn run_instance<P>(
+                                 &mut ui_caches,
+                                 &mut is_window_opening,
+                                 &mut system_theme,
++                                &mut renderer_settings,
+                             );
+                         } else {
+                             window.state.update(&program, &window.raw, &window_event);
+@@ -1156,6 +1164,7 @@ async fn run_instance<P>(
+                                     &mut ui_caches,
+                                     &mut is_window_opening,
+                                     &mut system_theme,
++                                    &mut renderer_settings,
+                                 );
+                             }
+ 
+@@ -1271,6 +1280,7 @@ fn run_action<'a, P, C>(
+     ui_caches: &mut FxHashMap<window::Id, user_interface::Cache>,
+     is_window_opening: &mut bool,
+     system_theme: &mut theme::Mode,
++    renderer_settings: &mut renderer::Settings,
+ ) where
+     P: Program,
+     C: Compositor<Renderer = P::Renderer> + 'static,
+@@ -1623,6 +1633,43 @@ fn run_action<'a, P, C>(
+                 }
+             }
+         },
++        Action::Font(action) => match action {
++            font::Action::Load { bytes, channel } => {
++                if let Some(compositor) = compositor {
++                    let result = compositor.load_font(bytes.clone());
++                    let _ = channel.send(result);
++                }
++            }
++            font::Action::List { channel } => {
++                if let Some(compositor) = compositor {
++                    let fonts = compositor.list_fonts();
++                    let _ = channel.send(fonts);
++                }
++            }
++            font::Action::SetDefaults { font, text_size } => {
++                renderer_settings.default_font = font;
++                renderer_settings.default_text_size = text_size;
++
++                let Some(compositor) = compositor else {
++                    return;
++                };
++
++                // Recreate renderers and relayout all windows
++                for (id, window) in window_manager.iter_mut() {
++                    window.renderer = compositor.create_renderer(*renderer_settings);
++
++                    let Some(ui) = interfaces.remove(&id) else {
++                        continue;
++                    };
++
++                    let size = window.logical_size();
++                    let ui = ui.relayout(size, &mut window.renderer);
++                    let _ = interfaces.insert(id, ui);
++
++                    window.raw.request_redraw();
++                }
++            }
++        },
+         Action::Widget(operation) => {
+             let mut current_operation = Some(operation);
+ 
+@@ -1660,18 +1707,6 @@ fn run_action<'a, P, C>(
+         Action::Event { window, event } => {
+             events.push((window, event));
+         }
+-        Action::LoadFont { bytes, channel } => {
+-            if let Some(compositor) = compositor {
+-                let result = compositor.load_font(bytes.clone());
+-                let _ = channel.send(result);
+-            }
+-        }
+-        Action::ListFonts { channel } => {
+-            if let Some(compositor) = compositor {
+-                let fonts = compositor.list_fonts();
+-                let _ = channel.send(fonts);
+-            }
+-        }
+         Action::Tick => {
+             for (_id, window) in window_manager.iter_mut() {
+                 window.renderer.tick();
+diff --git a/winit/src/window.rs b/winit/src/window.rs
+--- a/winit/src/window.rs
++++ b/winit/src/window.rs
+@@ -52,6 +52,7 @@ where
+         window: Arc<winit::window::Window>,
+         program: &program::Instance<P>,
+         compositor: &mut C,
++        renderer_settings: renderer::Settings,
+         exit_on_close_request: bool,
+         system_theme: theme::Mode,
+     ) -> &mut Window<P, C> {
+@@ -60,7 +61,7 @@ where
+         let surface_version = state.surface_version();
+         let surface =
+             compositor.create_surface(window.clone(), surface_size.width, surface_size.height);
+-        let renderer = compositor.create_renderer();
++        let renderer = compositor.create_renderer(renderer_settings);
+ 
+         let _ = self.aliases.insert(window.id(), id);
+ 

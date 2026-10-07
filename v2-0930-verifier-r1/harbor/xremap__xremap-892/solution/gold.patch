@@ -1,0 +1,1412 @@
+diff --git a/src/action_dispatcher.rs b/src/action_dispatcher.rs
+--- a/src/action_dispatcher.rs
++++ b/src/action_dispatcher.rs
+@@ -1,11 +1,7 @@
++use crate::main_controller::MainController;
+ use crate::throttle_emit::ThrottleEmit;
+ use evdev::{uinput::VirtualDevice, EventType, InputEvent, KeyCode as Key};
+-use fork::{fork, setsid, Fork};
+ use log::debug;
+-use log::error;
+-use nix::sys::signal;
+-use nix::sys::signal::{sigaction, SaFlags, SigAction, SigHandler, SigSet};
+-use std::process::{exit, Command, Stdio};
+ use std::thread;
+ 
+ use crate::event::RelativeEvent;
+@@ -14,26 +10,17 @@ use crate::{action::Action, event::KeyEvent};
+ pub struct ActionDispatcher {
+     // Device to emit events
+     device: VirtualDevice,
+-    // Whether we've called a sigaction for spawing commands or not
+-    sigaction_set: bool,
+     // Throttle emitting events
+     throttle_emit: Option<ThrottleEmit>,
+ }
+ 
+ impl ActionDispatcher {
+     pub fn new(device: VirtualDevice, throttle_emit: Option<ThrottleEmit>) -> ActionDispatcher {
+-        ActionDispatcher {
+-            device,
+-            sigaction_set: false,
+-            throttle_emit,
+-        }
++        ActionDispatcher { device, throttle_emit }
+     }
+ 
+     // Execute Actions created by EventHandler. This should be the only public method of ActionDispatcher.
+-    pub fn on_action<F>(&mut self, action: Action, mut run: F) -> anyhow::Result<()>
+-    where
+-        F: FnMut(&Vec<String>) -> anyhow::Result<bool>,
+-    {
++    pub fn on_action(&mut self, action: Action, mainctrl: &mut MainController) -> anyhow::Result<()> {
+         match action {
+             Action::KeyEvent(key_event) => self.on_key_event(key_event)?,
+             Action::RelativeEvent(relative_event) => self.on_relative_event(relative_event)?,
+@@ -54,16 +41,7 @@ impl ActionDispatcher {
+             }
+ 
+             Action::InputEvent(event) => self.send_event(event)?,
+-            Action::Command(command) => match run(&command) {
+-                Ok(false) => {
+-                    // could not run command, proceed to fork
+-                    self.run_command(command);
+-                }
+-                Ok(true) => {}
+-                Err(e) => {
+-                    debug!("{command:?} failed: {e:?}");
+-                }
+-            },
++            Action::Command(command) => mainctrl.run_command(command),
+             Action::Delay(duration) => thread::sleep(duration),
+         }
+         Ok(())
+@@ -104,52 +82,4 @@ impl ActionDispatcher {
+ 
+         self.device.emit(&[event])
+     }
+-
+-    fn run_command(&mut self, command: Vec<String>) {
+-        if !self.sigaction_set {
+-            // Avoid defunct processes
+-            let sig_action = SigAction::new(SigHandler::SigDfl, SaFlags::SA_NOCLDWAIT, SigSet::empty());
+-            unsafe {
+-                sigaction(signal::SIGCHLD, &sig_action).expect("Failed to register SIGCHLD handler");
+-            }
+-            self.sigaction_set = true;
+-        }
+-
+-        debug!("Running command: {command:?}");
+-        match fork() {
+-            Ok(Fork::Child) => {
+-                // Child process should fork again, and the parent should exit 0, while the child
+-                // should spawn the user command then exit as well.
+-                match fork() {
+-                    Ok(Fork::Child) => {
+-                        setsid().expect("Failed to setsid.");
+-                        match Command::new(&command[0])
+-                            .args(&command[1..])
+-                            .stdin(Stdio::null())
+-                            .stdout(Stdio::null())
+-                            .stderr(Stdio::null())
+-                            .spawn()
+-                        {
+-                            Ok(child) => {
+-                                debug!("Process started: {:?}, pid {}", command, child.id());
+-                                exit(0);
+-                            }
+-                            Err(e) => {
+-                                error!("Error running command: {e:?}");
+-                                exit(1);
+-                            }
+-                        }
+-                    }
+-                    Ok(Fork::Parent(_)) => exit(0),
+-                    Err(e) => {
+-                        error!("Error spawning process: {e:?}");
+-                        exit(1);
+-                    }
+-                }
+-            }
+-            // Parent should simply continue.
+-            Ok(Fork::Parent(_)) => (),
+-            Err(e) => error!("Error spawning process: {e:?}"),
+-        }
+-    }
+ }
+diff --git a/src/client/cosmic_client.rs b/src/client/cosmic_client.rs
+--- a/src/client/cosmic_client.rs
++++ b/src/client/cosmic_client.rs
+@@ -24,7 +24,7 @@ use wayland_client::{event_created_child, Connection, Dispatch, EventQueue, Prox
+ #[derive(Debug)]
+ struct CosmicWindow {
+     handle: ZcosmicToplevelHandleV1,
+-    app_id: Option<String>,
++    app_class: Option<String>,
+     title: Option<String>,
+ }
+ 
+@@ -106,7 +106,7 @@ impl Client for CosmicClient {
+ 
+     fn current_application(&mut self) -> Option<String> {
+         match self.get_focused_window() {
+-            Ok(window) => window.and_then(|window| window.app_id.clone()),
++            Ok(window) => window.and_then(|window| window.app_class.clone()),
+             Err(e) => {
+                 eprintln!("Error when fetching app_id: {e:?}");
+                 None
+@@ -121,11 +121,20 @@ impl Client for CosmicClient {
+             .state
+             .windows
+             .iter()
+-            .map(|(_, CosmicWindow { handle, app_id, title })| WindowInfo {
+-                win_id: Some(format!("{}", handle.id())),
+-                app_class: app_id.clone(),
+-                title: title.clone(),
+-            })
++            .map(
++                |(
++                    _,
++                    CosmicWindow {
++                        handle,
++                        app_class,
++                        title,
++                    },
++                )| WindowInfo {
++                    winid: Some(format!("{}", handle.id())),
++                    app_class: app_class.clone(),
++                    title: title.clone(),
++                },
++            )
+             .collect();
+ 
+         Ok(windows)
+@@ -159,7 +168,7 @@ impl Dispatch<ZcosmicToplevelInfoV1, ()> for State {
+             Toplevel { toplevel } => {
+                 let info = CosmicWindow {
+                     handle: toplevel,
+-                    app_id: None,
++                    app_class: None,
+                     title: None,
+                 };
+                 state.windows.insert(info.handle.id(), info);
+@@ -199,7 +208,7 @@ impl Dispatch<ZcosmicToplevelHandleV1, ()> for State {
+                 state
+                     .windows
+                     .get_mut(&handle.id())
+-                    .map(|window| window.app_id = Some(app_id));
++                    .map(|window| window.app_class = Some(app_id));
+             }
+             State { state: window_state } => {
+                 let (chunks, _) = window_state.as_chunks::<4>();
+diff --git a/src/client/gnome_client.rs b/src/client/gnome_client.rs
+--- a/src/client/gnome_client.rs
++++ b/src/client/gnome_client.rs
+@@ -15,6 +15,7 @@ pub struct GnomeClient {
+ 
+ impl GnomeClient {
+     pub fn new() -> GnomeClient {
++        // The socket feature is deprecated here. The socket_client is the one to use instead.
+         let socket_path = std::env::var("GNOME_SOCKET").ok().filter(|s| !s.is_empty());
+         GnomeClient {
+             socket_path,
+@@ -31,7 +32,7 @@ impl GnomeClient {
+ 
+     fn get_focused_title(&mut self) -> anyhow::Result<String> {
+         let window = self.get_active_window()?;
+-        return Ok(window.title);
++        Ok(window.title)
+     }
+ 
+     fn get_active_window(&mut self) -> anyhow::Result<ActiveWindow> {
+diff --git a/src/client/mod.rs b/src/client/mod.rs
+--- a/src/client/mod.rs
++++ b/src/client/mod.rs
+@@ -28,7 +28,7 @@ pub struct WindowInfo {
+     // The order of fields matters because they define sort order.
+     pub app_class: Option<String>,
+     pub title: Option<String>,
+-    pub win_id: Option<String>,
++    pub winid: Option<String>,
+ }
+ 
+ pub trait Client {
+@@ -79,10 +79,10 @@ impl WMClient {
+         self.check_supported()?;
+ 
+         let result = self.client.current_window();
+-        if let Some(window) = &result {
+-            if &self.last_window != window {
+-                self.last_window = window.clone();
+-                if self.log_window_changes {
++        if self.log_window_changes {
++            if let Some(window) = &result {
++                if &self.last_window != window {
++                    self.last_window = window.clone();
+                     println!("window: {window}");
+                 }
+             }
+@@ -94,10 +94,10 @@ impl WMClient {
+         self.check_supported()?;
+ 
+         let result = self.client.current_application();
+-        if let Some(application) = &result {
+-            if &self.last_application != application {
+-                self.last_application = application.clone();
+-                if self.log_window_changes {
++        if self.log_window_changes {
++            if let Some(application) = &result {
++                if &self.last_application != application {
++                    self.last_application = application.clone();
+                     println!("application: {application}");
+                 }
+             }
+@@ -168,14 +168,14 @@ pub fn print_open_windows() -> anyhow::Result<()> {
+ 
+     for WindowInfo {
+         app_class,
+-        win_id,
++        winid,
+         title,
+     } in windows
+     {
+         table.push(vec![
+             app_class.unwrap_or_default(),
+             title.unwrap_or_default(),
+-            win_id.unwrap_or_default(),
++            winid.unwrap_or_default(),
+         ]);
+     }
+ 
+diff --git a/src/client/socket_client.rs b/src/client/socket_client.rs
+--- a/src/client/socket_client.rs
++++ b/src/client/socket_client.rs
+@@ -53,8 +53,7 @@ impl SocketClient {
+     }
+ 
+     fn get_active_window(&self) -> Result<ActiveWindow> {
+-        let json;
+-        json = self.call_via_socket("ActiveWindow")?;
++        let json = self.call_via_socket("ActiveWindow")?;
+         Ok(serde_json::from_str::<ActiveWindow>(&json)?)
+     }
+ 
+@@ -76,15 +75,16 @@ impl SocketClient {
+ impl Client for SocketClient {
+     fn supported(&mut self) -> bool {
+         debug!("Using socket path pattern: {}", self.socket_path);
+-        if let Ok(dynamic_components) = Regex::new(r"/(\{uid\}/.+|[^/{]+)$") {
+-            let parent_dir = dynamic_components.replace(&self.socket_path, "");
+-            let path = Path::new(parent_dir.as_ref());
+-            if path.is_dir() {
+-                return true;
+-            }
++        let regex = Regex::new(r"/(\{uid\}/.+|[^/{]+)$").unwrap();
++
++        let parent_dir = regex.replace(&self.socket_path, "");
++        let path = Path::new(parent_dir.as_ref());
++        if path.is_dir() {
++            true
++        } else {
+             println!("Warning: socket directory not found: {}", parent_dir);
++            false
+         }
+-        false
+     }
+ 
+     fn current_window(&mut self) -> Option<String> {
+diff --git a/src/client/wlroots_client.rs b/src/client/wlroots_client.rs
+--- a/src/client/wlroots_client.rs
++++ b/src/client/wlroots_client.rs
+@@ -99,11 +99,11 @@ impl Client for WlRootsClient {
+ 
+ impl Dispatch<wl_registry::WlRegistry, GlobalListContents> for State {
+     fn event(
+-        _state: &mut Self,
+-        _registry: &wl_registry::WlRegistry,
++        _: &mut Self,
++        _: &wl_registry::WlRegistry,
+         event: wl_registry::Event,
+         _: &GlobalListContents,
+-        _connection: &Connection,
++        _: &Connection,
+         _: &QueueHandle<State>,
+     ) {
+         log::trace!("{event:?}");
+diff --git a/src/client/x11_client.rs b/src/client/x11_client.rs
+--- a/src/client/x11_client.rs
++++ b/src/client/x11_client.rs
+@@ -134,7 +134,7 @@ fn get_wm_class(client: &mut X11Client, window: Window) -> Option<String> {
+ 
+ /// Get WM_CLASS by using _NET_ACTIVE_WINDOW
+ fn current_application_fallback(client: &mut X11Client) -> Option<String> {
+-    let winid = get_focused_window_id(client.connection.as_ref()?, client.screen_num?).ok()?;
++    let winid = get_focused_winid(client.connection.as_ref()?, client.screen_num?).ok()?;
+ 
+     get_wm_class(client, winid)
+ }
+@@ -173,7 +173,7 @@ fn get_focused_title(client: &X11Client) -> Result<String> {
+         .screen_num
+         .ok_or_else(|| anyhow::format_err!("Screen_num should be available"))?;
+ 
+-    let winid = get_focused_window_id(conn, screen_num)?;
++    let winid = get_focused_winid(conn, screen_num)?;
+ 
+     let atoms = Atoms::new(&conn)?.reply()?;
+ 
+@@ -196,7 +196,7 @@ fn get_focused_title(client: &X11Client) -> Result<String> {
+ 
+ /// This is a better alternative to the existing function: get_focus_window
+ /// Because xproto::get_input_focus is not a reliable way to get focused window.
+-fn get_focused_window_id(conn: &RustConnection, screen_num: usize) -> anyhow::Result<u32> {
++fn get_focused_winid(conn: &RustConnection, screen_num: usize) -> anyhow::Result<u32> {
+     let root = conn.setup().roots[screen_num].root;
+ 
+     let atoms = Atoms::new(&conn)?.reply()?;
+diff --git a/src/command_runner.rs b/src/command_runner.rs
+new file mode 100644
+--- /dev/null
++++ b/src/command_runner.rs
+@@ -0,0 +1,63 @@
++use fork::{fork, setsid, Fork};
++use log::{debug, error};
++use nix::sys::signal::{self, sigaction, SaFlags, SigAction, SigHandler, SigSet};
++use std::process::{exit, Command, Stdio};
++
++pub struct CommandRunner {
++    // Whether we've called a sigaction for spawing commands or not
++    sigaction_set: bool,
++}
++
++impl CommandRunner {
++    pub fn new() -> Self {
++        Self { sigaction_set: false }
++    }
++
++    pub fn run(&mut self, command: Vec<String>) {
++        if !self.sigaction_set {
++            // Avoid defunct processes
++            let sig_action = SigAction::new(SigHandler::SigDfl, SaFlags::SA_NOCLDWAIT, SigSet::empty());
++            unsafe {
++                sigaction(signal::SIGCHLD, &sig_action).expect("Failed to register SIGCHLD handler");
++            }
++            self.sigaction_set = true;
++        }
++
++        debug!("Running command: {command:?}");
++        match fork() {
++            Ok(Fork::Child) => {
++                // Child process should fork again, and the parent should exit 0, while the child
++                // should spawn the user command then exit as well.
++                match fork() {
++                    Ok(Fork::Child) => {
++                        setsid().expect("Failed to setsid.");
++                        match Command::new(&command[0])
++                            .args(&command[1..])
++                            .stdin(Stdio::null())
++                            .stdout(Stdio::null())
++                            .stderr(Stdio::null())
++                            .spawn()
++                        {
++                            Ok(child) => {
++                                debug!("Process started: {:?}, pid {}", command, child.id());
++                                exit(0);
++                            }
++                            Err(e) => {
++                                error!("Error running command: {e:?}");
++                                exit(1);
++                            }
++                        }
++                    }
++                    Ok(Fork::Parent(_)) => exit(0),
++                    Err(e) => {
++                        error!("Error spawning process: {e:?}");
++                        exit(1);
++                    }
++                }
++            }
++            // Parent should simply continue.
++            Ok(Fork::Parent(_)) => (),
++            Err(e) => error!("Error spawning process: {e:?}"),
++        }
++    }
++}
+diff --git a/src/config/device.rs b/src/config/device.rs
+--- a/src/config/device.rs
++++ b/src/config/device.rs
+@@ -1,12 +1,25 @@
+ use crate::config::application::deserialize_string_or_vec;
++use crate::device::InputDeviceInfo;
+ use serde::Deserialize;
+ 
+ // TODO: Use trait to allow only either `only` or `not`
+ #[derive(Clone, Debug, Deserialize)]
+ #[serde(deny_unknown_fields)]
+-pub struct Device {
++pub struct DeviceMatcher {
+     #[serde(default, deserialize_with = "deserialize_string_or_vec")]
+     pub only: Option<Vec<String>>,
+     #[serde(default, deserialize_with = "deserialize_string_or_vec")]
+     pub not: Option<Vec<String>>,
+ }
++
++impl DeviceMatcher {
++    pub fn matches(&self, device: &InputDeviceInfo) -> bool {
++        if let Some(device_only) = &self.only {
++            return device_only.iter().any(|m| device.matches(m));
++        }
++        if let Some(device_not) = &self.not {
++            return device_not.iter().all(|m| !device.matches(m));
++        }
++        false
++    }
++}
+diff --git a/src/config/key.rs b/src/config/key.rs
+--- a/src/config/key.rs
++++ b/src/config/key.rs
+@@ -1,3 +1,4 @@
++use crate::config::key_press::parse_modifier_alias;
+ use crate::event_handler::{DISGUISED_EVENT_OFFSETTER, KEY_MATCH_ANY};
+ use evdev::KeyCode as Key;
+ use serde::{Deserialize, Deserializer};
+@@ -135,6 +136,11 @@ pub fn parse_key(input: &str) -> Result<Key, Box<dyn Error>> {
+         return Ok(key);
+     }
+ 
++    // Give warning if it's nearly correct
++    if parse_modifier_alias(input).is_some() {
++        return Err(format!("Modifiers must have left/right specified when used as key: '{input}'").into());
++    }
++
+     Err(format!("unknown key '{input}'").into())
+ }
+ 
+@@ -153,5 +159,8 @@ fn test_parse_key() {
+     assert_eq!(parse_key("S").unwrap(), Key::KEY_S);
+ 
+     // Modifier without sidedness can't be a key.
+-    assert_eq!(parse_key("Shift").unwrap_err().to_string(), "unknown key 'Shift'");
++    assert_eq!(
++        parse_key("Shift").unwrap_err().to_string(),
++        "Modifiers must have left/right specified when used as key: 'Shift'"
++    );
+ }
+diff --git a/src/config/key_press.rs b/src/config/key_press.rs
+--- a/src/config/key_press.rs
++++ b/src/config/key_press.rs
+@@ -1,7 +1,7 @@
+ use crate::config::key::parse_key;
+ use evdev::KeyCode as Key;
+ use serde::{Deserialize, Deserializer};
+-use std::error::{self, Error};
++use std::error::Error;
+ 
+ #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+ pub struct KeyPress {
+@@ -20,6 +20,18 @@ pub enum Modifier {
+     Key(Key),
+ }
+ 
++impl Modifier {
++    pub fn is_in(&self, modifiers: &Vec<Key>) -> bool {
++        match self {
++            Modifier::Shift => modifiers.contains(&Key::KEY_LEFTSHIFT) || modifiers.contains(&Key::KEY_RIGHTSHIFT),
++            Modifier::Control => modifiers.contains(&Key::KEY_LEFTCTRL) || modifiers.contains(&Key::KEY_RIGHTCTRL),
++            Modifier::Alt => modifiers.contains(&Key::KEY_LEFTALT) || modifiers.contains(&Key::KEY_RIGHTALT),
++            Modifier::Windows => modifiers.contains(&Key::KEY_LEFTMETA) || modifiers.contains(&Key::KEY_RIGHTMETA),
++            Modifier::Key(key) => modifiers.contains(key),
++        }
++    }
++}
++
+ impl<'de> Deserialize<'de> for KeyPress {
+     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+     where
+@@ -30,7 +42,7 @@ impl<'de> Deserialize<'de> for KeyPress {
+     }
+ }
+ 
+-fn parse_key_press(input: &str) -> Result<KeyPress, Box<dyn error::Error>> {
++fn parse_key_press(input: &str) -> Result<KeyPress, Box<dyn Error>> {
+     let keys: Vec<&str> = input.split('-').collect();
+     if let Some((key, modifier_keys)) = keys.split_last() {
+         let mut modifiers = vec![];
+@@ -48,23 +60,36 @@ fn parse_key_press(input: &str) -> Result<KeyPress, Box<dyn error::Error>> {
+ }
+ 
+ fn parse_modifier(modifier: &str) -> Result<Modifier, Box<dyn Error>> {
++    match parse_modifier_alias(modifier) {
++        Some(modifier) => Ok(modifier),
++        None => {
++            // Modifier by the precise key to use
++            parse_key(modifier).map(Modifier::Key)
++        }
++    }
++}
++
++// Modifier that can match both left and right variants.
++pub fn parse_modifier_alias(modifier: &str) -> Option<Modifier> {
+     // Everything is case-insensitive
+     match &modifier.to_uppercase()[..] {
+         // Shift
+-        "SHIFT" => Ok(Modifier::Shift),
++        "S" => Some(Modifier::Shift),
++        "SHIFT" => Some(Modifier::Shift),
+         // Control
+-        "C" => Ok(Modifier::Control),
+-        "CTRL" => Ok(Modifier::Control),
+-        "CONTROL" => Ok(Modifier::Control),
++        "C" => Some(Modifier::Control),
++        "CTRL" => Some(Modifier::Control),
++        "CONTROL" => Some(Modifier::Control),
+         // Alt
+-        "M" => Ok(Modifier::Alt),
+-        "ALT" => Ok(Modifier::Alt),
++        "A" => Some(Modifier::Alt),
++        "M" => Some(Modifier::Alt),
++        "ALT" => Some(Modifier::Alt),
+         // Windows
+-        "SUPER" => Ok(Modifier::Windows),
+-        "WIN" => Ok(Modifier::Windows),
+-        "WINDOWS" => Ok(Modifier::Windows),
+-        // else
+-        key => parse_key(key).map(Modifier::Key),
++        "SUPER" => Some(Modifier::Windows),
++        "W" => Some(Modifier::Windows),
++        "WIN" => Some(Modifier::Windows),
++        "WINDOWS" => Some(Modifier::Windows),
++        _ => None,
+     }
+ }
+ 
+diff --git a/src/config/keymap.rs b/src/config/keymap.rs
+--- a/src/config/keymap.rs
++++ b/src/config/keymap.rs
+@@ -1,3 +1,5 @@
++use super::device::DeviceMatcher;
++use super::key_press::Modifier;
+ use crate::config::application::deserialize_string_or_vec;
+ use crate::config::application::OnlyOrNot;
+ use crate::config::key_press::KeyPress;
+@@ -6,9 +8,6 @@ use evdev::KeyCode as Key;
+ use serde::{Deserialize, Deserializer};
+ use std::collections::HashMap;
+ 
+-use super::device::Device;
+-use super::key_press::Modifier;
+-
+ // Config interface
+ #[derive(Debug, Deserialize)]
+ #[serde(deny_unknown_fields)]
+@@ -20,7 +19,7 @@ pub struct Keymap {
+     pub remap: HashMap<KeyPress, Vec<KeymapAction>>,
+     pub application: Option<OnlyOrNot>,
+     pub window: Option<OnlyOrNot>,
+-    pub device: Option<Device>,
++    pub device: Option<DeviceMatcher>,
+     #[serde(default, deserialize_with = "deserialize_string_or_vec")]
+     pub mode: Option<Vec<String>>,
+     #[serde(default)]
+@@ -45,7 +44,7 @@ pub struct KeymapEntry {
+     pub modifiers: Vec<Modifier>,
+     pub application: Option<OnlyOrNot>,
+     pub title: Option<OnlyOrNot>,
+-    pub device: Option<Device>,
++    pub device: Option<DeviceMatcher>,
+     pub mode: Option<Vec<String>>,
+     pub exact_match: bool,
+ }
+diff --git a/src/config/keymap_action.rs b/src/config/keymap_action.rs
+--- a/src/config/keymap_action.rs
++++ b/src/config/keymap_action.rs
+@@ -1,11 +1,10 @@
+ use crate::config::key::parse_key;
+ use crate::config::key_press::KeyPress;
+-use crate::config::remap::{Remap, RemapActions};
++use crate::config::nested_remap::{deserialize_nested_remap, Remap};
+ use evdev::KeyCode as Key;
+ use serde::{de, Deserialize, Deserializer};
+ use std::collections::HashMap;
+ use std::fmt::Debug;
+-use std::time::Duration;
+ 
+ // Values in `keymap.remap`
+ #[derive(Clone, Debug, Deserialize)]
+@@ -19,7 +18,7 @@ pub enum KeymapAction {
+     KeyRepeat(Key),
+     #[serde(deserialize_with = "deserialize_key_release")]
+     KeyRelease(Key),
+-    #[serde(deserialize_with = "deserialize_remap")]
++    #[serde(deserialize_with = "deserialize_nested_remap")]
+     Remap(Remap),
+     #[serde(deserialize_with = "deserialize_launch")]
+     Launch(Vec<String>),
+@@ -81,26 +80,6 @@ where
+     Err(de::Error::custom("not a map with a single \"release\" key"))
+ }
+ 
+-fn deserialize_remap<'de, D>(deserializer: D) -> Result<Remap, D::Error>
+-where
+-    D: Deserializer<'de>,
+-{
+-    let action = RemapActions::deserialize(deserializer)?;
+-    Ok(Remap {
+-        remap: action.remap.into_iter().map(|(k, v)| (k, v.into_vec())).collect(),
+-        timeout: action.timeout_millis.map(Duration::from_millis),
+-        timeout_key: if let Some(keys) = action.timeout_key {
+-            let parsed_keys: Result<Vec<_>, _> = keys.into_iter().map(|key| parse_key(&key)).collect();
+-            match parsed_keys {
+-                Ok(parsed_keys) => Some(parsed_keys),
+-                Err(e) => return Err(de::Error::custom(e.to_string())),
+-            }
+-        } else {
+-            None
+-        },
+-    })
+-}
+-
+ fn deserialize_launch<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+ where
+     D: Deserializer<'de>,
+diff --git a/src/config/mod.rs b/src/config/mod.rs
+--- a/src/config/mod.rs
++++ b/src/config/mod.rs
+@@ -9,8 +9,7 @@ pub mod keymap;
+ pub mod keymap_action;
+ mod modmap;
+ pub mod modmap_operator;
+-
+-pub mod remap;
++pub mod nested_remap;
+ #[cfg(test)]
+ mod tests;
+ mod validation;
+@@ -19,24 +18,19 @@ extern crate serde_yaml;
+ extern crate toml;
+ 
+ use crate::config::expmap::Expmap;
++use crate::config::key::parse_key;
++use crate::config::keymap::{build_keymap_table, KeymapEntry};
+ use crate::event_handler::DISGUISED_EVENT_OFFSETTER;
+ use crate::event_handler::MODIFIER_KEYS;
+ use evdev::KeyCode as Key;
+ use keymap::Keymap;
+ use modmap::Modmap;
+ use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
+ use serde::{de::IgnoredAny, Deserialize, Deserializer};
+-use std::{
+-    collections::HashMap,
+-    error, fs,
+-    path::{Path, PathBuf},
+-    time::SystemTime,
+-};
+-
+-use self::{
+-    key::parse_key,
+-    keymap::{build_keymap_table, KeymapEntry},
+-};
++use std::collections::HashMap;
++use std::path::{Path, PathBuf};
++use std::time::SystemTime;
++use std::{error, fs};
+ pub use validation::validate_config_file;
+ 
+ #[derive(Debug, Deserialize)]
+@@ -92,6 +86,8 @@ fn get_file_ext(filename: &Path) -> ConfigFiletype {
+ }
+ 
+ pub fn load_configs(filenames: &[PathBuf]) -> Result<Config, Box<dyn error::Error>> {
++    assert!(!filenames.is_empty(), "config is set, if not completions");
++
+     // Assumes filenames is non-empty
+     let config_contents = fs::read_to_string(&filenames[0])?;
+ 
+diff --git a/src/config/modmap.rs b/src/config/modmap.rs
+--- a/src/config/modmap.rs
++++ b/src/config/modmap.rs
+@@ -1,3 +1,4 @@
++use super::device::DeviceMatcher;
+ use crate::config::application::deserialize_string_or_vec;
+ use crate::config::application::OnlyOrNot;
+ use crate::config::key::deserialize_key;
+@@ -6,8 +7,6 @@ use evdev::KeyCode as Key;
+ use serde::{Deserialize, Deserializer};
+ use std::collections::HashMap;
+ 
+-use super::device::Device;
+-
+ #[derive(Debug, Deserialize)]
+ #[serde(deny_unknown_fields)]
+ pub struct Modmap {
+@@ -18,7 +17,7 @@ pub struct Modmap {
+     pub remap: HashMap<Key, ModmapOperator>,
+     pub application: Option<OnlyOrNot>,
+     pub window: Option<OnlyOrNot>,
+-    pub device: Option<Device>,
++    pub device: Option<DeviceMatcher>,
+     #[serde(default, deserialize_with = "deserialize_string_or_vec")]
+     pub mode: Option<Vec<String>>,
+ }
+diff --git a/src/config/nested_remap.rs b/src/config/nested_remap.rs
+new file mode 100644
+--- /dev/null
++++ b/src/config/nested_remap.rs
+@@ -0,0 +1,45 @@
++use super::keymap_action::Actions;
++use crate::config::application::deserialize_string_or_vec;
++use crate::config::key::parse_key;
++use crate::config::key_press::KeyPress;
++use crate::config::keymap_action::KeymapAction;
++use evdev::KeyCode as Key;
++use serde::{de, Deserialize, Deserializer};
++use std::collections::HashMap;
++use std::time::Duration;
++
++#[derive(Clone, Debug)]
++pub struct Remap {
++    pub remap: HashMap<KeyPress, Vec<KeymapAction>>,
++    pub timeout: Option<Duration>,
++    pub timeout_key: Option<Vec<Key>>,
++}
++
++// USed only for deserialization
++#[derive(Debug, Deserialize)]
++pub struct RemapActions {
++    pub remap: HashMap<KeyPress, Actions>,
++    pub timeout_millis: Option<u64>,
++    #[serde(default, deserialize_with = "deserialize_string_or_vec")]
++    pub timeout_key: Option<Vec<String>>,
++}
++
++pub fn deserialize_nested_remap<'de, D>(deserializer: D) -> Result<Remap, D::Error>
++where
++    D: Deserializer<'de>,
++{
++    let action = RemapActions::deserialize(deserializer)?;
++    Ok(Remap {
++        remap: action.remap.into_iter().map(|(k, v)| (k, v.into_vec())).collect(),
++        timeout: action.timeout_millis.map(Duration::from_millis),
++        timeout_key: if let Some(keys) = action.timeout_key {
++            let parsed_keys: Result<Vec<_>, _> = keys.into_iter().map(|key| parse_key(&key)).collect();
++            match parsed_keys {
++                Ok(parsed_keys) => Some(parsed_keys),
++                Err(e) => return Err(de::Error::custom(e.to_string())),
++            }
++        } else {
++            None
++        },
++    })
++}
+diff --git a/src/config/remap.rs b/src/config/remap.rs
+deleted file mode 100644
+--- a/src/config/remap.rs
++++ /dev/null
+@@ -1,26 +0,0 @@
+-use evdev::KeyCode as Key;
+-use serde::Deserialize;
+-
+-use crate::config::application::deserialize_string_or_vec;
+-use crate::config::key_press::KeyPress;
+-use crate::config::keymap_action::KeymapAction;
+-use std::collections::HashMap;
+-use std::time::Duration;
+-
+-use super::keymap_action::Actions;
+-
+-#[derive(Clone, Debug)]
+-pub struct Remap {
+-    pub remap: HashMap<KeyPress, Vec<KeymapAction>>,
+-    pub timeout: Option<Duration>,
+-    pub timeout_key: Option<Vec<Key>>,
+-}
+-
+-// USed only for deserialization
+-#[derive(Debug, Deserialize)]
+-pub struct RemapActions {
+-    pub remap: HashMap<KeyPress, Actions>,
+-    pub timeout_millis: Option<u64>,
+-    #[serde(default, deserialize_with = "deserialize_string_or_vec")]
+-    pub timeout_key: Option<Vec<String>>,
+-}
+diff --git a/src/event_handler.rs b/src/event_handler.rs
+--- a/src/event_handler.rs
++++ b/src/event_handler.rs
+@@ -5,10 +5,10 @@ use crate::config::key_press::{KeyPress, Modifier};
+ use crate::config::keymap::{build_override_table, OverrideEntry};
+ use crate::config::keymap_action::KeymapAction;
+ use crate::config::modmap_operator::{Interruptable, Keys, ModmapOperator, MultiPurposeKey, PressReleaseKey};
+-use crate::config::remap::Remap;
++use crate::config::nested_remap::Remap;
+ use crate::device::InputDeviceInfo;
+ use crate::event::{Event, KeyEvent, RelativeEvent};
+-use crate::{config, Config};
++use crate::Config;
+ use evdev::KeyCode as Key;
+ use lazy_static::lazy_static;
+ use log::{debug, warn};
+@@ -37,8 +37,6 @@ pub struct EventHandler {
+     extra_modifiers: HashSet<Key>,
+     // Make sure the original event is released even if remapping changes while holding the key
+     pressed_keys: HashMap<Key, Key>,
+-    // Client that interacts with the window manager.
+-    application_client: WMClient,
+     application_cache: Option<String>,
+     title_cache: Option<String>,
+     // State machine for multi-purpose keys
+@@ -67,18 +65,17 @@ struct TaggedAction {
+ }
+ 
+ impl EventHandler {
+-    pub fn new(timer: TimerFd, mode: &str, keypress_delay: Duration, application_client: WMClient) -> EventHandler {
++    pub fn new(override_timer: TimerFd, mode: &str, keypress_delay: Duration) -> EventHandler {
+         EventHandler {
+             modifiers: vec![],
+             extra_modifiers: HashSet::new(),
+             pressed_keys: HashMap::new(),
+-            application_client,
+             application_cache: None,
+             title_cache: None,
+             multi_purpose_keys: HashMap::new(),
+             override_remaps: vec![],
+             override_timeout_key: None,
+-            override_timer: timer,
++            override_timer,
+             mode: mode.to_string(),
+             mark_set: false,
+             escape_next_key: false,
+@@ -88,7 +85,13 @@ impl EventHandler {
+     }
+ 
+     // Handle an Event and return Actions. This should be the only public method of EventHandler.
+-    pub fn on_events(&mut self, events: &Vec<Event>, config: &Config) -> Result<Vec<Action>, Box<dyn Error>> {
++    pub fn on_events(
++        &mut self,
++        events: &Vec<Event>,
++        config: &Config,
++        wmclient: &mut WMClient,
++    ) -> Result<Vec<Action>, Box<dyn Error>> {
++        debug_assert!(self.actions.is_empty());
+         // a vector to collect mouse movement events to be able to send them all at once as one MouseMovementEventCollection.
+         let mut mouse_movement_collection: Vec<RelativeEvent> = Vec::new();
+         for event in events {
+@@ -100,19 +103,19 @@ impl EventHandler {
+             }
+ 
+             // Apply modmap
+-            let modmap_events = self.apply_modmap(config, event)?;
++            let modmap_events = self.apply_modmap(config, event, wmclient)?;
+ 
+             // Apply keymap
+             for event in modmap_events.into_iter() {
+                 match event {
+                     Event::KeyEvent(device, key_event) => {
+-                        self.on_key_event(key_event.key, key_event.value(), &device, config)?;
++                        self.on_key_event(key_event.key, key_event.value(), &device, config, wmclient)?;
+                     }
+                     Event::RelativeEvent(device, relative_event) => {
+                         let key = Key(relative_event.to_disguised_key());
+ 
+                         // Send as disguised-event
+-                        let was_remapped = self.on_key_event(key, PRESS, &device, config)?;
++                        let was_remapped = self.on_key_event(key, PRESS, &device, config, wmclient)?;
+ 
+                         if !was_remapped {
+                             if relative_event.code <= 2 {
+@@ -138,17 +141,14 @@ impl EventHandler {
+         Ok(self.actions.drain(..).collect())
+     }
+ 
+-    pub fn delegate_to_client(&mut self, command: &Vec<String>) -> anyhow::Result<bool> {
+-        self.application_client.run(command)
+-    }
+-
+     // Handle EventType::KEY
+     fn on_key_event(
+         &mut self,
+         key: Key,
+         value: i32,
+         device: &Rc<InputDeviceInfo>,
+         config: &Config,
++        wmclient: &mut WMClient,
+     ) -> Result<bool, Box<dyn Error>> {
+         // Apply keymap
+         if config.virtual_modifiers.contains(&key) {
+@@ -159,10 +159,10 @@ impl EventHandler {
+         } else if is_pressed(value) {
+             if self.escape_next_key {
+                 self.escape_next_key = false
+-            } else if let Some(actions) = self.find_keymap(config, &key, device)? {
++            } else if let Some(actions) = self.find_keymap(config, &key, device, wmclient)? {
+                 self.dispatch_actions(&actions, &key)?;
+                 return Ok(true);
+-            } else if let Some(actions) = self.find_keymap(config, &KEY_MATCH_ANY, device)? {
++            } else if let Some(actions) = self.find_keymap(config, &KEY_MATCH_ANY, device, wmclient)? {
+                 self.dispatch_actions(&actions, &KEY_MATCH_ANY)?;
+                 return Ok(true);
+             }
+@@ -371,13 +371,18 @@ impl EventHandler {
+         }
+     }
+ 
+-    fn apply_modmap(&mut self, config: &Config, event: &Event) -> Result<Vec<Event>, Box<dyn Error>> {
++    fn apply_modmap(
++        &mut self,
++        config: &Config,
++        event: &Event,
++        wmclient: &mut WMClient,
++    ) -> Result<Vec<Event>, Box<dyn Error>> {
+         match event {
+             Event::KeyEvent(device, key_event) => {
+                 let key = key_event.key;
+                 let value = key_event.value();
+ 
+-                let mut key_values = if let Some(key_action) = self.find_modmap(config, &key, &device) {
++                let mut key_values = if let Some(key_action) = self.find_modmap(config, &key, &device, wmclient) {
+                     self.dispatch_keys(key_action, key, value)?
+                 } else {
+                     vec![(key, value)]
+@@ -416,21 +421,27 @@ impl EventHandler {
+         }
+     }
+ 
+-    fn find_modmap(&mut self, config: &Config, key: &Key, device: &InputDeviceInfo) -> Option<ModmapOperator> {
++    fn find_modmap(
++        &mut self,
++        config: &Config,
++        key: &Key,
++        device: &InputDeviceInfo,
++        wmclient: &mut WMClient,
++    ) -> Option<ModmapOperator> {
+         for modmap in &config.modmap {
+             if let Some(key_action) = modmap.remap.get(key) {
+                 if let Some(window_matcher) = &modmap.window {
+-                    if !self.match_window(window_matcher) {
++                    if !self.match_window(wmclient, window_matcher) {
+                         continue;
+                     }
+                 }
+                 if let Some(application_matcher) = &modmap.application {
+-                    if !self.match_application(application_matcher) {
++                    if !self.match_application(wmclient, application_matcher) {
+                         continue;
+                     }
+                 }
+                 if let Some(device_matcher) = &modmap.device {
+-                    if !self.match_device(device_matcher, device) {
++                    if !device_matcher.matches(device) {
+                         continue;
+                     }
+                 }
+@@ -450,6 +461,7 @@ impl EventHandler {
+         config: &Config,
+         key: &Key,
+         device: &InputDeviceInfo,
++        wmclient: &mut WMClient,
+     ) -> Result<Option<Vec<TaggedAction>>, Box<dyn Error>> {
+         if !self.override_remaps.is_empty() {
+             let entries: Vec<OverrideEntry> = self
+@@ -458,6 +470,7 @@ impl EventHandler {
+                 .flat_map(|map| map.get(key).cloned().unwrap_or_default())
+                 .collect();
+ 
++            // Empty if the key isn't defined in any of the nested remaps, that are active.
+             if !entries.is_empty() {
+                 self.remove_override()?;
+ 
+@@ -503,18 +516,18 @@ impl EventHandler {
+                         continue;
+                     }
+                     if let Some(window_matcher) = &entry.title {
+-                        if !self.match_window(window_matcher) {
++                        if !self.match_window(wmclient, window_matcher) {
+                             continue;
+                         }
+                     }
+ 
+                     if let Some(application_matcher) = &entry.application {
+-                        if !self.match_application(application_matcher) {
++                        if !self.match_application(wmclient, application_matcher) {
+                             continue;
+                         }
+                     }
+                     if let Some(device_matcher) = &entry.device {
+-                        if !self.match_device(device_matcher, device) {
++                        if !device_matcher.matches(device) {
+                             continue;
+                         }
+                     }
+@@ -543,6 +556,7 @@ impl EventHandler {
+     }
+ 
+     fn dispatch_actions(&mut self, actions: &Vec<TaggedAction>, key: &Key) -> Result<(), Box<dyn Error>> {
++        debug_assert!(self.extra_modifiers.len() == 0);
+         for action in actions {
+             self.dispatch_action(action, key)?;
+         }
+@@ -619,7 +633,7 @@ impl EventHandler {
+     }
+ 
+     fn with_mark(&self, key_press: &KeyPress) -> KeyPress {
+-        if self.mark_set && !self.match_modifier(&Modifier::Shift) {
++        if self.mark_set && !Modifier::Shift.is_in(&self.modifiers) {
+             let mut modifiers = key_press.modifiers.clone();
+             modifiers.push(Modifier::Shift);
+             KeyPress {
+@@ -646,7 +660,7 @@ impl EventHandler {
+         let missing_modifiers: Vec<Key> = modifiers
+             .iter()
+             .filter_map(|modifier| {
+-                if self.match_modifier(modifier) {
++                if modifier.is_in(&self.modifiers) {
+                     None
+                 } else {
+                     match modifier {
+@@ -662,25 +676,10 @@ impl EventHandler {
+         (extra_modifiers, missing_modifiers)
+     }
+ 
+-    fn match_modifier(&self, modifier: &Modifier) -> bool {
+-        match modifier {
+-            Modifier::Shift => {
+-                self.modifiers.contains(&Key::KEY_LEFTSHIFT) || self.modifiers.contains(&Key::KEY_RIGHTSHIFT)
+-            }
+-            Modifier::Control => {
+-                self.modifiers.contains(&Key::KEY_LEFTCTRL) || self.modifiers.contains(&Key::KEY_RIGHTCTRL)
+-            }
+-            Modifier::Alt => self.modifiers.contains(&Key::KEY_LEFTALT) || self.modifiers.contains(&Key::KEY_RIGHTALT),
+-            Modifier::Windows => {
+-                self.modifiers.contains(&Key::KEY_LEFTMETA) || self.modifiers.contains(&Key::KEY_RIGHTMETA)
+-            }
+-            Modifier::Key(key) => self.modifiers.contains(key),
+-        }
+-    }
+-    fn match_window(&mut self, window_matcher: &OnlyOrNot) -> bool {
++    fn match_window(&mut self, wmclient: &mut WMClient, window_matcher: &OnlyOrNot) -> bool {
+         // Lazily fill the wm_class cache
+         if self.title_cache.is_none() {
+-            match self.application_client.current_window() {
++            match wmclient.current_window() {
+                 Some(title) => self.title_cache = Some(title),
+                 None => self.title_cache = Some(String::new()),
+             }
+@@ -697,10 +696,10 @@ impl EventHandler {
+         false
+     }
+ 
+-    fn match_application(&mut self, application_matcher: &OnlyOrNot) -> bool {
++    fn match_application(&mut self, wmclient: &mut WMClient, application_matcher: &OnlyOrNot) -> bool {
+         // Lazily fill the wm_class cache
+         if self.application_cache.is_none() {
+-            match self.application_client.current_application() {
++            match wmclient.current_application() {
+                 Some(application) => self.application_cache = Some(application),
+                 None => self.application_cache = Some(String::new()),
+             }
+@@ -717,16 +716,6 @@ impl EventHandler {
+         false
+     }
+ 
+-    fn match_device(&self, device_matcher: &config::device::Device, device: &InputDeviceInfo) -> bool {
+-        if let Some(device_only) = &device_matcher.only {
+-            return device_only.iter().any(|m| device.matches(m));
+-        }
+-        if let Some(device_not) = &device_matcher.not {
+-            return device_not.iter().all(|m| !device.matches(m));
+-        }
+-        false
+-    }
+-
+     fn update_modifier(&mut self, key: Key, value: i32) {
+         if value == PRESS {
+             if !self.modifiers.contains(&key) {
+@@ -847,6 +836,9 @@ struct MultiPurposeKeyState {
+ }
+ 
+ impl MultiPurposeKeyState {
++    /// It causes a problem, that repeat is used for timeout. Partially because its interval
++    /// gives low precision. And because the repeat events will stop if another key is pressed. Also
++    /// BTN_RIGHT does not emit repeat events, so mouse buttons can't be remapped this way.   
+     fn repeat(&mut self) -> Vec<(Key, i32)> {
+         if matches!(self.state, MultiPurposeKeyStateEnum::TapPreferred) && Instant::now() >= self.hold_threshold_at {
+             // Timeout. Setting state before going into the switch is necessary
+diff --git a/src/main.rs b/src/main.rs
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -4,6 +4,7 @@ use crate::device::{
+     device_watcher, get_input_devices, output_device, print_device_details, print_device_list, DEVICE_NAME,
+ };
+ use crate::event_handler::EventHandler;
++use crate::main_controller::MainController;
+ use crate::operator_handler::OperatorHandler;
+ use crate::operators::get_operator_handler;
+ use crate::throttle_emit::ThrottleEmit;
+@@ -12,7 +13,6 @@ use action_dispatcher::ActionDispatcher;
+ use anyhow::{anyhow, bail, Context};
+ use clap::{CommandFactory, Parser, ValueEnum};
+ use clap_complete::Shell;
+-use client::build_client;
+ use config::{config_watcher, load_configs};
+ use device::InputDevice;
+ use event::Event;
+@@ -31,11 +31,13 @@ use std::time::Duration;
+ mod action;
+ mod action_dispatcher;
+ mod client;
++mod command_runner;
+ mod config;
+ mod device;
+ mod emit_handler;
+ mod event;
+ mod event_handler;
++mod main_controller;
+ mod operator_double_tap;
+ mod operator_handler;
+ mod operator_sim;
+@@ -148,12 +150,6 @@ enum WatchTargets {
+     Config,
+ }
+ 
+-// TODO: Unify this with Event
+-enum ReloadEvent {
+-    ReloadConfig,
+-    ReloadDevices,
+-}
+-
+ fn main() -> anyhow::Result<()> {
+     env_logger::init();
+ 
+@@ -162,7 +158,7 @@ fn main() -> anyhow::Result<()> {
+         ignore: ignore_filter,
+         mouse,
+         watch,
+-        configs,
++        configs: config_paths,
+         completions,
+         output_device_name,
+         product,
+@@ -199,11 +195,6 @@ fn main() -> anyhow::Result<()> {
+     }
+ 
+     // Configuration
+-    let config_paths = match configs[..] {
+-        [] => panic!("config is set, if not completions"),
+-        _ => configs,
+-    };
+-
+     let mut config = match config::load_configs(&config_paths) {
+         Ok(config) => config,
+         Err(e) => bail!(
+@@ -233,7 +224,12 @@ fn main() -> anyhow::Result<()> {
+     let device_watcher = device_watcher(watch_devices).context("Setting up device watcher")?;
+     let config_watcher = config_watcher(watch_config, &config_paths).context("Setting up config watcher")?;
+     let watchers: Vec<_> = device_watcher.iter().chain(config_watcher.iter()).collect();
+-    let mut handler = EventHandler::new(timer, &config.default_mode, delay, build_client(!no_window_logging));
++
++    // wmclient
++    let mut mainctrl = MainController::new(!no_window_logging);
++
++    // EventHandler
++    let mut handler = EventHandler::new(timer, &config.default_mode, delay);
+     let vendor = u16::from_str_radix(vendor.unwrap_or_default().trim_start_matches("0x"), 16).unwrap_or(0x1234);
+     let product = u16::from_str_radix(product.unwrap_or_default().trim_start_matches("0x"), 16).unwrap_or(0x5678);
+     let output_device = match output_device(
+@@ -258,7 +254,7 @@ fn main() -> anyhow::Result<()> {
+ 
+     // Main loop
+     loop {
+-        match 'event_loop: loop {
++        'event_loop: loop {
+             let readable_fds = select_readable(input_devices.values(), &watchers, timer_fd, timeout_manager_fd)?;
+             if readable_fds.contains(timer_fd) {
+                 if let Err(error) = handle_events(
+@@ -267,6 +263,7 @@ fn main() -> anyhow::Result<()> {
+                     &config,
+                     vec![Event::OverrideTimeout],
+                     &mut operator_handler,
++                    &mut mainctrl,
+                 ) {
+                     println!("Error on remap timeout: {error}")
+                 }
+@@ -280,6 +277,7 @@ fn main() -> anyhow::Result<()> {
+                         &mut config,
+                         vec![Event::Tick],
+                         &mut operator_handler,
++                        &mut mainctrl,
+                     ) {
+                         println!("Error on timeout: {error}")
+                     }
+@@ -291,9 +289,26 @@ fn main() -> anyhow::Result<()> {
+                     continue;
+                 }
+ 
+-                if !handle_input_events(input_device, &mut handler, &mut dispatcher, &config, &mut operator_handler)? {
++                if !handle_input_events(
++                    input_device,
++                    &mut handler,
++                    &mut dispatcher,
++                    &config,
++                    &mut operator_handler,
++                    &mut mainctrl,
++                )? {
+                     println!("Found a removed device. Reselecting devices.");
+-                    break 'event_loop ReloadEvent::ReloadDevices;
++
++                    for input_device in input_devices.values_mut() {
++                        input_device.ungrab();
++                    }
++
++                    input_devices = match get_input_devices(&device_filter, &ignore_filter, mouse, watch_devices) {
++                        Ok(input_devices) => input_devices,
++                        Err(e) => bail!("Failed to prepare input devices: {}", e),
++                    };
++
++                    continue 'event_loop;
+                 }
+             }
+ 
+@@ -302,37 +317,19 @@ fn main() -> anyhow::Result<()> {
+                     handle_device_changes(events, &mut input_devices, &device_filter, &ignore_filter, mouse)?;
+                 }
+             }
++
+             if let Some(inotify) = config_watcher {
+                 if let Ok(events) = inotify.read_events() {
+-                    if !handle_config_changes(
+-                        events,
+-                        &mut input_devices,
+-                        &device_filter,
+-                        &ignore_filter,
+-                        mouse,
+-                        &config_paths,
+-                        inotify,
+-                    )? {
+-                        break 'event_loop ReloadEvent::ReloadConfig;
++                    if !handle_config_changes(events, &config_paths, inotify)? {
++                        if let Ok(c) = load_configs(&config_paths) {
++                            println!("Reloading Config");
++                            config = c;
++                        }
++
++                        continue 'event_loop;
+                     }
+                 }
+             }
+-        } {
+-            ReloadEvent::ReloadDevices => {
+-                for input_device in input_devices.values_mut() {
+-                    input_device.ungrab();
+-                }
+-                input_devices = match get_input_devices(&device_filter, &ignore_filter, mouse, watch_devices) {
+-                    Ok(input_devices) => input_devices,
+-                    Err(e) => bail!("Failed to prepare input devices: {}", e),
+-                };
+-            }
+-            ReloadEvent::ReloadConfig => {
+-                if let Ok(c) = load_configs(&config_paths) {
+-                    println!("Reloading Config");
+-                    config = c;
+-                }
+-            }
+         }
+     }
+ }
+@@ -363,21 +360,21 @@ fn handle_input_events(
+     dispatcher: &mut ActionDispatcher,
+     config: &Config,
+     operator_handler: &mut Option<OperatorHandler>,
++    mainctrl: &mut MainController,
+ ) -> anyhow::Result<bool> {
+-    let mut device_exists = true;
+-    let events = match input_device.fetch_events().map_err(|e| (e.raw_os_error(), e)) {
+-        Err((Some(ENODEV), _)) => {
+-            device_exists = false;
+-            Ok(Vec::new())
++    let events: Vec<_> = match input_device.fetch_events() {
++        Err(err) if err.raw_os_error() == Some(ENODEV) => {
++            // The device doesn't exist anymore.
++            return Ok(false);
+         }
+-        Err((_, error)) => Err(error).context("Error fetching input events"),
+-        Ok(events) => Ok(events.collect()),
+-    }?;
++        events => events.context("Error fetching input events")?,
++    }
++    .collect();
+ 
+     let info = Rc::new(input_device.to_info());
+     let input_events = events.iter().map(|e| Event::new(info.clone(), *e)).collect();
+-    handle_events(handler, dispatcher, config, input_events, operator_handler)?;
+-    Ok(device_exists)
++    handle_events(handler, dispatcher, config, input_events, operator_handler, mainctrl)?;
++    Ok(true)
+ }
+ 
+ // Handle an Event with EventHandler, and dispatch Actions with ActionDispatcher
+@@ -387,16 +384,16 @@ fn handle_events(
+     config: &Config,
+     mut events: Vec<Event>,
+     operator_handler: &mut Option<OperatorHandler>,
++    mainctrl: &mut MainController,
+ ) -> anyhow::Result<()> {
+     if let Some(handler) = operator_handler {
+         events = handler.map_events(events);
+     };
+     let actions = handler
+-        .on_events(&events, config)
++        .on_events(&events, config, mainctrl.wmclient())
+         .map_err(|e| anyhow!("Failed handling {events:?}:\n  {e:?}"))?;
+-    let mut run = |command: &Vec<String>| -> anyhow::Result<bool> { handler.delegate_to_client(&command) };
+     for action in actions {
+-        dispatcher.on_action(action, &mut run)?;
++        dispatcher.on_action(action, mainctrl)?;
+     }
+     Ok(())
+ }
+@@ -425,10 +422,6 @@ fn handle_device_changes(
+ 
+ fn handle_config_changes(
+     events: Vec<InotifyEvent>,
+-    input_devices: &mut HashMap<PathBuf, InputDevice>,
+-    device_filter: &[String],
+-    ignore_filter: &[String],
+-    mouse: bool,
+     config_paths: &Vec<PathBuf>,
+     inotify: Inotify,
+ ) -> anyhow::Result<bool> {
+@@ -461,17 +454,5 @@ fn handle_config_changes(
+             _ => (),
+         }
+     }
+-    input_devices.extend(events.into_iter().filter_map(|event| {
+-        event.name.and_then(|name| {
+-            let path = PathBuf::from("/dev/input/").join(name);
+-            let mut device = InputDevice::try_from(path).ok()?;
+-            if device.is_input_device(device_filter, ignore_filter, mouse) && device.grab() {
+-                device.print();
+-                Some(device.into())
+-            } else {
+-                None
+-            }
+-        })
+-    }));
+     Ok(true)
+ }
+diff --git a/src/main_controller.rs b/src/main_controller.rs
+new file mode 100644
+--- /dev/null
++++ b/src/main_controller.rs
+@@ -0,0 +1,34 @@
++use crate::client::{build_client, WMClient};
++use crate::command_runner::CommandRunner;
++use log::debug;
++
++pub struct MainController {
++    wmclient: WMClient,
++    command_runner: CommandRunner,
++}
++
++impl MainController {
++    pub fn new(log_window_changes: bool) -> Self {
++        Self {
++            wmclient: build_client(log_window_changes),
++            command_runner: CommandRunner::new(),
++        }
++    }
++
++    pub fn wmclient<'a>(&'a mut self) -> &'a mut WMClient {
++        &mut self.wmclient
++    }
++
++    pub fn run_command(&mut self, command: Vec<String>) {
++        match self.wmclient.run(&command) {
++            Ok(false) => {
++                // could not run command, proceed to fork
++                self.command_runner.run(command);
++            }
++            Ok(true) => {}
++            Err(e) => {
++                debug!("{command:?} failed: {e:?}");
++            }
++        }
++    }
++}

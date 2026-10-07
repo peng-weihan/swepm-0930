@@ -1,0 +1,179 @@
+diff --git a/src/renderer/components/MarkdownContent.test.ts b/src/renderer/components/MarkdownContent.test.ts
+index 2b05029f..b43d8126 100644
+--- a/src/renderer/components/MarkdownContent.test.ts
++++ b/src/renderer/components/MarkdownContent.test.ts
+@@ -2,6 +2,8 @@ import { expect, test } from 'vitest';
+ 
+ import {
+   getLargeMarkdownPreview,
++  isInternalHref,
++  safeUrlTransform,
+   shouldUseLargeMarkdownPreview,
+ } from './MarkdownContent';
+ 
+@@ -19,3 +21,12 @@ test('large markdown preview keeps the head and latest tail', () => {
+   expect(preview.endsWith('-tail')).toBe(true);
+   expect(preview.length).toBeLessThan(content.length);
+ });
++
++test('kit links are treated as safe internal links', () => {
++  expect(safeUrlTransform('kit://design@lobsterai-kits')).toBe('kit://design@lobsterai-kits');
++  expect(isInternalHref('kit://design@lobsterai-kits')).toBe(true);
++});
++
++test('unsafe markdown protocols are still stripped', () => {
++  expect(safeUrlTransform('javascript:alert(1)')).toBe('');
++});
+diff --git a/src/renderer/components/cowork/selectedKitContextPrompt.test.ts b/src/renderer/components/cowork/selectedKitContextPrompt.test.ts
+new file mode 100644
+index 00000000..2b048fc0
+--- /dev/null
++++ b/src/renderer/components/cowork/selectedKitContextPrompt.test.ts
+@@ -0,0 +1,67 @@
++import { describe, expect, test } from 'vitest';
++
++import type { InstalledKit, MarketplaceKit } from '../../types/kit';
++import { buildSelectedKitContextPrompt } from './selectedKitContextPrompt';
++
++describe('buildSelectedKitContextPrompt', () => {
++  test('returns undefined when no kit is selected', () => {
++    expect(buildSelectedKitContextPrompt([], [], {})).toBeUndefined();
++  });
++
++  test('builds a concise kit capability index without tryAsking', () => {
++    const marketplaceKits: MarketplaceKit[] = [
++      {
++        id: 'design',
++        name: 'Design',
++        description: 'Design critique, UX writing, accessibility, research synthesis, and handoff.',
++        tryAsking: ['Audit my design system'],
++        skills: {
++          bundle: 'https://example.com/design.zip',
++          list: [
++            { id: 'design-critique', name: '/design-critique' },
++            { id: 'ux-copy', name: '/ux-copy' },
++          ],
++        },
++        mcpServers: [{ id: 'figma', name: 'Figma', description: 'Inspect design files.' }],
++        connectors: [{ id: 'github', name: 'GitHub' }],
++      },
++    ];
++    const installedKits: Record<string, InstalledKit> = {
++      design: {
++        id: 'design',
++        version: '1.0.0',
++        installedAt: 1,
++        skills: { skillIds: ['design-critique', 'ux-copy'] },
++        mcpServers: [{ id: 'figma', name: 'Figma', description: 'Inspect design files.' }],
++        connectors: [{ id: 'github', name: 'GitHub' }],
++      },
++    };
++
++    const prompt = buildSelectedKitContextPrompt(['design'], marketplaceKits, installedKits);
++
++    expect(prompt).toContain('<id>design</id>');
++    expect(prompt).toContain('<name>Design</name>');
++    expect(prompt).toContain('<skill id="design-critique" name="/design-critique" />');
++    expect(prompt).toContain('<mcpServer id="figma" name="Figma" description="Inspect design files." />');
++    expect(prompt).toContain('<connector id="github" name="GitHub" />');
++    expect(prompt).not.toContain('Audit my design system');
++    expect(prompt).not.toContain('SKILL.md');
++  });
++
++  test('falls back to installed skill ids when marketplace skill list is missing', () => {
++    const installedKits: Record<string, InstalledKit> = {
++      local: {
++        id: 'local',
++        version: '1.0.0',
++        installedAt: 1,
++        skills: { skillIds: ['local-skill'] },
++        mcpServers: [],
++        connectors: [],
++      },
++    };
++
++    const prompt = buildSelectedKitContextPrompt(['local'], [], installedKits);
++
++    expect(prompt).toContain('<skill id="local-skill" name="local-skill" />');
++  });
++});
+diff --git a/src/renderer/services/kitCapability.test.ts b/src/renderer/services/kitCapability.test.ts
+new file mode 100644
+index 00000000..3772cd07
+--- /dev/null
++++ b/src/renderer/services/kitCapability.test.ts
+@@ -0,0 +1,74 @@
++import { describe, expect, test } from 'vitest';
++
++import {
++  KitReferenceKind,
++  KitReferenceSource,
++} from '../../shared/kit/constants';
++import type { InstalledKit, MarketplaceKit } from '../types/kit';
++import {
++  buildKitReferences,
++  getInstalledKitSkillIds,
++  resolveSelectedKitCapabilities,
++} from './kitCapability';
++
++describe('kit capability helpers', () => {
++  test('reads installed kit skill ids from the nested skills record', () => {
++    const kit: InstalledKit = {
++      id: 'design',
++      version: '1.0.0',
++      installedAt: 1,
++      skills: { skillIds: ['design-critique', 'ux-copy'] },
++      mcpServers: [],
++      connectors: [],
++    };
++
++    expect(getInstalledKitSkillIds(kit)).toEqual(['design-critique', 'ux-copy']);
++  });
++
++  test('resolves selected kit capabilities without duplicating shared skills', () => {
++    const installedKits: Record<string, InstalledKit> = {
++      design: {
++        id: 'design',
++        version: '1.0.0',
++        installedAt: 1,
++        skills: { skillIds: ['design-critique', 'shared'] },
++        mcpServers: [{ id: 'figma' }],
++        connectors: [{ id: 'figma-connector' }],
++      },
++      research: {
++        id: 'research',
++        version: '1.0.0',
++        installedAt: 2,
++        skills: { skillIds: ['shared', 'research-synthesis'] },
++        mcpServers: [],
++        connectors: [],
++      },
++    };
++
++    expect(resolveSelectedKitCapabilities(['design', 'research'], installedKits)).toEqual({
++      skillIds: ['design-critique', 'shared', 'research-synthesis'],
++      mcpServers: [{ id: 'figma' }],
++      connectors: [{ id: 'figma-connector' }],
++    });
++  });
++
++  test('builds display references from marketplace kit metadata', () => {
++    const marketplaceKits: MarketplaceKit[] = [
++      {
++        id: 'design',
++        name: 'Design',
++        description: 'Design kit',
++      },
++    ];
++
++    expect(buildKitReferences(['design'], marketplaceKits)).toEqual([
++      {
++        kind: KitReferenceKind.Kit,
++        id: 'design',
++        name: 'Design',
++        uri: 'kit://design@lobsterai-kits',
++        source: KitReferenceSource.LobsterAiKits,
++      },
++    ]);
++  });
++});

@@ -1,0 +1,33 @@
+schema_version = "1.0"
+
+[[artifacts]]
+source = "/logs/agent/solution.patch"
+destination = "solution.patch"
+
+[metadata]
+benchmark = "swepmv2"
+instance_id = "PrimeIntellect-ai__verifiers-c_75990f2"
+repository = "PrimeIntellect-ai/verifiers"
+language = "python"
+base_commit = "8c07327ca6da57a5e2d3095b14f15fbed4f7a86c"
+category = "debugging"
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 3600.0
+
+[[verifier.collect]]
+command = "bash -c 'set -eu; cd /testbed; mkdir -p /logs/agent; export GIT_INDEX_FILE=/logs/agent/capture.index; git read-tree 8c07327ca6da57a5e2d3095b14f15fbed4f7a86c; git add -u; git ls-files --others --exclude-standard -z -- . '\"'\"':(exclude).venv'\"'\"' '\"'\"':(exclude)venv'\"'\"' '\"'\"':(exclude)node_modules'\"'\"' '\"'\"':(exclude)**/node_modules'\"'\"' '\"'\"':(exclude).pytest_cache'\"'\"' '\"'\"':(exclude)**/__pycache__'\"'\"' '\"'\"':(exclude)build'\"'\"' '\"'\"':(exclude)target'\"'\"' '\"'\"':(exclude).codex'\"'\"' > /logs/agent/new-files.nul; if [ -s /logs/agent/new-files.nul ]; then git --literal-pathspecs add --pathspec-from-file=/logs/agent/new-files.nul --pathspec-file-nul; fi; git diff --cached --binary 8c07327ca6da57a5e2d3095b14f15fbed4f7a86c > /logs/agent/solution.patch'"
+timeout_sec = 180.0
+
+[agent]
+timeout_sec = 7200.0
+
+[environment]
+build_timeout_sec = 1800.0
+docker_image = "key4127/refactor-dockerhub:PrimeIntellect-ai__verifiers-c_75990f2"
+workdir = "/testbed"
+cpus = 4
+memory_mb = 32768
+storage_mb = 20480
+gpus = 0

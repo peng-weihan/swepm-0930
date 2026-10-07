@@ -1,5 +1,13 @@
 # 分析索引与结论边界
 
+## 当前修复版与逐题健康：2026-10-07
+
+- [82 题修改说明与执行健康报告](verifier_repair/reports/20261007-instance-health/REPORT.md)：53 题专项修改，60 题没问题、1 题有问题、21 题待定。
+- [逐题 CSV](verifier_repair/reports/20261007-instance-health/instances.csv) / [完整结构化报告](verifier_repair/reports/20261007-instance-health/instances.json)。
+- [修复后的任务与运行准备](v2-0930-verifier-r1/README.md)、[Docker Hub 镜像发布](verifier_repair/image_publish/README.md)。
+
+这份报告按明确执行阻断评估健康，保留测试契约和覆盖争议；下面的历史四模型分析仍按其原快照解释。镜像发布之后仅两题地址文本变化，同一镜像内容与前后任务指纹的对应关系记录在迁移证明中。
+
 ## 四模型主批次：82 题与共同零分 55 题
 
 - [完整审查说明](health_audit/v2-0930-four-model-20261002/summary.txt)

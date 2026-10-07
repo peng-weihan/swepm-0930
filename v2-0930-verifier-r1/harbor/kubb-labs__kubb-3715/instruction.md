@@ -1,0 +1,7 @@
+The core resolver API is inconsistent and still exposes the built-in resolver helpers under the old “core” namespace, with common helpers such as name and file only available through nested/default resolution paths. This makes plugin authoring awkward and causes resolver overrides registered with `ctx.setResolver()` to not line up with the public resolver methods used by generators.
+
+Update the public resolver behavior so the built-in core resolver namespace is exposed as the default resolver namespace, and make the common resolver helpers available directly at the top level. Generator contexts should be able to call `ctx.resolver.name(...)` and `ctx.resolver.file(...)` without going through `ctx.resolver.default(...)` or a `core` namespace. A plugin setup hook should also be able to override these helpers with `ctx.setResolver({ name() { ... }, file() { ... } })`, and later generator code should see those overrides through the same top-level methods.
+
+The old `ctx.resolver.default(...)` style should no longer be the expected API for resolving names. Tests and plugin code that previously used `ctx.resolver.default('pet schema', 'type')` should instead use the appropriate top-level helper, for example `ctx.resolver.name('pet schema')`.
+
+The resolver authoring/export surface should match this API. `@kubb/kit` should expose the resolver creation primitives expected by plugin authors, including `createResolver` and `Resolver`, alongside the existing plugin, generator, parser, adapter, renderer, storage, diagnostics, AST, and testing utilities.

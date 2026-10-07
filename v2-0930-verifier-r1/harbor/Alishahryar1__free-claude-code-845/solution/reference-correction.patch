@@ -1,0 +1,21 @@
+diff --git a/providers/transports/openai_chat/transport.py b/providers/transports/openai_chat/transport.py
+--- a/providers/transports/openai_chat/transport.py
++++ b/providers/transports/openai_chat/transport.py
+@@ -113,7 +113,7 @@
+         try:
+             create_body = self._prepare_create_body(body)
+             stream = await self._global_rate_limiter.execute_with_retry(
+-                self._client.chat.completions.create, **create_body, stream=True
++                self._client.chat.completions.create, **{**create_body, "stream": True}
+             )
+             return stream, body
+         except Exception as error:
+@@ -123,7 +123,7 @@
+ 
+             create_retry_body = self._prepare_create_body(retry_body)
+             stream = await self._global_rate_limiter.execute_with_retry(
+-                self._client.chat.completions.create, **create_retry_body, stream=True
++                self._client.chat.completions.create, **{**create_retry_body, "stream": True}
+             )
+             return stream, retry_body
+ 

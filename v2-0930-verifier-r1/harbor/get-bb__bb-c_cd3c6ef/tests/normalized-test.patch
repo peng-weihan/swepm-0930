@@ -1,0 +1,2848 @@
+diff --git a/apps/app/src/hooks/environment-cache-effects.test.ts b/apps/app/src/hooks/environment-cache-effects.test.ts
+index 12557be02..a7968e726 100644
+--- a/apps/app/src/hooks/environment-cache-effects.test.ts
++++ b/apps/app/src/hooks/environment-cache-effects.test.ts
+@@ -63,14 +63,14 @@ describe("environment cache effects", () => {
+     });
+     queryClient.setQueryData(removedComposerBootstrapKey, {
+       defaultExecutionOptions: null,
+-      drafts: [],
++      queuedMessages: [],
+       executionOptions: { providers: [], models: [] },
+       pendingInteractions: [],
+       promptHistory: [],
+     });
+     queryClient.setQueryData(retainedComposerBootstrapKey, {
+       defaultExecutionOptions: null,
+-      drafts: [],
++      queuedMessages: [],
+       executionOptions: { providers: [], models: [] },
+       pendingInteractions: [],
+       promptHistory: [],
+@@ -82,8 +82,12 @@ describe("environment cache effects", () => {
+       queryClient,
+     });
+ 
+-    expect(queryClient.getQueryData(removedExecutionOptionsKey)).toBeUndefined();
+-    expect(queryClient.getQueryData(removedComposerBootstrapKey)).toBeUndefined();
++    expect(
++      queryClient.getQueryData(removedExecutionOptionsKey),
++    ).toBeUndefined();
++    expect(
++      queryClient.getQueryData(removedComposerBootstrapKey),
++    ).toBeUndefined();
+     expect(queryClient.getQueryData(removedWorkStatusKey)).toBeUndefined();
+     expect(queryClient.getQueryData(retainedExecutionOptionsKey)).toEqual({
+       providers: [],
+@@ -91,7 +95,7 @@ describe("environment cache effects", () => {
+     });
+     expect(queryClient.getQueryData(retainedComposerBootstrapKey)).toEqual({
+       defaultExecutionOptions: null,
+-      drafts: [],
++      queuedMessages: [],
+       executionOptions: { providers: [], models: [] },
+       pendingInteractions: [],
+       promptHistory: [],
+diff --git a/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx b/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx
+index a859933cf..386d5c47c 100644
+--- a/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx
++++ b/apps/app/src/hooks/mutations/thread-runtime-mutations.test.tsx
+@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
+ import type { ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
+ import type {
+   PromptHistoryResponse,
+-  SendDraftResponse,
++  SendQueuedMessageResponse,
+   ThreadTimelineResponse,
+ } from "@bb/server-contract";
+ import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+@@ -19,8 +19,8 @@ import {
+ } from "../queries/query-keys";
+ import {
+   useCreateThread,
+-  useCreateThreadDraft,
+-  useSendThreadDraft,
++  useCreateThreadQueuedMessage,
++  useSendThreadQueuedMessage,
+   useSendThreadMessage,
+   useStopThread,
+ } from "./thread-runtime-mutations";
+@@ -28,8 +28,8 @@ import {
+ vi.mock("@/lib/api", () => ({
+   HttpError: class HttpError extends Error {},
+   createThread: vi.fn(),
+-  createThreadDraft: vi.fn(),
+-  sendThreadDraft: vi.fn(),
++  createThreadQueuedMessage: vi.fn(),
++  sendThreadQueuedMessage: vi.fn(),
+   sendThreadMessage: vi.fn(),
+   stopThread: vi.fn(),
+ }));
+@@ -49,7 +49,7 @@ const queuedMessage = {
+   serviceTier: "default",
+   createdAt: 1,
+   updatedAt: 1,
+-} satisfies SendDraftResponse["queuedMessage"];
++} satisfies SendQueuedMessageResponse["queuedMessage"];
+ 
+ const createdThread = {
+   id: "thread-created",
+@@ -677,10 +677,12 @@ describe("thread runtime mutations", () => {
+     ).toBeNull();
+   });
+ 
+-  it("adds queued follow-up history immediately after draft creation succeeds", async () => {
+-    vi.mocked(api.createThreadDraft).mockResolvedValue(queuedMessage);
++  it("adds queued message history immediately after queued message creation succeeds", async () => {
++    vi.mocked(api.createThreadQueuedMessage).mockResolvedValue(queuedMessage);
+     const { queryClient, wrapper } = createQueryClientTestHarness();
+-    const { result } = renderHook(() => useCreateThreadDraft(), { wrapper });
++    const { result } = renderHook(() => useCreateThreadQueuedMessage(), {
++      wrapper,
++    });
+ 
+     await act(async () => {
+       await result.current.mutateAsync({
+@@ -695,7 +697,7 @@ describe("thread runtime mutations", () => {
+       ),
+     ).toEqual([
+       {
+-        id: "draft:queued-1",
++        id: "queued-message:queued-1",
+         createdAt: 1,
+         input: [{ type: "text", text: "Continue" }],
+       },
+diff --git a/apps/app/src/hooks/queries/thread-queries.test.tsx b/apps/app/src/hooks/queries/thread-queries.test.tsx
+index 29e738a3d..b2b938224 100644
+--- a/apps/app/src/hooks/queries/thread-queries.test.tsx
++++ b/apps/app/src/hooks/queries/thread-queries.test.tsx
+@@ -15,8 +15,8 @@ import {
+   useThreadComposerBootstrap,
+   useThreadDetailBootstrap,
+   useThreadDefaultExecutionOptions,
+-  useThreadDrafts,
+   useThreadHostFilePreview,
++  useThreadQueuedMessages,
+   useThreadPendingInteractions,
+   useThreadPromptHistory,
+ } from "./thread-queries";
+@@ -24,8 +24,8 @@ import {
+   hostsQueryKey,
+   systemExecutionOptionsQueryKey,
+   threadDefaultExecutionOptionsQueryKey,
+-  threadDraftsQueryKey,
+   threadHostFilePreviewQueryKey,
++  threadQueuedMessagesQueryKey,
+   threadPendingInteractionsQueryKey,
+   threadPromptHistoryQueryKey,
+   threadQueryKey,
+@@ -242,10 +242,10 @@ describe("thread query bootstraps", () => {
+       serviceTier: "default",
+       source: "client/turn/requested",
+     };
+-    const drafts = [
++    const queuedMessages = [
+       {
+-        id: "draft-1",
+-        content: [{ type: "text", text: "queued follow-up" }],
++        id: "qmsg-1",
++        content: [{ type: "text", text: "queued message" }],
+         createdAt: 1,
+         model: "gpt-5.5",
+         permissionMode: "workspace-write",
+@@ -303,7 +303,7 @@ describe("thread query bootstraps", () => {
+           bootstrapRequestCount += 1;
+           return jsonResponse({
+             defaultExecutionOptions,
+-            drafts,
++            queuedMessages,
+             executionOptions,
+             pendingInteractions: [],
+             promptHistory,
+@@ -318,10 +318,10 @@ describe("thread query bootstraps", () => {
+         },
+       },
+       {
+-        pathname: "/api/v1/threads/thread-1/drafts",
++        pathname: "/api/v1/threads/thread-1/queued-messages",
+         handler: () => {
+           fallbackRequestCount += 1;
+-          return jsonResponse(drafts);
++          return jsonResponse(queuedMessages);
+         },
+       },
+       {
+@@ -367,7 +367,7 @@ describe("thread query bootstraps", () => {
+           refetchOnMount: bootstrap.isSuccess ? false : "always",
+           staleTime: seededStaleTime,
+         });
+-        const draftList = useThreadDrafts("thread-1", {
++        const queuedMessageList = useThreadQueuedMessages("thread-1", {
+           enabled: canonicalEnabled,
+           refetchOnMount: bootstrap.isSuccess ? false : "always",
+           staleTime: seededStaleTime,
+@@ -394,7 +394,7 @@ describe("thread query bootstraps", () => {
+           bootstrap,
+           creationOptions,
+           defaultExecution,
+-          draftList,
++          queuedMessageList,
+           history,
+           interactions,
+         };
+@@ -405,7 +405,7 @@ describe("thread query bootstraps", () => {
+     await waitFor(() => {
+       expect(result.current.bootstrap.status).toBe("success");
+       expect(result.current.defaultExecution.data?.model).toBe("gpt-5.5");
+-      expect(result.current.draftList.data).toEqual(drafts);
++      expect(result.current.queuedMessageList.data).toEqual(queuedMessages);
+       expect(result.current.creationOptions.selectedProviderId).toBe("codex");
+       expect(result.current.creationOptions.modelOptions).toEqual([
+         {
+@@ -421,9 +421,9 @@ describe("thread query bootstraps", () => {
+         threadDefaultExecutionOptionsQueryKey("thread-1"),
+       ),
+     ).toEqual(defaultExecutionOptions);
+-    expect(queryClient.getQueryData(threadDraftsQueryKey("thread-1"))).toEqual(
+-      drafts,
+-    );
++    expect(
++      queryClient.getQueryData(threadQueuedMessagesQueryKey("thread-1")),
++    ).toEqual(queuedMessages);
+     expect(
+       queryClient.getQueryData(threadPromptHistoryQueryKey("thread-1")),
+     ).toEqual(promptHistory);
+diff --git a/apps/app/src/hooks/realtime-cache-effects.test.ts b/apps/app/src/hooks/realtime-cache-effects.test.ts
+index 3953c83e8..0833c30e4 100644
+--- a/apps/app/src/hooks/realtime-cache-effects.test.ts
++++ b/apps/app/src/hooks/realtime-cache-effects.test.ts
+@@ -15,7 +15,7 @@ import {
+   projectPromptHistoryQueryKey,
+   projectSourceBranchesQueryKey,
+   projectsQueryKey,
+-  threadDraftsQueryKey,
++  threadQueuedMessagesQueryKey,
+   threadListQueryKey,
+   threadPromptHistoryQueryKey,
+   threadQueryKey,
+@@ -421,14 +421,14 @@ describe("createRealtimeCacheEffects", () => {
+     effects.dispose();
+   });
+ 
+-  it("invalidates drafts and prompt history but not thread detail for queue changes", () => {
++  it("invalidates queued messages and prompt history but not thread detail for queue changes", () => {
+     vi.useFakeTimers();
+     const { effects, queryClient } = createRealtimeEffectsTestContext();
+     const threadKey = threadQueryKey("thr_1");
+-    const draftsKey = threadDraftsQueryKey("thr_1");
++    const queuedMessagesKey = threadQueuedMessagesQueryKey("thr_1");
+     const promptHistoryKey = threadPromptHistoryQueryKey("thr_1");
+     queryClient.setQueryData(threadKey, { id: "thr_1" });
+-    queryClient.setQueryData(draftsKey, []);
++    queryClient.setQueryData(queuedMessagesKey, []);
+     queryClient.setQueryData(promptHistoryKey, []);
+ 
+     effects.handleChanged({
+@@ -440,7 +440,9 @@ describe("createRealtimeCacheEffects", () => {
+     });
+     vi.advanceTimersByTime(50);
+ 
+-    expect(queryClient.getQueryState(draftsKey)?.isInvalidated).toBe(true);
++    expect(queryClient.getQueryState(queuedMessagesKey)?.isInvalidated).toBe(
++      true,
++    );
+     expect(queryClient.getQueryState(promptHistoryKey)?.isInvalidated).toBe(
+       true,
+     );
+diff --git a/apps/app/src/hooks/system-cache-effects.test.ts b/apps/app/src/hooks/system-cache-effects.test.ts
+index e4e13dc64..7751c71f4 100644
+--- a/apps/app/src/hooks/system-cache-effects.test.ts
++++ b/apps/app/src/hooks/system-cache-effects.test.ts
+@@ -52,7 +52,7 @@ describe("system cache effects", () => {
+     });
+     queryClient.setQueryData(composerBootstrapKey, {
+       defaultExecutionOptions: null,
+-      drafts: [],
++      queuedMessages: [],
+       executionOptions: { providers: [], models: [] },
+       pendingInteractions: [],
+       promptHistory: [],
+@@ -60,12 +60,12 @@ describe("system cache effects", () => {
+ 
+     invalidateRealtimeQueriesAfterServerReconnect({ queryClient });
+ 
+-    expect(
+-      queryClient.getQueryState(executionOptionsKey)?.isInvalidated,
+-    ).toBe(true);
+-    expect(
+-      queryClient.getQueryState(composerBootstrapKey)?.isInvalidated,
+-    ).toBe(true);
++    expect(queryClient.getQueryState(executionOptionsKey)?.isInvalidated).toBe(
++      true,
++    );
++    expect(queryClient.getQueryState(composerBootstrapKey)?.isInvalidated).toBe(
++      true,
++    );
+   });
+ 
+   it("invalidates all execution options and composer bootstrap caches after host changes", () => {
+@@ -83,7 +83,7 @@ describe("system cache effects", () => {
+     });
+     queryClient.setQueryData(composerBootstrapKey, {
+       defaultExecutionOptions: null,
+-      drafts: [],
++      queuedMessages: [],
+       executionOptions: { providers: [], models: [] },
+       pendingInteractions: [],
+       promptHistory: [],
+@@ -95,15 +95,15 @@ describe("system cache effects", () => {
+       queryClient.getQueryState(allSystemExecutionOptionsQueryKeyPrefix())
+         ?.isInvalidated,
+     ).toBeUndefined();
+-    expect(
+-      queryClient.getQueryState(executionOptionsKey)?.isInvalidated,
+-    ).toBe(true);
++    expect(queryClient.getQueryState(executionOptionsKey)?.isInvalidated).toBe(
++      true,
++    );
+     expect(
+       queryClient.getQueryState(allThreadComposerBootstrapQueryKeyPrefix())
+         ?.isInvalidated,
+     ).toBeUndefined();
+-    expect(
+-      queryClient.getQueryState(composerBootstrapKey)?.isInvalidated,
+-    ).toBe(true);
++    expect(queryClient.getQueryState(composerBootstrapKey)?.isInvalidated).toBe(
++      true,
++    );
+   });
+ });
+diff --git a/apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx b/apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx
+index 10954e68c..f918d8f05 100644
+--- a/apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx
++++ b/apps/app/src/views/thread-detail/ThreadDetailPromptArea.test.tsx
+@@ -34,11 +34,11 @@ interface PromptDraftStorageMock extends PromptDraftState {
+ }
+ 
+ interface ThreadDetailPromptAreaMocks {
+-  createDraftMutateAsync: ReturnType<typeof vi.fn>;
+-  deleteDraftMutateAsync: ReturnType<typeof vi.fn>;
++  createQueuedMessageMutateAsync: ReturnType<typeof vi.fn>;
++  deleteQueuedMessageMutateAsync: ReturnType<typeof vi.fn>;
+   promptDraft: PromptDraftStorageMock;
+   queuedMessages: ThreadQueuedMessage[];
+-  sendDraftMutateAsync: ReturnType<typeof vi.fn>;
++  sendQueuedMessageMutateAsync: ReturnType<typeof vi.fn>;
+   stopThreadMutate: ReturnType<typeof vi.fn>;
+   uploadAttachmentMutateAsync: ReturnType<typeof vi.fn>;
+ }
+@@ -57,14 +57,14 @@ type ThreadOverrides = Partial<ThreadWithRuntime>;
+ 
+ const mocks = vi.hoisted(
+   (): ThreadDetailPromptAreaMocks => ({
+-    createDraftMutateAsync: vi.fn(),
+-    deleteDraftMutateAsync: vi.fn(),
++    createQueuedMessageMutateAsync: vi.fn(),
++    deleteQueuedMessageMutateAsync: vi.fn(),
+     promptDraft: createPromptDraftStorageMock({
+       attachments: [],
+       text: "",
+     }),
+     queuedMessages: [],
+-    sendDraftMutateAsync: vi.fn(),
++    sendQueuedMessageMutateAsync: vi.fn(),
+     stopThreadMutate: vi.fn(),
+     uploadAttachmentMutateAsync: vi.fn(),
+   }),
+@@ -195,17 +195,17 @@ vi.mock("@/hooks/mutations/project-mutations", () => ({
+ }));
+ 
+ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => ({
+-  useCreateThreadDraft: () => ({
++  useCreateThreadQueuedMessage: () => ({
+     isPending: false,
+-    mutateAsync: mocks.createDraftMutateAsync,
++    mutateAsync: mocks.createQueuedMessageMutateAsync,
+   }),
+-  useDeleteThreadDraft: () => ({
++  useDeleteThreadQueuedMessage: () => ({
+     isPending: false,
+-    mutateAsync: mocks.deleteDraftMutateAsync,
++    mutateAsync: mocks.deleteQueuedMessageMutateAsync,
+   }),
+-  useSendThreadDraft: () => ({
++  useSendThreadQueuedMessage: () => ({
+     isPending: false,
+-    mutateAsync: mocks.sendDraftMutateAsync,
++    mutateAsync: mocks.sendQueuedMessageMutateAsync,
+   }),
+   useStopThread: () => ({
+     isPending: false,
+@@ -224,7 +224,7 @@ vi.mock("@/hooks/queries/thread-queries", () => ({
+       serviceTier: "default",
+     },
+   }),
+-  useThreadDrafts: () => ({
++  useThreadQueuedMessages: () => ({
+     data: mocks.queuedMessages,
+   }),
+   useThreadPromptHistory: () => ({
+@@ -302,12 +302,12 @@ function renderPromptArea({
+ }
+ 
+ function resetMocks(): void {
+-  mocks.createDraftMutateAsync.mockReset();
+-  mocks.deleteDraftMutateAsync.mockReset();
+-  mocks.sendDraftMutateAsync.mockReset();
++  mocks.createQueuedMessageMutateAsync.mockReset();
++  mocks.deleteQueuedMessageMutateAsync.mockReset();
++  mocks.sendQueuedMessageMutateAsync.mockReset();
+   mocks.stopThreadMutate.mockReset();
+   mocks.uploadAttachmentMutateAsync.mockReset();
+-  mocks.sendDraftMutateAsync.mockResolvedValue({
++  mocks.sendQueuedMessageMutateAsync.mockResolvedValue({
+     ok: true,
+     queuedMessage: makeQueuedMessage({
+       id: "queued-result",
+@@ -329,7 +329,8 @@ afterEach(() => {
+ describe("ThreadDetailPromptArea steer submit", () => {
+   it("sends the current draft as a steer with Cmd+Enter", async () => {
+     resetMocks();
+-    const sendMessageMutateAsync = vi.fn<SendMessageMutationLike["mutateAsync"]>();
++    const sendMessageMutateAsync =
++      vi.fn<SendMessageMutationLike["mutateAsync"]>();
+     sendMessageMutateAsync.mockResolvedValue();
+     mocks.promptDraft = createPromptDraftStorageMock({
+       attachments: [],
+@@ -353,13 +354,14 @@ describe("ThreadDetailPromptArea steer submit", () => {
+       input: [{ type: "text", text: "Steer this turn" }],
+       mode: "steer",
+     });
+-    expect(mocks.createDraftMutateAsync).not.toHaveBeenCalled();
+-    expect(mocks.sendDraftMutateAsync).not.toHaveBeenCalled();
++    expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
++    expect(mocks.sendQueuedMessageMutateAsync).not.toHaveBeenCalled();
+   });
+ 
+   it("sends queued messages as steers with Cmd+Enter", async () => {
+     resetMocks();
+-    const sendMessageMutateAsync = vi.fn<SendMessageMutationLike["mutateAsync"]>();
++    const sendMessageMutateAsync =
++      vi.fn<SendMessageMutationLike["mutateAsync"]>();
+     mocks.queuedMessages = [
+       makeQueuedMessage({
+         id: "queued-1",
+@@ -381,14 +383,14 @@ describe("ThreadDetailPromptArea steer submit", () => {
+ 
+     expect(wasNotCanceled).toBe(false);
+     await waitFor(() => {
+-      expect(mocks.sendDraftMutateAsync).toHaveBeenCalledTimes(2);
++      expect(mocks.sendQueuedMessageMutateAsync).toHaveBeenCalledTimes(2);
+     });
+-    expect(mocks.sendDraftMutateAsync).toHaveBeenNthCalledWith(1, {
++    expect(mocks.sendQueuedMessageMutateAsync).toHaveBeenNthCalledWith(1, {
+       id: "thread-1",
+       mode: "steer",
+       queuedMessageId: "queued-1",
+     });
+-    expect(mocks.sendDraftMutateAsync).toHaveBeenNthCalledWith(2, {
++    expect(mocks.sendQueuedMessageMutateAsync).toHaveBeenNthCalledWith(2, {
+       id: "thread-1",
+       mode: "steer",
+       queuedMessageId: "queued-2",
+@@ -398,7 +400,8 @@ describe("ThreadDetailPromptArea steer submit", () => {
+ 
+   it("sends queued messages before the current draft, all as steers", async () => {
+     resetMocks();
+-    const sendMessageMutateAsync = vi.fn<SendMessageMutationLike["mutateAsync"]>();
++    const sendMessageMutateAsync =
++      vi.fn<SendMessageMutationLike["mutateAsync"]>();
+     sendMessageMutateAsync.mockResolvedValue();
+     mocks.queuedMessages = [
+       makeQueuedMessage({
+@@ -423,7 +426,7 @@ describe("ThreadDetailPromptArea steer submit", () => {
+     await waitFor(() => {
+       expect(sendMessageMutateAsync).toHaveBeenCalledTimes(1);
+     });
+-    expect(mocks.sendDraftMutateAsync).toHaveBeenCalledWith({
++    expect(mocks.sendQueuedMessageMutateAsync).toHaveBeenCalledWith({
+       id: "thread-1",
+       mode: "steer",
+       queuedMessageId: "queued-1",
+@@ -433,7 +436,7 @@ describe("ThreadDetailPromptArea steer submit", () => {
+       input: [{ type: "text", text: "Current steer" }],
+       mode: "steer",
+     });
+-    expect(mocks.createDraftMutateAsync).not.toHaveBeenCalled();
++    expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
+     expect(mocks.promptDraft.clearIfCurrentMatches).toHaveBeenCalledWith({
+       attachments: [],
+       text: "Current steer",
+@@ -442,12 +445,13 @@ describe("ThreadDetailPromptArea steer submit", () => {
+ 
+   it("uses normal submit mode for Cmd+Enter on idle threads", async () => {
+     resetMocks();
+-    const sendMessageMutateAsync = vi.fn<SendMessageMutationLike["mutateAsync"]>();
++    const sendMessageMutateAsync =
++      vi.fn<SendMessageMutationLike["mutateAsync"]>();
+     sendMessageMutateAsync.mockResolvedValue();
+     mocks.queuedMessages = [
+       makeQueuedMessage({
+         id: "queued-1",
+-        input: [{ type: "text", text: "Queued follow-up" }],
++        input: [{ type: "text", text: "Queued message" }],
+       }),
+     ];
+     mocks.promptDraft = createPromptDraftStorageMock({
+@@ -485,8 +489,8 @@ describe("ThreadDetailPromptArea steer submit", () => {
+       reasoningLevel: "medium",
+       serviceTier: "default",
+     });
+-    expect(mocks.createDraftMutateAsync).not.toHaveBeenCalled();
+-    expect(mocks.sendDraftMutateAsync).not.toHaveBeenCalled();
++    expect(mocks.createQueuedMessageMutateAsync).not.toHaveBeenCalled();
++    expect(mocks.sendQueuedMessageMutateAsync).not.toHaveBeenCalled();
+     expect(mocks.promptDraft.clearIfCurrentMatches).toHaveBeenCalledWith({
+       attachments: [],
+       text: "Start a normal turn",
+@@ -495,14 +499,15 @@ describe("ThreadDetailPromptArea steer submit", () => {
+ 
+   it("ignores repeated Cmd+Enter while a steer batch is pending", async () => {
+     resetMocks();
+-    const sendMessageMutateAsync = vi.fn<SendMessageMutationLike["mutateAsync"]>();
++    const sendMessageMutateAsync =
++      vi.fn<SendMessageMutationLike["mutateAsync"]>();
+     mocks.queuedMessages = [
+       makeQueuedMessage({
+         id: "queued-1",
+         input: [{ type: "text", text: "Queued first" }],
+       }),
+     ];
+-    mocks.sendDraftMutateAsync.mockReturnValue(new Promise(() => {}));
++    mocks.sendQueuedMessageMutateAsync.mockReturnValue(new Promise(() => {}));
+ 
+     renderPromptArea({ sendMessageMutateAsync });
+ 
+@@ -513,7 +518,7 @@ describe("ThreadDetailPromptArea steer submit", () => {
+     });
+ 
+     await waitFor(() => {
+-      expect(mocks.sendDraftMutateAsync).toHaveBeenCalledTimes(1);
++      expect(mocks.sendQueuedMessageMutateAsync).toHaveBeenCalledTimes(1);
+     });
+ 
+     fireEvent.keyDown(textarea, {
+@@ -521,7 +526,7 @@ describe("ThreadDetailPromptArea steer submit", () => {
+       metaKey: true,
+     });
+ 
+-    expect(mocks.sendDraftMutateAsync).toHaveBeenCalledTimes(1);
++    expect(mocks.sendQueuedMessageMutateAsync).toHaveBeenCalledTimes(1);
+     expect(sendMessageMutateAsync).not.toHaveBeenCalled();
+   });
+ });
+diff --git a/apps/app/src/views/thread-detail/threadQueuedMessages.test.ts b/apps/app/src/views/thread-detail/threadQueuedMessages.test.ts
+index 62df56828..d15ac82be 100644
+--- a/apps/app/src/views/thread-detail/threadQueuedMessages.test.ts
++++ b/apps/app/src/views/thread-detail/threadQueuedMessages.test.ts
+@@ -1,7 +1,7 @@
+ import { describe, expect, it } from "vitest";
+ import type { PromptInput } from "@bb/domain";
+ import {
+-  formatQueuedFollowUpPreview,
++  formatQueuedMessagePreview,
+   queuedInputToDraft,
+ } from "./threadQueuedMessages";
+ 
+@@ -12,9 +12,7 @@ describe("threadQueuedMessages", () => {
+       { type: "text", text: "Second line" },
+     ];
+ 
+-    expect(formatQueuedFollowUpPreview(input)).toBe(
+-      "First line\n\nSecond line",
+-    );
++    expect(formatQueuedMessagePreview(input)).toBe("First line\n\nSecond line");
+   });
+ 
+   it("falls back to attachment summaries when no text is present", () => {
+@@ -27,7 +25,7 @@ describe("threadQueuedMessages", () => {
+       },
+     ];
+ 
+-    expect(formatQueuedFollowUpPreview(input)).toBe(
++    expect(formatQueuedMessagePreview(input)).toBe(
+       "Attachment only (notes.md)",
+     );
+   });
+@@ -40,7 +38,7 @@ describe("threadQueuedMessages", () => {
+       },
+     ];
+ 
+-    expect(formatQueuedFollowUpPreview(input)).toBe(
++    expect(formatQueuedMessagePreview(input)).toBe(
+       "Attachment only (Attachment)",
+     );
+     expect(queuedInputToDraft(input).attachments[0]?.name).toBe("Attachment");
+diff --git a/apps/server/test/helpers/seed.ts b/apps/server/test/helpers/seed.ts
+index fd9eaa881..855ab3582 100644
+--- a/apps/server/test/helpers/seed.ts
++++ b/apps/server/test/helpers/seed.ts
+@@ -1,6 +1,6 @@
+ import {
+   createEnvironment,
+-  createDraft,
++  createQueuedThreadMessage,
+   deriveStoredEventItemFields,
+   getLatestThreadSequence,
+   hasStoredTurnStarted,
+@@ -168,7 +168,7 @@ export function seedThread(
+   });
+ }
+ 
+-export function seedDraft(
++export function seedQueuedMessage(
+   deps: Pick<AppDeps, "db" | "hub">,
+   args: {
+     content: PromptInput[];
+@@ -179,7 +179,7 @@ export function seedDraft(
+     serviceTier?: string;
+   },
+ ) {
+-  return createDraft(deps.db, deps.hub, {
++  return createQueuedThreadMessage(deps.db, deps.hub, {
+     threadId: args.threadId,
+     content: args.content,
+     model: args.model ?? "gpt-5",
+diff --git a/apps/server/test/internal/internal-event-side-effects.test.ts b/apps/server/test/internal/internal-event-side-effects.test.ts
+index aeb2b18f1..c858eb0ff 100644
+--- a/apps/server/test/internal/internal-event-side-effects.test.ts
++++ b/apps/server/test/internal/internal-event-side-effects.test.ts
+@@ -4,11 +4,11 @@ import {
+   createAutomation,
+   deleteAutomation,
+   events,
+-  getDraft,
++  getQueuedThreadMessage,
+   getEnvironment,
+   getThread,
+   hostDaemonCommands,
+-  listDrafts,
++  listQueuedThreadMessages,
+   listManagerThreadNudgesByThread,
+   markThreadDeleted,
+   markThreadStopRequested,
+@@ -32,7 +32,7 @@ import {
+   createScheduleTrigger,
+ } from "../helpers/schedules.js";
+ import {
+-  seedDraft,
++  seedQueuedMessage,
+   seedEnvironment,
+   seedEvent,
+   seedHostSession,
+@@ -43,7 +43,7 @@ import {
+ } from "../helpers/seed.js";
+ import { createCommandApprovalPayload } from "../helpers/pending-interactions.js";
+ import { queueManagerSystemMessage } from "../../src/services/threads/manager-system-messages.js";
+-import { sendNextQueuedDraftIfPresent } from "../../src/services/threads/queued-drafts.js";
++import { sendNextQueuedMessageIfPresent } from "../../src/services/threads/queued-messages.js";
+ import { createTestAppHarness } from "../helpers/test-app.js";
+ 
+ describe("internal event side effects", () => {
+@@ -126,7 +126,7 @@ describe("internal event side effects", () => {
+     }
+   });
+ 
+-  it("auto-sends the next queued draft when a turn completes", async () => {
++  it("auto-sends the next queued message when a turn completes", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host, session } = seedHostSession(harness.deps, {
+@@ -138,7 +138,7 @@ describe("internal event side effects", () => {
+       const environment = seedEnvironment(harness.deps, {
+         hostId: host.id,
+         projectId: project.id,
+-        path: "/tmp/queued-draft-auto-send",
++        path: "/tmp/queued-message-auto-send",
+       });
+       const thread = seedThread(harness.deps, {
+         projectId: project.id,
+@@ -163,7 +163,7 @@ describe("internal event side effects", () => {
+         type: "turn/started",
+         data: {},
+       });
+-      const draft = seedDraft(harness.deps, {
++      const queuedMessage = seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+         content: [{ type: "text", text: "Queued follow-up" }],
+         model: "gpt-5",
+@@ -206,7 +206,7 @@ describe("internal event side effects", () => {
+           providerThreadId: "provider-auto-send",
+         },
+       });
+-      expect(getDraft(harness.db, draft.id)).toBeNull();
++      expect(getQueuedThreadMessage(harness.db, queuedMessage.id)).toBeNull();
+       expect(
+         harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
+           ?.status,
+@@ -216,11 +216,11 @@ describe("internal event side effects", () => {
+     }
+   });
+ 
+-  it("responds before manager queued-draft auto-send waits on preferences", async () => {
++  it("responds before manager queued-message auto-send waits on preferences", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host, session } = seedHostSession(harness.deps, {
+-        id: "host-event-manager-draft-auto-send",
++        id: "host-event-manager-queued-message-auto-send",
+       });
+       const { project } = seedProjectWithSource(harness.deps, {
+         hostId: host.id,
+@@ -228,7 +228,7 @@ describe("internal event side effects", () => {
+       const environment = seedEnvironment(harness.deps, {
+         hostId: host.id,
+         projectId: project.id,
+-        path: "/tmp/manager-queued-draft-auto-send",
++        path: "/tmp/manager-queued-message-auto-send",
+       });
+       const thread = seedThread(harness.deps, {
+         projectId: project.id,
+@@ -239,11 +239,11 @@ describe("internal event side effects", () => {
+       seedThreadRuntimeState(harness.deps, {
+         threadId: thread.id,
+         environmentId: environment.id,
+-        providerThreadId: "provider-manager-draft-auto-send",
++        providerThreadId: "provider-manager-queued-message-auto-send",
+         inputText: "Initial manager task",
+         model: "gpt-5.4",
+       });
+-      seedDraft(harness.deps, {
++      seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+         content: [{ type: "text", text: "Queued manager follow-up" }],
+         model: "gpt-5",
+@@ -252,8 +252,8 @@ describe("internal event side effects", () => {
+       seedTurnStarted(harness.deps, {
+         threadId: thread.id,
+         environmentId: environment.id,
+-        turnId: "turn-manager-draft-auto-send",
+-        providerThreadId: "provider-manager-draft-auto-send",
++        turnId: "turn-manager-queued-message-auto-send",
++        providerThreadId: "provider-manager-queued-message-auto-send",
+       });
+ 
+       const responsePromise = harness.app.request("/internal/session/events", {
+@@ -267,8 +267,8 @@ describe("internal event side effects", () => {
+               event: {
+                 type: "turn/completed",
+                 threadId: thread.id,
+-                providerThreadId: "provider-manager-draft-auto-send",
+-                scope: turnScope("turn-manager-draft-auto-send"),
++                providerThreadId: "provider-manager-queued-message-auto-send",
++                scope: turnScope("turn-manager-queued-message-auto-send"),
+                 status: "completed",
+               },
+             }),
+@@ -314,7 +314,7 @@ describe("internal event side effects", () => {
+     }
+   });
+ 
+-  it("auto-sends the next queued draft even when a pending interaction exists", async () => {
++  it("auto-sends the next queued message even when a pending interaction exists", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host, session } = seedHostSession(harness.deps, {
+@@ -326,7 +326,7 @@ describe("internal event side effects", () => {
+       const environment = seedEnvironment(harness.deps, {
+         hostId: host.id,
+         projectId: project.id,
+-        path: "/tmp/queued-draft-auto-send-pending-interaction",
++        path: "/tmp/queued-message-auto-send-pending-interaction",
+       });
+       const thread = seedThread(harness.deps, {
+         projectId: project.id,
+@@ -351,7 +351,7 @@ describe("internal event side effects", () => {
+         type: "turn/started",
+         data: {},
+       });
+-      seedDraft(harness.deps, {
++      seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+         content: [
+           { type: "text", text: "Queued follow-up with pending interaction" },
+@@ -383,7 +383,7 @@ describe("internal event side effects", () => {
+       }
+ 
+       await expect(
+-        sendNextQueuedDraftIfPresent(harness.deps, {
++        sendNextQueuedMessageIfPresent(harness.deps, {
+           threadId: thread.id,
+         }),
+       ).resolves.toBe(true);
+@@ -466,7 +466,7 @@ describe("internal event side effects", () => {
+       const childEnvironment = seedEnvironment(harness.deps, {
+         hostId: host.id,
+         projectId: project.id,
+-        path: "/tmp/queued-draft-manager-notify-failure",
++        path: "/tmp/queued-message-manager-notify-failure",
+       });
+       const managerEnvironment = seedEnvironment(harness.deps, {
+         hostId: host.id,
+@@ -504,7 +504,7 @@ describe("internal event side effects", () => {
+         type: "turn/started",
+         data: {},
+       });
+-      const draft = seedDraft(harness.deps, {
++      const queuedMessage = seedQueuedMessage(harness.deps, {
+         threadId: childThread.id,
+         content: [
+           {
+@@ -553,7 +553,7 @@ describe("internal event side effects", () => {
+           providerThreadId: "provider-manager-notify-failure",
+         },
+       });
+-      expect(getDraft(harness.db, draft.id)).toBeNull();
++      expect(getQueuedThreadMessage(harness.db, queuedMessage.id)).toBeNull();
+       expect(getThread(harness.db, childThread.id)?.status).toBe("active");
+       expect(loggerError).toHaveBeenCalledWith(
+         expect.objectContaining({
+@@ -1617,7 +1617,7 @@ describe("internal event side effects", () => {
+       const environment = seedEnvironment(harness.deps, {
+         hostId: host.id,
+         projectId: project.id,
+-        path: "/tmp/queued-draft-dedupe",
++        path: "/tmp/queued-message-dedupe",
+       });
+       const thread = seedThread(harness.deps, {
+         projectId: project.id,
+@@ -1642,13 +1642,13 @@ describe("internal event side effects", () => {
+         type: "turn/started",
+         data: {},
+       });
+-      seedDraft(harness.deps, {
++      seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+         content: [{ type: "text", text: "Queued follow-up one" }],
+         model: "gpt-5",
+         serviceTier: "default",
+       });
+-      seedDraft(harness.deps, {
++      seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+         content: [{ type: "text", text: "Queued follow-up two" }],
+         model: "gpt-5",
+@@ -1701,7 +1701,7 @@ describe("internal event side effects", () => {
+       expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
+         1,
+       );
+-      expect(listDrafts(harness.db, thread.id)).toHaveLength(1);
++      expect(listQueuedThreadMessages(harness.db, thread.id)).toHaveLength(1);
+       expect(
+         harness.db.select().from(threads).where(eq(threads.id, thread.id)).get()
+           ?.status,
+@@ -1723,7 +1723,7 @@ describe("internal event side effects", () => {
+       const environment = seedEnvironment(harness.deps, {
+         hostId: host.id,
+         projectId: project.id,
+-        path: "/tmp/queued-draft-mixed-batch",
++        path: "/tmp/queued-message-mixed-batch",
+       });
+       const threadA = seedThread(harness.deps, {
+         projectId: project.id,
+@@ -1757,19 +1757,19 @@ describe("internal event side effects", () => {
+         });
+       }
+ 
+-      seedDraft(harness.deps, {
++      seedQueuedMessage(harness.deps, {
+         threadId: threadA.id,
+         content: [{ type: "text", text: "Queued follow-up one" }],
+         model: "gpt-5",
+         serviceTier: "default",
+       });
+-      seedDraft(harness.deps, {
++      seedQueuedMessage(harness.deps, {
+         threadId: threadA.id,
+         content: [{ type: "text", text: "Queued follow-up two" }],
+         model: "gpt-5",
+         serviceTier: "default",
+       });
+-      seedDraft(harness.deps, {
++      seedQueuedMessage(harness.deps, {
+         threadId: threadB.id,
+         content: [{ type: "text", text: "Queued follow-up three" }],
+         model: "gpt-5",
+@@ -1847,8 +1847,8 @@ describe("internal event side effects", () => {
+           command.type === "turn.submit" && command.threadId === threadB.id,
+       );
+ 
+-      expect(listDrafts(harness.db, threadA.id)).toHaveLength(1);
+-      expect(listDrafts(harness.db, threadB.id)).toHaveLength(0);
++      expect(listQueuedThreadMessages(harness.db, threadA.id)).toHaveLength(1);
++      expect(listQueuedThreadMessages(harness.db, threadB.id)).toHaveLength(0);
+       expect(harness.db.select().from(hostDaemonCommands).all()).toHaveLength(
+         2,
+       );
+diff --git a/apps/server/test/public/public-authorization-regressions.test.ts b/apps/server/test/public/public-authorization-regressions.test.ts
+index 72080c12b..6b26c5f39 100644
+--- a/apps/server/test/public/public-authorization-regressions.test.ts
++++ b/apps/server/test/public/public-authorization-regressions.test.ts
+@@ -2,14 +2,14 @@ import { eq } from "drizzle-orm";
+ import {
+   createProject,
+   environments,
+-  getDraft,
++  getQueuedThreadMessage,
+   projectSources,
+   threads,
+ } from "@bb/db";
+ import { describe, expect, it } from "vitest";
+ import { readJson } from "../helpers/json.js";
+ import {
+-  seedDraft,
++  seedQueuedMessage,
+   seedEnvironment,
+   seedHostSession,
+   seedProjectWithSource,
+@@ -160,11 +160,11 @@ describe("public authorization regressions", () => {
+     }
+   });
+ 
+-  it("does not delete a draft through another thread route", async () => {
++  it("does not delete a queued message through another thread route", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps, {
+-        id: "host-draft-delete",
++        id: "host-queued-message-delete",
+       });
+       const { project } = seedProjectWithSource(harness.deps, {
+         hostId: host.id,
+@@ -181,17 +181,17 @@ describe("public authorization regressions", () => {
+         projectId: project.id,
+         environmentId: environment.id,
+       });
+-      seedDraft(harness.deps, {
++      seedQueuedMessage(harness.deps, {
+         threadId: threadA.id,
+-        content: [{ type: "text", text: "Draft A" }],
++        content: [{ type: "text", text: "Queued message A" }],
+       });
+-      const draftB = seedDraft(harness.deps, {
++      const queuedMessageB = seedQueuedMessage(harness.deps, {
+         threadId: threadB.id,
+-        content: [{ type: "text", text: "Draft B" }],
++        content: [{ type: "text", text: "Queued message B" }],
+       });
+ 
+       const response = await harness.app.request(
+-        `/api/v1/threads/${threadA.id}/drafts/${draftB.id}`,
++        `/api/v1/threads/${threadA.id}/queued-messages/${queuedMessageB.id}`,
+         {
+           method: "DELETE",
+         },
+@@ -201,8 +201,10 @@ describe("public authorization regressions", () => {
+       await expect(readJson(response)).resolves.toMatchObject({
+         code: "invalid_request",
+       });
+-      expect(getDraft(harness.db, draftB.id)).toMatchObject({
+-        id: draftB.id,
++      expect(
++        getQueuedThreadMessage(harness.db, queuedMessageB.id),
++      ).toMatchObject({
++        id: queuedMessageB.id,
+         threadId: threadB.id,
+       });
+     } finally {
+diff --git a/apps/server/test/public/public-thread-data.test.ts b/apps/server/test/public/public-thread-data.test.ts
+index d7a25a3d1..1ccbe64a1 100644
+--- a/apps/server/test/public/public-thread-data.test.ts
++++ b/apps/server/test/public/public-thread-data.test.ts
+@@ -1,17 +1,18 @@
+ import { and, eq } from "drizzle-orm";
+ import {
+   archiveThread,
+-  createDraftId,
+   createPromptHistoryEntry,
++  createQueuedThreadMessageId,
+   deleteHost,
+   environments,
+   events,
+-  getDraft,
++  getQueuedThreadMessage,
+   getThread,
+   queuedThreadMessages,
+ } from "@bb/db";
+ import {
+   encodeClientTurnRequestIdNumber,
++  threadQueuedMessageSchema,
+   threadScope,
+   threadSchema,
+   turnScope,
+@@ -19,7 +20,7 @@ import {
+ import {
+   type TimelineRow,
+   threadComposerBootstrapResponseSchema,
+-  threadDraftListResponseSchema,
++  threadQueuedMessageListResponseSchema,
+   threadTimelineResponseSchema,
+   threadWithIncludesResponseSchema,
+   timelineTurnSummaryDetailsResponseSchema,
+@@ -34,7 +35,7 @@ import {
+ } from "../helpers/commands.js";
+ import { readJson } from "../helpers/json.js";
+ import {
+-  seedDraft,
++  seedQueuedMessage,
+   seedEnvironment,
+   seedEvent,
+   seedHost,
+@@ -46,7 +47,7 @@ import {
+ } from "../helpers/seed.js";
+ import { createTestAppHarness } from "../helpers/test-app.js";
+ 
+-const draftIdResponseSchema = z.object({
++const queuedMessageIdResponseSchema = z.object({
+   id: z.string(),
+ });
+ 
+@@ -858,7 +859,7 @@ describe("public thread data routes", () => {
+     }
+   });
+ 
+-  it("creates and deletes thread drafts", async () => {
++  it("creates and deletes thread queued messages", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps);
+@@ -901,53 +902,57 @@ describe("public thread data routes", () => {
+       });
+ 
+       const createResponse = await harness.app.request(
+-        `/api/v1/threads/${thread.id}/drafts`,
++        `/api/v1/threads/${thread.id}/queued-messages`,
+         {
+           method: "POST",
+           headers: {
+             "content-type": "application/json",
+           },
+           body: JSON.stringify({
+-            input: [{ type: "text", text: "Draft from test" }],
++            input: [{ type: "text", text: "Queued message from test" }],
+             reasoningLevel: "high",
+             permissionMode: "full",
+           }),
+         },
+       );
+       expect(createResponse.status).toBe(201);
+-      const draft = draftIdResponseSchema.parse(await readJson(createResponse));
+-      expect(getDraft(harness.db, draft.id)).toMatchObject({
+-        id: draft.id,
++      const queuedMessage = queuedMessageIdResponseSchema.parse(
++        await readJson(createResponse),
++      );
++      expect(
++        getQueuedThreadMessage(harness.db, queuedMessage.id),
++      ).toMatchObject({
++        id: queuedMessage.id,
+       });
+ 
+       const deleteResponse = await harness.app.request(
+-        `/api/v1/threads/${thread.id}/drafts/${draft.id}`,
++        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}`,
+         {
+           method: "DELETE",
+         },
+       );
+       expect(deleteResponse.status).toBe(200);
+       await expect(readJson(deleteResponse)).resolves.toEqual({ ok: true });
+-      expect(getDraft(harness.db, draft.id)).toBeNull();
++      expect(getQueuedThreadMessage(harness.db, queuedMessage.id)).toBeNull();
+     } finally {
+       await harness.cleanup();
+     }
+   });
+ 
+-  it("auto-sends drafts created on idle provider threads", async () => {
++  it("auto-sends queued messages created on idle provider threads", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps, {
+-        id: "host-draft-create-idle-auto-send",
++        id: "host-queued-message-create-idle-auto-send",
+       });
+       const { project } = seedProjectWithSource(harness.deps, {
+         hostId: host.id,
+-        path: "/tmp/draft-create-idle-auto-send-source",
++        path: "/tmp/queued-message-create-idle-auto-send-source",
+       });
+       const environment = seedEnvironment(harness.deps, {
+         hostId: host.id,
+         projectId: project.id,
+-        path: "/tmp/draft-create-idle-auto-send-environment",
++        path: "/tmp/queued-message-create-idle-auto-send-environment",
+         workspaceProvisionType: "unmanaged",
+       });
+       const thread = seedThread(harness.deps, {
+@@ -958,24 +963,26 @@ describe("public thread data routes", () => {
+       seedThreadRuntimeState(harness.deps, {
+         threadId: thread.id,
+         environmentId: environment.id,
+-        providerThreadId: "provider-draft-create-idle-auto-send",
++        providerThreadId: "provider-queued-message-create-idle-auto-send",
+       });
+ 
+       const createResponse = await harness.app.request(
+-        `/api/v1/threads/${thread.id}/drafts`,
++        `/api/v1/threads/${thread.id}/queued-messages`,
+         {
+           method: "POST",
+           headers: {
+             "content-type": "application/json",
+           },
+           body: JSON.stringify({
+-            input: [{ type: "text", text: "Draft ready to send" }],
++            input: [{ type: "text", text: "Queued message ready to send" }],
+             permissionMode: "full",
+           }),
+         },
+       );
+       expect(createResponse.status).toBe(201);
+-      const draft = draftIdResponseSchema.parse(await readJson(createResponse));
++      const queuedMessage = queuedMessageIdResponseSchema.parse(
++        await readJson(createResponse),
++      );
+ 
+       const queued = await waitForQueuedCommand(
+         harness,
+@@ -984,19 +991,19 @@ describe("public thread data routes", () => {
+       );
+       expect(queued.command).toMatchObject({
+         environmentId: environment.id,
+-        input: [{ type: "text", text: "Draft ready to send" }],
++        input: [{ type: "text", text: "Queued message ready to send" }],
+         resumeContext: {
+-          providerThreadId: "provider-draft-create-idle-auto-send",
++          providerThreadId: "provider-queued-message-create-idle-auto-send",
+         },
+       });
+-      expect(getDraft(harness.db, draft.id)).toBeNull();
++      expect(getQueuedThreadMessage(harness.db, queuedMessage.id)).toBeNull();
+       expect(getThread(harness.db, thread.id)?.status).toBe("active");
+     } finally {
+       await harness.cleanup();
+     }
+   });
+ 
+-  it("lists queued thread drafts", async () => {
++  it("lists queued thread messages", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps);
+@@ -1011,17 +1018,17 @@ describe("public thread data routes", () => {
+         projectId: project.id,
+         environmentId: environment.id,
+       });
+-      seedDraft(harness.deps, {
++      seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+-        content: [{ type: "text", text: "First queued draft" }],
++        content: [{ type: "text", text: "First queued message" }],
+         model: "gpt-5",
+         reasoningLevel: "medium",
+         permissionMode: "full",
+         serviceTier: "default",
+       });
+-      seedDraft(harness.deps, {
++      seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+-        content: [{ type: "text", text: "Second queued draft" }],
++        content: [{ type: "text", text: "Second queued message" }],
+         model: "gpt-5",
+         reasoningLevel: "high",
+         permissionMode: "full",
+@@ -1029,25 +1036,25 @@ describe("public thread data routes", () => {
+       });
+ 
+       const response = await harness.app.request(
+-        `/api/v1/threads/${thread.id}/drafts`,
++        `/api/v1/threads/${thread.id}/queued-messages`,
+       );
+ 
+       expect(response.status).toBe(200);
+-      const drafts = threadDraftListResponseSchema.parse(
++      const queuedMessages = threadQueuedMessageListResponseSchema.parse(
+         await readJson(response),
+       );
+-      expect(drafts).toHaveLength(2);
+-      expect(drafts).toEqual(
++      expect(queuedMessages).toHaveLength(2);
++      expect(queuedMessages).toEqual(
+         expect.arrayContaining([
+           expect.objectContaining({
+-            content: [{ type: "text", text: "First queued draft" }],
++            content: [{ type: "text", text: "First queued message" }],
+             model: "gpt-5",
+             reasoningLevel: "medium",
+             permissionMode: "full",
+             serviceTier: "default",
+           }),
+           expect.objectContaining({
+-            content: [{ type: "text", text: "Second queued draft" }],
++            content: [{ type: "text", text: "Second queued message" }],
+             model: "gpt-5",
+             reasoningLevel: "high",
+             permissionMode: "full",
+@@ -1113,9 +1120,9 @@ describe("public thread data routes", () => {
+         requestSequence: 1,
+         input: [{ type: "text", text: "Accepted prompt" }],
+       });
+-      seedDraft(harness.deps, {
++      seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+-        content: [{ type: "text", text: "Queued draft" }],
++        content: [{ type: "text", text: "Queued message" }],
+         model: "gpt-5.5",
+         reasoningLevel: "xhigh",
+         permissionMode: "workspace-write",
+@@ -1197,17 +1204,17 @@ describe("public thread data routes", () => {
+         reasoningLevel: "xhigh",
+         permissionMode: "workspace-write",
+       });
+-      expect(bootstrap.drafts).toHaveLength(1);
++      expect(bootstrap.queuedMessages).toHaveLength(1);
+       expect(bootstrap.executionOptions.providers).toHaveLength(1);
+       expect(bootstrap.executionOptions.models[0]?.model).toBe("gpt-5.5");
+-      expect(bootstrap.drafts[0]?.content).toEqual([
+-        { type: "text", text: "Queued draft" },
++      expect(bootstrap.queuedMessages[0]?.content).toEqual([
++        { type: "text", text: "Queued message" },
+       ]);
+       expect(bootstrap.pendingInteractions).toEqual([]);
+       expect(bootstrap.promptHistory.map((entry) => entry.input)).toEqual(
+         expect.arrayContaining([
+           [{ type: "text", text: "Accepted prompt" }],
+-          [{ type: "text", text: "Queued draft" }],
++          [{ type: "text", text: "Queued message" }],
+         ]),
+       );
+     } finally {
+@@ -1252,7 +1259,7 @@ describe("public thread data routes", () => {
+     }
+   });
+ 
+-  it("inherits thread default execution options when draft overrides are omitted", async () => {
++  it("inherits thread default execution options when queued message overrides are omitted", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps);
+@@ -1295,21 +1302,25 @@ describe("public thread data routes", () => {
+       });
+ 
+       const createResponse = await harness.app.request(
+-        `/api/v1/threads/${thread.id}/drafts`,
++        `/api/v1/threads/${thread.id}/queued-messages`,
+         {
+           method: "POST",
+           headers: {
+             "content-type": "application/json",
+           },
+           body: JSON.stringify({
+-            input: [{ type: "text", text: "Draft from test" }],
++            input: [{ type: "text", text: "Queued message from test" }],
+           }),
+         },
+       );
+       expect(createResponse.status).toBe(201);
+-      const draft = draftIdResponseSchema.parse(await readJson(createResponse));
+-      expect(getDraft(harness.db, draft.id)).toMatchObject({
+-        id: draft.id,
++      const queuedMessage = queuedMessageIdResponseSchema.parse(
++        await readJson(createResponse),
++      );
++      expect(
++        getQueuedThreadMessage(harness.db, queuedMessage.id),
++      ).toMatchObject({
++        id: queuedMessage.id,
+         model: "gpt-5",
+         serviceTier: "default",
+         reasoningLevel: "medium",
+@@ -1320,7 +1331,7 @@ describe("public thread data routes", () => {
+     }
+   });
+ 
+-  it("persists draft model and service tier and clears the draft after reprovision send", async () => {
++  it("persists queued message model and service tier and clears the queued message after reprovision send", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps);
+@@ -1330,7 +1341,7 @@ describe("public thread data routes", () => {
+       const environment = seedEnvironment(harness.deps, {
+         hostId: host.id,
+         projectId: project.id,
+-        path: "/tmp/draft-reprovision",
++        path: "/tmp/queued-message-reprovision",
+         status: "error",
+         managed: true,
+         workspaceProvisionType: "managed-worktree",
+@@ -1341,14 +1352,14 @@ describe("public thread data routes", () => {
+       });
+ 
+       const createResponse = await harness.app.request(
+-        `/api/v1/threads/${thread.id}/drafts`,
++        `/api/v1/threads/${thread.id}/queued-messages`,
+         {
+           method: "POST",
+           headers: {
+             "content-type": "application/json",
+           },
+           body: JSON.stringify({
+-            input: [{ type: "text", text: "Draft from test" }],
++            input: [{ type: "text", text: "Queued message from test" }],
+             model: "gpt-5",
+             serviceTier: "default",
+             reasoningLevel: "high",
+@@ -1357,18 +1368,16 @@ describe("public thread data routes", () => {
+         },
+       );
+       expect(createResponse.status).toBe(201);
+-      const createdDraft = (await readJson(createResponse)) as {
+-        id: string;
+-        model?: string;
+-        serviceTier?: string;
+-      };
+-      expect(createdDraft).toMatchObject({
++      const createdQueuedMessage = threadQueuedMessageSchema.parse(
++        await readJson(createResponse),
++      );
++      expect(createdQueuedMessage).toMatchObject({
+         model: "gpt-5",
+         serviceTier: "default",
+       });
+ 
+       const sendResponse = await harness.app.request(
+-        `/api/v1/threads/${thread.id}/drafts/${createdDraft.id}/send`,
++        `/api/v1/threads/${thread.id}/queued-messages/${createdQueuedMessage.id}/send`,
+         {
+           method: "POST",
+           headers: {
+@@ -1379,7 +1388,9 @@ describe("public thread data routes", () => {
+       );
+ 
+       expect(sendResponse.status).toBe(200);
+-      expect(getDraft(harness.db, createdDraft.id)).toBeNull();
++      expect(
++        getQueuedThreadMessage(harness.db, createdQueuedMessage.id),
++      ).toBeNull();
+       const provisionCommand = await waitForQueuedCommand(
+         harness,
+         ({ command }) =>
+@@ -1425,20 +1436,20 @@ describe("public thread data routes", () => {
+     }
+   });
+ 
+-  it("keeps drafts when send is attempted while a created thread is still starting", async () => {
++  it("keeps queued messages when send is attempted while a created thread is still starting", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps, {
+-        id: "host-draft-created-thread-send",
++        id: "host-queued-message-created-thread-send",
+       });
+       const { project } = seedProjectWithSource(harness.deps, {
+         hostId: host.id,
+-        path: "/tmp/draft-created-thread-send",
++        path: "/tmp/queued-message-created-thread-send",
+       });
+       const environment = seedEnvironment(harness.deps, {
+         hostId: host.id,
+         projectId: project.id,
+-        path: "/tmp/draft-created-thread-send",
++        path: "/tmp/queued-message-created-thread-send",
+       });
+ 
+       const createThreadResponse = await harness.app.request(
+@@ -1468,25 +1479,30 @@ describe("public thread data routes", () => {
+       );
+       expect(createdThread.status).toBe("provisioning");
+ 
+-      const createDraftResponse = await harness.app.request(
+-        `/api/v1/threads/${createdThread.id}/drafts`,
++      const createQueuedThreadMessageResponse = await harness.app.request(
++        `/api/v1/threads/${createdThread.id}/queued-messages`,
+         {
+           method: "POST",
+           headers: {
+             "content-type": "application/json",
+           },
+           body: JSON.stringify({
+-            input: [{ type: "text", text: "Draft follow-up while starting" }],
++            input: [
++              {
++                type: "text",
++                text: "Queued message follow-up while starting",
++              },
++            ],
+           }),
+         },
+       );
+-      expect(createDraftResponse.status).toBe(201);
+-      const createdDraft = draftIdResponseSchema.parse(
+-        await readJson(createDraftResponse),
++      expect(createQueuedThreadMessageResponse.status).toBe(201);
++      const createdQueuedMessage = queuedMessageIdResponseSchema.parse(
++        await readJson(createQueuedThreadMessageResponse),
+       );
+ 
+       const sendResponse = await harness.app.request(
+-        `/api/v1/threads/${createdThread.id}/drafts/${createdDraft.id}/send`,
++        `/api/v1/threads/${createdThread.id}/queued-messages/${createdQueuedMessage.id}/send`,
+         {
+           method: "POST",
+           headers: {
+@@ -1501,8 +1517,10 @@ describe("public thread data routes", () => {
+         code: "invalid_request",
+         message: "Thread is still starting",
+       });
+-      expect(getDraft(harness.db, createdDraft.id)).toMatchObject({
+-        id: createdDraft.id,
++      expect(
++        getQueuedThreadMessage(harness.db, createdQueuedMessage.id),
++      ).toMatchObject({
++        id: createdQueuedMessage.id,
+       });
+       const requestedEvents = harness.db
+         .select({ type: events.type })
+@@ -2045,7 +2063,7 @@ describe("public thread data routes", () => {
+     }
+   });
+ 
+-  it("fails loudly when stored draft content is malformed", async () => {
++  it("fails loudly when stored queued message content is malformed", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps);
+@@ -2061,11 +2079,11 @@ describe("public thread data routes", () => {
+         environmentId: environment.id,
+       });
+       const now = Date.now();
+-      const draftId = createDraftId();
+-      const draft = harness.db
++      const queuedMessageId = createQueuedThreadMessageId();
++      const queuedMessage = harness.db
+         .insert(queuedThreadMessages)
+         .values({
+-          id: draftId,
++          id: queuedMessageId,
+           threadId: thread.id,
+           content: "not-json",
+           model: "gpt-5",
+@@ -2080,7 +2098,7 @@ describe("public thread data routes", () => {
+         .get();
+ 
+       const response = await harness.app.request(
+-        `/api/v1/threads/${thread.id}/drafts/${draft.id}/send`,
++        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}/send`,
+         {
+           method: "POST",
+           headers: {
+@@ -2093,7 +2111,7 @@ describe("public thread data routes", () => {
+       expect(response.status).toBe(500);
+       await expect(readJson(response)).resolves.toMatchObject({
+         code: "internal_error",
+-        message: expect.stringContaining(`draft ${draft.id}`),
++        message: expect.stringContaining(`queued message ${queuedMessage.id}`),
+       });
+     } finally {
+       await harness.cleanup();
+diff --git a/apps/server/test/public/public-thread-interactions.test.ts b/apps/server/test/public/public-thread-interactions.test.ts
+index d0d382764..1d8aae6d7 100644
+--- a/apps/server/test/public/public-thread-interactions.test.ts
++++ b/apps/server/test/public/public-thread-interactions.test.ts
+@@ -1,4 +1,4 @@
+-import { createDraft } from "@bb/db";
++import { createQueuedThreadMessage } from "@bb/db";
+ import { turnScope } from "@bb/domain";
+ import type { PendingInteractionCreate } from "@bb/domain";
+ import { describe, expect, it } from "vitest";
+@@ -595,7 +595,7 @@ describe("public thread interaction routes", () => {
+     }
+   });
+ 
+-  it("rejects send and draft-send while a thread awaits user interaction", async () => {
++  it("rejects send and queued-message send while a thread awaits user interaction", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host, session } = seedHostSession(harness.deps, {
+@@ -614,9 +614,9 @@ describe("public thread interaction routes", () => {
+         environmentId: environment.id,
+         status: "idle",
+       });
+-      const draft = createDraft(harness.db, harness.hub, {
++      const queuedMessage = createQueuedThreadMessage(harness.db, harness.hub, {
+         threadId: thread.id,
+-        content: [{ type: "text", text: "Queued draft" }],
++        content: [{ type: "text", text: "Queued message" }],
+         model: "gpt-5",
+         serviceTier: "default",
+         reasoningLevel: "medium",
+@@ -666,8 +666,8 @@ describe("public thread interaction routes", () => {
+           "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
+       });
+ 
+-      const draftSendResponse = await harness.app.request(
+-        `/api/v1/threads/${thread.id}/drafts/${draft.id}/send`,
++      const queuedMessageSendResponse = await harness.app.request(
++        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}/send`,
+         {
+           method: "POST",
+           headers: {
+@@ -676,8 +676,8 @@ describe("public thread interaction routes", () => {
+           body: JSON.stringify({ mode: "auto" }),
+         },
+       );
+-      expect(draftSendResponse.status).toBe(409);
+-      await expect(readJson(draftSendResponse)).resolves.toEqual({
++      expect(queuedMessageSendResponse.status).toBe(409);
++      await expect(readJson(queuedMessageSendResponse)).resolves.toEqual({
+         code: "awaiting_user_interaction",
+         message:
+           "Thread is awaiting user interaction. Resolve the pending interaction before sending another prompt.",
+diff --git a/apps/server/test/public/public-threads.manager-and-ownership.test.ts b/apps/server/test/public/public-threads.manager-and-ownership.test.ts
+index d941f8154..017bb430b 100644
+--- a/apps/server/test/public/public-threads.manager-and-ownership.test.ts
++++ b/apps/server/test/public/public-threads.manager-and-ownership.test.ts
+@@ -6,7 +6,7 @@ import {
+ import {
+   events,
+   archiveThread,
+-  getDraft,
++  getQueuedThreadMessage,
+   getThread,
+   hostDaemonCommands,
+   markThreadDeleted,
+@@ -26,7 +26,7 @@ import {
+ import { readJson } from "../helpers/json.js";
+ import { waitForThreadEnvironment } from "./public-thread-assertions.js";
+ import {
+-  seedDraft,
++  seedQueuedMessage,
+   seedEnvironment,
+   seedEvent,
+   seedHost,
+@@ -176,7 +176,7 @@ describe("public thread manager and ownership routes", () => {
+     }
+   });
+ 
+-  it("queues thread.rename, returns thread events, sends drafts, and creates manager threads", async () => {
++  it("queues thread.rename, returns thread events, sends queued messages, and creates manager threads", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps);
+@@ -237,23 +237,23 @@ describe("public thread manager and ownership routes", () => {
+         }),
+       ]);
+ 
+-      const draft = seedDraft(harness.deps, {
++      const queuedMessage = seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+-        content: [{ type: "text", text: "Draft content" }],
++        content: [{ type: "text", text: "Queued message content" }],
+         model: "gpt-5",
+         serviceTier: "default",
+       });
+       seedEvent(harness.deps, {
+         threadId: thread.id,
+         environmentId: environment.id,
+-        providerThreadId: "provider-draft",
++        providerThreadId: "provider-queuedMessage",
+         sequence: 2,
+         type: "thread/identity",
+         scope: threadScope(),
+         data: {},
+       });
+-      const draftSendResponse = await harness.app.request(
+-        `/api/v1/threads/${thread.id}/drafts/${draft.id}/send`,
++      const queuedMessageSendResponse = await harness.app.request(
++        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}/send`,
+         {
+           method: "POST",
+           headers: {
+@@ -262,20 +262,20 @@ describe("public thread manager and ownership routes", () => {
+           body: JSON.stringify({ mode: "auto" }),
+         },
+       );
+-      expect(draftSendResponse.status).toBe(200);
+-      const draftCommand = await waitForQueuedCommand(
++      expect(queuedMessageSendResponse.status).toBe(200);
++      const queuedMessageCommand = await waitForQueuedCommand(
+         harness,
+         ({ command }) =>
+           command.type === "turn.submit" && command.threadId === thread.id,
+       );
+-      expect(draftCommand.command).toMatchObject({
++      expect(queuedMessageCommand.command).toMatchObject({
+         environmentId: environment.id,
+         options: {
+           model: "gpt-5",
+           serviceTier: "default",
+         },
+       });
+-      expect(getDraft(harness.db, draft.id)).toBeNull();
++      expect(getQueuedThreadMessage(harness.db, queuedMessage.id)).toBeNull();
+ 
+       // Manager creation returns immediately — thread.start is queued with
+       // default preferences (skipPreferences: true on initial start).
+diff --git a/apps/server/test/public/public-threads.send-and-steer.test.ts b/apps/server/test/public/public-threads.send-and-steer.test.ts
+index 469efdf9c..9aab1221c 100644
+--- a/apps/server/test/public/public-threads.send-and-steer.test.ts
++++ b/apps/server/test/public/public-threads.send-and-steer.test.ts
+@@ -5,7 +5,7 @@ import {
+ 
+ import {
+   events,
+-  getDraft,
++  getQueuedThreadMessage,
+   getThread,
+   hostDaemonCommands,
+   listEvents,
+@@ -23,7 +23,7 @@ import {
+ import { waitForQueuedCommand } from "../helpers/commands.js";
+ import { readJson } from "../helpers/json.js";
+ import {
+-  seedDraft,
++  seedQueuedMessage,
+   seedEnvironment,
+   seedEvent,
+   seedHostSession,
+@@ -1014,18 +1014,18 @@ describe("public thread send and steer routes", () => {
+     }
+   });
+ 
+-  it("steers queued drafts for active threads with auto mode", async () => {
++  it("steers queued messages for active threads with auto mode", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps);
+       const { project } = seedProjectWithSource(harness.deps, {
+         hostId: host.id,
+-        path: "/tmp/thread-draft-steer-project",
++        path: "/tmp/thread-queued-message-steer-project",
+       });
+       const environment = seedEnvironment(harness.deps, {
+         hostId: host.id,
+         projectId: project.id,
+-        path: "/tmp/thread-draft-steer-project",
++        path: "/tmp/thread-queued-message-steer-project",
+       });
+       const thread = seedThread(harness.deps, {
+         projectId: project.id,
+@@ -1035,7 +1035,7 @@ describe("public thread send and steer routes", () => {
+       seedEvent(harness.deps, {
+         threadId: thread.id,
+         environmentId: environment.id,
+-        providerThreadId: "provider-draft-steer",
++        providerThreadId: "provider-queued-message-steer",
+         sequence: 1,
+         type: "thread/identity",
+         scope: threadScope(),
+@@ -1044,20 +1044,20 @@ describe("public thread send and steer routes", () => {
+       seedEvent(harness.deps, {
+         threadId: thread.id,
+         environmentId: environment.id,
+-        providerThreadId: "provider-draft-steer",
++        providerThreadId: "provider-queued-message-steer",
+         sequence: 2,
+         type: "turn/started",
+         data: {},
+-        scope: turnScope("turn-draft-steer"),
++        scope: turnScope("turn-queued-message-steer"),
+       });
+-      const draft = seedDraft(harness.deps, {
++      const queuedMessage = seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+         content: [{ type: "text", text: "Queue a correction" }],
+         model: "gpt-5",
+       });
+ 
+       const response = await harness.app.request(
+-        `/api/v1/threads/${thread.id}/drafts/${draft.id}/send`,
++        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}/send`,
+         {
+           method: "POST",
+           headers: {
+@@ -1077,33 +1077,33 @@ describe("public thread send and steer routes", () => {
+         input: [{ type: "text", text: "Queue a correction" }],
+         target: {
+           mode: "auto",
+-          expectedTurnId: "turn-draft-steer",
++          expectedTurnId: "turn-queued-message-steer",
+         },
+         options: {
+           model: "gpt-5",
+         },
+         resumeContext: {
+-          providerThreadId: "provider-draft-steer",
++          providerThreadId: "provider-queued-message-steer",
+         },
+       });
+-      expect(getDraft(harness.db, draft.id)).toBeNull();
++      expect(getQueuedThreadMessage(harness.db, queuedMessage.id)).toBeNull();
+     } finally {
+       await harness.cleanup();
+     }
+   });
+ 
+-  it("sends queued drafts with explicit steer mode", async () => {
++  it("sends queued messages with explicit steer mode", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps);
+       const { project } = seedProjectWithSource(harness.deps, {
+         hostId: host.id,
+-        path: "/tmp/thread-draft-explicit-steer-project",
++        path: "/tmp/thread-queued-message-explicit-steer-project",
+       });
+       const environment = seedEnvironment(harness.deps, {
+         hostId: host.id,
+         projectId: project.id,
+-        path: "/tmp/thread-draft-explicit-steer-project",
++        path: "/tmp/thread-queued-message-explicit-steer-project",
+       });
+       const thread = seedThread(harness.deps, {
+         projectId: project.id,
+@@ -1113,7 +1113,7 @@ describe("public thread send and steer routes", () => {
+       seedEvent(harness.deps, {
+         threadId: thread.id,
+         environmentId: environment.id,
+-        providerThreadId: "provider-draft-explicit-steer",
++        providerThreadId: "provider-queued-message-explicit-steer",
+         sequence: 1,
+         type: "thread/identity",
+         scope: threadScope(),
+@@ -1122,20 +1122,20 @@ describe("public thread send and steer routes", () => {
+       seedEvent(harness.deps, {
+         threadId: thread.id,
+         environmentId: environment.id,
+-        providerThreadId: "provider-draft-explicit-steer",
++        providerThreadId: "provider-queued-message-explicit-steer",
+         sequence: 2,
+         type: "turn/started",
+         data: {},
+-        scope: turnScope("turn-draft-explicit-steer"),
++        scope: turnScope("turn-queued-message-explicit-steer"),
+       });
+-      const draft = seedDraft(harness.deps, {
++      const queuedMessage = seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+         content: [{ type: "text", text: "Steer this queued correction" }],
+         model: "gpt-5",
+       });
+ 
+       const response = await harness.app.request(
+-        `/api/v1/threads/${thread.id}/drafts/${draft.id}/send`,
++        `/api/v1/threads/${thread.id}/queued-messages/${queuedMessage.id}/send`,
+         {
+           method: "POST",
+           headers: {
+@@ -1155,16 +1155,16 @@ describe("public thread send and steer routes", () => {
+         input: [{ type: "text", text: "Steer this queued correction" }],
+         target: {
+           mode: "steer",
+-          expectedTurnId: "turn-draft-explicit-steer",
++          expectedTurnId: "turn-queued-message-explicit-steer",
+         },
+         options: {
+           model: "gpt-5",
+         },
+         resumeContext: {
+-          providerThreadId: "provider-draft-explicit-steer",
++          providerThreadId: "provider-queued-message-explicit-steer",
+         },
+       });
+-      expect(getDraft(harness.db, draft.id)).toBeNull();
++      expect(getQueuedThreadMessage(harness.db, queuedMessage.id)).toBeNull();
+     } finally {
+       await harness.cleanup();
+     }
+diff --git a/apps/server/test/services/prompt-history.test.ts b/apps/server/test/services/prompt-history.test.ts
+index 31660cc14..de6c6fa8e 100644
+--- a/apps/server/test/services/prompt-history.test.ts
++++ b/apps/server/test/services/prompt-history.test.ts
+@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
+ import {
+   archiveThread,
+   createConnection,
+-  createDraft,
++  createQueuedThreadMessage,
+   createProject,
+   createPromptHistoryEntry,
+   createThread,
+@@ -311,7 +311,7 @@ describe("prompt history service", () => {
+     ]);
+   });
+ 
+-  it("returns thread follow-up history with queued drafts merged in", () => {
++  it("returns thread follow-up history with queued messages merged in", () => {
+     const { db, firstProject, logger } = setup();
+     const thread = createThread(db, noopNotifier, {
+       projectId: firstProject.id,
+@@ -345,7 +345,7 @@ describe("prompt history service", () => {
+       createdAt: 40,
+       input: [{ type: "text", text: "Add regression coverage" }],
+     });
+-    createDraft(db, noopNotifier, {
++    createQueuedThreadMessage(db, noopNotifier, {
+       threadId: thread.id,
+       content: [{ type: "text", text: "Add regression coverage" }],
+       model: "gpt-5",
+@@ -364,7 +364,7 @@ describe("prompt history service", () => {
+       ),
+     ).toEqual([
+       {
+-        id: expect.stringMatching(/^draft:/u),
++        id: expect.stringMatching(/^queued-message:/u),
+         createdAt: expect.any(Number),
+         input: [{ type: "text", text: "Add regression coverage" }],
+       },
+diff --git a/apps/server/test/system/periodic-sweeps.test.ts b/apps/server/test/system/periodic-sweeps.test.ts
+index 276ca42ac..49cef251f 100644
+--- a/apps/server/test/system/periodic-sweeps.test.ts
++++ b/apps/server/test/system/periodic-sweeps.test.ts
+@@ -2,13 +2,13 @@ import { setTimeout as sleep } from "node:timers/promises";
+ import { eq } from "drizzle-orm";
+ import {
+   COMPLETED_COMMAND_PAYLOAD_RETENTION_MS,
+-  claimDraft,
++  claimQueuedThreadMessage,
+   getActiveSession,
+   archiveThread,
+   closeSession,
+   fetchCommands,
+   getEnvironment,
+-  getDraft,
++  getQueuedThreadMessage,
+   getEnvironmentOperation,
+   getHost,
+   getThread,
+@@ -47,10 +47,10 @@ import {
+ import { buildEnvironmentProvisionCommand } from "../../src/services/threads/thread-create-helpers.js";
+ import { requestEnvironmentCleanup } from "../../src/services/environments/environment-cleanup.js";
+ import { requestThreadStop } from "../../src/services/threads/thread-lifecycle.js";
+-import { sendQueuedDraft } from "../../src/services/threads/queued-drafts.js";
++import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
+ import {
+   seedEnvironment,
+-  seedDraft,
++  seedQueuedMessage,
+   seedHostSession,
+   seedProjectWithSource,
+   seedThread,
+@@ -691,20 +691,20 @@ describe("periodic sweeps", () => {
+     }
+   });
+ 
+-  it("auto-sends queued drafts left on idle threads", async () => {
++  it("auto-sends queued messages left on idle threads", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps, {
+-        id: "host-periodic-queued-draft",
++        id: "host-periodic-queued-message",
+       });
+       const { project } = seedProjectWithSource(harness.deps, {
+         hostId: host.id,
+-        path: "/tmp/periodic-queued-draft-source",
++        path: "/tmp/periodic-queued-message-source",
+       });
+       const environment = seedEnvironment(harness.deps, {
+         hostId: host.id,
+         projectId: project.id,
+-        path: "/tmp/periodic-queued-draft-environment",
++        path: "/tmp/periodic-queued-message-environment",
+         workspaceProvisionType: "unmanaged",
+       });
+       const thread = seedThread(harness.deps, {
+@@ -715,9 +715,9 @@ describe("periodic sweeps", () => {
+       seedThreadRuntimeState(harness.deps, {
+         threadId: thread.id,
+         environmentId: environment.id,
+-        providerThreadId: "provider-periodic-queued-draft",
++        providerThreadId: "provider-periodic-queued-message",
+       });
+-      const draft = seedDraft(harness.deps, {
++      const queuedMessage = seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+         content: [{ type: "text", text: "Recover queued follow-up" }],
+       });
+@@ -733,30 +733,30 @@ describe("periodic sweeps", () => {
+         environmentId: environment.id,
+         input: [{ type: "text", text: "Recover queued follow-up" }],
+         resumeContext: {
+-          providerThreadId: "provider-periodic-queued-draft",
++          providerThreadId: "provider-periodic-queued-message",
+         },
+       });
+-      expect(getDraft(harness.db, draft.id)).toBeNull();
++      expect(getQueuedThreadMessage(harness.db, queuedMessage.id)).toBeNull();
+       expect(getThread(harness.db, thread.id)?.status).toBe("active");
+     } finally {
+       await harness.cleanup();
+     }
+   });
+ 
+-  it("auto-sends stale claimed queued drafts left on idle threads", async () => {
++  it("auto-sends stale claimed queued messages left on idle threads", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps, {
+-        id: "host-periodic-stale-claimed-draft",
++        id: "host-periodic-stale-claimed-queued-message",
+       });
+       const { project } = seedProjectWithSource(harness.deps, {
+         hostId: host.id,
+-        path: "/tmp/periodic-stale-claimed-draft-source",
++        path: "/tmp/periodic-stale-claimed-queued-message-source",
+       });
+       const environment = seedEnvironment(harness.deps, {
+         hostId: host.id,
+         projectId: project.id,
+-        path: "/tmp/periodic-stale-claimed-draft-environment",
++        path: "/tmp/periodic-stale-claimed-queued-message-environment",
+         workspaceProvisionType: "unmanaged",
+       });
+       const thread = seedThread(harness.deps, {
+@@ -767,17 +767,19 @@ describe("periodic sweeps", () => {
+       seedThreadRuntimeState(harness.deps, {
+         threadId: thread.id,
+         environmentId: environment.id,
+-        providerThreadId: "provider-periodic-stale-claimed-draft",
++        providerThreadId: "provider-periodic-stale-claimed-queued-message",
+       });
+-      const draft = seedDraft(harness.deps, {
++      const queuedMessage = seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+         content: [{ type: "text", text: "Recover stale claimed follow-up" }],
+       });
+-      expect(claimDraft(harness.db, harness.hub, draft.id)?.id).toBe(draft.id);
++      expect(
++        claimQueuedThreadMessage(harness.db, harness.hub, queuedMessage.id)?.id,
++      ).toBe(queuedMessage.id);
+       harness.db
+         .update(queuedThreadMessages)
+         .set({ claimedAt: Date.now() - 10 * 60_000 })
+-        .where(eq(queuedThreadMessages.id, draft.id))
++        .where(eq(queuedThreadMessages.id, queuedMessage.id))
+         .run();
+ 
+       await runPeriodicSweeps(harness.deps);
+@@ -791,17 +793,17 @@ describe("periodic sweeps", () => {
+         environmentId: environment.id,
+         input: [{ type: "text", text: "Recover stale claimed follow-up" }],
+         resumeContext: {
+-          providerThreadId: "provider-periodic-stale-claimed-draft",
++          providerThreadId: "provider-periodic-stale-claimed-queued-message",
+         },
+       });
+-      expect(getDraft(harness.db, draft.id)).toBeNull();
++      expect(getQueuedThreadMessage(harness.db, queuedMessage.id)).toBeNull();
+       expect(getThread(harness.db, thread.id)?.status).toBe("active");
+     } finally {
+       await harness.cleanup();
+     }
+   });
+ 
+-  it("does not double-send when a stale draft claimant resumes after recovery", async () => {
++  it("does not double-send when a stale queued message claimant resumes after recovery", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps, {
+@@ -828,13 +830,13 @@ describe("periodic sweeps", () => {
+         environmentId: environment.id,
+         providerThreadId: "provider-periodic-stale-claim-race",
+       });
+-      const draft = seedDraft(harness.deps, {
++      const queuedMessage = seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+         content: [{ type: "text", text: "Recover without duplicate" }],
+       });
+ 
+-      const firstSend = sendQueuedDraft(harness.deps, {
+-        draftId: draft.id,
++      const firstSend = sendQueuedMessage(harness.deps, {
++        queuedMessageId: queuedMessage.id,
+         mode: "auto",
+         threadId: thread.id,
+       });
+@@ -844,12 +846,12 @@ describe("periodic sweeps", () => {
+           command.type === "host.read_file" &&
+           command.path.endsWith("/PREFERENCES.md"),
+       );
+-      const firstClaim = getDraft(harness.db, draft.id);
+-      expect(firstClaim?.claimToken).toMatch(/^dclaim_/);
++      const firstClaim = getQueuedThreadMessage(harness.db, queuedMessage.id);
++      expect(firstClaim?.claimToken).toMatch(/^qclaim_/);
+       harness.db
+         .update(queuedThreadMessages)
+         .set({ claimedAt: Date.now() - 10 * 60_000 })
+-        .where(eq(queuedThreadMessages.id, draft.id))
++        .where(eq(queuedThreadMessages.id, queuedMessage.id))
+         .run();
+ 
+       const recoverySweep = runPeriodicSweeps(harness.deps);
+@@ -875,14 +877,14 @@ describe("periodic sweeps", () => {
+         input: [{ type: "text", text: "Recover without duplicate" }],
+       });
+       await recoverySweep;
+-      expect(getDraft(harness.db, draft.id)).toBeNull();
++      expect(getQueuedThreadMessage(harness.db, queuedMessage.id)).toBeNull();
+ 
+       await reportQueuedCommandError(harness, firstPreferencesRead, {
+         errorCode: "ENOENT",
+         errorMessage: "No preferences file",
+       });
+       await expect(firstSend).rejects.toMatchObject({
+-        body: { code: "draft_claim_lost" },
++        body: { code: "queued_message_claim_lost" },
+       });
+ 
+       const turnSubmits = harness.db
+diff --git a/apps/server/test/threads/thread-send.test.ts b/apps/server/test/threads/thread-send.test.ts
+index 7ef32fa1a..e8cf29917 100644
+--- a/apps/server/test/threads/thread-send.test.ts
++++ b/apps/server/test/threads/thread-send.test.ts
+@@ -1,16 +1,16 @@
+ import { describe, expect, it } from "vitest";
+ import { hostDaemonCommands, listEvents } from "@bb/db";
+ import type { PromptInput } from "@bb/domain";
+-import { sendQueuedDraft } from "../../src/services/threads/queued-drafts.js";
++import { sendQueuedMessage } from "../../src/services/threads/queued-messages.js";
+ import { sendThreadMessage } from "../../src/services/threads/thread-send.js";
+ import { createCommandApprovalPayload } from "../helpers/pending-interactions.js";
+ import { assertPromptHistoryForTurnRequest } from "../helpers/prompt-history.js";
+ import {
+-  seedDraft,
+   seedEnvironment,
+   seedHost,
+   seedHostSession,
+   seedProjectWithSource,
++  seedQueuedMessage,
+   seedThread,
+   seedThreadRuntimeState,
+   seedTurnStarted,
+@@ -225,11 +225,11 @@ describe("sendThreadMessage", () => {
+     },
+   );
+ 
+-  it("records thread prompt history for idle queued draft auto-sends", async () => {
++  it("records thread prompt history for idle queued message auto-sends", async () => {
+     const harness = await createTestAppHarness();
+     try {
+       const { host } = seedHostSession(harness.deps, {
+-        id: "host-thread-send-queued-draft-history",
++        id: "host-thread-send-queued-message-history",
+       });
+       const { project } = seedProjectWithSource(harness.deps, {
+         hostId: host.id,
+@@ -246,19 +246,19 @@ describe("sendThreadMessage", () => {
+       seedThreadRuntimeState(harness.deps, {
+         threadId: thread.id,
+         environmentId: environment.id,
+-        providerThreadId: "provider-thread-send-queued-draft-history",
++        providerThreadId: "provider-thread-send-queued-message-history",
+       });
+       const input: PromptInput[] = [
+-        { type: "text", text: "send queued draft" },
++        { type: "text", text: "send queued message" },
+       ];
+-      const draft = seedDraft(harness.deps, {
++      const queuedMessage = seedQueuedMessage(harness.deps, {
+         threadId: thread.id,
+         content: input,
+       });
+ 
+-      await sendQueuedDraft(harness.deps, {
+-        draftId: draft.id,
++      await sendQueuedMessage(harness.deps, {
+         mode: "auto",
++        queuedMessageId: queuedMessage.id,
+         threadId: thread.id,
+       });
+ 
+diff --git a/apps/server/test/threads/timeline-service.test.ts b/apps/server/test/threads/timeline-service.test.ts
+index 81dda2a38..cab720ac3 100644
+--- a/apps/server/test/threads/timeline-service.test.ts
++++ b/apps/server/test/threads/timeline-service.test.ts
+@@ -2224,7 +2224,7 @@ describe("buildThreadTimeline", () => {
+     });
+   });
+ 
+-  it("loads details for stale turn-summary ranges whose queued draft is accepted by the next turn", async () => {
++  it("loads details for stale turn-summary ranges whose queued message is accepted by the next turn", async () => {
+     const harness = await createTestAppHarness();
+     harnesses.push(harness);
+ 
+@@ -2366,7 +2366,7 @@ describe("buildThreadTimeline", () => {
+     ]);
+   });
+ 
+-  it("keeps requested-turn accepted drafts while filtering drafts accepted by later turns", async () => {
++  it("keeps requested-turn accepted queued messages while filtering queued messages accepted by later turns", async () => {
+     const harness = await createTestAppHarness();
+     harnesses.push(harness);
+ 
+diff --git a/packages/db/test/data/drafts.test.ts b/packages/db/test/data/drafts.test.ts
+deleted file mode 100644
+index b72a5e701..000000000
+--- a/packages/db/test/data/drafts.test.ts
++++ /dev/null
+@@ -1,291 +0,0 @@
+-import { describe, expect, it, vi } from "vitest";
+-import { createConnection } from "../../src/connection.js";
+-import { migrate } from "../../src/migrate.js";
+-import { noopNotifier } from "../../src/notifier.js";
+-import {
+-  claimDraft,
+-  claimNextDraft,
+-  createDraft,
+-  deleteClaimedDraft,
+-  deleteClaimedDraftInTransaction,
+-  deleteDraft,
+-  deleteDraftInTransaction,
+-  getDraft,
+-  listDrafts,
+-  releaseDraftClaim,
+-  releaseStaleDraftClaims,
+-} from "../../src/data/drafts.js";
+-import { createProject } from "../../src/data/projects.js";
+-import { createThread } from "../../src/data/threads.js";
+-import { upsertHost } from "../../src/data/hosts.js";
+-
+-const defaultInput = [{ type: "text" as const, text: "hello" }];
+-const altInput = [{ type: "text" as const, text: "world" }];
+-
+-function setup() {
+-  const db = createConnection(":memory:");
+-  migrate(db);
+-  const host = upsertHost(db, noopNotifier, {
+-    name: "test-host",
+-    type: "persistent",
+-  });
+-  const { project } = createProject(db, noopNotifier, {
+-    name: "test-project",
+-    source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
+-  });
+-  const thread = createThread(db, noopNotifier, {
+-    projectId: project.id,
+-    providerId: "codex",
+-  });
+-  return { db, project, thread };
+-}
+-
+-describe("drafts", () => {
+-  it("creates a draft", () => {
+-    const { db, thread } = setup();
+-    const draft = createDraft(db, noopNotifier, {
+-      threadId: thread.id,
+-      content: defaultInput,
+-      model: "gpt-5",
+-      reasoningLevel: "medium",
+-      permissionMode: "full",
+-      serviceTier: "default",
+-    });
+-
+-    expect(draft.id).toMatch(/^draft_/);
+-    expect(draft.threadId).toBe(thread.id);
+-    expect(draft.content).toBe(JSON.stringify(defaultInput));
+-    expect(draft.model).toBe("gpt-5");
+-    expect(draft.serviceTier).toBe("default");
+-  });
+-
+-  it("gets a draft by ID", () => {
+-    const { db, thread } = setup();
+-    const draft = createDraft(db, noopNotifier, {
+-      threadId: thread.id,
+-      content: defaultInput,
+-      model: "gpt-5",
+-      reasoningLevel: "medium",
+-      permissionMode: "full",
+-      serviceTier: "default",
+-    });
+-
+-    const fetched = getDraft(db, draft.id);
+-    expect(fetched?.id).toBe(draft.id);
+-    expect(getDraft(db, "draft_nonexistent")).toBeNull();
+-  });
+-
+-  it("lists drafts by thread", () => {
+-    const { db, thread } = setup();
+-    createDraft(db, noopNotifier, {
+-      threadId: thread.id,
+-      content: defaultInput,
+-      model: "gpt-5",
+-      reasoningLevel: "medium",
+-      permissionMode: "full",
+-      serviceTier: "default",
+-    });
+-    createDraft(db, noopNotifier, {
+-      threadId: thread.id,
+-      content: altInput,
+-      model: "gpt-5",
+-      reasoningLevel: "high",
+-      permissionMode: "full",
+-      serviceTier: "default",
+-    });
+-
+-    expect(listDrafts(db, thread.id)).toHaveLength(2);
+-  });
+-
+-  it("deletes a draft", () => {
+-    const { db, thread } = setup();
+-    const draft = createDraft(db, noopNotifier, {
+-      threadId: thread.id,
+-      content: defaultInput,
+-      model: "gpt-5",
+-      reasoningLevel: "medium",
+-      permissionMode: "full",
+-      serviceTier: "default",
+-    });
+-
+-    expect(deleteDraft(db, noopNotifier, draft.id)).toBe(true);
+-    expect(listDrafts(db, thread.id)).toHaveLength(0);
+-    expect(deleteDraft(db, noopNotifier, draft.id)).toBe(false);
+-  });
+-
+-  it("deletes a draft in a caller-owned transaction", () => {
+-    const { db, thread } = setup();
+-    const draft = createDraft(db, noopNotifier, {
+-      threadId: thread.id,
+-      content: defaultInput,
+-      model: "gpt-5",
+-      reasoningLevel: "medium",
+-      permissionMode: "full",
+-      serviceTier: "default",
+-    });
+-
+-    const deleted = db.transaction((tx) =>
+-      deleteDraftInTransaction(tx, { id: draft.id }),
+-    );
+-
+-    expect(deleted).toBe(true);
+-    expect(getDraft(db, draft.id)).toBeNull();
+-  });
+-
+-  it("claims a draft and hides it from the queue until the claim is released", () => {
+-    const { db, thread } = setup();
+-    const draft = createDraft(db, noopNotifier, {
+-      threadId: thread.id,
+-      content: defaultInput,
+-      model: "gpt-5",
+-      reasoningLevel: "medium",
+-      permissionMode: "full",
+-      serviceTier: "default",
+-    });
+-
+-    const claimedDraft = claimDraft(db, noopNotifier, draft.id);
+-    expect(claimedDraft?.id).toBe(draft.id);
+-    expect(claimedDraft?.claimToken).toMatch(/^dclaim_/);
+-    expect(listDrafts(db, thread.id)).toHaveLength(0);
+-
+-    if (!claimedDraft) {
+-      throw new Error("Expected draft claim");
+-    }
+-    expect(
+-      releaseDraftClaim(db, noopNotifier, {
+-        id: draft.id,
+-        claimToken: claimedDraft.claimToken,
+-      }),
+-    ).toBe(true);
+-    expect(listDrafts(db, thread.id)).toHaveLength(1);
+-  });
+-
+-  it("does not release or consume a draft claimed by another owner", () => {
+-    const { db, thread } = setup();
+-    const draft = createDraft(db, noopNotifier, {
+-      threadId: thread.id,
+-      content: defaultInput,
+-      model: "gpt-5",
+-      reasoningLevel: "medium",
+-      permissionMode: "full",
+-      serviceTier: "default",
+-    });
+-    const firstClaim = claimDraft(db, noopNotifier, draft.id);
+-    if (!firstClaim) {
+-      throw new Error("Expected first draft claim");
+-    }
+-    expect(
+-      releaseDraftClaim(db, noopNotifier, {
+-        id: draft.id,
+-        claimToken: "dclaim_staleowner",
+-      }),
+-    ).toBe(false);
+-    expect(getDraft(db, draft.id)?.claimToken).toBe(firstClaim.claimToken);
+-    expect(
+-      db.transaction((tx) =>
+-        deleteClaimedDraftInTransaction(tx, {
+-          id: draft.id,
+-          claimToken: "dclaim_staleowner",
+-        }),
+-      ),
+-    ).toBe(false);
+-
+-    expect(
+-      releaseDraftClaim(db, noopNotifier, {
+-        id: draft.id,
+-        claimToken: firstClaim.claimToken,
+-      }),
+-    ).toBe(true);
+-    const secondClaim = claimDraft(db, noopNotifier, draft.id);
+-    if (!secondClaim) {
+-      throw new Error("Expected second draft claim");
+-    }
+-    expect(secondClaim.claimToken).not.toBe(firstClaim.claimToken);
+-    expect(
+-      db.transaction((tx) =>
+-        deleteClaimedDraftInTransaction(tx, {
+-          id: draft.id,
+-          claimToken: firstClaim.claimToken,
+-        }),
+-      ),
+-    ).toBe(false);
+-    expect(
+-      deleteClaimedDraft(db, noopNotifier, {
+-        id: draft.id,
+-        claimToken: firstClaim.claimToken,
+-      }),
+-    ).toBe(false);
+-    expect(getDraft(db, draft.id)?.claimToken).toBe(secondClaim.claimToken);
+-    expect(
+-      deleteClaimedDraft(db, noopNotifier, {
+-        id: draft.id,
+-        claimToken: secondClaim.claimToken,
+-      }),
+-    ).toBe(true);
+-    expect(getDraft(db, draft.id)).toBeNull();
+-  });
+-
+-  it("releases stale draft claims", () => {
+-    const { db, thread } = setup();
+-    const nowSpy = vi.spyOn(Date, "now");
+-    try {
+-      nowSpy.mockReturnValue(1_000);
+-      const draft = createDraft(db, noopNotifier, {
+-        threadId: thread.id,
+-        content: defaultInput,
+-        model: "gpt-5",
+-        reasoningLevel: "medium",
+-        permissionMode: "full",
+-        serviceTier: "default",
+-      });
+-      const claimedDraft = claimDraft(db, noopNotifier, draft.id);
+-      expect(claimedDraft?.claimedAt).toBe(1_000);
+-      expect(claimedDraft?.claimToken).toMatch(/^dclaim_/);
+-      expect(listDrafts(db, thread.id)).toHaveLength(0);
+-
+-      nowSpy.mockReturnValue(10_000);
+-      expect(
+-        releaseStaleDraftClaims(db, noopNotifier, { claimedBefore: 5_000 }),
+-      ).toBe(1);
+-      expect(listDrafts(db, thread.id).map((row) => row.id)).toEqual([
+-        draft.id,
+-      ]);
+-      expect(getDraft(db, draft.id)?.claimToken).toBeNull();
+-    } finally {
+-      nowSpy.mockRestore();
+-    }
+-  });
+-
+-  it("claims the oldest queued draft first", () => {
+-    const { db, thread } = setup();
+-    const nowSpy = vi.spyOn(Date, "now");
+-    try {
+-      nowSpy.mockReturnValueOnce(1_000);
+-      const firstDraft = createDraft(db, noopNotifier, {
+-        threadId: thread.id,
+-        content: defaultInput,
+-        model: "gpt-5",
+-        reasoningLevel: "medium",
+-        permissionMode: "full",
+-        serviceTier: "default",
+-      });
+-      nowSpy.mockReturnValueOnce(2_000);
+-      const secondDraft = createDraft(db, noopNotifier, {
+-        threadId: thread.id,
+-        content: altInput,
+-        model: "gpt-5",
+-        reasoningLevel: "high",
+-        permissionMode: "full",
+-        serviceTier: "default",
+-      });
+-
+-      const claimedDraft = claimNextDraft(db, noopNotifier, thread.id);
+-      expect(claimedDraft?.id).toBe(firstDraft.id);
+-      expect(listDrafts(db, thread.id).map((draft) => draft.id)).toEqual([
+-        secondDraft.id,
+-      ]);
+-    } finally {
+-      nowSpy.mockRestore();
+-    }
+-  });
+-});
+diff --git a/packages/db/test/data/queued-thread-messages.test.ts b/packages/db/test/data/queued-thread-messages.test.ts
+new file mode 100644
+index 000000000..d55a96d27
+--- /dev/null
++++ b/packages/db/test/data/queued-thread-messages.test.ts
+@@ -0,0 +1,291 @@
++import { describe, expect, it, vi } from "vitest";
++import { createConnection } from "../../src/connection.js";
++import { migrate } from "../../src/migrate.js";
++import { noopNotifier } from "../../src/notifier.js";
++import {
++  claimQueuedThreadMessage,
++  claimNextQueuedThreadMessage,
++  createQueuedThreadMessage,
++  deleteClaimedQueuedThreadMessage,
++  deleteClaimedQueuedThreadMessageInTransaction,
++  deleteQueuedThreadMessage,
++  deleteQueuedThreadMessageInTransaction,
++  getQueuedThreadMessage,
++  listQueuedThreadMessages,
++  releaseQueuedMessageClaim,
++  releaseStaleQueuedMessageClaims,
++} from "../../src/data/queued-thread-messages.js";
++import { createProject } from "../../src/data/projects.js";
++import { createThread } from "../../src/data/threads.js";
++import { upsertHost } from "../../src/data/hosts.js";
++
++const defaultInput = [{ type: "text" as const, text: "hello" }];
++const altInput = [{ type: "text" as const, text: "world" }];
++
++function setup() {
++  const db = createConnection(":memory:");
++  migrate(db);
++  const host = upsertHost(db, noopNotifier, {
++    name: "test-host",
++    type: "persistent",
++  });
++  const { project } = createProject(db, noopNotifier, {
++    name: "test-project",
++    source: { type: "local_path", hostId: host.id, path: "/tmp/test" },
++  });
++  const thread = createThread(db, noopNotifier, {
++    projectId: project.id,
++    providerId: "codex",
++  });
++  return { db, project, thread };
++}
++
++describe("queued thread messages", () => {
++  it("creates a queued message", () => {
++    const { db, thread } = setup();
++    const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
++      threadId: thread.id,
++      content: defaultInput,
++      model: "gpt-5",
++      reasoningLevel: "medium",
++      permissionMode: "full",
++      serviceTier: "default",
++    });
++
++    expect(queuedMessage.id).toMatch(/^qmsg_/);
++    expect(queuedMessage.threadId).toBe(thread.id);
++    expect(queuedMessage.content).toBe(JSON.stringify(defaultInput));
++    expect(queuedMessage.model).toBe("gpt-5");
++    expect(queuedMessage.serviceTier).toBe("default");
++  });
++
++  it("gets a queued message by ID", () => {
++    const { db, thread } = setup();
++    const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
++      threadId: thread.id,
++      content: defaultInput,
++      model: "gpt-5",
++      reasoningLevel: "medium",
++      permissionMode: "full",
++      serviceTier: "default",
++    });
++
++    const fetched = getQueuedThreadMessage(db, queuedMessage.id);
++    expect(fetched?.id).toBe(queuedMessage.id);
++    expect(getQueuedThreadMessage(db, "qmsg_nonexistent")).toBeNull();
++  });
++
++  it("lists queued messages by thread", () => {
++    const { db, thread } = setup();
++    createQueuedThreadMessage(db, noopNotifier, {
++      threadId: thread.id,
++      content: defaultInput,
++      model: "gpt-5",
++      reasoningLevel: "medium",
++      permissionMode: "full",
++      serviceTier: "default",
++    });
++    createQueuedThreadMessage(db, noopNotifier, {
++      threadId: thread.id,
++      content: altInput,
++      model: "gpt-5",
++      reasoningLevel: "high",
++      permissionMode: "full",
++      serviceTier: "default",
++    });
++
++    expect(listQueuedThreadMessages(db, thread.id)).toHaveLength(2);
++  });
++
++  it("deletes a queued message", () => {
++    const { db, thread } = setup();
++    const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
++      threadId: thread.id,
++      content: defaultInput,
++      model: "gpt-5",
++      reasoningLevel: "medium",
++      permissionMode: "full",
++      serviceTier: "default",
++    });
++
++    expect(deleteQueuedThreadMessage(db, noopNotifier, queuedMessage.id)).toBe(true);
++    expect(listQueuedThreadMessages(db, thread.id)).toHaveLength(0);
++    expect(deleteQueuedThreadMessage(db, noopNotifier, queuedMessage.id)).toBe(false);
++  });
++
++  it("deletes a queued message in a caller-owned transaction", () => {
++    const { db, thread } = setup();
++    const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
++      threadId: thread.id,
++      content: defaultInput,
++      model: "gpt-5",
++      reasoningLevel: "medium",
++      permissionMode: "full",
++      serviceTier: "default",
++    });
++
++    const deleted = db.transaction((tx) =>
++      deleteQueuedThreadMessageInTransaction(tx, { id: queuedMessage.id }),
++    );
++
++    expect(deleted).toBe(true);
++    expect(getQueuedThreadMessage(db, queuedMessage.id)).toBeNull();
++  });
++
++  it("claims a queued message and hides it from the queue until the claim is released", () => {
++    const { db, thread } = setup();
++    const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
++      threadId: thread.id,
++      content: defaultInput,
++      model: "gpt-5",
++      reasoningLevel: "medium",
++      permissionMode: "full",
++      serviceTier: "default",
++    });
++
++    const claimedQueuedMessage = claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
++    expect(claimedQueuedMessage?.id).toBe(queuedMessage.id);
++    expect(claimedQueuedMessage?.claimToken).toMatch(/^qclaim_/);
++    expect(listQueuedThreadMessages(db, thread.id)).toHaveLength(0);
++
++    if (!claimedQueuedMessage) {
++      throw new Error("Expected queued message claim");
++    }
++    expect(
++      releaseQueuedMessageClaim(db, noopNotifier, {
++        id: queuedMessage.id,
++        claimToken: claimedQueuedMessage.claimToken,
++      }),
++    ).toBe(true);
++    expect(listQueuedThreadMessages(db, thread.id)).toHaveLength(1);
++  });
++
++  it("does not release or consume a queued message claimed by another owner", () => {
++    const { db, thread } = setup();
++    const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
++      threadId: thread.id,
++      content: defaultInput,
++      model: "gpt-5",
++      reasoningLevel: "medium",
++      permissionMode: "full",
++      serviceTier: "default",
++    });
++    const firstClaim = claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
++    if (!firstClaim) {
++      throw new Error("Expected first queued message claim");
++    }
++    expect(
++      releaseQueuedMessageClaim(db, noopNotifier, {
++        id: queuedMessage.id,
++        claimToken: "qclaim_staleowner",
++      }),
++    ).toBe(false);
++    expect(getQueuedThreadMessage(db, queuedMessage.id)?.claimToken).toBe(firstClaim.claimToken);
++    expect(
++      db.transaction((tx) =>
++        deleteClaimedQueuedThreadMessageInTransaction(tx, {
++          id: queuedMessage.id,
++          claimToken: "qclaim_staleowner",
++        }),
++      ),
++    ).toBe(false);
++
++    expect(
++      releaseQueuedMessageClaim(db, noopNotifier, {
++        id: queuedMessage.id,
++        claimToken: firstClaim.claimToken,
++      }),
++    ).toBe(true);
++    const secondClaim = claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
++    if (!secondClaim) {
++      throw new Error("Expected second queued message claim");
++    }
++    expect(secondClaim.claimToken).not.toBe(firstClaim.claimToken);
++    expect(
++      db.transaction((tx) =>
++        deleteClaimedQueuedThreadMessageInTransaction(tx, {
++          id: queuedMessage.id,
++          claimToken: firstClaim.claimToken,
++        }),
++      ),
++    ).toBe(false);
++    expect(
++      deleteClaimedQueuedThreadMessage(db, noopNotifier, {
++        id: queuedMessage.id,
++        claimToken: firstClaim.claimToken,
++      }),
++    ).toBe(false);
++    expect(getQueuedThreadMessage(db, queuedMessage.id)?.claimToken).toBe(secondClaim.claimToken);
++    expect(
++      deleteClaimedQueuedThreadMessage(db, noopNotifier, {
++        id: queuedMessage.id,
++        claimToken: secondClaim.claimToken,
++      }),
++    ).toBe(true);
++    expect(getQueuedThreadMessage(db, queuedMessage.id)).toBeNull();
++  });
++
++  it("releases stale queued message claims", () => {
++    const { db, thread } = setup();
++    const nowSpy = vi.spyOn(Date, "now");
++    try {
++      nowSpy.mockReturnValue(1_000);
++      const queuedMessage = createQueuedThreadMessage(db, noopNotifier, {
++        threadId: thread.id,
++        content: defaultInput,
++        model: "gpt-5",
++        reasoningLevel: "medium",
++        permissionMode: "full",
++        serviceTier: "default",
++      });
++      const claimedQueuedMessage = claimQueuedThreadMessage(db, noopNotifier, queuedMessage.id);
++      expect(claimedQueuedMessage?.claimedAt).toBe(1_000);
++      expect(claimedQueuedMessage?.claimToken).toMatch(/^qclaim_/);
++      expect(listQueuedThreadMessages(db, thread.id)).toHaveLength(0);
++
++      nowSpy.mockReturnValue(10_000);
++      expect(
++        releaseStaleQueuedMessageClaims(db, noopNotifier, { claimedBefore: 5_000 }),
++      ).toBe(1);
++      expect(listQueuedThreadMessages(db, thread.id).map((row) => row.id)).toEqual([
++        queuedMessage.id,
++      ]);
++      expect(getQueuedThreadMessage(db, queuedMessage.id)?.claimToken).toBeNull();
++    } finally {
++      nowSpy.mockRestore();
++    }
++  });
++
++  it("claims the oldest queued message first", () => {
++    const { db, thread } = setup();
++    const nowSpy = vi.spyOn(Date, "now");
++    try {
++      nowSpy.mockReturnValueOnce(1_000);
++      const firstQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
++        threadId: thread.id,
++        content: defaultInput,
++        model: "gpt-5",
++        reasoningLevel: "medium",
++        permissionMode: "full",
++        serviceTier: "default",
++      });
++      nowSpy.mockReturnValueOnce(2_000);
++      const secondQueuedMessage = createQueuedThreadMessage(db, noopNotifier, {
++        threadId: thread.id,
++        content: altInput,
++        model: "gpt-5",
++        reasoningLevel: "high",
++        permissionMode: "full",
++        serviceTier: "default",
++      });
++
++      const claimedQueuedMessage = claimNextQueuedThreadMessage(db, noopNotifier, thread.id);
++      expect(claimedQueuedMessage?.id).toBe(firstQueuedMessage.id);
++      expect(listQueuedThreadMessages(db, thread.id).map((queuedMessage) => queuedMessage.id)).toEqual([
++        secondQueuedMessage.id,
++      ]);
++    } finally {
++      nowSpy.mockRestore();
++    }
++  });
++});
+diff --git a/packages/db/test/schema.test.ts b/packages/db/test/schema.test.ts
+index 5ffaeae5d..fbddfda37 100644
+--- a/packages/db/test/schema.test.ts
++++ b/packages/db/test/schema.test.ts
+@@ -4,7 +4,7 @@ import {
+   automations,
+   createConnection,
+   createAutomationId,
+-  createDraftId,
++  createQueuedThreadMessageId,
+   createEnvironmentId,
+   createEnvironmentProvisioningId,
+   createEventId,
+@@ -181,7 +181,7 @@ describe("db rebuild schema", () => {
+       .run();
+     db.insert(queuedThreadMessages)
+       .values({
+-        id: createDraftId(),
++        id: createQueuedThreadMessageId(),
+         threadId,
+         content: "[]",
+         model: "gpt-5",
+@@ -711,7 +711,7 @@ describe("db rebuild schema", () => {
+     closeConnection(db);
+   });
+ 
+-  it("cascades thread deletion to events, prompt history, and queued drafts", () => {
++  it("cascades thread deletion to events, prompt history, and queued messages", () => {
+     const db = createConnection(":memory:");
+     migrate(db);
+ 
+@@ -741,7 +741,7 @@ describe("db rebuild schema", () => {
+       .run();
+     db.insert(queuedThreadMessages)
+       .values({
+-        id: createDraftId(),
++        id: createQueuedThreadMessageId(),
+         threadId,
+         content: "[]",
+         model: "gpt-5",
+@@ -853,7 +853,7 @@ describe("db rebuild schema", () => {
+     expect(createManagerThreadNudgeId()).toMatch(/^mnge_/u);
+     expect(createEventId()).toMatch(/^evt_/u);
+     expect(createPromptHistoryEntryId()).toMatch(/^phist_/u);
+-    expect(createDraftId()).toMatch(/^draft_/u);
++    expect(createQueuedThreadMessageId()).toMatch(/^qmsg_/u);
+     expect(createHostDaemonSessionId()).toMatch(/^hses_/u);
+     expect(createHostDaemonCommandId()).toMatch(/^hcmd_/u);
+   });
+diff --git a/packages/server-contract/test/contract.test.ts b/packages/server-contract/test/contract.test.ts
+index 682c9f2ed..6984243ee 100644
+--- a/packages/server-contract/test/contract.test.ts
++++ b/packages/server-contract/test/contract.test.ts
+@@ -11,7 +11,7 @@ import {
+   createHostJoinResponseSchema,
+   createLocalPersistentHostJoinRequest,
+   createPersistentHostJoinRequest,
+-  createDraftRequestSchema,
++  createQueuedMessageRequestSchema,
+   createManagerThreadRequestSchema,
+   createProjectSourceRequestSchema,
+   createPublicApiClient,
+@@ -20,7 +20,7 @@ import {
+   baseBranchSpecSchema,
+   gitBranchNameSchema,
+   resolvePendingInteractionRequestSchema,
+-  sendDraftRequestSchema,
++  sendQueuedMessageRequestSchema,
+   sendMessageRequestSchema,
+   threadListResponseSchema,
+   threadPendingInteractionsResponseSchema,
+@@ -53,14 +53,14 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
+     "Host join initiation may omit hostId when the server should generate a new persistent host id.",
+   "createHostJoinRequestSchema.hostType":
+     "Host join initiation may omit hostType and let the server choose the default persistent host policy.",
+-  "createDraftRequestSchema.model":
+-    "Queued drafts may inherit the thread's default model.",
+-  "createDraftRequestSchema.reasoningLevel":
+-    "Queued drafts may inherit the thread's default reasoning level.",
+-  "createDraftRequestSchema.permissionMode":
+-    "Queued drafts may inherit the thread's default permission mode.",
+-  "createDraftRequestSchema.serviceTier":
+-    "Queued drafts may inherit the thread's default service tier.",
++  "createQueuedMessageRequestSchema.model":
++    "Queued messages may inherit the thread's default model.",
++  "createQueuedMessageRequestSchema.reasoningLevel":
++    "Queued messages may inherit the thread's default reasoning level.",
++  "createQueuedMessageRequestSchema.permissionMode":
++    "Queued messages may inherit the thread's default permission mode.",
++  "createQueuedMessageRequestSchema.serviceTier":
++    "Queued messages may inherit the thread's default service tier.",
+   "updateAutomationRequestSchema.action":
+     "Automation PATCH requests omit action when leaving it unchanged.",
+   "updateAutomationRequestSchema.action.threadRequest.environment.workspace.branch":
+@@ -128,7 +128,7 @@ const INTENTIONAL_OPTIONAL_SERVER_FIELDS: Record<string, string> = {
+   "sendMessageRequestSchema.reasoningLevel":
+     "Follow-up sends may inherit the thread's default reasoning level.",
+   "sendMessageRequestSchema.senderThreadId":
+-    "Immediate agent-to-agent CLI sends include the current thread; user-originated sends and queued drafts omit live sender context.",
++    "Immediate agent-to-agent CLI sends include the current thread; user-originated sends and queued messages omit live sender context.",
+   "sendMessageRequestSchema.serviceTier":
+     "Follow-up sends may inherit the thread's default service tier.",
+   "systemExecutionOptionsQuerySchema.environmentId":
+@@ -468,10 +468,10 @@ describe("server-contract canonical schemas", () => {
+       mode: "auto",
+     });
+ 
+-    expect(sendDraftRequestSchema.parse({ mode: "auto" })).toEqual({
++    expect(sendQueuedMessageRequestSchema.parse({ mode: "auto" })).toEqual({
+       mode: "auto",
+     });
+-    expect(() => sendDraftRequestSchema.parse({})).toThrow();
++    expect(() => sendQueuedMessageRequestSchema.parse({})).toThrow();
+ 
+     expect(
+       threadListResponseSchema.parse([
+@@ -716,7 +716,7 @@ describe("server-contract canonical schemas", () => {
+     });
+ 
+     expect(
+-      createDraftRequestSchema.parse({
++      createQueuedMessageRequestSchema.parse({
+         input: [{ type: "text", text: "Queue this with inherited defaults" }],
+       }),
+     ).toMatchObject({
+@@ -766,9 +766,10 @@ describe("server-contract clients", () => {
+         .pathname,
+     ).toBe("/api/v1/threads/thr_123/send");
+     expect(
+-      publicClient.threads[":id"].drafts.$url({ param: { id: "thr_123" } })
+-        .pathname,
+-    ).toBe("/api/v1/threads/thr_123/drafts");
++      publicClient.threads[":id"]["queued-messages"].$url({
++        param: { id: "thr_123" },
++      }).pathname,
++    ).toBe("/api/v1/threads/thr_123/queued-messages");
+     expect(
+       publicClient.threads[":id"]["composer-bootstrap"].$url({
+         param: { id: "thr_123" },
+@@ -937,7 +938,8 @@ describe("server-contract clients", () => {
+     const optionalFieldPaths = collectOptionalFieldPaths({
+       apiErrorSchema: contract.apiErrorSchema,
+       commitActionResponseSchema: contract.commitActionResponseSchema,
+-      createDraftRequestSchema: contract.createDraftRequestSchema,
++      createQueuedMessageRequestSchema:
++        contract.createQueuedMessageRequestSchema,
+       createAutomationRequestSchema: contract.createAutomationRequestSchema,
+       createHostJoinRequestSchema: contract.createHostJoinRequestSchema,
+       createManagerThreadRequestSchema:
+@@ -947,8 +949,8 @@ describe("server-contract clients", () => {
+       environmentStatusResponseSchema: contract.environmentStatusResponseSchema,
+       threadStorageFilesQuerySchema: contract.threadStorageFilesQuerySchema,
+       projectFilesQuerySchema: contract.projectFilesQuerySchema,
+-      sendDraftRequestSchema: contract.sendDraftRequestSchema,
+-      sendDraftResponseSchema: contract.sendDraftResponseSchema,
++      sendQueuedMessageRequestSchema: contract.sendQueuedMessageRequestSchema,
++      sendQueuedMessageResponseSchema: contract.sendQueuedMessageResponseSchema,
+       sendMessageRequestSchema: contract.sendMessageRequestSchema,
+       squashMergeActionResponseSchema: contract.squashMergeActionResponseSchema,
+       systemExecutionOptionsQuerySchema:

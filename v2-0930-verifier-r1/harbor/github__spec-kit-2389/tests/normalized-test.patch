@@ -1,0 +1,1595 @@
+diff --git a/tests/integrations/test_cli.py b/tests/integrations/test_cli.py
+index 95dcf20..bb17c86 100644
+--- a/tests/integrations/test_cli.py
++++ b/tests/integrations/test_cli.py
+@@ -1,13 +1,21 @@
+ """Tests for --integration flag on specify init (CLI-level)."""
+ 
++import io
+ import json
+ import os
+ 
++import pytest
+ import yaml
++from rich.console import Console
+ 
+ from tests.conftest import strip_ansi
+ 
+ 
++class _NoopConsole:
++    def print(self, *args, **kwargs):
++        pass
++
++
+ def _normalize_cli_output(output: str) -> str:
+     output = strip_ansi(output)
+     output = " ".join(output.split())
+@@ -254,6 +262,310 @@ class TestInitIntegrationFlag:
+         normalized = " ".join(captured.out.split())
+         assert "specify integration upgrade --force" in normalized
+ 
++    def test_shared_infra_warns_when_manifest_cannot_be_loaded(self, tmp_path, capsys):
++        """Invalid shared manifests warn before falling back to a new manifest."""
++        from specify_cli import _install_shared_infra
++
++        project = tmp_path / "bad-shared-manifest-test"
++        project.mkdir()
++        integrations_dir = project / ".specify" / "integrations"
++        integrations_dir.mkdir(parents=True)
++        manifest_path = integrations_dir / "speckit.manifest.json"
++        manifest_path.write_text("{not json", encoding="utf-8")
++
++        _install_shared_infra(project, "sh")
++
++        captured = capsys.readouterr()
++        assert "Could not read shared infrastructure manifest" in captured.out
++        assert "A new shared manifest will be created" in captured.out
++
++    def test_shared_infra_warns_when_manifest_cannot_be_decoded(self, tmp_path, capsys):
++        """Non-UTF-8 shared manifests warn before falling back to a new manifest."""
++        from specify_cli import _install_shared_infra
++
++        project = tmp_path / "bad-shared-manifest-encoding-test"
++        project.mkdir()
++        integrations_dir = project / ".specify" / "integrations"
++        integrations_dir.mkdir(parents=True)
++        manifest_path = integrations_dir / "speckit.manifest.json"
++        manifest_path.write_bytes(b"\xff\xfe\x00")
++
++        _install_shared_infra(project, "sh")
++
++        captured = capsys.readouterr()
++        assert "Could not read shared infrastructure manifest" in captured.out
++        assert "A new shared manifest will be created" in captured.out
++
++    @pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks are unavailable")
++    def test_shared_infra_refuses_symlinked_script_destination(self, tmp_path):
++        """Shared script refreshes must not follow destination symlinks."""
++        from specify_cli import _install_shared_infra
++
++        project = tmp_path / "symlink-script-test"
++        project.mkdir()
++        (project / ".specify").mkdir()
++
++        outside = tmp_path / "outside-script.sh"
++        outside.write_text("# outside\n", encoding="utf-8")
++        scripts_dir = project / ".specify" / "scripts" / "bash"
++        scripts_dir.mkdir(parents=True)
++        os.symlink(outside, scripts_dir / "common.sh")
++
++        with pytest.raises(ValueError, match="Refusing to overwrite symlinked"):
++            _install_shared_infra(project, "sh", force=True)
++
++        assert outside.read_text(encoding="utf-8") == "# outside\n"
++
++    @pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks are unavailable")
++    def test_shared_infra_refuses_symlinked_template_destination(self, tmp_path):
++        """Shared template installs must not follow destination symlinks."""
++        from specify_cli import _install_shared_infra
++
++        project = tmp_path / "symlink-template-test"
++        project.mkdir()
++        (project / ".specify").mkdir()
++
++        outside = tmp_path / "outside-template.md"
++        outside.write_text("# outside\n", encoding="utf-8")
++        templates_dir = project / ".specify" / "templates"
++        templates_dir.mkdir(parents=True)
++        os.symlink(outside, templates_dir / "plan-template.md")
++
++        with pytest.raises(ValueError, match="Refusing to overwrite symlinked"):
++            _install_shared_infra(project, "sh", force=True)
++
++        assert outside.read_text(encoding="utf-8") == "# outside\n"
++
++    @pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks are unavailable")
++    def test_shared_template_refresh_refuses_symlinked_destination(self, tmp_path):
++        """Template-only refreshes must not follow destination symlinks."""
++        from specify_cli import _refresh_shared_templates
++
++        project = tmp_path / "symlink-refresh-test"
++        project.mkdir()
++        (project / ".specify").mkdir()
++
++        outside = tmp_path / "outside-refresh.md"
++        outside.write_text("# outside\n", encoding="utf-8")
++        templates_dir = project / ".specify" / "templates"
++        templates_dir.mkdir(parents=True)
++        os.symlink(outside, templates_dir / "plan-template.md")
++
++        with pytest.raises(ValueError, match="Refusing to overwrite symlinked"):
++            _refresh_shared_templates(project, invoke_separator=".", force=True)
++
++        assert outside.read_text(encoding="utf-8") == "# outside\n"
++
++    @pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks are unavailable")
++    def test_shared_infra_refuses_symlinked_specify_directory_before_mkdir(self, tmp_path):
++        """Shared infra directory creation must not follow a symlinked .specify."""
++        from specify_cli import _install_shared_infra
++
++        project = tmp_path / "symlink-dir-test"
++        project.mkdir()
++        outside = tmp_path / "outside-specify"
++        outside.mkdir()
++        os.symlink(outside, project / ".specify")
++
++        with pytest.raises(ValueError, match="symlinked shared infrastructure directory"):
++            _install_shared_infra(project, "sh", force=True)
++
++        assert not (outside / "scripts").exists()
++        assert not (outside / "templates").exists()
++
++    @pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks are unavailable")
++    def test_shared_infra_refuses_symlinked_shared_manifest(self, tmp_path):
++        """Shared infra manifest saves must not follow destination symlinks."""
++        from specify_cli.shared_infra import install_shared_infra
++
++        project = tmp_path / "symlink-shared-manifest-test"
++        project.mkdir()
++        integrations_dir = project / ".specify" / "integrations"
++        integrations_dir.mkdir(parents=True)
++
++        outside = tmp_path / "outside-manifest.json"
++        outside.write_text("# outside\n", encoding="utf-8")
++        os.symlink(outside, integrations_dir / "speckit.manifest.json")
++
++        core_pack = tmp_path / "core-pack"
++        templates_src = core_pack / "templates"
++        templates_src.mkdir(parents=True)
++        (templates_src / "plan-template.md").write_text("# plan\n", encoding="utf-8")
++
++        with pytest.raises(ValueError, match="symlinked integration manifest"):
++            install_shared_infra(
++                project,
++                "sh",
++                version="test",
++                core_pack=core_pack,
++                repo_root=tmp_path / "unused",
++                console=_NoopConsole(),
++                force=True,
++            )
++
++        assert outside.read_text(encoding="utf-8") == "# outside\n"
++
++    @pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks are unavailable")
++    def test_shared_template_refresh_preflights_before_writing(self, tmp_path):
++        """Template refresh validates all destinations before writing any file."""
++        from specify_cli.shared_infra import refresh_shared_templates
++
++        project = tmp_path / "preflight-refresh-test"
++        project.mkdir()
++        templates_dir = project / ".specify" / "templates"
++        templates_dir.mkdir(parents=True)
++
++        core_pack = tmp_path / "core-pack"
++        templates_src = core_pack / "templates"
++        templates_src.mkdir(parents=True)
++        (templates_src / "a-template.md").write_text("# new a\n", encoding="utf-8")
++        (templates_src / "z-template.md").write_text("# new z\n", encoding="utf-8")
++
++        existing = templates_dir / "a-template.md"
++        existing.write_text("# old a\n", encoding="utf-8")
++        outside = tmp_path / "outside-z.md"
++        outside.write_text("# outside\n", encoding="utf-8")
++        os.symlink(outside, templates_dir / "z-template.md")
++
++        with pytest.raises(ValueError, match="Refusing to overwrite symlinked"):
++            refresh_shared_templates(
++                project,
++                version="test",
++                core_pack=core_pack,
++                repo_root=tmp_path / "unused",
++                console=_NoopConsole(),
++                invoke_separator=".",
++                force=True,
++            )
++
++        assert existing.read_text(encoding="utf-8") == "# old a\n"
++        assert outside.read_text(encoding="utf-8") == "# outside\n"
++
++    @pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks are unavailable")
++    def test_shared_infra_install_preflights_before_writing(self, tmp_path):
++        """Full shared infra installs validate destinations before writing any file."""
++        from specify_cli.shared_infra import install_shared_infra
++
++        project = tmp_path / "preflight-install-test"
++        project.mkdir()
++        scripts_dir = project / ".specify" / "scripts" / "bash"
++        scripts_dir.mkdir(parents=True)
++
++        core_pack = tmp_path / "core-pack"
++        scripts_src = core_pack / "scripts" / "bash"
++        scripts_src.mkdir(parents=True)
++        (scripts_src / "a.sh").write_text("# new a\n", encoding="utf-8")
++        (scripts_src / "z.sh").write_text("# new z\n", encoding="utf-8")
++
++        existing = scripts_dir / "a.sh"
++        existing.write_text("# old a\n", encoding="utf-8")
++        outside = tmp_path / "outside-z.sh"
++        outside.write_text("# outside\n", encoding="utf-8")
++        os.symlink(outside, scripts_dir / "z.sh")
++
++        with pytest.raises(ValueError, match="Refusing to overwrite symlinked"):
++            install_shared_infra(
++                project,
++                "sh",
++                version="test",
++                core_pack=core_pack,
++                repo_root=tmp_path / "unused",
++                console=_NoopConsole(),
++                force=True,
++            )
++
++        assert existing.read_text(encoding="utf-8") == "# old a\n"
++        assert outside.read_text(encoding="utf-8") == "# outside\n"
++
++    def test_shared_infra_install_supports_nested_script_sources(self, tmp_path):
++        """Nested script source files create safe destination parents at write time."""
++        from specify_cli.shared_infra import install_shared_infra
++
++        project = tmp_path / "nested-script-install-test"
++        project.mkdir()
++
++        core_pack = tmp_path / "core-pack"
++        nested_src = core_pack / "scripts" / "bash" / "nested"
++        nested_src.mkdir(parents=True)
++        (nested_src / "deep.sh").write_text("# nested\n", encoding="utf-8")
++
++        install_shared_infra(
++            project,
++            "sh",
++            version="test",
++            core_pack=core_pack,
++            repo_root=tmp_path / "unused",
++            console=_NoopConsole(),
++            force=True,
++        )
++
++        nested_dest = project / ".specify" / "scripts" / "bash" / "nested" / "deep.sh"
++        assert nested_dest.read_text(encoding="utf-8") == "# nested\n"
++
++    def test_shared_infra_skip_warning_uses_posix_paths(self, tmp_path):
++        """Skipped shared infra paths are reported consistently across platforms."""
++        from specify_cli.shared_infra import install_shared_infra
++
++        project = tmp_path / "posix-skip-warning-test"
++        project.mkdir()
++        nested_dest = project / ".specify" / "scripts" / "bash" / "nested"
++        nested_dest.mkdir(parents=True)
++        (nested_dest / "deep.sh").write_text("# existing script\n", encoding="utf-8")
++
++        templates_dest = project / ".specify" / "templates"
++        templates_dest.mkdir(parents=True)
++        (templates_dest / "plan-template.md").write_text("# existing template\n", encoding="utf-8")
++
++        core_pack = tmp_path / "core-pack"
++        nested_src = core_pack / "scripts" / "bash" / "nested"
++        nested_src.mkdir(parents=True)
++        (nested_src / "deep.sh").write_text("# bundled script\n", encoding="utf-8")
++
++        templates_src = core_pack / "templates"
++        templates_src.mkdir(parents=True)
++        (templates_src / "plan-template.md").write_text("# bundled template\n", encoding="utf-8")
++
++        buffer = io.StringIO()
++        install_shared_infra(
++            project,
++            "sh",
++            version="test",
++            core_pack=core_pack,
++            repo_root=tmp_path / "unused",
++            console=Console(file=buffer, force_terminal=False, width=120),
++            force=False,
++        )
++
++        output = buffer.getvalue()
++        assert ".specify/scripts/bash/nested/deep.sh" in output
++        assert ".specify/templates/plan-template.md" in output
++
++    @pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits are not stable on Windows")
++    def test_shared_template_writes_are_not_world_writable(self, tmp_path):
++        """Shared template writes use a safe default mode instead of chmod 666."""
++        from specify_cli.shared_infra import install_shared_infra
++
++        project = tmp_path / "template-mode-test"
++        project.mkdir()
++
++        core_pack = tmp_path / "core-pack"
++        templates_src = core_pack / "templates"
++        templates_src.mkdir(parents=True)
++        (templates_src / "plan-template.md").write_text("# plan\n", encoding="utf-8")
++
++        install_shared_infra(
++            project,
++            "sh",
++            version="test",
++            core_pack=core_pack,
++            repo_root=tmp_path / "unused",
++            console=_NoopConsole(),
++            force=True,
++        )
++
++        written = project / ".specify" / "templates" / "plan-template.md"
++        assert written.stat().st_mode & 0o777 == 0o644
++
+     def test_shared_infra_no_warning_when_forced(self, tmp_path, capsys):
+         """No skip warning when force=True (all files overwritten)."""
+         from specify_cli import _install_shared_infra
+@@ -712,6 +1024,7 @@ class TestIntegrationCatalogDiscoveryCLI:
+         commands = [
+             ["integration", "list"],
+             ["integration", "install", "codex"],
++            ["integration", "use", "codex"],
+             ["integration", "uninstall"],
+             ["integration", "switch", "codex"],
+             ["integration", "upgrade"],
+@@ -730,10 +1043,92 @@ class TestIntegrationCatalogDiscoveryCLI:
+         project.mkdir()
+         (project / ".specify").write_text("not a directory")
+ 
+-        result = self._invoke(["integration", "list"], project)
++        commands = [
++            ["integration", "list"],
++            ["integration", "use", "codex"],
++        ]
+ 
+-        assert result.exit_code == 1, result.output
+-        assert "Not a spec-kit project" in result.output
++        for command in commands:
++            result = self._invoke(command, project)
++            assert result.exit_code == 1, result.output
++            assert "Not a spec-kit project" in result.output
++
++    def test_project_scoped_commands_require_specify_directory(self, tmp_path):
++        project = tmp_path / "bad-feature-commands"
++        project.mkdir()
++        (project / ".specify").write_text("not a directory")
++
++        commands = [
++            ["preset", "list"],
++            ["preset", "add", "demo"],
++            ["preset", "remove", "demo"],
++            ["preset", "search"],
++            ["preset", "resolve", "spec-template"],
++            ["preset", "info", "demo"],
++            ["preset", "set-priority", "demo", "5"],
++            ["preset", "enable", "demo"],
++            ["preset", "disable", "demo"],
++            ["preset", "catalog", "list"],
++            ["preset", "catalog", "add", "https://example.com/catalog.yml", "--name", "demo"],
++            ["preset", "catalog", "remove", "demo"],
++            ["extension", "list"],
++            ["extension", "add", "demo"],
++            ["extension", "remove", "demo"],
++            ["extension", "search"],
++            ["extension", "info", "demo"],
++            ["extension", "update", "demo"],
++            ["extension", "enable", "demo"],
++            ["extension", "disable", "demo"],
++            ["extension", "set-priority", "demo", "5"],
++            ["extension", "catalog", "list"],
++            ["extension", "catalog", "add", "https://example.com/catalog.yml", "--name", "demo"],
++            ["extension", "catalog", "remove", "demo"],
++            ["workflow", "run", "demo"],
++            ["workflow", "resume", "demo"],
++            ["workflow", "status"],
++            ["workflow", "list"],
++            ["workflow", "add", "demo"],
++            ["workflow", "remove", "demo"],
++            ["workflow", "search"],
++            ["workflow", "info", "demo"],
++            ["workflow", "catalog", "add", "https://example.com/catalog.yml"],
++            ["workflow", "catalog", "remove", "0"],
++        ]
++
++        for command in commands:
++            result = self._invoke(command, project)
++            failure_context = (
++                f"command={command!r}, exit_code={result.exit_code}, output={result.output!r}"
++            )
++            assert result.exit_code == 1, failure_context
++            assert "Not a spec-kit project" in result.output, failure_context
++
++    def test_catalog_config_output_uses_posix_paths(self, tmp_path):
++        project = self._make_project(tmp_path)
++
++        preset_add = self._invoke([
++            "preset", "catalog", "add",
++            "https://example.com/preset-catalog.yml",
++            "--name", "demo-presets",
++        ], project)
++        assert preset_add.exit_code == 0, preset_add.output
++        assert "Config saved to .specify/preset-catalogs.yml" in preset_add.output
++
++        preset_list = self._invoke(["preset", "catalog", "list"], project)
++        assert preset_list.exit_code == 0, preset_list.output
++        assert "Config: .specify/preset-catalogs.yml" in preset_list.output
++
++        extension_add = self._invoke([
++            "extension", "catalog", "add",
++            "https://example.com/extension-catalog.yml",
++            "--name", "demo-extensions",
++        ], project)
++        assert extension_add.exit_code == 0, extension_add.output
++        assert "Config saved to .specify/extension-catalogs.yml" in extension_add.output
++
++        extension_list = self._invoke(["extension", "catalog", "list"], project)
++        assert extension_list.exit_code == 0, extension_list.output
++        assert "Config: .specify/extension-catalogs.yml" in extension_list.output
+ 
+     # -- search ------------------------------------------------------------
+ 
+diff --git a/tests/integrations/test_integration_catalog.py b/tests/integrations/test_integration_catalog.py
+index 6c55ae4..8b21ddf 100644
+--- a/tests/integrations/test_integration_catalog.py
++++ b/tests/integrations/test_integration_catalog.py
+@@ -670,7 +670,7 @@ class TestIntegrationUpgrade:
+         finally:
+             os.chdir(old)
+         assert result.exit_code != 0
+-        assert "not the currently installed integration" in result.output
++        assert "not installed" in result.output
+ 
+     def test_upgrade_no_manifest(self, tmp_path):
+         """Upgrade with missing manifest suggests fresh install."""
+diff --git a/tests/integrations/test_integration_state.py b/tests/integrations/test_integration_state.py
+new file mode 100644
+index 0000000..1d6bdb0
+--- /dev/null
++++ b/tests/integrations/test_integration_state.py
+@@ -0,0 +1,86 @@
++"""Tests for integration state normalization helpers."""
++
++import json
++
++from specify_cli.integration_state import (
++    INTEGRATION_JSON,
++    default_integration_key,
++    integration_setting,
++    normalize_integration_state,
++    write_integration_json,
++)
++
++
++def test_normalize_integration_state_strips_default_key_without_duplicates():
++    state = normalize_integration_state(
++        {
++            "default_integration": " claude ",
++            "integration": " claude ",
++            "installed_integrations": ["claude"],
++        }
++    )
++
++    assert state["integration"] == "claude"
++    assert state["default_integration"] == "claude"
++    assert state["installed_integrations"] == ["claude"]
++
++
++def test_normalize_integration_state_strips_legacy_key_fallback():
++    state = normalize_integration_state(
++        {
++            "integration": " codex ",
++            "installed_integrations": [],
++        }
++    )
++
++    assert state["integration"] == "codex"
++    assert state["default_integration"] == "codex"
++    assert state["installed_integrations"] == ["codex"]
++
++
++def test_normalize_integration_state_preserves_newer_schema():
++    state = normalize_integration_state(
++        {
++            "integration_state_schema": 99,
++            "integration": "claude",
++            "installed_integrations": ["claude"],
++            "future_field": {"keep": True},
++        }
++    )
++
++    assert state["integration_state_schema"] == 99
++    assert state["future_field"] == {"keep": True}
++
++
++def test_default_integration_key_strips_raw_state_values():
++    assert default_integration_key({"default_integration": " claude "}) == "claude"
++    assert default_integration_key({"integration": " codex "}) == "codex"
++
++
++def test_integration_settings_strip_invoke_separator():
++    setting = integration_setting(
++        {
++            "integration_settings": {
++                "claude": {
++                    "invoke_separator": " - ",
++                }
++            }
++        },
++        "claude",
++    )
++
++    assert setting["invoke_separator"] == "-"
++
++
++def test_write_integration_json_strips_integration_key(tmp_path):
++    write_integration_json(
++        tmp_path,
++        version="1.2.3",
++        integration_key=" claude ",
++        installed_integrations=["claude"],
++    )
++
++    state = json.loads((tmp_path / INTEGRATION_JSON).read_text(encoding="utf-8"))
++    assert state["integration"] == "claude"
++    assert state["default_integration"] == "claude"
++    assert state["installed_integrations"] == ["claude"]
+diff --git a/tests/integrations/test_integration_subcommand.py b/tests/integrations/test_integration_subcommand.py
+index 3952557..750bbb6 100644
+--- a/tests/integrations/test_integration_subcommand.py
++++ b/tests/integrations/test_integration_subcommand.py
+@@ -3,6 +3,7 @@
+ import json
+ import os
+ 
++import pytest
+ from typer.testing import CliRunner
+ 
+ from specify_cli import app
+@@ -41,6 +42,17 @@ def _run_in_project(project, args):
+         os.chdir(old_cwd)
+ 
+ 
++def _write_invalid_manifest(project, key):
++    manifest = project / ".specify" / "integrations" / f"{key}.manifest.json"
++    manifest.write_bytes(b"\xff\xfe\x00")
++    return manifest
++
++
++def _integration_list_row_cells(output: str, key: str) -> list[str]:
++    row = next(line for line in output.splitlines() if line.startswith(f"│ {key}"))
++    return [cell.strip() for cell in row.split("│")[1:-1]]
++
++
+ # ── list ─────────────────────────────────────────────────────────────
+ 
+ 
+@@ -80,6 +92,39 @@ class TestIntegrationList:
+         assert "claude" in result.output
+         assert "gemini" in result.output
+ 
++    def test_list_shows_multi_install_safe_status(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            result = runner.invoke(app, ["integration", "list"])
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code == 0
++        assert "Multi-install" in result.output
++        assert "Safe" in result.output
++        assert _integration_list_row_cells(result.output, "claude")[-1] == "yes"
++        assert _integration_list_row_cells(result.output, "copilot")[-1] == "no"
++
++    def test_list_rejects_newer_integration_state_schema(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        int_json = project / ".specify" / "integration.json"
++        data = json.loads(int_json.read_text(encoding="utf-8"))
++        data["integration_state_schema"] = 99
++        int_json.write_text(json.dumps(data), encoding="utf-8")
++
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            result = runner.invoke(app, ["integration", "list"])
++        finally:
++            os.chdir(old_cwd)
++
++        assert result.exit_code != 0
++        normalized = " ".join(result.output.split())
++        assert "schema 99" in normalized
++        assert "only supports schema 1" in normalized
++
+ 
+ # ── install ──────────────────────────────────────────────────────────
+ 
+@@ -116,7 +161,9 @@ class TestIntegrationInstall:
+             os.chdir(old_cwd)
+         assert result.exit_code == 0
+         assert "already installed" in result.output
+-        assert "uninstall" in result.output
++        normalized = " ".join(result.output.split())
++        assert "specify integration upgrade copilot" in normalized
++        assert "specify integration uninstall copilot" in normalized
+ 
+     def test_install_different_when_one_exists(self, tmp_path):
+         project = _init_project(tmp_path, "copilot")
+@@ -127,8 +174,112 @@ class TestIntegrationInstall:
+         finally:
+             os.chdir(old_cwd)
+         assert result.exit_code != 0
+-        assert "already installed" in result.output
+-        assert "uninstall" in result.output
++        assert "Installed integrations: copilot" in result.output
++        assert "Default integration: copilot" in result.output
++        assert "--force" in result.output
++
++    def test_install_multi_safe_integration(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            result = runner.invoke(app, [
++                "integration", "install", "codex",
++                "--script", "sh",
++            ], catch_exceptions=False)
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code == 0, result.output
++        assert "installed successfully" in result.output
++
++        data = json.loads((project / ".specify" / "integration.json").read_text(encoding="utf-8"))
++        assert data["integration"] == "claude"
++        assert data["default_integration"] == "claude"
++        assert data["integration_state_schema"] == 1
++        assert data["installed_integrations"] == ["claude", "codex"]
++        assert data["integration_settings"]["claude"]["invoke_separator"] == "-"
++        assert data["integration_settings"]["codex"]["invoke_separator"] == "-"
++
++        assert (project / ".claude" / "skills" / "speckit-plan" / "SKILL.md").exists()
++        assert (project / ".agents" / "skills" / "speckit-plan" / "SKILL.md").exists()
++
++    def test_install_additional_preserves_shared_manifest(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        shared_manifest = project / ".specify" / "integrations" / "speckit.manifest.json"
++        before = set(json.loads(shared_manifest.read_text(encoding="utf-8"))["files"])
++        assert before
++
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            result = runner.invoke(app, [
++                "integration", "install", "codex",
++                "--script", "sh",
++            ], catch_exceptions=False)
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code == 0, result.output
++
++        after = set(json.loads(shared_manifest.read_text(encoding="utf-8"))["files"])
++        assert before <= after
++
++    def test_install_multi_safe_migrates_legacy_state(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        int_json = project / ".specify" / "integration.json"
++        int_json.write_text(json.dumps({
++            "integration": "claude",
++            "version": "0.0.0",
++        }), encoding="utf-8")
++
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            result = runner.invoke(app, [
++                "integration", "install", "codex",
++                "--script", "sh",
++            ], catch_exceptions=False)
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code == 0, result.output
++
++        data = json.loads(int_json.read_text(encoding="utf-8"))
++        assert data["integration"] == "claude"
++        assert data["default_integration"] == "claude"
++        assert data["installed_integrations"] == ["claude", "codex"]
++
++    def test_install_multi_unsafe_requires_force(self, tmp_path):
++        project = _init_project(tmp_path, "copilot")
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            result = runner.invoke(app, [
++                "integration", "install", "claude",
++                "--script", "sh",
++            ])
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code != 0
++        assert "Installed integrations: copilot" in result.output
++        assert "multi-install safe" in result.output
++        assert "--force" in result.output
++
++    def test_install_multi_unsafe_allowed_with_force(self, tmp_path):
++        project = _init_project(tmp_path, "copilot")
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            result = runner.invoke(app, [
++                "integration", "install", "claude",
++                "--script", "sh",
++                "--force",
++            ], catch_exceptions=False)
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code == 0, result.output
++
++        data = json.loads((project / ".specify" / "integration.json").read_text(encoding="utf-8"))
++        assert data["integration"] == "copilot"
++        assert data["installed_integrations"] == ["copilot", "claude"]
+ 
+     def test_install_into_bare_project(self, tmp_path):
+         """Install into a project with .specify/ but no integration."""
+@@ -246,6 +397,7 @@ class TestIntegrationUninstall:
+             os.chdir(old_cwd)
+         assert result.exit_code == 0
+         assert "preserved" in result.output
++        assert ".claude/skills/speckit-plan/SKILL.md" in result.output
+ 
+         # Modified file kept
+         assert plan_file.exists()
+@@ -260,7 +412,68 @@ class TestIntegrationUninstall:
+         finally:
+             os.chdir(old_cwd)
+         assert result.exit_code != 0
+-        assert "not the currently installed" in result.output
++        assert "not installed" in result.output
++
++    def test_uninstall_invalid_manifest_reports_cli_error(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        _write_invalid_manifest(project, "claude")
++
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            result = runner.invoke(app, ["integration", "uninstall", "claude"])
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code != 0
++        assert "manifest" in result.output
++        assert "unreadable" in result.output
++
++    def test_uninstall_non_default_preserves_default(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            install = runner.invoke(app, [
++                "integration", "install", "codex",
++                "--script", "sh",
++            ], catch_exceptions=False)
++            assert install.exit_code == 0, install.output
++
++            result = runner.invoke(app, [
++                "integration", "uninstall", "codex",
++            ], catch_exceptions=False)
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code == 0, result.output
++        assert not (project / ".agents" / "skills" / "speckit-plan" / "SKILL.md").exists()
++        assert (project / ".claude" / "skills" / "speckit-plan" / "SKILL.md").exists()
++
++        data = json.loads((project / ".specify" / "integration.json").read_text(encoding="utf-8"))
++        assert data["integration"] == "claude"
++        assert data["installed_integrations"] == ["claude"]
++
++    def test_uninstall_default_refreshes_templates_for_fallback(self, tmp_path):
++        project = _init_project(tmp_path, "gemini")
++        template = project / ".specify" / "templates" / "plan-template.md"
++        assert "/speckit.plan" in template.read_text(encoding="utf-8")
++
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            install = runner.invoke(app, [
++                "integration", "install", "claude",
++                "--script", "sh",
++            ], catch_exceptions=False)
++            assert install.exit_code == 0, install.output
++
++            result = runner.invoke(app, ["integration", "uninstall", "gemini"], catch_exceptions=False)
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code == 0, result.output
++
++        data = json.loads((project / ".specify" / "integration.json").read_text(encoding="utf-8"))
++        assert data["integration"] == "claude"
++        assert "/speckit-plan" in template.read_text(encoding="utf-8")
+ 
+     def test_uninstall_preserves_shared_infra(self, tmp_path):
+         """Shared scripts and templates are not removed by integration uninstall."""
+@@ -281,6 +494,135 @@ class TestIntegrationUninstall:
+         assert (project / ".specify" / "templates").is_dir()
+ 
+ 
++class TestIntegrationUse:
++    def test_use_installed_integration_sets_default(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            install = runner.invoke(app, [
++                "integration", "install", "codex",
++                "--script", "sh",
++            ], catch_exceptions=False)
++            assert install.exit_code == 0, install.output
++
++            result = runner.invoke(app, ["integration", "use", "codex"], catch_exceptions=False)
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code == 0, result.output
++
++        data = json.loads((project / ".specify" / "integration.json").read_text(encoding="utf-8"))
++        assert data["integration"] == "codex"
++        assert data["default_integration"] == "codex"
++        assert data["installed_integrations"] == ["claude", "codex"]
++
++        opts = json.loads((project / ".specify" / "init-options.json").read_text(encoding="utf-8"))
++        assert opts["integration"] == "codex"
++        assert opts["ai"] == "codex"
++
++    def test_use_requires_installed_integration(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            result = runner.invoke(app, ["integration", "use", "codex"])
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code != 0
++        assert "not installed" in result.output
++
++    def test_use_refreshes_shared_templates_between_command_styles(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        template = project / ".specify" / "templates" / "plan-template.md"
++        assert "/speckit-plan" in template.read_text(encoding="utf-8")
++
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            install = runner.invoke(app, [
++                "integration", "install", "gemini",
++                "--script", "sh",
++            ], catch_exceptions=False)
++            assert install.exit_code == 0, install.output
++
++            use_gemini = runner.invoke(app, ["integration", "use", "gemini"], catch_exceptions=False)
++            assert use_gemini.exit_code == 0, use_gemini.output
++            assert "/speckit.plan" in template.read_text(encoding="utf-8")
++
++            use_claude = runner.invoke(app, ["integration", "use", "claude"], catch_exceptions=False)
++            assert use_claude.exit_code == 0, use_claude.output
++            assert "/speckit-plan" in template.read_text(encoding="utf-8")
++        finally:
++            os.chdir(old_cwd)
++
++    def test_use_preserves_modified_templates_unless_forced(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        template = project / ".specify" / "templates" / "plan-template.md"
++        template.write_text("custom template with /speckit-plan\n", encoding="utf-8")
++
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            install = runner.invoke(app, [
++                "integration", "install", "gemini",
++                "--script", "sh",
++            ], catch_exceptions=False)
++            assert install.exit_code == 0, install.output
++
++            use_gemini = runner.invoke(app, ["integration", "use", "gemini"], catch_exceptions=False)
++            assert use_gemini.exit_code == 0, use_gemini.output
++            assert template.read_text(encoding="utf-8") == "custom template with /speckit-plan\n"
++
++            force_use = runner.invoke(app, [
++                "integration", "use", "gemini",
++                "--force",
++            ], catch_exceptions=False)
++            assert force_use.exit_code == 0, force_use.output
++        finally:
++            os.chdir(old_cwd)
++
++        updated = template.read_text(encoding="utf-8")
++        assert "/speckit.plan" in updated
++        assert "custom template" not in updated
++
++    @pytest.mark.skipif(not hasattr(os, "symlink"), reason="symlinks are unavailable")
++    def test_use_does_not_persist_default_when_template_refresh_fails(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        int_json = project / ".specify" / "integration.json"
++        init_options = project / ".specify" / "init-options.json"
++
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            install = runner.invoke(app, [
++                "integration", "install", "codex",
++                "--script", "sh",
++            ], catch_exceptions=False)
++            assert install.exit_code == 0, install.output
++
++            before_state = json.loads(int_json.read_text(encoding="utf-8"))
++            before_options = json.loads(init_options.read_text(encoding="utf-8"))
++
++            outside = tmp_path / "outside-template.md"
++            outside.write_text("# outside\n", encoding="utf-8")
++            template = project / ".specify" / "templates" / "plan-template.md"
++            template.unlink()
++            os.symlink(outside, template)
++
++            result = runner.invoke(app, [
++                "integration", "use", "codex",
++                "--force",
++            ])
++        finally:
++            os.chdir(old_cwd)
++
++        assert result.exit_code != 0
++        assert "Failed to refresh shared templates" in result.output
++        assert json.loads(int_json.read_text(encoding="utf-8")) == before_state
++        assert json.loads(init_options.read_text(encoding="utf-8")) == before_options
++        assert outside.read_text(encoding="utf-8") == "# outside\n"
++
++
+ # ── switch ───────────────────────────────────────────────────────────
+ 
+ 
+@@ -306,6 +648,22 @@ class TestIntegrationSwitch:
+         assert result.exit_code != 0
+         assert "Unknown integration" in result.output
+ 
++    def test_switch_invalid_current_manifest_reports_cli_error(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        _write_invalid_manifest(project, "claude")
++
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            result = runner.invoke(app, [
++                "integration", "switch", "codex",
++                "--script", "sh",
++            ])
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code != 0
++        assert "Could not read integration manifest" in result.output
++
+     def test_switch_same_noop(self, tmp_path):
+         project = _init_project(tmp_path, "copilot")
+         old_cwd = os.getcwd()
+@@ -315,7 +673,48 @@ class TestIntegrationSwitch:
+         finally:
+             os.chdir(old_cwd)
+         assert result.exit_code == 0
+-        assert "already installed" in result.output
++        assert "already the default integration" in result.output
++
++    def test_switch_same_force_refreshes_shared_templates(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        template = project / ".specify" / "templates" / "plan-template.md"
++        template.write_text("# custom shared template\n", encoding="utf-8")
++
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            result = runner.invoke(app, [
++                "integration", "switch", "claude",
++                "--force",
++            ], catch_exceptions=False)
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code == 0, result.output
++        assert "managed shared templates refreshed" in result.output
++        assert "/speckit-plan" in template.read_text(encoding="utf-8")
++
++    def test_switch_installed_target_rejects_integration_options(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            install = runner.invoke(app, [
++                "integration", "install", "codex",
++                "--script", "sh",
++            ], catch_exceptions=False)
++            assert install.exit_code == 0, install.output
++
++            result = runner.invoke(app, [
++                "integration", "switch", "codex",
++                "--integration-options", "--bogus",
++            ])
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code != 0
++        assert "--integration-options cannot be used" in result.output
++
++        data = json.loads((project / ".specify" / "integration.json").read_text(encoding="utf-8"))
++        assert data["default_integration"] == "claude"
+ 
+     def test_switch_between_integrations(self, tmp_path):
+         project = _init_project(tmp_path, "claude")
+@@ -522,6 +921,107 @@ class TestIntegrationSwitch:
+         data = json.loads((project / ".specify" / "integration.json").read_text(encoding="utf-8"))
+         assert data["integration"] == "claude"
+ 
++    def test_failed_switch_keeps_fallback_metadata_consistent(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            install = runner.invoke(app, [
++                "integration", "install", "codex",
++                "--script", "sh",
++            ], catch_exceptions=False)
++            assert install.exit_code == 0, install.output
++
++            result = runner.invoke(app, [
++                "integration", "switch", "generic",
++                "--script", "sh",
++            ], catch_exceptions=False)
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code != 0
++
++        data = json.loads((project / ".specify" / "integration.json").read_text(encoding="utf-8"))
++        assert data["integration"] == "codex"
++        assert data["installed_integrations"] == ["codex"]
++
++        opts = json.loads((project / ".specify" / "init-options.json").read_text(encoding="utf-8"))
++        assert opts["integration"] == "codex"
++        assert opts["ai"] == "codex"
++
++        template = project / ".specify" / "templates" / "plan-template.md"
++        assert "/speckit-plan" in template.read_text(encoding="utf-8")
++
++
++class TestIntegrationUpgrade:
++    def test_upgrade_invalid_manifest_reports_cli_error(self, tmp_path):
++        project = _init_project(tmp_path, "claude")
++        _write_invalid_manifest(project, "claude")
++
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            result = runner.invoke(app, ["integration", "upgrade", "claude"])
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code != 0
++        assert "manifest" in result.output
++        assert "unreadable" in result.output
++
++    def test_upgrade_does_not_persist_state_when_template_refresh_fails(self, tmp_path, monkeypatch):
++        project = _init_project(tmp_path, "claude")
++        int_json = project / ".specify" / "integration.json"
++        init_options = project / ".specify" / "init-options.json"
++        manifest_path = project / ".specify" / "integrations" / "claude.manifest.json"
++
++        before_state = json.loads(int_json.read_text(encoding="utf-8"))
++        before_options = json.loads(init_options.read_text(encoding="utf-8"))
++        before_manifest = manifest_path.read_text(encoding="utf-8")
++
++        import specify_cli
++
++        def fail_refresh(*args, **kwargs):
++            raise ValueError("refuse refresh")
++
++        monkeypatch.setattr(specify_cli, "_refresh_shared_templates", fail_refresh)
++
++        result = _run_in_project(project, [
++            "integration", "upgrade", "claude",
++            "--force",
++        ])
++
++        assert result.exit_code != 0
++        assert "Failed to refresh shared templates" in result.output
++        assert json.loads(int_json.read_text(encoding="utf-8")) == before_state
++        assert json.loads(init_options.read_text(encoding="utf-8")) == before_options
++        assert manifest_path.read_text(encoding="utf-8") == before_manifest
++
++    def test_upgrade_non_default_keeps_default_template_invocations(self, tmp_path):
++        project = _init_project(tmp_path, "gemini")
++        template = project / ".specify" / "templates" / "plan-template.md"
++        assert "/speckit.plan" in template.read_text(encoding="utf-8")
++
++        old_cwd = os.getcwd()
++        try:
++            os.chdir(project)
++            install = runner.invoke(app, [
++                "integration", "install", "claude",
++                "--script", "sh",
++            ], catch_exceptions=False)
++            assert install.exit_code == 0, install.output
++
++            result = runner.invoke(app, [
++                "integration", "upgrade", "claude",
++                "--script", "sh",
++                "--force",
++            ], catch_exceptions=False)
++        finally:
++            os.chdir(old_cwd)
++        assert result.exit_code == 0, result.output
++
++        data = json.loads((project / ".specify" / "integration.json").read_text(encoding="utf-8"))
++        assert data["integration"] == "gemini"
++        assert "/speckit.plan" in template.read_text(encoding="utf-8")
++
+ 
+ # ── Full lifecycle ───────────────────────────────────────────────────
+ 
+diff --git a/tests/integrations/test_registry.py b/tests/integrations/test_registry.py
+index 8ab1425..1b36501 100644
+--- a/tests/integrations/test_registry.py
++++ b/tests/integrations/test_registry.py
+@@ -1,7 +1,13 @@
+ """Tests for INTEGRATION_REGISTRY — mechanics, completeness, and registrar alignment."""
+ 
++import json
++import os
++from pathlib import PurePosixPath
++
+ import pytest
++from typer.testing import CliRunner
+ 
++from specify_cli import app
+ from specify_cli.integrations import (
+     INTEGRATION_REGISTRY,
+     _register,
+@@ -25,6 +31,72 @@ ALL_INTEGRATION_KEYS = [
+ ]
+ 
+ 
++def _multi_install_safe_keys() -> list[str]:
++    return sorted(
++        key
++        for key, integration in INTEGRATION_REGISTRY.items()
++        if integration.multi_install_safe
++    )
++
++
++def _multi_install_safe_pairs() -> list[tuple[str, str]]:
++    safe_keys = _multi_install_safe_keys()
++    return [
++        (safe_keys[left], safe_keys[right])
++        for left in range(len(safe_keys))
++        for right in range(left + 1, len(safe_keys))
++    ]
++
++
++def _posix_path(value: str | None) -> str | None:
++    if not value:
++        return None
++    return PurePosixPath(value).as_posix()
++
++
++def _integration_root_dir(key: str) -> str | None:
++    integration = INTEGRATION_REGISTRY[key]
++    cfg = integration.config if isinstance(integration.config, dict) else {}
++    return _posix_path(cfg.get("folder"))
++
++
++def _integration_commands_dir(key: str) -> str | None:
++    integration = INTEGRATION_REGISTRY[key]
++    cfg = integration.config if isinstance(integration.config, dict) else {}
++    folder = cfg.get("folder")
++    if not folder:
++        return None
++    subdir = cfg.get("commands_subdir", "commands")
++    return (PurePosixPath(folder) / subdir).as_posix()
++
++
++def _paths_overlap(first: str | None, second: str | None) -> bool:
++    if not first or not second:
++        return False
++    left = PurePosixPath(first)
++    right = PurePosixPath(second)
++    try:
++        left.relative_to(right)
++        return True
++    except ValueError:
++        pass
++    try:
++        right.relative_to(left)
++        return True
++    except ValueError:
++        return False
++
++
++def _path_is_inside(path: str | None, directory: str | None) -> bool:
++    if not path or not directory:
++        return False
++    try:
++        PurePosixPath(path).relative_to(PurePosixPath(directory))
++        return True
++    except ValueError:
++        return False
++
++
+ class TestRegistry:
+     def test_registry_is_dict(self):
+         assert isinstance(INTEGRATION_REGISTRY, dict)
+@@ -85,3 +157,134 @@ class TestRegistrarKeyAlignment:
+         """The old 'cursor' shorthand must not appear in AGENT_CONFIGS."""
+         from specify_cli.agents import CommandRegistrar
+         assert "cursor" not in CommandRegistrar.AGENT_CONFIGS
++
++
++class TestMultiInstallSafeContracts:
++    """Declared safe integrations must stay isolated from each other."""
++
++    @pytest.mark.parametrize("key", _multi_install_safe_keys())
++    def test_safe_integrations_have_static_isolated_paths(self, key):
++        integration = INTEGRATION_REGISTRY[key]
++
++        assert _integration_root_dir(key), (
++            f"{key} is declared multi-install safe but has no static root directory"
++        )
++        assert _integration_commands_dir(key), (
++            f"{key} is declared multi-install safe but has no static commands directory"
++        )
++        assert integration.context_file, (
++            f"{key} is declared multi-install safe but has no context file"
++        )
++
++    @pytest.mark.parametrize(("first", "second"), _multi_install_safe_pairs())
++    def test_safe_integrations_have_distinct_agent_roots(self, first, second):
++        assert not _paths_overlap(_integration_root_dir(first), _integration_root_dir(second)), (
++            f"{first} and {second} are declared multi-install safe but have "
++            f"overlapping agent roots {_integration_root_dir(first)!r} and "
++            f"{_integration_root_dir(second)!r}"
++        )
++
++    @pytest.mark.parametrize(("first", "second"), _multi_install_safe_pairs())
++    def test_safe_integrations_have_distinct_command_dirs(self, first, second):
++        assert not _paths_overlap(_integration_commands_dir(first), _integration_commands_dir(second)), (
++            f"{first} and {second} are declared multi-install safe but have "
++            f"overlapping command directories {_integration_commands_dir(first)!r} and "
++            f"{_integration_commands_dir(second)!r}"
++        )
++
++    @pytest.mark.parametrize(("first", "second"), _multi_install_safe_pairs())
++    def test_safe_integrations_have_distinct_context_files(self, first, second):
++        first_context = _posix_path(INTEGRATION_REGISTRY[first].context_file)
++        second_context = _posix_path(INTEGRATION_REGISTRY[second].context_file)
++
++        assert first_context != second_context, (
++            f"{first} and {second} are declared multi-install safe but share "
++            f"context file {first_context!r}"
++        )
++
++    @pytest.mark.parametrize(("first", "second"), _multi_install_safe_pairs())
++    def test_safe_context_files_do_not_overlap_other_agent_roots(self, first, second):
++        first_context = _posix_path(INTEGRATION_REGISTRY[first].context_file)
++        second_context = _posix_path(INTEGRATION_REGISTRY[second].context_file)
++
++        assert not _path_is_inside(first_context, _integration_root_dir(second)), (
++            f"{first} context file {first_context!r} lives under {second} "
++            f"agent root {_integration_root_dir(second)!r}"
++        )
++        assert not _path_is_inside(second_context, _integration_root_dir(first)), (
++            f"{second} context file {second_context!r} lives under {first} "
++            f"agent root {_integration_root_dir(first)!r}"
++        )
++
++    @pytest.mark.parametrize(("first", "second"), _multi_install_safe_pairs())
++    def test_safe_context_files_do_not_overlap_other_command_dirs(self, first, second):
++        first_context = _posix_path(INTEGRATION_REGISTRY[first].context_file)
++        second_context = _posix_path(INTEGRATION_REGISTRY[second].context_file)
++
++        assert not _path_is_inside(first_context, _integration_commands_dir(second)), (
++            f"{first} context file {first_context!r} lives under {second} "
++            f"commands directory {_integration_commands_dir(second)!r}"
++        )
++        assert not _path_is_inside(second_context, _integration_commands_dir(first)), (
++            f"{second} context file {second_context!r} lives under {first} "
++            f"commands directory {_integration_commands_dir(first)!r}"
++        )
++
++    @pytest.mark.parametrize(("first", "second"), _multi_install_safe_pairs())
++    def test_safe_integrations_have_disjoint_manifests(
++        self,
++        tmp_path,
++        first,
++        second,
++    ):
++        for initial, additional in ((first, second), (second, first)):
++            project_root = tmp_path / f"project-{initial}-{additional}"
++            project_root.mkdir()
++            runner = CliRunner()
++
++            original_cwd = os.getcwd()
++            try:
++                os.chdir(project_root)
++                init_result = runner.invoke(
++                    app,
++                    [
++                        "init",
++                        "--here",
++                        "--integration",
++                        initial,
++                        "--script",
++                        "sh",
++                        "--no-git",
++                        "--ignore-agent-tools",
++                    ],
++                    catch_exceptions=False,
++                )
++                assert init_result.exit_code == 0, init_result.output
++
++                install_result = runner.invoke(
++                    app,
++                    ["integration", "install", additional, "--script", "sh"],
++                    catch_exceptions=False,
++                )
++                assert install_result.exit_code == 0, install_result.output
++            finally:
++                os.chdir(original_cwd)
++
++            initial_manifest = json.loads(
++                (
++                    project_root / ".specify" / "integrations" / f"{initial}.manifest.json"
++                ).read_text(encoding="utf-8")
++            )
++            additional_manifest = json.loads(
++                (
++                    project_root / ".specify" / "integrations" / f"{additional}.manifest.json"
++                ).read_text(encoding="utf-8")
++            )
++
++            initial_files = set(initial_manifest.get("files", {}))
++            additional_files = set(additional_manifest.get("files", {}))
++
++            assert initial_files.isdisjoint(additional_files), (
++                f"{initial} and {additional} are declared multi-install safe but both manage "
++                f"these files: {sorted(initial_files & additional_files)}"
++            )
+diff --git a/tests/test_presets.py b/tests/test_presets.py
+index 4b167ed..848c072 100644
+--- a/tests/test_presets.py
++++ b/tests/test_presets.py
+@@ -14,6 +14,7 @@ import pytest
+ import json
+ import tempfile
+ import shutil
++import warnings
+ import zipfile
+ from pathlib import Path
+ from datetime import datetime, timezone
+@@ -1921,6 +1922,10 @@ class TestPresetCatalogMultiCatalog:
+ 
+ 
+ SELF_TEST_PRESET_DIR = Path(__file__).parent.parent / "presets" / "self-test"
++SELF_TEST_WRAP_WARNING = (
++    r"Cannot compose command 'speckit\.wrap-test': no base layer\. "
++    r"Stale command files may remain\."
++)
+ 
+ CORE_TEMPLATE_NAMES = [
+     "spec-template",
+@@ -1931,6 +1936,18 @@ CORE_TEMPLATE_NAMES = [
+ ]
+ 
+ 
++def install_self_test_preset(manager: PresetManager, speckit_version: str = "0.1.5") -> PresetManifest:
++    """Install self-test while filtering its intentionally missing wrap base."""
++    with warnings.catch_warnings():
++        warnings.filterwarnings(
++            "ignore",
++            message=SELF_TEST_WRAP_WARNING,
++            category=UserWarning,
++            module=r"specify_cli\.presets",
++        )
++        return manager.install_from_directory(SELF_TEST_PRESET_DIR, speckit_version)
++
++
+ class TestSelfTestPreset:
+     """Tests using the self-test preset that ships with the repo."""
+ 
+@@ -1971,7 +1988,7 @@ class TestSelfTestPreset:
+     def test_install_self_test_preset(self, project_dir):
+         """Test installing the self-test preset from its directory."""
+         manager = PresetManager(project_dir)
+-        manifest = manager.install_from_directory(SELF_TEST_PRESET_DIR, "0.1.5")
++        manifest = install_self_test_preset(manager)
+         assert manifest.id == "self-test"
+         assert manager.registry.is_installed("self-test")
+ 
+@@ -1984,7 +2001,7 @@ class TestSelfTestPreset:
+ 
+         # Install self-test preset
+         manager = PresetManager(project_dir)
+-        manager.install_from_directory(SELF_TEST_PRESET_DIR, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         # Every core template should now resolve from the preset
+         resolver = PresetResolver(project_dir)
+@@ -2003,7 +2020,7 @@ class TestSelfTestPreset:
+             (templates_dir / f"{name}.md").write_text(f"# Core {name}\n")
+ 
+         manager = PresetManager(project_dir)
+-        manager.install_from_directory(SELF_TEST_PRESET_DIR, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         resolver = PresetResolver(project_dir)
+         for name in CORE_TEMPLATE_NAMES:
+@@ -2020,7 +2037,7 @@ class TestSelfTestPreset:
+             (templates_dir / f"{name}.md").write_text(f"# Core {name}\n")
+ 
+         manager = PresetManager(project_dir)
+-        manager.install_from_directory(SELF_TEST_PRESET_DIR, "0.1.5")
++        install_self_test_preset(manager)
+         manager.remove("self-test")
+ 
+         resolver = PresetResolver(project_dir)
+@@ -2056,7 +2073,7 @@ class TestSelfTestPreset:
+         claude_dir.mkdir(parents=True)
+ 
+         manager = PresetManager(project_dir)
+-        manager.install_from_directory(SELF_TEST_PRESET_DIR, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         # Check the skill was registered
+         cmd_file = claude_dir / "speckit-specify" / "SKILL.md"
+@@ -2072,7 +2089,7 @@ class TestSelfTestPreset:
+         gemini_dir.mkdir(parents=True)
+ 
+         manager = PresetManager(project_dir)
+-        manager.install_from_directory(SELF_TEST_PRESET_DIR, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         # Check the command was registered in TOML format
+         cmd_file = gemini_dir / "speckit.specify.toml"
+@@ -2087,7 +2104,7 @@ class TestSelfTestPreset:
+         claude_dir.mkdir(parents=True)
+ 
+         manager = PresetManager(project_dir)
+-        manager.install_from_directory(SELF_TEST_PRESET_DIR, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         cmd_file = claude_dir / "speckit-specify" / "SKILL.md"
+         assert cmd_file.exists()
+@@ -2098,7 +2115,7 @@ class TestSelfTestPreset:
+     def test_self_test_no_commands_without_agent_dirs(self, project_dir):
+         """Test that no commands are registered when no agent dirs exist."""
+         manager = PresetManager(project_dir)
+-        manager.install_from_directory(SELF_TEST_PRESET_DIR, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         metadata = manager.registry.get("self-test")
+         assert metadata["registered_commands"] == {}
+@@ -2247,8 +2264,7 @@ class TestPresetSkills:
+ 
+         # Install self-test preset (has a command override for speckit.specify)
+         manager = PresetManager(project_dir)
+-        SELF_TEST_DIR = Path(__file__).parent.parent / "presets" / "self-test"
+-        manager.install_from_directory(SELF_TEST_DIR, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         skill_file = skills_dir / "speckit-specify" / "SKILL.md"
+         assert skill_file.exists()
+@@ -2267,8 +2283,7 @@ class TestPresetSkills:
+         self._create_skill(skills_dir, "speckit-specify", body="untouched")
+ 
+         manager = PresetManager(project_dir)
+-        SELF_TEST_DIR = Path(__file__).parent.parent / "presets" / "self-test"
+-        manager.install_from_directory(SELF_TEST_DIR, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         skill_file = skills_dir / "speckit-specify" / "SKILL.md"
+         content = skill_file.read_text()
+@@ -2300,8 +2315,7 @@ class TestPresetSkills:
+         self._create_skill(skills_dir, "speckit-specify", body="untouched")
+ 
+         manager = PresetManager(project_dir)
+-        SELF_TEST_DIR = Path(__file__).parent.parent / "presets" / "self-test"
+-        manager.install_from_directory(SELF_TEST_DIR, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         skill_file = skills_dir / "speckit-specify" / "SKILL.md"
+         file_content = skill_file.read_text()
+@@ -2321,8 +2335,7 @@ class TestPresetSkills:
+         (core_cmds / "specify.md").write_text("---\ndescription: Core specify command\n---\n\nCore specify body\n")
+ 
+         manager = PresetManager(project_dir)
+-        SELF_TEST_DIR = Path(__file__).parent.parent / "presets" / "self-test"
+-        manager.install_from_directory(SELF_TEST_DIR, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         # Verify preset content is in the skill
+         skill_file = skills_dir / "speckit-specify" / "SKILL.md"
+@@ -2358,8 +2371,7 @@ class TestPresetSkills:
+         )
+ 
+         manager = PresetManager(project_dir)
+-        SELF_TEST_DIR = Path(__file__).parent.parent / "presets" / "self-test"
+-        manager.install_from_directory(SELF_TEST_DIR, "0.1.5")
++        install_self_test_preset(manager)
+         manager.remove("self-test")
+ 
+         content = (skills_dir / "speckit-specify" / "SKILL.md").read_text()
+@@ -2375,8 +2387,7 @@ class TestPresetSkills:
+         (skills_dir / "speckit-specify").write_text("not-a-directory")
+ 
+         manager = PresetManager(project_dir)
+-        SELF_TEST_DIR = Path(__file__).parent.parent / "presets" / "self-test"
+-        manager.install_from_directory(SELF_TEST_DIR, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         assert (skills_dir / "speckit-specify").is_file()
+         metadata = manager.registry.get("self-test")
+@@ -2388,8 +2399,7 @@ class TestPresetSkills:
+         # Don't create skills dir — simulate --ai-skills never created them
+ 
+         manager = PresetManager(project_dir)
+-        SELF_TEST_DIR = Path(__file__).parent.parent / "presets" / "self-test"
+-        manager.install_from_directory(SELF_TEST_DIR, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         metadata = manager.registry.get("self-test")
+         assert metadata.get("registered_skills", []) == []
+@@ -2590,8 +2600,7 @@ class TestPresetSkills:
+         (project_dir / ".kimi" / "commands").mkdir(parents=True, exist_ok=True)
+ 
+         manager = PresetManager(project_dir)
+-        self_test_dir = Path(__file__).parent.parent / "presets" / "self-test"
+-        manager.install_from_directory(self_test_dir, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         skill_file = skills_dir / "speckit.specify" / "SKILL.md"
+         assert skill_file.exists()
+@@ -2611,8 +2620,7 @@ class TestPresetSkills:
+         (project_dir / ".kimi" / "commands").mkdir(parents=True, exist_ok=True)
+ 
+         manager = PresetManager(project_dir)
+-        self_test_dir = Path(__file__).parent.parent / "presets" / "self-test"
+-        manager.install_from_directory(self_test_dir, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         skill_file = skills_dir / "speckit-specify" / "SKILL.md"
+         assert skill_file.exists()
+@@ -2791,8 +2799,7 @@ class TestPresetSkills:
+         self._create_skill(skills_dir, "speckit-specify", body="untouched")
+ 
+         manager = PresetManager(project_dir)
+-        self_test_dir = Path(__file__).parent.parent / "presets" / "self-test"
+-        manager.install_from_directory(self_test_dir, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         skill_content = (skills_dir / "speckit-specify" / "SKILL.md").read_text()
+         assert "untouched" in skill_content
+@@ -3451,7 +3458,7 @@ class TestWrapStrategy:
+         )
+ 
+         manager = PresetManager(project_dir)
+-        manager.install_from_directory(SELF_TEST_PRESET_DIR, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         written = (skill_subdir / "SKILL.md").read_text()
+         assert "{CORE_TEMPLATE}" not in written
+@@ -3503,7 +3510,7 @@ class TestWrapStrategy:
+         )
+ 
+         manager = PresetManager(project_dir)
+-        manager.install_from_directory(SELF_TEST_PRESET_DIR, "0.1.5")
++        install_self_test_preset(manager)
+ 
+         written = (skill_subdir / "SKILL.md").read_text()
+         # {SCRIPT} should have been resolved (not left as a literal placeholder)

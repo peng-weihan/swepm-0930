@@ -1,0 +1,1139 @@
+diff --git a/dependencies/aimee-repositories.lock.json b/dependencies/aimee-repositories.lock.json
+--- a/dependencies/aimee-repositories.lock.json
++++ b/dependencies/aimee-repositories.lock.json
+@@ -165,7 +165,7 @@
+       "placements": [
+         "server"
+       ],
+-      "source_sha256": "47d266434aea76dab54603d670b8103c290c8051634174e53472204156dc1d78",
++      "source_sha256": "a3ae83ff0338de95edcec34920c2d82d438178d81920f702ba5926bd7292b548",
+       "runtime": "go",
+       "principal_class": 1,
+       "principal_ref": 10,
+@@ -176,7 +176,8 @@
+         6660,
+         6661,
+         6662,
+-        6663
++        6663,
++        6664
+       ]
+     },
+     {
+diff --git a/server-go/cmd/aimee-module/main.go b/server-go/cmd/aimee-module/main.go
+--- a/server-go/cmd/aimee-module/main.go
++++ b/server-go/cmd/aimee-module/main.go
+@@ -109,6 +109,7 @@ func moduleConfig(executable string) (bus.ModuleProcessConfig, bool) {
+ 			{EventKind: delegates.EventHandoff, StageID: delegates.StageHandoff},
+ 			{EventKind: delegates.EventRescue, StageID: delegates.StageRescue},
+ 			{EventKind: delegates.EventVerify, StageID: delegates.StageVerify},
++			{EventKind: delegates.EventEconomics, StageID: delegates.StageEconomics},
+ 		}
+ 		config.Handler = delegates.Handle
+ 	case "tools":
+diff --git a/server-go/modules/delegates/delegates.go b/server-go/modules/delegates/delegates.go
+--- a/server-go/modules/delegates/delegates.go
++++ b/server-go/modules/delegates/delegates.go
+@@ -47,6 +47,9 @@ func Handle(invocation bus.ModuleInvocation, request []byte) ([]byte, bus.Module
+ 	if invocation.StageID == StageVerify {
+ 		return handleVerify(invocation, request)
+ 	}
++	if invocation.StageID == StageEconomics {
++		return handleEconomics(invocation, request)
++	}
+ 	if invocation.StageID != StageInvoke || len(request) != messageLen ||
+ 		binary.LittleEndian.Uint32(request[0:4]) != requestMagic || request[4] != wireVersion ||
+ 		request[5] != 0 || request[7] != 0 || request[6] == 0 || request[6] > roleMax {
+diff --git a/server-go/modules/delegates/economics.go b/server-go/modules/delegates/economics.go
+new file mode 100644
+--- /dev/null
++++ b/server-go/modules/delegates/economics.go
+@@ -0,0 +1,282 @@
++package delegates
++
++import "strings"
++
++// What a coordinated run of delegates cost the SUPERVISOR.
++//
++// The cost model is "free delegates, expensive supervisor": delegate tokens are
++// cheap and a human's attention is not, so a run is judged by how much
++// supervisor attention it consumed, not by how many delegates ran. Every signal
++// here is a proxy for that -- an invalid handoff, a failed task, a supervisor
++// action a delegate asked for, a blocking reviewer finding.
++
++const tierBuckets = 4
++
++// EconomicsReport mirrors delegate_economics_report_t.
++type EconomicsReport struct {
++	DelegateCount                    int
++	TierCounts                       [tierBuckets]int
++	UnknownTierCount                 int
++	PromptTokensTotal                int
++	CompletionTokensTotal            int
++	DelegateTokensEstimated          int
++	TokenizedDelegateResults         int
++	SupervisorPromptTokensEstimated  int
++	HandoffCount                     int
++	ValidHandoffs                    int
++	InvalidHandoffs                  int
++	FocusedTestsRunByDelegates       int
++	DelegatesWithFocusedTests        int
++	ManualIntegrationEvents          int
++	SupervisorActionsRequired        int
++	ReviewerFindingsBlocking         int
++	Verdict                          string
++	Recommendation                   string
++}
++
++// EconomicsTask is one coordinated task, as the caller knows it. Only the four
++// fields the rule reads travel; the rest of the row is the caller's business.
++type EconomicsTask struct {
++	Status    string
++	ClaimedBy string
++	Files     string // owned_files JSON, for the handoff's ownership check
++	Result    string // the delegate's result JSON
++}
++
++// AgentTier maps an agent name to its cost tier. The caller sends the agents it
++// configured because tiers are its knowledge, not this module's.
++type AgentTier struct {
++	Name string
++	Tier int
++}
++
++func findAgentTier(agents []AgentTier, name string) (int, bool) {
++	if name == "" {
++		return 0, false
++	}
++	for _, a := range agents {
++		if a.Name == name {
++			return a.Tier, true
++		}
++	}
++	return 0, false
++}
++
++// resultInt reads an integer field from the delegate's result, defaulting when
++// absent. cJSON reports valueint, so a fractional value truncates.
++func resultInt(root *jsonValue, name string, fallback int) int {
++	v := root.get(name)
++	if v == nil || v.kind != jsonNumber {
++		return fallback
++	}
++	return clampToInt(v.num)
++}
++
++// resultAgentTier prefers what the delegate reported, then who claimed the
++// task, then the agent named in the result. Unknown is its own bucket rather
++// than a guess -- counting an unknown tier as cheap would flatter the run.
++func resultAgentTier(root *jsonValue, task EconomicsTask, agents []AgentTier) int {
++	if tier := root.get("agent_cost_tier"); tier != nil && tier.kind == jsonNumber {
++		return clampToInt(tier.num)
++	}
++	if task.ClaimedBy != "" {
++		if tier, ok := findAgentTier(agents, task.ClaimedBy); ok {
++			return tier
++		}
++	}
++	agent := root.get("agent")
++	if !agent.isString() {
++		agent = root.get("agent_name")
++	}
++	if agent.isString() {
++		if tier, ok := findAgentTier(agents, agent.str); ok {
++			return tier
++		}
++	}
++	return -1
++}
++
++func isHandoffSchema(v *jsonValue) bool {
++	s := v.get("schema_version")
++	return s.isString() && s.str == "delegate_result_v1"
++}
++
++// handoffText finds the handoff inside a result: the result may BE one, or
++// carry one as a `response` string, or as a `response` object.
++func handoffText(root *jsonValue, raw string) string {
++	if isHandoffSchema(root) {
++		return raw
++	}
++	response := root.get("response")
++	if response.isString() && response.str != "" {
++		return response.str
++	}
++	if response.isObject() {
++		return printJSON(response)
++	}
++	return ""
++}
++
++// handoffObject returns the handoff as an object, for reading the supervisor
++// actions it asked for.
++func handoffObject(root *jsonValue, text string) *jsonValue {
++	if isHandoffSchema(root) {
++		return root
++	}
++	if text == "" {
++		return nil
++	}
++	if parsed, ok := parseJSONPrefix(text); ok && isHandoffSchema(parsed) {
++		return parsed
++	}
++	return nil
++}
++
++func (r *EconomicsReport) addTier(tier int) {
++	if tier >= 0 && tier < tierBuckets {
++		r.TierCounts[tier]++
++		return
++	}
++	r.UnknownTierCount++
++}
++
++// IsTier0Heavy reports whether at least half the delegates ran on the cheapest
++// tier -- the shape the cost model is designed around.
++func (r *EconomicsReport) IsTier0Heavy() bool {
++	return r.DelegateCount > 0 && r.TierCounts[0]*2 >= r.DelegateCount
++}
++
++func (r *EconomicsReport) addTask(task EconomicsTask, agents []AgentTier) {
++	// A row is a delegate run if someone claimed it or it reached a terminal
++	// state; anything else is still queued and says nothing about cost.
++	if task.ClaimedBy == "" && task.Status != "done" && task.Status != "failed" {
++		return
++	}
++	r.DelegateCount++
++
++	var root *jsonValue
++	if task.Result != "" {
++		if parsed, ok := parseJSONPrefix(task.Result); ok {
++			root = parsed
++		}
++	}
++	r.addTier(resultAgentTier(root, task, agents))
++
++	promptTokens := resultInt(root, "prompt_tokens", 0)
++	completionTokens := resultInt(root, "completion_tokens", 0)
++	delegateTokens := resultInt(root, "delegate_tokens_estimated", 0)
++	if delegateTokens <= 0 {
++		delegateTokens = promptTokens + completionTokens
++	}
++	if delegateTokens > 0 {
++		r.PromptTokensTotal += promptTokens
++		r.CompletionTokensTotal += completionTokens
++		r.DelegateTokensEstimated += delegateTokens
++		r.TokenizedDelegateResults++
++	}
++
++	manual := false
++	if task.Status == "failed" {
++		r.SupervisorActionsRequired++
++		manual = true
++	}
++
++	text := handoffText(root, task.Result)
++
++	if task.Status == "done" {
++		r.HandoffCount++
++		// The rule for believing a handoff lives in this module too, so this is
++		// a direct call rather than a trip back out through the caller.
++		verdict, ok := ValidateHandoff(text, task.Files, true)
++		if ok {
++			r.ValidHandoffs++
++			r.FocusedTestsRunByDelegates += verdict.PassedTests
++			if verdict.PassedTests > 0 {
++				r.DelegatesWithFocusedTests++
++			}
++			if verdict.OutsideOwnershipCount > 0 || verdict.NeedsSupervisorReview {
++				manual = true
++			}
++		} else {
++			r.InvalidHandoffs++
++			manual = true
++		}
++	}
++
++	if handoff := handoffObject(root, text); handoff != nil {
++		if actions := handoff.get("supervisor_actions"); actions != nil && actions.kind == jsonArray {
++			if n := len(actions.items); n > 0 {
++				r.SupervisorActionsRequired += n
++				manual = true
++			}
++		}
++	}
++	r.ReviewerFindingsBlocking += resultInt(root, "reviewer_findings_blocking", 0)
++
++	if manual {
++		r.ManualIntegrationEvents++
++	}
++}
++
++// finalize estimates the supervisor tokens the run cost and states a verdict.
++//
++// The weights are deliberate proxies, not measurements: reading a delegate's
++// output costs something, an integration event costs more, an invalid handoff
++// more still, and a blocking reviewer finding sits between them.
++func (r *EconomicsReport) finalize() {
++	r.SupervisorPromptTokensEstimated = r.DelegateCount*300 +
++		r.ManualIntegrationEvents*600 + r.InvalidHandoffs*800 + r.ReviewerFindingsBlocking*500
++
++	tier0Heavy := r.IsTier0Heavy()
++	expensiveOnly := r.DelegateCount > 0 && r.TierCounts[0] == 0 && r.TierCounts[1] == 0 &&
++		r.UnknownTierCount == 0
++	highManual := r.ManualIntegrationEvents > r.DelegateCount/2
++	lowVerification := r.DelegateCount > 0 && r.DelegatesWithFocusedTests*2 < r.DelegateCount
++
++	switch {
++	case r.DelegateCount <= 0:
++		r.Verdict = "unclear"
++	case tier0Heavy && !highManual && r.InvalidHandoffs <= r.DelegateCount/2:
++		r.Verdict = "likely_net_win"
++	case expensiveOnly && (r.InvalidHandoffs > 0 || highManual || lowVerification):
++		r.Verdict = "likely_net_loss"
++	default:
++		r.Verdict = "unclear"
++	}
++
++	switch {
++	case tier0Heavy:
++		r.Recommendation = "Tier-0-heavy run: broader delegation and redundant validation are " +
++			"reasonable when task risk warrants it."
++	case r.Verdict == "likely_net_loss":
++		r.Recommendation = "Delegate conservatively: expensive delegates plus supervisor " +
++			"follow-up likely outweighed the saved attention."
++	default:
++		r.Recommendation = "Delegate selectively: supervisor cost savings are unclear from " +
++			"this run."
++	}
++}
++
++// BuildEconomicsReport aggregates a coordinated run.
++func BuildEconomicsReport(tasks []EconomicsTask, agents []AgentTier) EconomicsReport {
++	var report EconomicsReport
++	for _, task := range tasks {
++		report.addTask(task, agents)
++	}
++	report.finalize()
++	return report
++}
++
++// EconomicsCostModelLabel names the model the verdict is expressed in.
++func EconomicsCostModelLabel() string { return "free delegates, expensive supervisor" }
++
++// EconomicsVerdictText renders a verdict for a reader.
++func EconomicsVerdictText(verdict string) string {
++	switch strings.TrimSpace(verdict) {
++	case "likely_net_win":
++		return "likely net supervisor-token win"
++	case "likely_net_loss":
++		return "likely net supervisor-token loss"
++	}
++	return "unclear supervisor-token outcome"
++}
+diff --git a/server-go/modules/delegates/economics_stage.go b/server-go/modules/delegates/economics_stage.go
+new file mode 100644
+--- /dev/null
++++ b/server-go/modules/delegates/economics_stage.go
+@@ -0,0 +1,141 @@
++package delegates
++
++import (
++	"encoding/binary"
++
++	"github.com/JBailes/aimee/server-go/bus"
++)
++
++const (
++	StageEconomics uint32 = 8
++	EventEconomics uint32 = 6664
++
++	economicsRequestMagic  uint32 = 0x51434544 /* "DECQ" */
++	economicsResponseMagic uint32 = 0x53434544 /* "DECS" */
++	economicsReqHeaderLen         = 16
++	economicsVerdictLen           = 32
++	economicsAdviceLen            = 256
++	economicsLabelLen             = 64
++	// The two labels ride along so the verdict has exactly one rendering.
++	// A caller formatting them itself would be a second copy that can
++	// disagree with the verdict it is captioning.
++	economicsResponseLen = 4 + 19*4 + economicsVerdictLen + economicsAdviceLen +
++		2*economicsLabelLen
++	economicsMaxTasks             = 4096
++	economicsMaxAgents            = 4096
++)
++
++type economicsCursor struct {
++	buf []byte
++	at  int
++	bad bool
++}
++
++func (c *economicsCursor) u16() int {
++	if c.bad || c.at+2 > len(c.buf) {
++		c.bad = true
++		return 0
++	}
++	v := int(binary.LittleEndian.Uint16(c.buf[c.at : c.at+2]))
++	c.at += 2
++	return v
++}
++
++func (c *economicsCursor) u32() int {
++	if c.bad || c.at+4 > len(c.buf) {
++		c.bad = true
++		return 0
++	}
++	v := int(binary.LittleEndian.Uint32(c.buf[c.at : c.at+4]))
++	c.at += 4
++	return v
++}
++
++func (c *economicsCursor) str(n int) string {
++	if c.bad || n < 0 || c.at+n > len(c.buf) {
++		c.bad = true
++		return ""
++	}
++	s := string(c.buf[c.at : c.at+n])
++	c.at += n
++	return s
++}
++
++// handleEconomics aggregates a coordinated run's cost to the supervisor.
++//
++// Tasks arrive as content: the four fields the rule reads, nothing else from
++// the row. Agent tiers arrive the same way, because which seat is dear is the
++// caller's configuration, not this module's state.
++func handleEconomics(invocation bus.ModuleInvocation, request []byte) ([]byte, bus.ModuleStatus) {
++	if len(request) < economicsReqHeaderLen ||
++		binary.LittleEndian.Uint32(request[0:4]) != economicsRequestMagic ||
++		request[4] != wireVersion {
++		return nil, bus.ModuleStatusInvalidRequest
++	}
++	taskCount := int(binary.LittleEndian.Uint32(request[8:12]))
++	agentCount := int(binary.LittleEndian.Uint32(request[12:16]))
++	if taskCount > economicsMaxTasks || agentCount > economicsMaxAgents {
++		return nil, bus.ModuleStatusInvalidRequest
++	}
++
++	c := &economicsCursor{buf: request, at: economicsReqHeaderLen}
++	tasks := make([]EconomicsTask, 0, taskCount)
++	for i := 0; i < taskCount; i++ {
++		statusLen, claimedLen := c.u16(), c.u16()
++		filesLen, resultLen := c.u32(), c.u32()
++		task := EconomicsTask{
++			Status:    c.str(statusLen),
++			ClaimedBy: c.str(claimedLen),
++			Files:     c.str(filesLen),
++			Result:    c.str(resultLen),
++		}
++		if c.bad {
++			return nil, bus.ModuleStatusInvalidRequest
++		}
++		tasks = append(tasks, task)
++	}
++	agents := make([]AgentTier, 0, agentCount)
++	for i := 0; i < agentCount; i++ {
++		nameLen := c.u16()
++		name := c.str(nameLen)
++		tier := int(int32(c.u32()))
++		if c.bad {
++			return nil, bus.ModuleStatusInvalidRequest
++		}
++		agents = append(agents, AgentTier{Name: name, Tier: tier})
++	}
++	if c.bad || c.at != len(request) {
++		return nil, bus.ModuleStatusInvalidRequest
++	}
++	if invocation.Cancelled() {
++		return nil, bus.ModuleStatusCancelled
++	}
++
++	report := BuildEconomicsReport(tasks, agents)
++
++	response := make([]byte, economicsResponseLen)
++	binary.LittleEndian.PutUint32(response[0:4], economicsResponseMagic)
++	fields := []int{
++		report.DelegateCount,
++		report.TierCounts[0], report.TierCounts[1], report.TierCounts[2], report.TierCounts[3],
++		report.UnknownTierCount,
++		report.PromptTokensTotal, report.CompletionTokensTotal,
++		report.DelegateTokensEstimated, report.TokenizedDelegateResults,
++		report.SupervisorPromptTokensEstimated,
++		report.HandoffCount, report.ValidHandoffs, report.InvalidHandoffs,
++		report.FocusedTestsRunByDelegates, report.DelegatesWithFocusedTests,
++		report.ManualIntegrationEvents, report.SupervisorActionsRequired,
++		report.ReviewerFindingsBlocking,
++	}
++	for i, v := range fields {
++		binary.LittleEndian.PutUint32(response[4+i*4:8+i*4], uint32(int32(v)))
++	}
++	at := 4 + len(fields)*4
++	putFixed(response[at:at+economicsVerdictLen], report.Verdict)
++	at += economicsVerdictLen
++	putFixed(response[at:at+economicsAdviceLen], report.Recommendation)
++	at += economicsAdviceLen
++	putFixed(response[at:at+economicsLabelLen], EconomicsVerdictText(report.Verdict))
++	putFixed(response[at+economicsLabelLen:], EconomicsCostModelLabel())
++	return response, bus.ModuleStatusOK
++}
+diff --git a/src/cmd_job.c b/src/cmd_job.c
+--- a/src/cmd_job.c
++++ b/src/cmd_job.c
+@@ -221,7 +221,7 @@ static void job_status_cmd(app_ctx_t *ctx, int argc, char **argv)
+       printf("\n");
+ 
+       printf("\nDelegation report\n");
+-      printf("  Cost model: %s\n", delegate_economics_cost_model_label());
++      printf("  Cost model: %s\n", econ.cost_model_label);
+       printf("  Delegates: %d total, %d tier-0, %d tier-1, %d tier-2, %d tier-3",
+              econ.delegate_count, econ.tier_counts[0], econ.tier_counts[1], econ.tier_counts[2],
+              econ.tier_counts[3]);
+@@ -243,7 +243,7 @@ static void job_status_cmd(app_ctx_t *ctx, int argc, char **argv)
+       printf("  Reviewer delegates found: %d blocking\n", econ.reviewer_findings_blocking);
+       printf("  Supervisor work remaining: %d decision%s\n", econ.supervisor_actions_required,
+              econ.supervisor_actions_required == 1 ? "" : "s");
+-      printf("  Verdict: %s\n", delegate_economics_verdict_text(econ.verdict));
++      printf("  Verdict: %s\n", econ.verdict_label);
+       printf("  Recommendation: %s\n", econ.recommendation);
+ 
+       char patch_brief[1024];
+diff --git a/src/modules/delegates/delegate_economics.c b/src/modules/delegates/delegate_economics.c
+--- a/src/modules/delegates/delegate_economics.c
++++ b/src/modules/delegates/delegate_economics.c
+@@ -1,230 +1,29 @@
+-/* delegate_economics.c: aggregate delegate runs around supervisor attention. */
++/* delegate_economics.c: the seam to the delegates module's run economics, plus
++ * the JSON rendering of the report it produces.
++ *
++ * Judging what a coordinated run cost the SUPERVISOR -- which rows count as
++ * delegate runs, which tier they sat on, whether a handoff could be believed,
++ * and what all of that implies -- is a decision, so it is now
++ * server-go/modules/delegates/economics.go. Moving it also removed a bus round
++ * trip per task: the handoff rule already lives in that module, so the report
++ * builder calls it directly instead of asking back out through C.
++ *
++ * Fails closed as an EMPTY report with an "unclear" verdict. With no answer the
++ * honest statement is that nothing was established, and "unclear" is exactly
++ * the verdict the rule itself gives a run it cannot judge. Reporting a win or a
++ * loss instead would be an unearned claim about how a team spent its attention.
++ */
+ #include <aimee/delegates/delegate_economics.h>
+ #include "cmd_agent_delegate_impl.h"
+ 
+ #include <stdio.h>
+ #include <string.h>
+ 
+-static const agent_t *economics_find_agent(const agent_config_t *cfg, const char *name)
+-{
+-   if (!cfg || !name || !name[0])
+-      return NULL;
+-   for (int i = 0; i < cfg->agent_count; i++)
+-   {
+-      if (strcmp(cfg->agents[i].name, name) == 0)
+-         return &cfg->agents[i];
+-   }
+-   return NULL;
+-}
+-
+-static int economics_result_int(cJSON *root, const char *name, int fallback)
+-{
+-   cJSON *v = cJSON_IsObject(root) ? cJSON_GetObjectItemCaseSensitive(root, name) : NULL;
+-   return cJSON_IsNumber(v) ? v->valueint : fallback;
+-}
+-
+-static int economics_json_array_count(cJSON *arr)
+-{
+-   return cJSON_IsArray(arr) ? cJSON_GetArraySize(arr) : 0;
+-}
+-
+-static int economics_result_agent_tier(cJSON *root, const db1_coord_task_t *task,
+-                                       const agent_config_t *cfg)
+-{
+-   cJSON *tier =
+-       cJSON_IsObject(root) ? cJSON_GetObjectItemCaseSensitive(root, "agent_cost_tier") : NULL;
+-   if (cJSON_IsNumber(tier))
+-      return tier->valueint;
+-
+-   if (task && task->claimed_by[0])
+-   {
+-      const agent_t *ag = economics_find_agent(cfg, task->claimed_by);
+-      if (ag)
+-         return ag->cost_tier;
+-   }
+-
+-   cJSON *agent = cJSON_IsObject(root) ? cJSON_GetObjectItemCaseSensitive(root, "agent") : NULL;
+-   if (!cJSON_IsString(agent))
+-      agent = cJSON_IsObject(root) ? cJSON_GetObjectItemCaseSensitive(root, "agent_name") : NULL;
+-   if (cJSON_IsString(agent))
+-   {
+-      const agent_t *ag = economics_find_agent(cfg, agent->valuestring);
+-      if (ag)
+-         return ag->cost_tier;
+-   }
+-   return -1;
+-}
++static delegate_economics_provider_fn g_economics_provider;
+ 
+-static int economics_handoff_schema(cJSON *obj)
++void delegate_register_economics_provider(delegate_economics_provider_fn provider)
+ {
+-   cJSON *schema =
+-       cJSON_IsObject(obj) ? cJSON_GetObjectItemCaseSensitive(obj, "schema_version") : NULL;
+-   return cJSON_IsString(schema) && strcmp(schema->valuestring, "delegate_result_v1") == 0;
+-}
+-
+-static void economics_find_handoff_text(cJSON *root, const char *raw, const char **handoff_text,
+-                                        char **owned_handoff_text)
+-{
+-   *handoff_text = NULL;
+-   *owned_handoff_text = NULL;
+-   if (economics_handoff_schema(root))
+-   {
+-      *handoff_text = raw;
+-      return;
+-   }
+-
+-   cJSON *response =
+-       cJSON_IsObject(root) ? cJSON_GetObjectItemCaseSensitive(root, "response") : NULL;
+-   if (cJSON_IsString(response) && response->valuestring[0])
+-   {
+-      *handoff_text = response->valuestring;
+-      return;
+-   }
+-   if (cJSON_IsObject(response))
+-      *owned_handoff_text = cJSON_PrintUnformatted(response);
+-   if (*owned_handoff_text)
+-      *handoff_text = *owned_handoff_text;
+-}
+-
+-static cJSON *economics_handoff_object(cJSON *root, const char *handoff_text, cJSON **owned_handoff)
+-{
+-   *owned_handoff = NULL;
+-   if (economics_handoff_schema(root))
+-      return root;
+-   if (!handoff_text || !handoff_text[0])
+-      return NULL;
+-   *owned_handoff = cJSON_Parse(handoff_text);
+-   if (economics_handoff_schema(*owned_handoff))
+-      return *owned_handoff;
+-   cJSON_Delete(*owned_handoff);
+-   *owned_handoff = NULL;
+-   return NULL;
+-}
+-
+-static void economics_add_tier(delegate_economics_report_t *report, int tier)
+-{
+-   if (tier >= 0 && tier < DELEGATE_ECONOMICS_TIER_BUCKETS)
+-      report->tier_counts[tier]++;
+-   else
+-      report->unknown_tier_count++;
+-}
+-
+-static void economics_finalize(delegate_economics_report_t *report)
+-{
+-   int tier0_heavy = delegate_economics_is_tier0_heavy(report);
+-   int expensive_only = report->delegate_count > 0 && report->tier_counts[0] == 0 &&
+-                        report->tier_counts[1] == 0 && report->unknown_tier_count == 0;
+-   int high_manual = report->manual_integration_events > report->delegate_count / 2;
+-   int low_verification = report->delegate_count > 0 &&
+-                          report->delegates_with_focused_tests * 2 < report->delegate_count;
+-
+-   if (report->delegate_count <= 0)
+-      snprintf(report->verdict, sizeof(report->verdict), "%s", "unclear");
+-   else if (tier0_heavy && !high_manual && report->invalid_handoffs <= report->delegate_count / 2)
+-      snprintf(report->verdict, sizeof(report->verdict), "%s", "likely_net_win");
+-   else if (expensive_only && (report->invalid_handoffs > 0 || high_manual || low_verification))
+-      snprintf(report->verdict, sizeof(report->verdict), "%s", "likely_net_loss");
+-   else
+-      snprintf(report->verdict, sizeof(report->verdict), "%s", "unclear");
+-
+-   if (tier0_heavy)
+-   {
+-      snprintf(report->recommendation, sizeof(report->recommendation),
+-               "Tier-0-heavy run: broader delegation and redundant validation are reasonable "
+-               "when task risk warrants it.");
+-   }
+-   else if (strcmp(report->verdict, "likely_net_loss") == 0)
+-   {
+-      snprintf(report->recommendation, sizeof(report->recommendation),
+-               "Delegate conservatively: expensive delegates plus supervisor follow-up likely "
+-               "outweighed the saved attention.");
+-   }
+-   else
+-   {
+-      snprintf(report->recommendation, sizeof(report->recommendation),
+-               "Delegate selectively: supervisor cost savings are unclear from this run.");
+-   }
+-}
+-
+-static void economics_add_task(delegate_economics_report_t *report, const db1_coord_task_t *task,
+-                               const agent_config_t *cfg)
+-{
+-   if (!task)
+-      return;
+-   int is_delegate = task->claimed_by[0] || strcmp(task->status, "done") == 0 ||
+-                     strcmp(task->status, "failed") == 0;
+-   if (!is_delegate)
+-      return;
+-
+-   report->delegate_count++;
+-
+-   cJSON *root = task->result[0] ? cJSON_Parse(task->result) : NULL;
+-   economics_add_tier(report, economics_result_agent_tier(root, task, cfg));
+-
+-   int prompt_tokens = economics_result_int(root, "prompt_tokens", 0);
+-   int completion_tokens = economics_result_int(root, "completion_tokens", 0);
+-   int delegate_tokens = economics_result_int(root, "delegate_tokens_estimated", 0);
+-   if (delegate_tokens <= 0)
+-      delegate_tokens = prompt_tokens + completion_tokens;
+-   if (delegate_tokens > 0)
+-   {
+-      report->prompt_tokens_total += prompt_tokens;
+-      report->completion_tokens_total += completion_tokens;
+-      report->delegate_tokens_estimated += delegate_tokens;
+-      report->tokenized_delegate_results++;
+-   }
+-
+-   int manual_marker = 0;
+-   if (strcmp(task->status, "failed") == 0)
+-   {
+-      report->supervisor_actions_required++;
+-      manual_marker = 1;
+-   }
+-
+-   const char *handoff_text = NULL;
+-   char *owned_handoff_text = NULL;
+-   economics_find_handoff_text(root, task->result, &handoff_text, &owned_handoff_text);
+-
+-   if (strcmp(task->status, "done") == 0)
+-   {
+-      report->handoff_count++;
+-      delegate_handoff_validation_t v;
+-      if (delegate_handoff_validate_text(handoff_text, task->files, 1, &v) == 0)
+-      {
+-         report->valid_handoffs++;
+-         report->focused_tests_run_by_delegates += v.passed_tests;
+-         if (v.passed_tests > 0)
+-            report->delegates_with_focused_tests++;
+-         if (v.outside_ownership_count > 0 || v.needs_supervisor_review)
+-            manual_marker = 1;
+-      }
+-      else
+-      {
+-         report->invalid_handoffs++;
+-         manual_marker = 1;
+-      }
+-   }
+-
+-   cJSON *owned_handoff = NULL;
+-   cJSON *handoff = economics_handoff_object(root, handoff_text, &owned_handoff);
+-   cJSON *actions = cJSON_IsObject(handoff)
+-                        ? cJSON_GetObjectItemCaseSensitive(handoff, "supervisor_actions")
+-                        : NULL;
+-   int action_count = economics_json_array_count(actions);
+-   if (action_count > 0)
+-   {
+-      report->supervisor_actions_required += action_count;
+-      manual_marker = 1;
+-   }
+-   report->reviewer_findings_blocking +=
+-       economics_result_int(root, "reviewer_findings_blocking", 0);
+-
+-   if (manual_marker)
+-      report->manual_integration_events++;
+-
+-   cJSON_Delete(owned_handoff);
+-   free(owned_handoff_text);
+-   cJSON_Delete(root);
++   g_economics_provider = provider;
+ }
+ 
+ void delegate_economics_build_report(const db1_coord_job_t *job, const db1_coord_task_t *tasks,
+@@ -235,24 +34,24 @@ void delegate_economics_build_report(const db1_coord_job_t *job, const db1_coord
+    if (!out)
+       return;
+    memset(out, 0, sizeof(*out));
+-   if (tasks && task_count > 0)
+-   {
+-      for (int i = 0; i < task_count; i++)
+-         economics_add_task(out, &tasks[i], cfg);
+-   }
+-
+-   out->supervisor_prompt_tokens_estimated =
+-       out->delegate_count * 300 + out->manual_integration_events * 600 +
+-       out->invalid_handoffs * 800 + out->reviewer_findings_blocking * 500;
+-   economics_finalize(out);
++   snprintf(out->verdict, sizeof(out->verdict), "%s", "unclear");
++   snprintf(out->recommendation, sizeof(out->recommendation), "%s",
++            "Delegate selectively: supervisor cost savings are unclear from this run.");
++   snprintf(out->verdict_label, sizeof(out->verdict_label), "%s",
++            "unclear supervisor-token outcome");
++   snprintf(out->cost_model_label, sizeof(out->cost_model_label), "%s",
++            "free delegates, expensive supervisor");
++   if (!g_economics_provider)
++      return;
++   g_economics_provider(tasks, task_count, cfg, out);
+ }
+ 
+ void delegate_economics_add_json(cJSON *obj, const delegate_economics_report_t *report)
+ {
+    if (!obj || !report)
+       return;
+    cJSON_AddStringToObject(obj, "delegate_cost_model", DELEGATE_ECONOMICS_COST_MODEL);
+-   cJSON_AddStringToObject(obj, "delegate_cost_model_label", delegate_economics_cost_model_label());
++   cJSON_AddStringToObject(obj, "delegate_cost_model_label", report->cost_model_label);
+    cJSON_AddNumberToObject(obj, "delegate_count", report->delegate_count);
+    cJSON_AddNumberToObject(obj, "delegate_tier0_count", report->tier_counts[0]);
+    cJSON_AddNumberToObject(obj, "delegate_tier1_count", report->tier_counts[1]);
+@@ -280,31 +79,28 @@ void delegate_economics_add_json(cJSON *obj, const delegate_economics_report_t *
+    cJSON_AddNumberToObject(obj, "delegate_reviewer_blocking_findings",
+                            report->reviewer_findings_blocking);
+    cJSON_AddStringToObject(obj, "delegate_economics_verdict", report->verdict);
+-   cJSON_AddStringToObject(obj, "delegate_economics_verdict_label",
+-                           delegate_economics_verdict_text(report->verdict));
++   cJSON_AddStringToObject(obj, "delegate_economics_verdict_label", report->verdict_label);
+    cJSON_AddStringToObject(obj, "delegate_economics_recommendation", report->recommendation);
+ }
+ 
+-const char *delegate_economics_cost_model_label(void)
+-{
+-   return "free delegates, expensive supervisor";
+-}
+-
+-const char *delegate_economics_verdict_text(const char *verdict)
+-{
+-   if (verdict && strcmp(verdict, "likely_net_win") == 0)
+-      return "likely net supervisor-token win";
+-   if (verdict && strcmp(verdict, "likely_net_loss") == 0)
+-      return "likely net supervisor-token loss";
+-   return "unclear supervisor-token outcome";
+-}
+-
+ int delegate_economics_is_tier0_heavy(const delegate_economics_report_t *report)
+ {
+    return report && report->delegate_count > 0 &&
+           report->tier_counts[0] * 2 >= report->delegate_count;
+ }
+ 
++static const agent_t *economics_find_agent(const agent_config_t *cfg, const char *name)
++{
++   if (!cfg || !name || !name[0])
++      return NULL;
++   for (int i = 0; i < cfg->agent_count; i++)
++   {
++      if (strcmp(cfg->agents[i].name, name) == 0)
++         return &cfg->agents[i];
++   }
++   return NULL;
++}
++
+ void delegate_economics_add_agent_result_json(cJSON *obj, const agent_config_t *cfg,
+                                               const char *role, const agent_result_t *result,
+                                               const agent_t *fallback_agent)
+@@ -331,7 +127,7 @@ void delegate_economics_add_agent_result_json(cJSON *obj, const agent_config_t *
+                                                     : "tiered_delegate_cost");
+       if (agent->cost_tier == 0)
+          cJSON_AddStringToObject(obj, "delegate_cost_model_label",
+-                                 delegate_economics_cost_model_label());
++                                 "free delegates, expensive supervisor");
+    }
+    if (result)
+    {
+diff --git a/src/modules/delegates/include/aimee/delegates/delegate_economics.h b/src/modules/delegates/include/aimee/delegates/delegate_economics.h
+--- a/src/modules/delegates/include/aimee/delegates/delegate_economics.h
++++ b/src/modules/delegates/include/aimee/delegates/delegate_economics.h
+@@ -30,15 +30,27 @@ typedef struct
+    int reviewer_findings_blocking;
+    char verdict[32];
+    char recommendation[256];
++   /* Rendered by the module alongside the verdict, so a caption cannot drift
++    * from the verdict it captions. */
++   char verdict_label[64];
++   char cost_model_label[64];
+ } delegate_economics_report_t;
+ 
++/* The economics rule lives in the delegates module
++ * (server-go/modules/delegates/economics.go). This is the seam the C side calls
++ * through; with no provider registered the report stays empty and the verdict
++ * stays "unclear", which is what the rule itself says about a run it cannot
++ * judge. */
++typedef void (*delegate_economics_provider_fn)(const db1_coord_task_t *tasks, int task_count,
++                                               const agent_config_t *cfg,
++                                               delegate_economics_report_t *out);
++void delegate_register_economics_provider(delegate_economics_provider_fn provider);
++
+ void delegate_economics_build_report(const db1_coord_job_t *job, const db1_coord_task_t *tasks,
+                                      int task_count, const agent_config_t *cfg,
+                                      delegate_economics_report_t *out);
+ void delegate_economics_add_json(cJSON *obj, const delegate_economics_report_t *report);
+ 
+-const char *delegate_economics_cost_model_label(void);
+-const char *delegate_economics_verdict_text(const char *verdict);
+ int delegate_economics_is_tier0_heavy(const delegate_economics_report_t *report);
+ 
+ void delegate_economics_add_agent_result_json(cJSON *obj, const agent_config_t *cfg,
+diff --git a/src/modules/delegates/include/aimee/delegates/module_api.h b/src/modules/delegates/include/aimee/delegates/module_api.h
+--- a/src/modules/delegates/include/aimee/delegates/module_api.h
++++ b/src/modules/delegates/include/aimee/delegates/module_api.h
+@@ -338,4 +338,86 @@ static inline int aimee_delegates_verify_request_encode(unsigned op, int a, int
+    return 0;
+ }
+ 
++/* --- Delegate-run economics (stage 8) --- */
++
++#define AIMEE_DELEGATES_EVENT_ECONOMICS          6664u
++#define AIMEE_DELEGATES_STAGE_ECONOMICS          8u
++#define AIMEE_DELEGATES_ECON_REQUEST_MAGIC       0x51434544u /* "DECQ" */
++#define AIMEE_DELEGATES_ECON_RESPONSE_MAGIC      0x53434544u /* "DECS" */
++#define AIMEE_DELEGATES_ECON_REQ_HEADER_LEN      16u
++#define AIMEE_DELEGATES_ECON_VERDICT_LEN         32u
++#define AIMEE_DELEGATES_ECON_ADVICE_LEN          256u
++#define AIMEE_DELEGATES_ECON_LABEL_LEN           64u
++#define AIMEE_DELEGATES_ECON_FIELD_COUNT         19u
++#define AIMEE_DELEGATES_ECON_RESPONSE_LEN                                                          \
++   (4u + AIMEE_DELEGATES_ECON_FIELD_COUNT * 4u + AIMEE_DELEGATES_ECON_VERDICT_LEN +                \
++    AIMEE_DELEGATES_ECON_ADVICE_LEN + 2u * AIMEE_DELEGATES_ECON_LABEL_LEN)
++#define AIMEE_DELEGATES_ECON_MAX_TASKS  4096u
++#define AIMEE_DELEGATES_ECON_MAX_AGENTS 4096u
++
++/* Start a request; tasks and agents are appended with the helpers below. */
++static inline size_t aimee_delegates_econ_request_begin(uint32_t task_count, uint32_t agent_count,
++                                                        uint8_t *out, size_t cap)
++{
++   if (!out || cap < AIMEE_DELEGATES_ECON_REQ_HEADER_LEN ||
++       task_count > AIMEE_DELEGATES_ECON_MAX_TASKS ||
++       agent_count > AIMEE_DELEGATES_ECON_MAX_AGENTS)
++      return 0;
++   memset(out, 0, AIMEE_DELEGATES_ECON_REQ_HEADER_LEN);
++   aimee_delegates_put_u32(out, AIMEE_DELEGATES_ECON_REQUEST_MAGIC);
++   out[4] = 1; /* wire version */
++   aimee_delegates_put_u32(out + 8, task_count);
++   aimee_delegates_put_u32(out + 12, agent_count);
++   return AIMEE_DELEGATES_ECON_REQ_HEADER_LEN;
++}
++
++static inline size_t aimee_delegates_econ_put_task(const char *status, const char *claimed_by,
++                                                   const char *files, const char *result,
++                                                   uint8_t *out, size_t at, size_t cap)
++{
++   size_t status_len = status ? strlen(status) : 0;
++   size_t claimed_len = claimed_by ? strlen(claimed_by) : 0;
++   size_t files_len = files ? strlen(files) : 0;
++   size_t result_len = result ? strlen(result) : 0;
++   if (!out || at == 0 || status_len > 0xffffu || claimed_len > 0xffffu ||
++       at + 12 + status_len + claimed_len + files_len + result_len > cap)
++      return 0;
++
++   out[at] = (uint8_t)(status_len & 0xffu);
++   out[at + 1] = (uint8_t)((status_len >> 8) & 0xffu);
++   out[at + 2] = (uint8_t)(claimed_len & 0xffu);
++   out[at + 3] = (uint8_t)((claimed_len >> 8) & 0xffu);
++   aimee_delegates_put_u32(out + at + 4, (uint32_t)files_len);
++   aimee_delegates_put_u32(out + at + 8, (uint32_t)result_len);
++   at += 12;
++   if (status_len)
++      memcpy(out + at, status, status_len);
++   at += status_len;
++   if (claimed_len)
++      memcpy(out + at, claimed_by, claimed_len);
++   at += claimed_len;
++   if (files_len)
++      memcpy(out + at, files, files_len);
++   at += files_len;
++   if (result_len)
++      memcpy(out + at, result, result_len);
++   return at + result_len;
++}
++
++static inline size_t aimee_delegates_econ_put_agent(const char *name, int tier, uint8_t *out,
++                                                    size_t at, size_t cap)
++{
++   size_t name_len = name ? strlen(name) : 0;
++   if (!out || at == 0 || name_len > 0xffffu || at + 2 + name_len + 4 > cap)
++      return 0;
++   out[at] = (uint8_t)(name_len & 0xffu);
++   out[at + 1] = (uint8_t)((name_len >> 8) & 0xffu);
++   at += 2;
++   if (name_len)
++      memcpy(out + at, name, name_len);
++   at += name_len;
++   aimee_delegates_put_u32(out + at, (uint32_t)tier);
++   return at + 4;
++}
++
+ #endif
+diff --git a/src/modules/delegates/module.yaml b/src/modules/delegates/module.yaml
+--- a/src/modules/delegates/module.yaml
++++ b/src/modules/delegates/module.yaml
+@@ -80,7 +80,9 @@
+     "server-go/modules/delegates/rescue_json.go",
+     "server-go/modules/delegates/rescue_parse.go",
+     "server-go/modules/delegates/rescue_stage.go",
+-    "server-go/modules/delegates/verify.go"
++    "server-go/modules/delegates/verify.go",
++    "server-go/modules/delegates/economics.go",
++    "server-go/modules/delegates/economics_stage.go"
+   ],
+   "go_tests": [
+     "server-go/modules/delegates/delegates_test.go",
+@@ -91,7 +93,9 @@
+     "server-go/modules/delegates/handoff_test.go",
+     "server-go/modules/delegates/rescue_test.go",
+     "server-go/modules/delegates/rescue_stage_test.go",
+-    "server-go/modules/delegates/verify_test.go"
++    "server-go/modules/delegates/verify_test.go",
++    "server-go/modules/delegates/economics_test.go",
++    "server-go/modules/delegates/economics_stage_test.go"
+   ],
+   "tests": [
+     "src/tests/test_aimee_ir_rescue.c",
+diff --git a/src/modules/process-contracts.json b/src/modules/process-contracts.json
+--- a/src/modules/process-contracts.json
++++ b/src/modules/process-contracts.json
+@@ -161,6 +161,11 @@
+           "id": 7,
+           "name": "delegate-verify-outcome",
+           "event_kind": 6663
++        },
++        {
++          "id": 8,
++          "name": "delegate-economics-report",
++          "event_kind": 6664
+         }
+       ]
+     },
+diff --git a/src/server/module_stage_adapters.c b/src/server/module_stage_adapters.c
+--- a/src/server/module_stage_adapters.c
++++ b/src/server/module_stage_adapters.c
+@@ -5,6 +5,7 @@
+ #include <aimee/tools/agent_tools.h>
+ #include <aimee/delegates/delegate_xml_fallback.h>
+ #include "delegate_verify.h"
++#include <aimee/delegates/delegate_economics.h>
+ #include <aimee/git/git_ops.h>
+ #include "gw_stage_governance.h"
+ #include "ingress_preinject.h"
+@@ -534,6 +535,93 @@ static int delegate_verify(int op, int a, int b, int max_signal_status, int *out
+    return 0;
+ }
+ 
++/* A coordinated run's cost to the supervisor. The tasks and the agent tiers are
++ * gathered here because they are the caller's rows and the caller's config; the
++ * module reads the four fields the rule needs and forgets them. */
++static void delegate_economics(const db1_coord_task_t *tasks, int task_count,
++                               const agent_config_t *cfg, delegate_economics_report_t *out)
++{
++   if (!out || task_count < 0 || (uint32_t)task_count > AIMEE_DELEGATES_ECON_MAX_TASKS)
++      return;
++   int agent_count = cfg ? cfg->agent_count : 0;
++   if (agent_count < 0 || (uint32_t)agent_count > AIMEE_DELEGATES_ECON_MAX_AGENTS)
++      return;
++
++   size_t cap = AIMEE_DELEGATES_ECON_REQ_HEADER_LEN;
++   for (int i = 0; i < task_count; i++)
++   {
++      cap += 12 + strlen(tasks[i].status) + strlen(tasks[i].claimed_by) + strlen(tasks[i].files) +
++             strlen(tasks[i].result);
++   }
++   for (int i = 0; i < agent_count; i++)
++      cap += 2 + strlen(cfg->agents[i].name) + 4;
++
++   uint8_t *request = malloc(cap);
++   if (!request)
++      return;
++   size_t at = aimee_delegates_econ_request_begin((uint32_t)task_count, (uint32_t)agent_count,
++                                                  request, cap);
++   for (int i = 0; i < task_count && at; i++)
++   {
++      at = aimee_delegates_econ_put_task(tasks[i].status, tasks[i].claimed_by, tasks[i].files,
++                                         tasks[i].result, request, at, cap);
++   }
++   for (int i = 0; i < agent_count && at; i++)
++      at = aimee_delegates_econ_put_agent(cfg->agents[i].name, cfg->agents[i].cost_tier, request,
++                                          at, cap);
++   if (at == 0 || at > UINT32_MAX)
++   {
++      free(request);
++      return;
++   }
++
++   uint8_t response[AIMEE_DELEGATES_ECON_RESPONSE_LEN];
++   uint32_t response_len = 0;
++   int rc = call_module(AIMEE_DELEGATES_EVENT_ECONOMICS, AIMEE_DELEGATES_STAGE_ECONOMICS, request,
++                        (uint32_t)at, response, sizeof(response), &response_len);
++   free(request);
++   if (rc != 0 || response_len != AIMEE_DELEGATES_ECON_RESPONSE_LEN ||
++       aimee_delegates_get_u32(response) != AIMEE_DELEGATES_ECON_RESPONSE_MAGIC)
++      return;
++
++   int *fields[] = {
++       &out->delegate_count,
++       &out->tier_counts[0],
++       &out->tier_counts[1],
++       &out->tier_counts[2],
++       &out->tier_counts[3],
++       &out->unknown_tier_count,
++       &out->prompt_tokens_total,
++       &out->completion_tokens_total,
++       &out->delegate_tokens_estimated,
++       &out->tokenized_delegate_results,
++       &out->supervisor_prompt_tokens_estimated,
++       &out->handoff_count,
++       &out->valid_handoffs,
++       &out->invalid_handoffs,
++       &out->focused_tests_run_by_delegates,
++       &out->delegates_with_focused_tests,
++       &out->manual_integration_events,
++       &out->supervisor_actions_required,
++       &out->reviewer_findings_blocking,
++   };
++   for (unsigned i = 0; i < AIMEE_DELEGATES_ECON_FIELD_COUNT; i++)
++      *fields[i] = (int)aimee_delegates_get_u32(response + 4 + i * 4);
++
++   size_t off = 4 + AIMEE_DELEGATES_ECON_FIELD_COUNT * 4;
++   aimee_delegates_handoff_field(response, off, AIMEE_DELEGATES_ECON_VERDICT_LEN, out->verdict,
++                                 sizeof(out->verdict));
++   off += AIMEE_DELEGATES_ECON_VERDICT_LEN;
++   aimee_delegates_handoff_field(response, off, AIMEE_DELEGATES_ECON_ADVICE_LEN,
++                                 out->recommendation, sizeof(out->recommendation));
++   off += AIMEE_DELEGATES_ECON_ADVICE_LEN;
++   aimee_delegates_handoff_field(response, off, AIMEE_DELEGATES_ECON_LABEL_LEN, out->verdict_label,
++                                 sizeof(out->verdict_label));
++   off += AIMEE_DELEGATES_ECON_LABEL_LEN;
++   aimee_delegates_handoff_field(response, off, AIMEE_DELEGATES_ECON_LABEL_LEN,
++                                 out->cost_model_label, sizeof(out->cost_model_label));
++}
++
+ static int tool_classify(const char *name, int *classification)
+ {
+    uint8_t request[AIMEE_TOOLS_REQUEST_LEN], response[AIMEE_TOOLS_RESPONSE_LEN];
+@@ -747,6 +835,7 @@ void server_module_stage_adapters_configure(void)
+    delegate_register_handoff_provider(delegate_handoff);
+    delegate_register_rescue_provider(delegate_rescue);
+    delegate_register_verify_provider(delegate_verify);
++   delegate_register_economics_provider(delegate_economics);
+    agent_tools_register_classifier(tool_classify);
+    ws_scope_register_ref_validator(workspace_validate);
+    /* Same decision, same owner: webuser's runtime dir names a single path
+diff --git a/src/server/server_mcp.c b/src/server/server_mcp.c
+--- a/src/server/server_mcp.c
++++ b/src/server/server_mcp.c
+@@ -1529,14 +1529,13 @@ cJSON *tool_job_status(cJSON *args)
+        "| Invalid handoffs | %d |\n| Manual integration events | %d |\n"
+        "| Reviewer blocking findings | %d |\n| Supervisor work remaining | %d decisions |\n"
+        "| Verdict | %s |\n| Recommendation | %s |\n",
+-       delegate_economics_cost_model_label(), econ.delegate_count, econ.tier_counts[0],
+-       econ.tier_counts[1], econ.tier_counts[2], econ.tier_counts[3], econ.unknown_tier_count,
++       econ.cost_model_label, econ.delegate_count, econ.tier_counts[0], econ.tier_counts[1],
++       econ.tier_counts[2], econ.tier_counts[3], econ.unknown_tier_count,
+        econ.delegate_tokens_estimated, econ.tokenized_delegate_results == 0 ? " (unavailable)" : "",
+        econ.supervisor_prompt_tokens_estimated, econ.delegates_with_focused_tests,
+        econ.delegate_count, econ.valid_handoffs, econ.handoff_count, econ.invalid_handoffs,
+        econ.manual_integration_events, econ.reviewer_findings_blocking,
+-       econ.supervisor_actions_required, delegate_economics_verdict_text(econ.verdict),
+-       econ.recommendation);
++       econ.supervisor_actions_required, econ.verdict_label, econ.recommendation);
+    char patch_brief[1024];
+    pos = mcp_appendf(buf, pos, (int)sizeof(buf), "\n### Patch coordinator\n\n```text\n%s\n```\n",
+                      delegate_patch_coordinator_brief(&patches, patch_brief, sizeof(patch_brief)));

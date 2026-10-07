@@ -1,0 +1,322 @@
+diff --git a/test/api/CMakeLists.txt b/test/api/CMakeLists.txt
+index aed743fc24e..8787cc36699 100644
+--- a/test/api/CMakeLists.txt
++++ b/test/api/CMakeLists.txt
+@@ -40,7 +40,8 @@ set(TEST_API_OBJECTS
+     test_object_cache.cpp
+     test_buffer_pool_eviction.cpp
+     test_update_query_node.cpp
+-    test_delete_query_node.cpp)
++    test_delete_query_node.cpp
++    test_insert_query_node.cpp)
+ 
+ if(NOT WIN32)
+   set(TEST_API_OBJECTS ${TEST_API_OBJECTS} test_read_only.cpp)
+diff --git a/test/api/test_insert_query_node.cpp b/test/api/test_insert_query_node.cpp
+new file mode 100644
+index 00000000000..0f481c22bc7
+--- /dev/null
++++ b/test/api/test_insert_query_node.cpp
+@@ -0,0 +1,157 @@
++#include "catch.hpp"
++#include "duckdb/parser/parser.hpp"
++#include "duckdb/parser/statement/insert_statement.hpp"
++#include "duckdb/parser/query_node/insert_query_node.hpp"
++#include "duckdb/common/serializer/binary_serializer.hpp"
++#include "duckdb/common/serializer/binary_deserializer.hpp"
++#include "duckdb/common/serializer/memory_stream.hpp"
++
++using namespace duckdb;
++
++static unique_ptr<InsertStatement> ParseInsert(const string &sql) {
++	Parser p;
++	p.ParseQuery(sql);
++	REQUIRE(p.statements.size() == 1);
++	REQUIRE(p.statements[0]->type == StatementType::INSERT_STATEMENT);
++	return unique_ptr<InsertStatement>(static_cast<InsertStatement *>(p.statements[0].release()));
++}
++
++TEST_CASE("InsertQueryNode - InsertStatement is thin wrapper", "[insert_query_node]") {
++	auto stmt = ParseInsert("INSERT INTO t VALUES (1, 2, 3)");
++	REQUIRE(stmt->node != nullptr);
++	REQUIRE(stmt->node->type == QueryNodeType::INSERT_QUERY_NODE);
++	REQUIRE(stmt->node->table == "t");
++}
++
++TEST_CASE("InsertQueryNode - ToString round-trip", "[insert_query_node]") {
++	const string sql = "INSERT INTO t VALUES (1, 2, 3)";
++	auto stmt = ParseInsert(sql);
++	auto str = stmt->ToString();
++
++	auto stmt2 = ParseInsert(str);
++	REQUIRE(stmt->node->Equals(stmt2->node.get()));
++}
++
++TEST_CASE("InsertQueryNode - ToString with columns", "[insert_query_node]") {
++	const string sql = "INSERT INTO t (a, b) VALUES (1, 2)";
++	auto stmt = ParseInsert(sql);
++	REQUIRE(stmt->node->columns.size() == 2);
++	auto str = stmt->ToString();
++
++	auto stmt2 = ParseInsert(str);
++	REQUIRE(stmt->node->Equals(stmt2->node.get()));
++}
++
++TEST_CASE("InsertQueryNode - ToString with RETURNING", "[insert_query_node]") {
++	const string sql = "INSERT INTO t VALUES (1) RETURNING a, b";
++	auto stmt = ParseInsert(sql);
++	auto str = stmt->ToString();
++	REQUIRE(str.find("RETURNING") != string::npos);
++
++	auto stmt2 = ParseInsert(str);
++	REQUIRE(stmt->node->Equals(stmt2->node.get()));
++}
++
++TEST_CASE("InsertQueryNode - Copy and Equals", "[insert_query_node]") {
++	auto stmt = ParseInsert("INSERT INTO t (a, b) VALUES (1, 2)");
++	auto &node = *stmt->node;
++
++	auto copy = node.Copy();
++	REQUIRE(copy != nullptr);
++	REQUIRE(node.Equals(copy.get()));
++
++	// Verify deep copy
++	auto &copy_node = copy->Cast<InsertQueryNode>();
++	copy_node.table = "other_table";
++	REQUIRE(!node.Equals(copy.get()));
++}
++
++TEST_CASE("InsertQueryNode - Inequality on different tables", "[insert_query_node]") {
++	auto stmt1 = ParseInsert("INSERT INTO t1 VALUES (1)");
++	auto stmt2 = ParseInsert("INSERT INTO t2 VALUES (1)");
++	REQUIRE(!stmt1->node->Equals(stmt2->node.get()));
++}
++
++TEST_CASE("InsertQueryNode - Serialization round-trip", "[insert_query_node]") {
++	auto stmt = ParseInsert("INSERT INTO t (a, b) VALUES (1, 2) RETURNING a");
++	InsertQueryNode &node = *stmt->node;
++
++	MemoryStream stream;
++	BinarySerializer::Serialize(static_cast<QueryNode &>(node), stream);
++
++	stream.Rewind();
++	auto deserialized = BinaryDeserializer::Deserialize<QueryNode>(stream);
++	REQUIRE(deserialized->type == QueryNodeType::INSERT_QUERY_NODE);
++	REQUIRE(node.Equals(deserialized.get()));
++}
++
++TEST_CASE("InsertQueryNode - CTE in node", "[insert_query_node]") {
++	auto stmt = ParseInsert("WITH cte AS (SELECT 1 AS x) INSERT INTO t SELECT * FROM cte");
++	REQUIRE(!stmt->node->cte_map.map.empty());
++	auto str = stmt->ToString();
++	REQUIRE(str.find("WITH") != string::npos);
++
++	auto stmt2 = ParseInsert(str);
++	REQUIRE(stmt->node->Equals(stmt2->node.get()));
++}
++
++TEST_CASE("InsertQueryNode - DEFAULT VALUES", "[insert_query_node]") {
++	auto stmt = ParseInsert("INSERT INTO t DEFAULT VALUES");
++	REQUIRE(stmt->node->default_values == true);
++	REQUIRE(stmt->node->select_statement == nullptr);
++
++	auto str = stmt->ToString();
++	REQUIRE(str.find("DEFAULT VALUES") != string::npos);
++
++	auto stmt2 = ParseInsert(str);
++	REQUIRE(stmt->node->Equals(stmt2->node.get()));
++}
++
++TEST_CASE("InsertQueryNode - OR REPLACE", "[insert_query_node]") {
++	auto stmt = ParseInsert("INSERT OR REPLACE INTO t VALUES (1, 2)");
++	REQUIRE(stmt->node->on_conflict_info != nullptr);
++	REQUIRE(stmt->node->on_conflict_info->action_type == OnConflictAction::REPLACE);
++
++	auto str = stmt->ToString();
++	REQUIRE(str.find("OR REPLACE") != string::npos);
++
++	auto stmt2 = ParseInsert(str);
++	REQUIRE(stmt->node->Equals(stmt2->node.get()));
++}
++
++TEST_CASE("InsertQueryNode - INSERT BY NAME", "[insert_query_node]") {
++	auto stmt = ParseInsert("INSERT INTO t BY NAME SELECT 1 AS a, 2 AS b");
++	REQUIRE(stmt->node->column_order == InsertColumnOrder::INSERT_BY_NAME);
++
++	auto str = stmt->ToString();
++	REQUIRE(str.find("BY NAME") != string::npos);
++
++	auto stmt2 = ParseInsert(str);
++	REQUIRE(stmt->node->Equals(stmt2->node.get()));
++}
++
++TEST_CASE("InsertQueryNode - ON CONFLICT DO NOTHING", "[insert_query_node]") {
++	auto stmt = ParseInsert("INSERT INTO t VALUES (1) ON CONFLICT DO NOTHING");
++	REQUIRE(stmt->node->on_conflict_info != nullptr);
++	REQUIRE(stmt->node->on_conflict_info->action_type == OnConflictAction::NOTHING);
++
++	auto str = stmt->ToString();
++	REQUIRE(str.find("ON CONFLICT") != string::npos);
++	REQUIRE(str.find("DO NOTHING") != string::npos);
++
++	auto stmt2 = ParseInsert(str);
++	REQUIRE(stmt->node->Equals(stmt2->node.get()));
++}
++
++TEST_CASE("InsertQueryNode - Serialization with ON CONFLICT", "[insert_query_node]") {
++	auto stmt = ParseInsert("INSERT OR REPLACE INTO t VALUES (1, 2)");
++	InsertQueryNode &node = *stmt->node;
++
++	MemoryStream stream;
++	BinarySerializer::Serialize(static_cast<QueryNode &>(node), stream);
++
++	stream.Rewind();
++	auto deserialized = BinaryDeserializer::Deserialize<QueryNode>(stream);
++	REQUIRE(deserialized->type == QueryNodeType::INSERT_QUERY_NODE);
++	REQUIRE(node.Equals(deserialized.get()));
++}
+diff --git a/test/sql/insert/insert_query_node.test b/test/sql/insert/insert_query_node.test
+new file mode 100644
+index 00000000000..c387434231d
+--- /dev/null
++++ b/test/sql/insert/insert_query_node.test
+@@ -0,0 +1,139 @@
++# name: test/sql/insert/insert_query_node.test
++# description: Tests for InsertQueryNode (InsertStatement as thin wrapper over InsertQueryNode)
++# group: [insert]
++
++statement ok
++PRAGMA enable_verification
++
++statement ok
++CREATE TABLE t(a INT, b TEXT, c DOUBLE);
++
++# Basic INSERT
++statement ok
++INSERT INTO t VALUES (1, 'hello', 1.5), (2, 'world', 2.5);
++
++query III
++SELECT * FROM t ORDER BY a;
++----
++1	hello	1.5
++2	world	2.5
++
++# INSERT with column list
++statement ok
++INSERT INTO t (a, b, c) VALUES (3, 'foo', 3.5);
++
++query III
++SELECT * FROM t WHERE a = 3;
++----
++3	foo	3.5
++
++# INSERT with RETURNING
++query III
++INSERT INTO t VALUES (4, 'bar', 4.5) RETURNING a, b, c;
++----
++4	bar	4.5
++
++# INSERT with CTE
++query I
++WITH vals AS (SELECT 5 AS a, 'cte' AS b, 5.5 AS c)
++INSERT INTO t SELECT * FROM vals RETURNING a;
++----
++5
++
++query III
++SELECT * FROM t WHERE a = 5;
++----
++5	cte	5.5
++
++# INSERT DEFAULT VALUES
++statement ok
++CREATE TABLE t2(x INT DEFAULT 42, y TEXT DEFAULT 'default');
++
++statement ok
++INSERT INTO t2 DEFAULT VALUES;
++
++query II
++SELECT * FROM t2;
++----
++42	default
++
++# INSERT from SELECT
++statement ok
++CREATE TABLE t3(a INT, b TEXT, c DOUBLE);
++
++statement ok
++INSERT INTO t3 SELECT * FROM t WHERE a <= 2;
++
++query III
++SELECT * FROM t3 ORDER BY a;
++----
++1	hello	1.5
++2	world	2.5
++
++# INSERT with schema-qualified table
++statement ok
++CREATE SCHEMA myschema;
++
++statement ok
++CREATE TABLE myschema.t4(x INT);
++
++statement ok
++INSERT INTO myschema.t4 VALUES (1), (2), (3);
++
++query I rowsort
++SELECT * FROM myschema.t4;
++----
++1
++2
++3
++
++# INSERT OR REPLACE
++statement ok
++CREATE TABLE t5(id INT PRIMARY KEY, val TEXT);
++
++statement ok
++INSERT INTO t5 VALUES (1, 'original');
++
++statement ok
++INSERT OR REPLACE INTO t5 VALUES (1, 'replaced');
++
++query II
++SELECT * FROM t5;
++----
++1	replaced
++
++# INSERT BY NAME
++statement ok
++CREATE TABLE t6(a INT, b TEXT, c DOUBLE);
++
++statement ok
++INSERT INTO t6 BY NAME SELECT 3.14 AS c, 'hello' AS b, 42 AS a;
++
++query III
++SELECT * FROM t6;
++----
++42	hello	3.14
++
++# INSERT with ON CONFLICT DO NOTHING
++statement ok
++CREATE TABLE t7(id INT PRIMARY KEY, val TEXT);
++
++statement ok
++INSERT INTO t7 VALUES (1, 'first');
++
++statement ok
++INSERT INTO t7 VALUES (1, 'duplicate') ON CONFLICT DO NOTHING;
++
++query II
++SELECT * FROM t7;
++----
++1	first
++
++# INSERT with ON CONFLICT DO UPDATE
++statement ok
++INSERT INTO t7 VALUES (1, 'updated') ON CONFLICT (id) DO UPDATE SET val = excluded.val;
++
++query II
++SELECT * FROM t7;
++----
++1	updated

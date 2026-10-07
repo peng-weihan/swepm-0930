@@ -1,0 +1,578 @@
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryContextTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryContextTest.java
+index 9baf2a5..3167f60 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryContextTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryContextTest.java
+@@ -15,6 +15,7 @@ package com.openmemind.ai.memory.core;
+ 
+ import static org.assertj.core.api.Assertions.assertThat;
+ import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.argThat;
+ import static org.mockito.Mockito.mock;
+ import static org.mockito.Mockito.verify;
+ import static org.mockito.Mockito.when;
+@@ -25,8 +26,20 @@ import com.openmemind.ai.memory.core.buffer.InMemoryRecentConversationBuffer;
+ import com.openmemind.ai.memory.core.buffer.InsightBuffer;
+ import com.openmemind.ai.memory.core.buffer.MemoryBuffer;
+ import com.openmemind.ai.memory.core.buffer.RecentConversationBuffer;
++import com.openmemind.ai.memory.core.builder.DeepRetrievalOptions;
++import com.openmemind.ai.memory.core.builder.ExtractionCommonOptions;
++import com.openmemind.ai.memory.core.builder.ExtractionOptions;
++import com.openmemind.ai.memory.core.builder.InsightExtractionOptions;
++import com.openmemind.ai.memory.core.builder.ItemExtractionOptions;
++import com.openmemind.ai.memory.core.builder.MemoryBuildOptions;
++import com.openmemind.ai.memory.core.builder.RawDataExtractionOptions;
++import com.openmemind.ai.memory.core.builder.RetrievalAdvancedOptions;
++import com.openmemind.ai.memory.core.builder.RetrievalCommonOptions;
++import com.openmemind.ai.memory.core.builder.RetrievalOptions;
++import com.openmemind.ai.memory.core.builder.SimpleRetrievalOptions;
+ import com.openmemind.ai.memory.core.data.DefaultMemoryId;
+ import com.openmemind.ai.memory.core.data.MemoryId;
++import com.openmemind.ai.memory.core.data.enums.MemoryScope;
+ import com.openmemind.ai.memory.core.extraction.ExtractionConfig;
+ import com.openmemind.ai.memory.core.extraction.ExtractionResult;
+ import com.openmemind.ai.memory.core.extraction.MemoryExtractionPipeline;
+@@ -168,6 +181,49 @@ class DefaultMemoryContextTest {
+                     .verifyComplete();
+         }
+ 
++        @Test
++        @DisplayName("Uses builder-level simple retrieval defaults when loading context")
++        void getContextUsesBuilderLevelSimpleDefaults() {
++            memory =
++                    new DefaultMemory(
++                            extractor,
++                            retriever,
++                            memoryStore,
++                            memoryBuffer,
++                            vector,
++                            toolStatsService,
++                            null,
++                            null,
++                            MemoryBuildOptions.builder()
++                                    .retrieval(
++                                            new RetrievalOptions(
++                                                    new RetrievalCommonOptions(false),
++                                                    new SimpleRetrievalOptions(
++                                                            Duration.ofSeconds(15), 5, 9, 3, true),
++                                                    DeepRetrievalOptions.defaults(),
++                                                    RetrievalAdvancedOptions.defaults()))
++                                    .build());
++            recentConversationBuffer.append(
++                    "user1:agent1", Message.user("Tell me about my project"));
++            when(retriever.retrieve(any(RetrievalRequest.class)))
++                    .thenReturn(
++                            Mono.just(RetrievalResult.empty("simple", "Tell me about my project")));
++
++            StepVerifier.create(memory.getContext(ContextRequest.of(memoryId, 80000)))
++                    .assertNext(ctx -> assertThat(ctx.hasMemories()).isFalse())
++                    .verifyComplete();
++
++            verify(retriever)
++                    .retrieve(
++                            argThat(
++                                    request ->
++                                            request.config()
++                                                            .timeout()
++                                                            .equals(Duration.ofSeconds(15))
++                                                    && !request.config().enableCache()
++                                                    && request.config().tier2().topK() == 9));
++        }
++
+         @Test
+         @DisplayName("Loads only the configured recent message window")
+         void loads_only_recent_message_window() {
+@@ -268,5 +324,57 @@ class DefaultMemoryContextTest {
+ 
+             assertThat(pendingConversationBuffer.load("user1:agent1")).isEmpty();
+         }
++
++        @Test
++        @DisplayName("Uses builder-level extraction defaults when committing")
++        void commitUsesBuilderLevelExtractionDefaults() {
++            pendingConversationBuffer.save("user1:agent1", List.of(Message.user("test")));
++            var expectedResult =
++                    ExtractionResult.success(
++                            memoryId,
++                            RawDataResult.empty(),
++                            MemoryItemResult.empty(),
++                            InsightResult.empty(),
++                            Duration.ofMillis(50));
++            when(extractor.extract(any())).thenReturn(Mono.just(expectedResult));
++
++            memory =
++                    new DefaultMemory(
++                            extractor,
++                            retriever,
++                            memoryStore,
++                            memoryBuffer,
++                            vector,
++                            toolStatsService,
++                            null,
++                            null,
++                            MemoryBuildOptions.builder()
++                                    .extraction(
++                                            new ExtractionOptions(
++                                                    new ExtractionCommonOptions(
++                                                            MemoryScope.AGENT,
++                                                            Duration.ofSeconds(25),
++                                                            "Chinese"),
++                                                    RawDataExtractionOptions.defaults(),
++                                                    ItemExtractionOptions.defaults(),
++                                                    InsightExtractionOptions.defaults()))
++                                    .build());
++
++            StepVerifier.create(memory.commit(memoryId))
++                    .assertNext(result -> assertThat(result).isNotNull())
++                    .verifyComplete();
++
++            verify(extractor)
++                    .extract(
++                            argThat(
++                                    request ->
++                                            request.config().scope() == MemoryScope.AGENT
++                                                    && request.config()
++                                                            .timeout()
++                                                            .equals(Duration.ofSeconds(25))
++                                                    && request.config()
++                                                            .language()
++                                                            .equals("Chinese")));
++        }
+     }
+ }
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java
+index 3e11678..72ac965 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java
+@@ -15,6 +15,7 @@ package com.openmemind.ai.memory.core;
+ 
+ import static org.assertj.core.api.Assertions.assertThat;
+ import static org.mockito.ArgumentMatchers.any;
++import static org.mockito.ArgumentMatchers.argThat;
+ import static org.mockito.ArgumentMatchers.eq;
+ import static org.mockito.Mockito.inOrder;
+ import static org.mockito.Mockito.lenient;
+@@ -23,6 +24,19 @@ import static org.mockito.Mockito.verifyNoInteractions;
+ import static org.mockito.Mockito.when;
+ 
+ import com.openmemind.ai.memory.core.buffer.MemoryBuffer;
++import com.openmemind.ai.memory.core.builder.DeepRetrievalOptions;
++import com.openmemind.ai.memory.core.builder.ExtractionCommonOptions;
++import com.openmemind.ai.memory.core.builder.ExtractionOptions;
++import com.openmemind.ai.memory.core.builder.InsightExtractionOptions;
++import com.openmemind.ai.memory.core.builder.ItemExtractionOptions;
++import com.openmemind.ai.memory.core.builder.MemoryBuildOptions;
++import com.openmemind.ai.memory.core.builder.QueryExpansionOptions;
++import com.openmemind.ai.memory.core.builder.RawDataExtractionOptions;
++import com.openmemind.ai.memory.core.builder.RetrievalAdvancedOptions;
++import com.openmemind.ai.memory.core.builder.RetrievalCommonOptions;
++import com.openmemind.ai.memory.core.builder.RetrievalOptions;
++import com.openmemind.ai.memory.core.builder.SimpleRetrievalOptions;
++import com.openmemind.ai.memory.core.builder.SufficiencyOptions;
+ import com.openmemind.ai.memory.core.data.DefaultMemoryId;
+ import com.openmemind.ai.memory.core.data.MemoryId;
+ import com.openmemind.ai.memory.core.data.MemoryItem;
+@@ -33,6 +47,7 @@ import com.openmemind.ai.memory.core.data.enums.MemoryScope;
+ import com.openmemind.ai.memory.core.extraction.ExtractionRequest;
+ import com.openmemind.ai.memory.core.extraction.ExtractionResult;
+ import com.openmemind.ai.memory.core.extraction.MemoryExtractor;
++import com.openmemind.ai.memory.core.extraction.rawdata.content.ConversationContent;
+ import com.openmemind.ai.memory.core.extraction.rawdata.content.conversation.message.Message;
+ import com.openmemind.ai.memory.core.extraction.rawdata.content.tool.ToolCallRecord;
+ import com.openmemind.ai.memory.core.extraction.result.InsightResult;
+@@ -42,6 +57,7 @@ import com.openmemind.ai.memory.core.retrieval.MemoryRetriever;
+ import com.openmemind.ai.memory.core.retrieval.RetrievalConfig;
+ import com.openmemind.ai.memory.core.retrieval.RetrievalRequest;
+ import com.openmemind.ai.memory.core.retrieval.RetrievalResult;
++import com.openmemind.ai.memory.core.retrieval.strategy.DeepStrategyConfig;
+ import com.openmemind.ai.memory.core.stats.ToolStatsService;
+ import com.openmemind.ai.memory.core.store.MemoryStore;
+ import com.openmemind.ai.memory.core.store.insight.InsightOperations;
+@@ -124,6 +140,97 @@ class DefaultMemoryTest {
+ 
+             StepVerifier.create(memind.addMessage(memoryId, message)).verifyComplete();
+         }
++
++        @Test
++        @DisplayName("extract(memoryId, content) uses builder-level extraction defaults")
++        void extractUsesBuilderLevelExtractionDefaults() {
++            var memory =
++                    new DefaultMemory(
++                            extractor,
++                            retriever,
++                            store,
++                            memoryBuffer,
++                            vector,
++                            toolStatsService,
++                            null,
++                            null,
++                            MemoryBuildOptions.builder()
++                                    .extraction(
++                                            new ExtractionOptions(
++                                                    new ExtractionCommonOptions(
++                                                            MemoryScope.AGENT,
++                                                            Duration.ofSeconds(40),
++                                                            "Chinese"),
++                                                    RawDataExtractionOptions.defaults(),
++                                                    ItemExtractionOptions.defaults(),
++                                                    InsightExtractionOptions.defaults()))
++                                    .build());
++            when(extractor.extract(any(ExtractionRequest.class)))
++                    .thenReturn(Mono.just(successResult()));
++
++            StepVerifier.create(
++                            memory.extract(
++                                    memoryId,
++                                    new ConversationContent(List.of(Message.user("test")))))
++                    .expectNextCount(1)
++                    .verifyComplete();
++
++            verify(extractor)
++                    .extract(
++                            argThat(
++                                    request ->
++                                            request.config().scope() == MemoryScope.AGENT
++                                                    && request.config()
++                                                            .timeout()
++                                                            .equals(Duration.ofSeconds(40))
++                                                    && request.config()
++                                                            .language()
++                                                            .equals("Chinese")));
++        }
++
++        @Test
++        @DisplayName("addMessage uses builder-level extraction defaults")
++        void addMessageUsesBuilderLevelExtractionDefaults() {
++            var memory =
++                    new DefaultMemory(
++                            extractor,
++                            retriever,
++                            store,
++                            memoryBuffer,
++                            vector,
++                            toolStatsService,
++                            null,
++                            null,
++                            MemoryBuildOptions.builder()
++                                    .extraction(
++                                            new ExtractionOptions(
++                                                    new ExtractionCommonOptions(
++                                                            MemoryScope.USER,
++                                                            Duration.ofSeconds(30),
++                                                            "Chinese"),
++                                                    RawDataExtractionOptions.defaults(),
++                                                    new ItemExtractionOptions(true),
++                                                    InsightExtractionOptions.defaults()))
++                                    .build());
++            var message = Message.user("test");
++            when(extractor.addMessage(eq(memoryId), eq(message), any()))
++                    .thenReturn(Mono.just(successResult()));
++
++            StepVerifier.create(memory.addMessage(memoryId, message))
++                    .expectNextCount(1)
++                    .verifyComplete();
++
++            verify(extractor)
++                    .addMessage(
++                            eq(memoryId),
++                            eq(message),
++                            argThat(
++                                    config ->
++                                            config.language().equals("Chinese")
++                                                    && config.enableForesight()
++                                                    && config.timeout()
++                                                            .equals(Duration.ofSeconds(30))));
++        }
+     }
+ 
+     @Nested
+@@ -142,6 +249,58 @@ class DefaultMemoryTest {
+                     .expectNext(result)
+                     .verifyComplete();
+         }
++
++        @Test
++        @DisplayName("retrieve(memoryId, query, DEEP) uses builder-level retrieval defaults")
++        void retrieveUsesBuilderLevelDeepDefaults() {
++            var memory =
++                    new DefaultMemory(
++                            extractor,
++                            retriever,
++                            store,
++                            memoryBuffer,
++                            vector,
++                            toolStatsService,
++                            null,
++                            null,
++                            MemoryBuildOptions.builder()
++                                    .retrieval(
++                                            new RetrievalOptions(
++                                                    new RetrievalCommonOptions(false),
++                                                    SimpleRetrievalOptions.defaults(),
++                                                    new DeepRetrievalOptions(
++                                                            Duration.ofSeconds(45),
++                                                            5,
++                                                            22,
++                                                            false,
++                                                            0,
++                                                            QueryExpansionOptions.defaults(),
++                                                            new SufficiencyOptions(12)),
++                                                    RetrievalAdvancedOptions.defaults()))
++                                    .build());
++            when(retriever.retrieve(any(RetrievalRequest.class)))
++                    .thenReturn(Mono.just(RetrievalResult.empty("deep_retrieval", "test")));
++
++            StepVerifier.create(memory.retrieve(memoryId, "test", RetrievalConfig.Strategy.DEEP))
++                    .expectNextCount(1)
++                    .verifyComplete();
++
++            verify(retriever)
++                    .retrieve(
++                            argThat(
++                                    request ->
++                                            request.config()
++                                                            .timeout()
++                                                            .equals(Duration.ofSeconds(45))
++                                                    && !request.config().enableCache()
++                                                    && request.config().tier2().topK() == 22
++                                                    && ((DeepStrategyConfig)
++                                                                            request.config()
++                                                                                    .strategyConfig())
++                                                                    .sufficiency()
++                                                                    .itemTopK()
++                                                            == 12));
++        }
+     }
+ 
+     @Nested
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java
+index bf4e30a..53add2c 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryAssemblersTest.java
+@@ -26,6 +26,7 @@ import com.openmemind.ai.memory.core.extraction.context.LlmContextCommitDetector
+ import com.openmemind.ai.memory.core.extraction.insight.InsightLayer;
+ import com.openmemind.ai.memory.core.extraction.insight.generator.LlmInsightGenerator;
+ import com.openmemind.ai.memory.core.extraction.insight.group.LlmInsightGroupClassifier;
++import com.openmemind.ai.memory.core.extraction.insight.scheduler.InsightBuildConfig;
+ import com.openmemind.ai.memory.core.extraction.insight.scheduler.InsightBuildScheduler;
+ import com.openmemind.ai.memory.core.extraction.item.MemoryItemLayer;
+ import com.openmemind.ai.memory.core.extraction.item.extractor.DefaultMemoryItemExtractor;
+@@ -34,6 +35,7 @@ import com.openmemind.ai.memory.core.extraction.item.strategy.LlmToolCallItemExt
+ import com.openmemind.ai.memory.core.extraction.rawdata.RawDataLayer;
+ import com.openmemind.ai.memory.core.extraction.rawdata.caption.CaptionGenerator;
+ import com.openmemind.ai.memory.core.extraction.rawdata.caption.LlmConversationCaptionGenerator;
++import com.openmemind.ai.memory.core.extraction.rawdata.chunk.ConversationChunkingConfig;
+ import com.openmemind.ai.memory.core.extraction.rawdata.chunk.LlmConversationChunker;
+ import com.openmemind.ai.memory.core.extraction.rawdata.content.ConversationContent;
+ import com.openmemind.ai.memory.core.extraction.rawdata.content.ToolCallContent;
+@@ -97,14 +99,27 @@ class MemoryAssemblersTest {
+                     return INSIGHT_OPERATIONS;
+                 }
+             };
++    private static final CommitDetectorConfig CUSTOM_COMMIT_DETECTION =
++            new CommitDetectorConfig(6, 2048, 4);
++    private static final InsightBuildConfig CUSTOM_INSIGHT_BUILD =
++            new InsightBuildConfig(7, 5, 3, 2);
+ 
+     @Test
+-    void extractionAssemblerUsesMemoryBufferAndBoundaryOptions() {
+-        CommitDetectorConfig boundaryDetector = new CommitDetectorConfig(6, 2048, 4);
++    void extractionAssemblerUsesNestedRawdataAndInsightOptions() {
+         MemoryAssemblyContext context =
+                 context(
+                         Map.of(),
+-                        MemoryBuildOptions.builder().boundaryDetector(boundaryDetector).build());
++                        MemoryBuildOptions.builder()
++                                .extraction(
++                                        new ExtractionOptions(
++                                                ExtractionCommonOptions.defaults(),
++                                                new RawDataExtractionOptions(
++                                                        ConversationChunkingConfig.DEFAULT,
++                                                        CUSTOM_COMMIT_DETECTION),
++                                                ItemExtractionOptions.defaults(),
++                                                new InsightExtractionOptions(
++                                                        true, CUSTOM_INSIGHT_BUILD)))
++                                .build());
+ 
+         MemoryExtractionAssembly assembly = new MemoryExtractionAssembler().assemble(context);
+         MemoryExtractor extractor = (MemoryExtractor) assembly.pipeline();
+@@ -130,7 +145,9 @@ class MemoryAssemblersTest {
+ 
+         assertThat(processorCaptionGenerator).isSameAs(defaultCaptionGenerator);
+         assertThat(readField(actualBoundaryDetector, "config", CommitDetectorConfig.class))
+-                .isEqualTo(boundaryDetector);
++                .isEqualTo(CUSTOM_COMMIT_DETECTION);
++        assertThat(readField(scheduler, "config", InsightBuildConfig.class))
++                .isEqualTo(CUSTOM_INSIGHT_BUILD);
+         assertThat(rawDataStore).isSameAs(MEMORY_STORE);
+         assertThat(pendingConversationBuffer).isSameAs(PENDING_CONVERSATION_BUFFER);
+         assertThat(insightBuffer).isSameAs(INSIGHT_BUFFER_STORE);
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryBuildOptionsTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryBuildOptionsTest.java
+new file mode 100644
+index 0000000..e7650e4
+--- /dev/null
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/MemoryBuildOptionsTest.java
+@@ -0,0 +1,43 @@
++/*
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ * http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.openmemind.ai.memory.core.builder;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++import com.openmemind.ai.memory.core.data.enums.MemoryScope;
++import com.openmemind.ai.memory.core.extraction.context.CommitDetectorConfig;
++import com.openmemind.ai.memory.core.extraction.insight.scheduler.InsightBuildConfig;
++import com.openmemind.ai.memory.core.extraction.rawdata.chunk.ConversationChunkingConfig;
++import java.time.Duration;
++import org.junit.jupiter.api.Test;
++
++class MemoryBuildOptionsTest {
++
++    @Test
++    void defaultsExposeExtractionAndRetrievalSubtrees() {
++        var options = MemoryBuildOptions.defaults();
++
++        assertThat(options.extraction().common().defaultScope()).isEqualTo(MemoryScope.USER);
++        assertThat(options.extraction().rawdata().chunking())
++                .isEqualTo(ConversationChunkingConfig.DEFAULT);
++        assertThat(options.extraction().rawdata().commitDetection())
++                .isEqualTo(CommitDetectorConfig.defaults());
++        assertThat(options.extraction().insight().build())
++                .isEqualTo(new InsightBuildConfig(3, 2, 8, 2));
++        assertThat(options.retrieval().simple().timeout()).isEqualTo(Duration.ofSeconds(10));
++        assertThat(options.retrieval().deep().timeout()).isEqualTo(Duration.ofSeconds(120));
++        assertThat(options.retrieval().simple().keywordSearchEnabled()).isTrue();
++        assertThat(options.retrieval().advanced().rerank().mode()).isEqualTo(RerankMode.PURE);
++    }
++}
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java
+index 594d33e..c61d2b3 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/builder/internal/DefaultMemoryBuilderTest.java
+@@ -22,8 +22,18 @@ import com.openmemind.ai.memory.core.buffer.ConversationBuffer;
+ import com.openmemind.ai.memory.core.buffer.InsightBuffer;
+ import com.openmemind.ai.memory.core.buffer.MemoryBuffer;
+ import com.openmemind.ai.memory.core.buffer.RecentConversationBuffer;
++import com.openmemind.ai.memory.core.builder.DeepRetrievalOptions;
++import com.openmemind.ai.memory.core.builder.ExtractionCommonOptions;
++import com.openmemind.ai.memory.core.builder.ExtractionOptions;
++import com.openmemind.ai.memory.core.builder.InsightExtractionOptions;
++import com.openmemind.ai.memory.core.builder.ItemExtractionOptions;
+ import com.openmemind.ai.memory.core.builder.MemoryBuildOptions;
+ import com.openmemind.ai.memory.core.builder.MemoryBuilder;
++import com.openmemind.ai.memory.core.builder.RawDataExtractionOptions;
++import com.openmemind.ai.memory.core.builder.RetrievalAdvancedOptions;
++import com.openmemind.ai.memory.core.builder.RetrievalCommonOptions;
++import com.openmemind.ai.memory.core.builder.RetrievalOptions;
++import com.openmemind.ai.memory.core.builder.SimpleRetrievalOptions;
+ import com.openmemind.ai.memory.core.data.MemoryId;
+ import com.openmemind.ai.memory.core.extraction.MemoryExtractor;
+ import com.openmemind.ai.memory.core.extraction.context.CommitDetectorConfig;
+@@ -33,6 +43,7 @@ import com.openmemind.ai.memory.core.extraction.item.extractor.DefaultMemoryItem
+ import com.openmemind.ai.memory.core.extraction.item.strategy.LlmItemExtractionStrategy;
+ import com.openmemind.ai.memory.core.extraction.rawdata.RawDataLayer;
+ import com.openmemind.ai.memory.core.extraction.rawdata.caption.CaptionGenerator;
++import com.openmemind.ai.memory.core.extraction.rawdata.chunk.ConversationChunkingConfig;
+ import com.openmemind.ai.memory.core.extraction.rawdata.content.ConversationContent;
+ import com.openmemind.ai.memory.core.extraction.rawdata.processor.ConversationContentProcessor;
+ import com.openmemind.ai.memory.core.llm.ChatClientSlot;
+@@ -181,7 +192,16 @@ class DefaultMemoryBuilderTest {
+                                 .vector(MEMORY_VECTOR)
+                                 .options(
+                                         MemoryBuildOptions.builder()
+-                                                .boundaryDetector(config)
++                                                .extraction(
++                                                        new ExtractionOptions(
++                                                                ExtractionCommonOptions.defaults(),
++                                                                new RawDataExtractionOptions(
++                                                                        ConversationChunkingConfig
++                                                                                .DEFAULT,
++                                                                        config),
++                                                                ItemExtractionOptions.defaults(),
++                                                                InsightExtractionOptions
++                                                                        .defaults()))
+                                                 .build())
+                                 .build();
+ 
+@@ -195,11 +215,37 @@ class DefaultMemoryBuilderTest {
+     }
+ 
+     @Test
+-    void defaultBuildOptionsExposeBoundaryDetectorDefaults() {
+-        assertThat(MemoryBuildOptions.defaults().boundaryDetector())
++    void defaultBuildOptionsExposeNestedCommitDetectionDefaults() {
++        assertThat(MemoryBuildOptions.defaults().extraction().rawdata().commitDetection())
+                 .isEqualTo(CommitDetectorConfig.defaults());
+     }
+ 
++    @Test
++    void builderPropagatesOptionsIntoDefaultMemory() {
++        MemoryBuildOptions configured =
++                MemoryBuildOptions.builder()
++                        .retrieval(
++                                new RetrievalOptions(
++                                        new RetrievalCommonOptions(false),
++                                        SimpleRetrievalOptions.defaults(),
++                                        DeepRetrievalOptions.defaults(),
++                                        RetrievalAdvancedOptions.defaults()))
++                        .build();
++
++        DefaultMemory memory =
++                (DefaultMemory)
++                        Memory.builder()
++                                .chatClient(CHAT_CLIENT)
++                                .store(MEMORY_STORE)
++                                .buffer(MEMORY_BUFFER)
++                                .vector(MEMORY_VECTOR)
++                                .options(configured)
++                                .build();
++
++        assertThat(readField(memory, "buildOptions", MemoryBuildOptions.class))
++                .isEqualTo(configured);
++    }
++
+     @Test
+     void buildRoutesSlotSpecificClients() {
+         TrackingChatClient defaultChatClient = new TrackingChatClient();
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/RetrievalConfigTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/RetrievalConfigTest.java
+index ce147f4..dbfea6c 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/RetrievalConfigTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/RetrievalConfigTest.java
+@@ -55,7 +55,13 @@ class RetrievalConfigTest {
+             assertThat(config.tier1().enabled()).isTrue();
+             assertThat(config.tier2().enabled()).isTrue();
+             assertThat(config.tier3().enabled()).isFalse();
++            assertThat(config.rerank().enabled()).isTrue();
+             assertThat(config.timeout()).isEqualTo(Duration.ofSeconds(120));
++            assertThat(
++                            ((DeepStrategyConfig) config.strategyConfig())
++                                    .queryExpansion()
++                                    .maxExpandedQueries())
++                    .isEqualTo(3);
+         }
+     }
+ 
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/strategy/StrategyConfigTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/strategy/StrategyConfigTest.java
+index 27792eb..4199ac7 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/strategy/StrategyConfigTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/strategy/StrategyConfigTest.java
+@@ -68,8 +68,7 @@ class StrategyConfigTest {
+         void withMethods() {
+             var config =
+                     DeepStrategyConfig.defaults()
+-                            .withQueryExpansion(
+-                                    new DeepStrategyConfig.QueryExpansionConfig(5, 3.0, 1.5));
++                            .withQueryExpansion(new DeepStrategyConfig.QueryExpansionConfig(5));
+             assertThat(config.queryExpansion().maxExpandedQueries()).isEqualTo(5);
+             assertThat(config.sufficiency().itemTopK()).isEqualTo(20); // unchanged
+         }

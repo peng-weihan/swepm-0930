@@ -1,0 +1,1590 @@
+diff --git a/packages/shared/data/api/schemas/__tests__/prompts.test.ts b/packages/shared/data/api/schemas/__tests__/prompts.test.ts
+new file mode 100644
+index 0000000000..9fa27b0719
+--- /dev/null
++++ b/packages/shared/data/api/schemas/__tests__/prompts.test.ts
+@@ -0,0 +1,77 @@
++import { describe, expect, it } from 'vitest'
++
++import { CreatePromptSchema, UpdatePromptSchema } from '../prompts'
++
++describe('prompt DTO schemas', () => {
++  it('accepts create with title and content', () => {
++    const result = CreatePromptSchema.parse({
++      title: 'Test',
++      content: 'Hello'
++    })
++
++    expect(result).toEqual({ title: 'Test', content: 'Hello' })
++  })
++
++  it('rejects create with empty title or content', () => {
++    expect(() => CreatePromptSchema.parse({ title: '', content: 'Hello' })).toThrow()
++    expect(() => CreatePromptSchema.parse({ title: 'Test', content: '' })).toThrow()
++  })
++
++  it('rejects create values over schema limits', () => {
++    expect(() => CreatePromptSchema.parse({ title: 'x'.repeat(257), content: 'Hello' })).toThrow()
++    expect(() => CreatePromptSchema.parse({ title: 'Test', content: 'x'.repeat(100_001) })).toThrow()
++  })
++
++  it('rejects create with unknown prompt fields', () => {
++    expect(() =>
++      CreatePromptSchema.parse({
++        title: 'Test',
++        content: 'Hello',
++        scope: 'global'
++      })
++    ).toThrow()
++
++    expect(() =>
++      CreatePromptSchema.parse({
++        title: 'Test',
++        content: 'Hello',
++        variables: []
++      })
++    ).toThrow()
++  })
++
++  it('rejects empty update payloads', () => {
++    expect(() => UpdatePromptSchema.parse({})).toThrow('At least one field is required')
++  })
++
++  it('accepts partial title/content updates', () => {
++    expect(UpdatePromptSchema.parse({ title: 'renamed' })).toEqual({ title: 'renamed' })
++    expect(UpdatePromptSchema.parse({ content: 'updated' })).toEqual({ content: 'updated' })
++  })
++
++  it('rejects update with empty title or content', () => {
++    expect(() => UpdatePromptSchema.parse({ title: '' })).toThrow()
++    expect(() => UpdatePromptSchema.parse({ content: '' })).toThrow()
++  })
++
++  it('rejects removed version, scope, and variable fields', () => {
++    expect(() => UpdatePromptSchema.parse({ currentVersion: 2 })).toThrow()
++    expect(() => UpdatePromptSchema.parse({ assistantId: 'assistant-1' })).toThrow()
++    expect(() => UpdatePromptSchema.parse({ variables: [] })).toThrow()
++  })
++})
++
++// Bounds come from instruction.md, independently of the candidate constants.
++describe('prompt public size boundaries', () => {
++  it('accepts create at the stated title and content maximums', () => {
++    const body = { title: 't'.repeat(256), content: 'c'.repeat(100_000) }
++    expect(CreatePromptSchema.parse(body)).toEqual(body)
++  })
++  it('enforces the same stated bounds on partial updates', () => {
++    for (const body of [{ title: 't'.repeat(256) }, { content: 'c'.repeat(100_000) }]) {
++      expect(UpdatePromptSchema.parse(body)).toEqual(body)
++    }
++    expect(() => UpdatePromptSchema.parse({ title: 't'.repeat(257) })).toThrow()
++    expect(() => UpdatePromptSchema.parse({ content: 'c'.repeat(100_001) })).toThrow()
++  })
++})
+diff --git a/packages/shared/data/types/__tests__/prompt.test.ts b/packages/shared/data/types/__tests__/prompt.test.ts
+new file mode 100644
+index 0000000000..fa9dd1ad75
+--- /dev/null
++++ b/packages/shared/data/types/__tests__/prompt.test.ts
+@@ -0,0 +1,64 @@
++import { describe, expect, it } from 'vitest'
++
++import { PromptContentSchema, PromptSchema, PromptTitleSchema } from '../prompt'
++
++const prompt = {
++  id: '550e8400-e29b-41d4-a716-446655440000',
++  title: 'Greeting',
++  content: 'Hello',
++  orderKey: 'a0',
++  createdAt: new Date(1700000000000).toISOString(),
++  updatedAt: new Date(1700000000000).toISOString()
++}
++
++describe('PromptSchema', () => {
++  it('accepts the unified prompt shape', () => {
++    expect(PromptSchema.parse(prompt)).toEqual(prompt)
++  })
++
++  it('rejects removed version and variable fields', () => {
++    expect(() => PromptSchema.parse({ ...prompt, currentVersion: 1 })).toThrow()
++    expect(() => PromptSchema.parse({ ...prompt, variables: [] })).toThrow()
++  })
++
++  it('rejects missing title or content', () => {
++    expect(() => PromptSchema.parse({ ...prompt, title: undefined })).toThrow()
++    expect(() => PromptSchema.parse({ ...prompt, content: undefined })).toThrow()
++  })
++})
++
++describe('PromptTitleSchema', () => {
++  it('accepts non-empty titles', () => {
++    expect(PromptTitleSchema.parse('Trip Planner')).toBe('Trip Planner')
++  })
++
++  it('rejects empty titles', () => {
++    expect(() => PromptTitleSchema.parse('')).toThrow()
++  })
++})
++
++describe('PromptContentSchema', () => {
++  it('accepts non-empty content', () => {
++    expect(PromptContentSchema.parse('Plan a trip')).toBe('Plan a trip')
++  })
++
++  it('rejects empty content', () => {
++    expect(() => PromptContentSchema.parse('')).toThrow()
++  })
++
++  it('rejects content over the max size', () => {
++    expect(() => PromptContentSchema.parse('x'.repeat(100_001))).toThrow()
++  })
++})
++
++// Exercise accepted boundary values as well as independently chosen rejections.
++describe('Prompt entity public size boundaries', () => {
++  it('accepts the stated maximums without truncating stored content', () => {
++    const boundary = { ...prompt, title: 't'.repeat(256), content: 'c'.repeat(100_000) }
++    expect(PromptSchema.parse(boundary)).toEqual(boundary)
++  })
++  it('rejects values beyond the stated maximums', () => {
++    expect(() => PromptSchema.parse({ ...prompt, title: 't'.repeat(257) })).toThrow()
++    expect(() => PromptSchema.parse({ ...prompt, content: 'c'.repeat(100_001) })).toThrow()
++  })
++})
+diff --git a/src/main/data/api/handlers/__tests__/prompts.test.ts b/src/main/data/api/handlers/__tests__/prompts.test.ts
+new file mode 100644
+index 0000000000..94f9bb0ba2
+--- /dev/null
++++ b/src/main/data/api/handlers/__tests__/prompts.test.ts
+@@ -0,0 +1,224 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest'
++
++const { getAllMock, getByIdMock, createMock, updateMock, deleteMock, reorderMock, reorderBatchMock } = vi.hoisted(
++  () => ({
++    getAllMock: vi.fn(),
++    getByIdMock: vi.fn(),
++    createMock: vi.fn(),
++    updateMock: vi.fn(),
++    deleteMock: vi.fn(),
++    reorderMock: vi.fn(),
++    reorderBatchMock: vi.fn()
++  })
++)
++
++vi.mock('@data/services/PromptService', () => ({
++  promptService: {
++    getAll: getAllMock,
++    getById: getByIdMock,
++    create: createMock,
++    update: updateMock,
++    delete: deleteMock,
++    reorder: reorderMock,
++    reorderBatch: reorderBatchMock
++  }
++}))
++
++import { promptHandlers } from '../prompts'
++
++const PROMPT_ID = '550e8400-e29b-41d4-a716-446655440000'
++const OTHER_PROMPT_ID = '550e8400-e29b-41d4-a716-446655440001'
++
++describe('promptHandlers', () => {
++  beforeEach(() => {
++    vi.clearAllMocks()
++  })
++
++  it('should not expose removed version or rollback endpoints', () => {
++    const handlers = promptHandlers as Record<string, unknown>
++    expect(handlers['/prompts/:id/versions']).toBeUndefined()
++    expect(handlers['/prompts/:id/rollback']).toBeUndefined()
++  })
++
++  describe('/prompts', () => {
++    it('should delegate GET to promptService.getAll', async () => {
++      getAllMock.mockResolvedValueOnce([{ id: PROMPT_ID, title: 't', content: 'c' }])
++      await expect(promptHandlers['/prompts'].GET({} as never)).resolves.toMatchObject([{ id: PROMPT_ID }])
++      expect(getAllMock).toHaveBeenCalledOnce()
++    })
++
++    it('should delegate POST with title/content only', async () => {
++      createMock.mockResolvedValueOnce({ id: PROMPT_ID, title: 't', content: 'c' })
++
++      const result = await promptHandlers['/prompts'].POST({
++        body: { title: 't', content: 'c' }
++      } as never)
++
++      expect(createMock).toHaveBeenCalledWith({ title: 't', content: 'c' })
++      expect(result).toMatchObject({ id: PROMPT_ID })
++    })
++
++    it('should reject POST with empty fields before calling the service', async () => {
++      await expect(
++        promptHandlers['/prompts'].POST({ body: { title: '', content: 'c' } } as never)
++      ).rejects.toHaveProperty('name', 'ZodError')
++      await expect(
++        promptHandlers['/prompts'].POST({ body: { title: 't', content: '' } } as never)
++      ).rejects.toHaveProperty('name', 'ZodError')
++      expect(createMock).not.toHaveBeenCalled()
++    })
++
++    it('should reject POST with a missing required field', async () => {
++      await expect(promptHandlers['/prompts'].POST({ body: { content: 'c' } } as never)).rejects.toHaveProperty(
++        'name',
++        'ZodError'
++      )
++      expect(createMock).not.toHaveBeenCalled()
++    })
++
++    it('should reject POST with removed fields', async () => {
++      await expect(
++        promptHandlers['/prompts'].POST({
++          body: { title: 't', content: 'c', variables: [] }
++        } as never)
++      ).rejects.toHaveProperty('name', 'ZodError')
++      await expect(
++        promptHandlers['/prompts'].POST({
++          body: { title: 't', content: 'c', assistantId: OTHER_PROMPT_ID }
++        } as never)
++      ).rejects.toHaveProperty('name', 'ZodError')
++      expect(createMock).not.toHaveBeenCalled()
++    })
++  })
++
++  describe('/prompts/:id', () => {
++    it('should delegate GET with the parsed id', async () => {
++      getByIdMock.mockResolvedValueOnce({ id: PROMPT_ID })
++      await expect(promptHandlers['/prompts/:id'].GET({ params: { id: PROMPT_ID } } as never)).resolves.toMatchObject({
++        id: PROMPT_ID
++      })
++      expect(getByIdMock).toHaveBeenCalledWith(PROMPT_ID)
++    })
++
++    it('should reject GET with a non-UUID id', async () => {
++      await expect(
++        promptHandlers['/prompts/:id'].GET({ params: { id: 'not-a-uuid' } } as never)
++      ).rejects.toHaveProperty('name', 'ZodError')
++      expect(getByIdMock).not.toHaveBeenCalled()
++    })
++
++    it('should delegate PATCH with parsed id and body', async () => {
++      updateMock.mockResolvedValueOnce({ id: PROMPT_ID, title: 'next', content: 'c' })
++
++      const result = await promptHandlers['/prompts/:id'].PATCH({
++        params: { id: PROMPT_ID },
++        body: { title: 'next' }
++      } as never)
++
++      expect(updateMock).toHaveBeenCalledWith(PROMPT_ID, { title: 'next' })
++      expect(result).toMatchObject({ title: 'next' })
++    })
++
++    it('should reject PATCH with an empty body before calling the service', async () => {
++      await expect(
++        promptHandlers['/prompts/:id'].PATCH({
++          params: { id: PROMPT_ID },
++          body: {}
++        } as never)
++      ).rejects.toHaveProperty('name', 'ZodError')
++      expect(updateMock).not.toHaveBeenCalled()
++    })
++
++    it('should reject PATCH with empty or removed fields', async () => {
++      await expect(
++        promptHandlers['/prompts/:id'].PATCH({
++          params: { id: PROMPT_ID },
++          body: { title: '' }
++        } as never)
++      ).rejects.toHaveProperty('name', 'ZodError')
++      await expect(
++        promptHandlers['/prompts/:id'].PATCH({
++          params: { id: PROMPT_ID },
++          body: { currentVersion: 2 }
++        } as never)
++      ).rejects.toHaveProperty('name', 'ZodError')
++      await expect(
++        promptHandlers['/prompts/:id'].PATCH({
++          params: { id: PROMPT_ID },
++          body: { variables: [] }
++        } as never)
++      ).rejects.toHaveProperty('name', 'ZodError')
++      expect(updateMock).not.toHaveBeenCalled()
++    })
++
++    it('should delegate DELETE with the parsed id', async () => {
++      deleteMock.mockResolvedValueOnce(undefined)
++      await expect(
++        promptHandlers['/prompts/:id'].DELETE({ params: { id: PROMPT_ID } } as never)
++      ).resolves.toBeUndefined()
++      expect(deleteMock).toHaveBeenCalledWith(PROMPT_ID)
++    })
++  })
++
++  describe('/prompts/:id/order', () => {
++    it('should delegate PATCH with parsed id and anchor', async () => {
++      reorderMock.mockResolvedValueOnce(undefined)
++      await expect(
++        promptHandlers['/prompts/:id/order'].PATCH({
++          params: { id: PROMPT_ID },
++          body: { before: OTHER_PROMPT_ID }
++        } as never)
++      ).resolves.toBeUndefined()
++
++      expect(reorderMock).toHaveBeenCalledWith(PROMPT_ID, { before: OTHER_PROMPT_ID })
++    })
++
++    it('should reject a malformed anchor before calling the service', async () => {
++      await expect(
++        promptHandlers['/prompts/:id/order'].PATCH({
++          params: { id: PROMPT_ID },
++          body: { before: OTHER_PROMPT_ID, after: OTHER_PROMPT_ID }
++        } as never)
++      ).rejects.toHaveProperty('name', 'ZodError')
++      expect(reorderMock).not.toHaveBeenCalled()
++    })
++
++    it('should reject PATCH when the id is not a UUID', async () => {
++      await expect(
++        promptHandlers['/prompts/:id/order'].PATCH({
++          params: { id: 'not-a-uuid' },
++          body: { position: 'first' }
++        } as never)
++      ).rejects.toHaveProperty('name', 'ZodError')
++      expect(reorderMock).not.toHaveBeenCalled()
++    })
++  })
++
++  describe('/prompts/order:batch', () => {
++    it('should delegate PATCH with the parsed moves array', async () => {
++      reorderBatchMock.mockResolvedValueOnce(undefined)
++      await expect(
++        promptHandlers['/prompts/order:batch'].PATCH({
++          body: {
++            moves: [
++              { id: PROMPT_ID, anchor: { position: 'first' } },
++              { id: OTHER_PROMPT_ID, anchor: { after: PROMPT_ID } }
++            ]
++          }
++        } as never)
++      ).resolves.toBeUndefined()
++
++      expect(reorderBatchMock).toHaveBeenCalledWith([
++        { id: PROMPT_ID, anchor: { position: 'first' } },
++        { id: OTHER_PROMPT_ID, anchor: { after: PROMPT_ID } }
++      ])
++    })
++
++    it('should reject an empty moves array before calling the service', async () => {
++      await expect(
++        promptHandlers['/prompts/order:batch'].PATCH({ body: { moves: [] } } as never)
++      ).rejects.toHaveProperty('name', 'ZodError')
++      expect(reorderBatchMock).not.toHaveBeenCalled()
++    })
++  })
++})
+diff --git a/src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts b/src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts
+index bdaada5e5f..cea71add9e 100644
+--- a/src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts
++++ b/src/main/data/migration/v2/core/__tests__/MigrationEngine.test.ts
+@@ -1,5 +1,9 @@
++import { promptTable } from '@data/db/schemas/prompt'
++import { setupTestDatabase } from '@test-helpers/db'
++
+ import { beforeEach, describe, expect, it, vi } from 'vitest'
+ 
++import { mockMainLoggerService } from '../../../../../../../tests/__mocks__/MainLoggerService'
+ import { MigrationEngine } from '../MigrationEngine'
+ import type { MigrationPaths } from '../MigrationPaths'
+ 
+@@ -48,6 +52,7 @@ function createTestMigrator(id: string, order: number, events: string[]) {
+ }
+ 
+ describe('MigrationEngine', () => {
++  const dbh = setupTestDatabase()
+   let engine: MigrationEngine
+ 
+   beforeEach(() => {
+@@ -97,4 +102,53 @@ describe('MigrationEngine', () => {
+       'chat:validate'
+     ])
+   })
++
++  it('logs failed runs with an Error object so stack/cause are preserved', async () => {
++    const errorSpy = vi.spyOn(mockMainLoggerService, 'error').mockImplementation(() => {})
++    const events: string[] = []
++    const failing = createTestMigrator('failing', 1, events)
++    failing.execute.mockResolvedValueOnce({ success: false, processedCount: 0, error: 'execute exploded' } as any)
++
++    engine.registerMigrators([failing as any])
++
++    const result = await engine.run({}, '/tmp/dexie_export')
++
++    expect(result.success).toBe(false)
++    expect(errorSpy).toHaveBeenCalledWith('Migration failed', expect.any(Error))
++    const lastCall = errorSpy.mock.calls.at(-1)
++    expect(lastCall).toBeDefined()
++    expect((lastCall![1] as Error).message).toContain('execute exploded')
++
++    errorSpy.mockRestore()
++  })
++
++  it('clears existing prompt rows before migrators execute on each run', async () => {
++    ;(engine as any).migrationDb = {
++      getDb: vi.fn(() => dbh.db),
++      close: vi.fn()
++    }
++    vi.mocked((engine as any).verifyAndClearNewTables).mockRestore()
++    const observed: Array<Array<{ id: string }>> = []
++    const observer = createTestMigrator('cleanup-observer', 1, [])
++    observer.execute.mockImplementation(async () => {
++      observed.push(await dbh.db.select({ id: promptTable.id }).from(promptTable))
++      return { success: true, processedCount: 0 }
++    })
++    engine.registerMigrators([observer as any])
++
++    for (const id of [
++      '550e8400-e29b-41d4-a716-446655440080',
++      '550e8400-e29b-41d4-a716-446655440081'
++    ]) {
++      await dbh.db.insert(promptTable).values({
++        id, title: 'Previous migration row', content: 'old content', orderKey: 'a0',
++        createdAt: 1700000000000, updatedAt: 1700000000000
++      })
++      const result = await engine.run({}, '/tmp/dexie_export')
++      expect(result.success).toBe(true)
++      expect(await dbh.db.select().from(promptTable)).toEqual([])
++    }
++    expect(observer.execute).toHaveBeenCalledTimes(2)
++    expect(observed).toEqual([[], []])
++  })
+ })
+diff --git a/src/main/data/migration/v2/migrators/__tests__/PromptMigrator.test.ts b/src/main/data/migration/v2/migrators/__tests__/PromptMigrator.test.ts
+new file mode 100644
+index 0000000000..f3d6957f26
+--- /dev/null
++++ b/src/main/data/migration/v2/migrators/__tests__/PromptMigrator.test.ts
+@@ -0,0 +1,534 @@
++import { promptTable } from '@data/db/schemas/prompt'
++import { setupTestDatabase } from '@test-helpers/db'
++import { asc } from 'drizzle-orm'
++import { describe, expect, it, vi } from 'vitest'
++
++import type { MigrationContext } from '../../core/MigrationContext'
++import { getAllMigrators } from '../index'
++import { PromptMigrator } from '../PromptMigrator'
++
++/** Helper: build a minimal MigrationContext mock */
++function createMockContext(
++  overrides: { tableExists?: boolean; tableData?: unknown[]; promptCount?: number } = {}
++): MigrationContext {
++  const { tableExists = true, tableData = [], promptCount = 0 } = overrides
++
++  const insertFn = vi.fn().mockImplementation(() => ({
++    values: vi.fn().mockResolvedValue(undefined)
++  }))
++
++  const selectFn = vi.fn().mockImplementation(() => ({
++    from: vi.fn().mockImplementation(() => ({
++      get: vi.fn().mockResolvedValue({ count: promptCount })
++    }))
++  }))
++
++  const txProxy = new Proxy(
++    { insert: insertFn },
++    {
++      get(_target, prop) {
++        if (prop === 'insert') return insertFn
++        return undefined
++      }
++    }
++  )
++
++  const db = {
++    transaction: vi.fn().mockImplementation(async (fn: (tx: unknown) => Promise<void>) => {
++      await fn(txProxy)
++    }),
++    select: selectFn
++  }
++
++  return {
++    sources: {
++      electronStore: { get: vi.fn() },
++      reduxState: {
++        getCategory: vi.fn(),
++        getAllCategories: vi.fn()
++      } as unknown as MigrationContext['sources']['reduxState'],
++      dexieExport: {
++        tableExists: vi.fn().mockResolvedValue(tableExists),
++        readTable: vi.fn().mockResolvedValue(tableData),
++        getExportPath: vi.fn().mockReturnValue('/tmp/export'),
++        createStreamReader: vi.fn(),
++        getTableFileSize: vi.fn()
++      } as unknown as MigrationContext['sources']['dexieExport'],
++      dexieSettings: {
++        get: vi.fn(),
++        getAll: vi.fn()
++      } as unknown as MigrationContext['sources']['dexieSettings'],
++      localStorage: {
++        get: vi.fn(),
++        getAll: vi.fn()
++      } as unknown as MigrationContext['sources']['localStorage'],
++      knowledgeVectorSource: {} as unknown as MigrationContext['sources']['knowledgeVectorSource'],
++      legacyHomeConfig: {} as unknown as MigrationContext['sources']['legacyHomeConfig']
++    },
++    db: db as unknown as MigrationContext['db'],
++    sharedData: new Map(),
++    logger: {
++      info: vi.fn(),
++      warn: vi.fn(),
++      error: vi.fn(),
++      debug: vi.fn()
++    } as unknown as MigrationContext['logger'],
++    paths: {} as unknown as MigrationContext['paths']
++  }
++}
++
++/** Helper: build a legacy QuickPhrase record */
++function makePhrase(overrides: Record<string, unknown> = {}) {
++  return {
++    id: '550e8400-e29b-41d4-a716-446655440100',
++    title: 'Hello',
++    content: 'Hello ${name}!',
++    createdAt: 1700000000000,
++    updatedAt: 1700000000000,
++    order: 0,
++    ...overrides
++  }
++}
++
++// ─── Tests ───────────────────────────────────────────────────────────
++
++describe('PromptMigrator', () => {
++  describe('metadata', () => {
++    it('should have correct metadata', () => {
++      const registered = getAllMigrators()
++      const prompts = registered.filter((migrator) => migrator instanceof PromptMigrator)
++      expect(prompts).toHaveLength(1)
++      const migrator = prompts[0]
++      for (const value of [migrator.id, migrator.name, migrator.description]) {
++        expect(typeof value).toBe('string')
++        expect(value.trim().length).toBeGreaterThan(0)
++      }
++      expect(Number.isFinite(migrator.order)).toBe(true)
++      expect(new Set(registered.map((entry) => entry.id)).size).toBe(registered.length)
++    })
++  })
++
++  // ── prepare ──────────────────────────────────────────────────────
++
++  describe('prepare', () => {
++    it('should return success with 0 items when table does not exist', async () => {
++      const ctx = createMockContext({ tableExists: false })
++      const migrator = new PromptMigrator()
++
++      const result = await migrator.prepare(ctx)
++
++      expect(result.success).toBe(true)
++      expect(result.itemCount).toBe(0)
++      expect((result.warnings ?? []).every((warning) => typeof warning === 'string' && warning.trim().length > 0)).toBe(true)
++    })
++
++    it('should count phrases with content and finite timestamps', async () => {
++      const ctx = createMockContext({
++        tableData: [
++          makePhrase({ id: '550e8400-e29b-41d4-a716-446655440101', content: 'valid' }),
++          makePhrase({ id: '550e8400-e29b-41d4-a716-446655440110', content: 'another valid phrase' }),
++          makePhrase({ id: '550e8400-e29b-41d4-a716-446655440102', content: '' }), // invalid: empty content
++          makePhrase({ id: '550e8400-e29b-41d4-a716-446655440103', content: 'bad timestamp', createdAt: Number.NaN }),
++          makePhrase({ id: '550e8400-e29b-41d4-a716-446655440104', content: 'bad timestamp', updatedAt: Number.POSITIVE_INFINITY }),
++          makePhrase({ id: '550e8400-e29b-41d4-a716-446655440105', content: 'also valid' })
++        ]
++      })
++      const migrator = new PromptMigrator()
++
++      const result = await migrator.prepare(ctx)
++
++      expect(result.success).toBe(true)
++      expect(result.itemCount).toBe(3)
++      expect(result.warnings?.some((warning) => typeof warning === 'string' && warning.trim().length > 0)).toBe(true)
++    })
++
++    it('should handle empty table', async () => {
++      const ctx = createMockContext({ tableData: [] })
++      const migrator = new PromptMigrator()
++
++      const result = await migrator.prepare(ctx)
++
++      expect(result.success).toBe(true)
++      expect(result.itemCount).toBe(0)
++    })
++
++    it('should surface prepare failures via the error field (not warnings)', async () => {
++      const ctx = createMockContext()
++      ;(ctx.sources.dexieExport.tableExists as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('read error'))
++      const migrator = new PromptMigrator()
++
++      const result = await migrator.prepare(ctx)
++
++      expect(result.success).toBe(false)
++      expect(result.error).toContain('read error')
++      expect(result.warnings ?? []).toEqual([])
++    })
++  })
++
++  // ── execute ──────────────────────────────────────────────────────
++
++  describe('execute', () => {
++
++    it('should surface a constraint violation mid-batch and reset processedCount', async () => {
++      const phrases = [
++        makePhrase({ id: '550e8400-e29b-41d4-a716-446655440106', content: 'first' }),
++        makePhrase({ id: '550e8400-e29b-41d4-a716-446655440107', content: 'second' })
++      ]
++      const ctx = createMockContext({ tableData: phrases })
++      const migrator = new PromptMigrator()
++      await migrator.prepare(ctx)
++
++      // Simulate a DB-level failure from the bulk insert path (any
++      // SQLITE_CONSTRAINT, FK mismatch, etc.).
++      const insertFn = vi.fn().mockImplementation(() => ({
++        values: vi.fn().mockRejectedValue(new Error('UNIQUE constraint failed: prompt.id'))
++      }))
++
++      ;(ctx.db.transaction as ReturnType<typeof vi.fn>).mockImplementation(
++        async (fn: (tx: unknown) => Promise<void>) => {
++          await fn({ insert: insertFn })
++        }
++      )
++
++      const result = await migrator.execute(ctx)
++
++      expect(result.success).toBe(false)
++      expect(result.error).toContain('UNIQUE')
++      expect(result.processedCount).toBe(0)
++    })
++
++    it('should return failure and reset processedCount to 0 when transaction throws', async () => {
++      const phrases = [makePhrase({ id: '550e8400-e29b-41d4-a716-446655440108', content: 'c1' })]
++      const ctx = createMockContext({ tableData: phrases })
++      const migrator = new PromptMigrator()
++      await migrator.prepare(ctx)
++
++      ;(ctx.db.transaction as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('db error'))
++
++      const result = await migrator.execute(ctx)
++
++      expect(result.success).toBe(false)
++      expect(result.error).toContain('db error')
++      // Rolled-back transaction means zero rows committed — processedCount reflects persisted state.
++      expect(result.processedCount).toBe(0)
++    })
++
++  })
++
++  // ── end-to-end: execute failure then validate ───────────────────
++  describe('execute failure → validate', () => {
++    it('should report count mismatch in validate() when execute rolled back', async () => {
++      const phrases = [makePhrase({ id: '550e8400-e29b-41d4-a716-446655440108', content: 'c1' })]
++      const ctx = createMockContext({
++        tableData: phrases,
++        // DB reports zero rows because the execute transaction rolled back.
++        promptCount: 0
++      })
++      const migrator = new PromptMigrator()
++      await migrator.prepare(ctx)
++
++      ;(ctx.db.transaction as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('forced rollback'))
++      const executeResult = await migrator.execute(ctx)
++      expect(executeResult.success).toBe(false)
++      expect(executeResult.processedCount).toBe(0)
++
++      const validateResult = await migrator.validate(ctx)
++      expect(validateResult.success).toBe(false)
++      expect(validateResult.errors.some((error) => typeof error.message === 'string' && error.message.trim().length > 0)).toBe(true)
++      expect(validateResult.stats.targetCount).toBe(0)
++    })
++  })
++
++  // ── validate ─────────────────────────────────────────────────────
++
++  describe('validate', () => {
++    it('should succeed when counts match', async () => {
++      const phrases = [makePhrase({ id: '550e8400-e29b-41d4-a716-446655440108', content: 'c1' })]
++      const ctx = createMockContext({
++        tableData: phrases,
++        promptCount: 1
++      })
++      const migrator = new PromptMigrator()
++      await migrator.prepare(ctx)
++
++      const result = await migrator.validate(ctx)
++
++      expect(result.success).toBe(true)
++      expect(result.errors).toHaveLength(0)
++      expect(result.stats.sourceCount).toBe(1)
++      expect(result.stats.targetCount).toBe(1)
++    })
++
++    it('should report error when prompt count is less than expected', async () => {
++      const phrases = [makePhrase({ id: '550e8400-e29b-41d4-a716-446655440108', content: 'c1' }), makePhrase({ id: '550e8400-e29b-41d4-a716-446655440109', content: 'c2' })]
++      const ctx = createMockContext({
++        tableData: phrases,
++        promptCount: 1 // less than source
++      })
++      const migrator = new PromptMigrator()
++      await migrator.prepare(ctx)
++
++      const result = await migrator.validate(ctx)
++
++      expect(result.success).toBe(false)
++      expect(result.errors.some((error) => typeof error.message === 'string' && error.message.trim().length > 0)).toBe(true)
++      expect(result.stats.targetCount).toBe(1)
++    })
++
++    it('should handle db query failure gracefully', async () => {
++      const phrases = [makePhrase({ id: '550e8400-e29b-41d4-a716-446655440108', content: 'c1' })]
++      const ctx = createMockContext({ tableData: phrases })
++      const migrator = new PromptMigrator()
++      await migrator.prepare(ctx)
++
++      ;(ctx.db as unknown as { select: ReturnType<typeof vi.fn> }).select.mockImplementation(() => {
++        throw new Error('query failed')
++      })
++
++      const result = await migrator.validate(ctx)
++
++      expect(result.success).toBe(false)
++      expect(result.errors.some((error) => error.message.includes('query failed'))).toBe(true)
++    })
++
++    it('should track skipped count in stats', async () => {
++      const phrases = [
++        makePhrase({ id: '550e8400-e29b-41d4-a716-446655440108', content: 'valid' }),
++        makePhrase({ id: '550e8400-e29b-41d4-a716-446655440109', content: '' }) // skipped
++      ]
++      const ctx = createMockContext({
++        tableData: phrases,
++        promptCount: 1
++      })
++      const migrator = new PromptMigrator()
++      await migrator.prepare(ctx)
++
++      const result = await migrator.validate(ctx)
++
++      expect(result.stats.skippedCount).toBe(1)
++    })
++  })
++})
++
++describe('PromptMigrator SQLite integration', () => {
++  const dbh = setupTestDatabase()
++
++  it('preserves valid legacy UUIDs without prescribing invalid ID repair strategy', async () => {
++    const validA = makePhrase({
++      id: '550e8400-e29b-41d4-a716-446655440120', title: 'Valid A', content: 'valid UUID A'
++    })
++    const validB = makePhrase({
++      id: '550e8400-e29b-41d4-a716-446655440121', title: 'Valid B', content: 'valid UUID B'
++    })
++    const uncertain = [
++      makePhrase({ id: undefined, title: 'Missing ID', content: 'missing UUID input' }),
++      makePhrase({ id: 'not-a-uuid', title: 'Malformed ID', content: 'malformed UUID input' }),
++      makePhrase({ id: '', title: 'Empty ID', content: 'empty UUID input' })
++    ]
++    const ctx = createMockContext({ tableData: [validA, ...uncertain, validB] })
++    ctx.db = dbh.db
++    const migrator = new PromptMigrator()
++    const prepared = await migrator.prepare(ctx)
++    expect(prepared.success).toBe(true)
++    const executed = await migrator.execute(ctx)
++    expect(executed.success).toBe(true)
++    const rows = await dbh.db.select().from(promptTable)
++    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
++    for (const row of rows) expect(row.id).toMatch(uuid)
++    expect(executed.processedCount).toBe(rows.length)
++    for (const original of [validA, validB]) {
++      const matches = rows.filter((row) => row.content === original.content)
++      expect(matches).toHaveLength(1)
++      expect(matches[0]).toMatchObject({ id: original.id, title: original.title, content: original.content })
++    }
++    const legalContents = new Set([validA, validB, ...uncertain].map((row) => row.content))
++    for (const row of rows) expect(legalContents.has(row.content)).toBe(true)
++    for (const original of uncertain) {
++      const matches = rows.filter((row) => row.content === original.content)
++      expect(matches.length).toBeLessThanOrEqual(1)
++      if (matches.length) expect(matches[0]).toMatchObject({ title: original.title, content: original.content })
++    }
++    // Skipping invalid records requires diagnostics; assigning a new UUID instead
++    // is allowed, but it must preserve the valid records and final UUID contract.
++    if (rows.length < 2 + uncertain.length) {
++      expect(prepared.warnings?.some((warning) => typeof warning === 'string' && warning.trim().length > 0)).toBe(true)
++    }
++    expect((await migrator.validate(ctx)).success).toBe(true)
++  })
++
++  it('should return immediately when no phrases prepared', async () => {
++    const ctx = createMockContext({ tableExists: false })
++    ctx.db = dbh.db
++    const migrator = new PromptMigrator()
++    expect((await migrator.prepare(ctx)).success).toBe(true)
++    expect(await migrator.execute(ctx)).toMatchObject({ success: true, processedCount: 0 })
++    expect(await dbh.db.select().from(promptTable)).toEqual([])
++  })
++
++  it('should insert one prompt for each valid phrase', async () => {
++    const phrases = [
++      makePhrase({ id: '550e8400-e29b-41d4-a716-446655440030', title: 'First', content: 'c1', order: 0 }),
++      makePhrase({ id: '550e8400-e29b-41d4-a716-446655440031', title: 'Second', content: 'c2', order: 1 })
++    ]
++    const ctx = createMockContext({ tableData: phrases })
++    ctx.db = dbh.db
++    const migrator = new PromptMigrator()
++    expect((await migrator.prepare(ctx)).success).toBe(true)
++    expect(await migrator.execute(ctx)).toMatchObject({ success: true, processedCount: 2 })
++    const rows = await dbh.db.select().from(promptTable).orderBy(asc(promptTable.id))
++    expect(rows.map(({ id, title, content }) => ({ id, title, content }))).toEqual(
++      phrases.map(({ id, title, content }) => ({ id, title, content }))
++    )
++  })
++
++  it('should preserve legacy quick phrase order', async () => {
++    const ctx = createMockContext({ tableData: [
++      makePhrase({ id: '550e8400-e29b-41d4-a716-446655440040', title: 'Older', content: 'old', order: 20 }),
++      makePhrase({ id: '550e8400-e29b-41d4-a716-446655440041', title: 'Newer', content: 'new', order: 10 })
++    ] })
++    ctx.db = dbh.db
++    const migrator = new PromptMigrator()
++    expect((await migrator.prepare(ctx)).success).toBe(true)
++    expect((await migrator.execute(ctx)).success).toBe(true)
++    const rows = await dbh.db.select().from(promptTable).orderBy(asc(promptTable.orderKey))
++    expect(rows.map((row) => row.title)).toEqual(['Older', 'Newer'])
++    expect(rows[0].orderKey < rows[1].orderKey).toBe(true)
++  })
++
++  it('should report progress', async () => {
++    const phrases = Array.from({ length: 15 }, (_, i) => makePhrase({
++      id: `550e8400-e29b-41d4-a716-${String(i).padStart(12, '0')}`, content: `c${i}`
++    }))
++    const ctx = createMockContext({ tableData: phrases })
++    ctx.db = dbh.db
++    const migrator = new PromptMigrator()
++    const progressFn = vi.fn()
++    migrator.setProgressCallback(progressFn)
++    expect((await migrator.prepare(ctx)).success).toBe(true)
++    expect(await migrator.execute(ctx)).toMatchObject({ success: true, processedCount: 15 })
++    const rows = await dbh.db.select().from(promptTable).orderBy(asc(promptTable.id))
++    expect(rows.map(({ id, content }) => ({ id, content }))).toEqual(
++      phrases.map(({ id, content }) => ({ id, content }))
++    )
++    // BaseMigrator permits optional callbacks. MigrationEngine publishes start/end
++    // itself; intermediate cadence and wording are implementation choices.
++    for (const [progress, progressMessage] of progressFn.mock.calls) {
++      expect(Number.isFinite(progress)).toBe(true)
++      expect(progress).toBeGreaterThanOrEqual(0)
++      expect(progress).toBeLessThanOrEqual(100)
++      expect(typeof progressMessage.message).toBe('string')
++    }
++  })
++
++  it('should preserve the legacy quick phrase id', async () => {
++    const legacyId = '550e8400-e29b-41d4-a716-446655440060'
++    const ctx = createMockContext({ tableData: [makePhrase({ id: legacyId, content: 'c1' })] })
++    ctx.db = dbh.db
++    const migrator = new PromptMigrator()
++    expect((await migrator.prepare(ctx)).success).toBe(true)
++    expect((await migrator.execute(ctx)).success).toBe(true)
++    const rows = await dbh.db.select().from(promptTable)
++    expect(rows).toHaveLength(1)
++    expect(rows[0].id).toBe(legacyId)
++  })
++
++  it('migrates quick phrases into the real prompt table with order keys', async () => {
++    const ctx = createMockContext({
++      tableData: [
++        makePhrase({ id: '550e8400-e29b-41d4-a716-446655440000', title: 'Older', content: 'old ${name}', order: 2 }),
++        makePhrase({ id: '550e8400-e29b-41d4-a716-446655440001', title: 'Newer', content: 'new', order: 1 })
++      ]
++    })
++    ctx.db = dbh.db
++    const migrator = new PromptMigrator()
++
++    const prepareResult = await migrator.prepare(ctx)
++    const executeResult = await migrator.execute(ctx)
++    const validateResult = await migrator.validate(ctx)
++
++    const rows = await dbh.db.select().from(promptTable).orderBy(asc(promptTable.orderKey))
++
++    expect(prepareResult).toMatchObject({ success: true, itemCount: 2 })
++    expect(executeResult).toMatchObject({ success: true, processedCount: 2 })
++    expect(validateResult.success).toBe(true)
++    expect(rows.map((row) => row.title)).toEqual(['Older', 'Newer'])
++    expect(rows.map((row) => row.id)).toEqual([
++      '550e8400-e29b-41d4-a716-446655440000',
++      '550e8400-e29b-41d4-a716-446655440001'
++    ])
++    expect(rows[0].orderKey < rows[1].orderKey).toBe(true)
++  })
++  it('skips missing or empty titles with warnings and preserves valid records', async () => {
++    const validA = '550e8400-e29b-41d4-a716-446655440010'
++    const validB = '550e8400-e29b-41d4-a716-446655440011'
++    const tooLongId = '550e8400-e29b-41d4-a716-446655440015'
++    const boundaryId = '550e8400-e29b-41d4-a716-446655440016'
++    const paddedId = '550e8400-e29b-41d4-a716-446655440017'
++    const ctx = createMockContext({ tableData: [
++      makePhrase({ id: validA, title: 'Keep A', content: 'first', order: 10 }),
++      makePhrase({ id: '550e8400-e29b-41d4-a716-446655440012', title: '', content: 'empty title' }),
++      makePhrase({ id: '550e8400-e29b-41d4-a716-446655440013', title: undefined, content: 'missing title' }),
++      makePhrase({ id: '550e8400-e29b-41d4-a716-446655440014', title: '   ', content: 'blank title' }),
++      makePhrase({ id: validB, title: 'Keep B', content: 'second', order: 20 }),
++      makePhrase({ id: tooLongId, title: 'x'.repeat(257), content: 'too long' }),
++      makePhrase({ id: boundaryId, title: 'y'.repeat(256), content: 'valid boundary' }),
++      makePhrase({ id: paddedId, title: '  Padded title  ', content: 'padded input' })
++    ] })
++    ctx.db = dbh.db
++    const migrator = new PromptMigrator()
++    const prepared = await migrator.prepare(ctx)
++    expect(prepared.success).toBe(true)
++    expect(Array.isArray(prepared.warnings) && prepared.warnings.length > 0).toBe(true)
++    expect((await migrator.execute(ctx)).success).toBe(true)
++    const rows = await dbh.db.select().from(promptTable)
++    expect(rows.find((row) => row.id === tooLongId)).toBeUndefined()
++    expect(rows.find((row) => row.id === boundaryId)).toMatchObject({ title: 'y'.repeat(256), content: 'valid boundary' })
++    // The public contract requires persisted titles to be trimmed. It does not
++    // choose between normalizing a legacy padded title and skipping it as invalid.
++    const padded = rows.find((row) => row.id === paddedId)
++    if (padded) expect(padded).toMatchObject({ title: 'Padded title', content: 'padded input' })
++    for (const row of rows) {
++      expect(row.title).toBe(row.title.trim())
++      expect(row.title.length).toBeGreaterThan(0)
++      expect(row.title.length).toBeLessThanOrEqual(256)
++    }
++    expect(rows.filter((row) => row.id !== paddedId)
++      .map((row) => ({ id: row.id, title: row.title, content: row.content }))
++      .sort((a, b) => a.id.localeCompare(b.id))).toEqual([
++        { id: validA, title: 'Keep A', content: 'first' },
++        { id: validB, title: 'Keep B', content: 'second' },
++        { id: boundaryId, title: 'y'.repeat(256), content: 'valid boundary' }
++      ])
++  })
++
++  it('reset discards prepared phrases and allows a fresh migration', async () => {
++    const oldId = '550e8400-e29b-41d4-a716-446655440020'
++    const newId = '550e8400-e29b-41d4-a716-446655440021'
++    const before = createMockContext({ tableData: [
++      makePhrase({ id: oldId, title: 'Discard this batch', content: 'old' }),
++      makePhrase({ id: '550e8400-e29b-41d4-a716-446655440022', content: '' })
++    ] })
++    before.db = dbh.db
++    const migrator = new PromptMigrator()
++    expect((await migrator.prepare(before)).success).toBe(true)
++    migrator.reset()
++    const empty = await migrator.execute(before)
++    expect(empty).toMatchObject({ success: true, processedCount: 0 })
++    expect(await dbh.db.select().from(promptTable)).toEqual([])
++
++    const after = createMockContext({ tableData: [
++      makePhrase({ id: newId, title: 'Fresh batch', content: 'new' })
++    ] })
++    after.db = dbh.db
++    const prepared = await migrator.prepare(after)
++    expect(prepared.success).toBe(true)
++    expect(prepared.warnings ?? []).toEqual([])
++    expect((await migrator.execute(after)).success).toBe(true)
++    expect((await migrator.validate(after)).success).toBe(true)
++    const rows = await dbh.db.select().from(promptTable)
++    expect(rows.map((row) => ({ id: row.id, title: row.title, content: row.content }))).toEqual([
++      { id: newId, title: 'Fresh batch', content: 'new' }
++    ])
++  })
++
++})
+diff --git a/src/main/data/services/__tests__/PromptService.test.ts b/src/main/data/services/__tests__/PromptService.test.ts
+new file mode 100644
+index 0000000000..7a08bb29c9
+--- /dev/null
++++ b/src/main/data/services/__tests__/PromptService.test.ts
+@@ -0,0 +1,205 @@
++import { promptTable } from '@data/db/schemas/prompt'
++import { PromptService, promptService } from '@data/services/PromptService'
++import { DataApiError, ErrorCode } from '@shared/data/api'
++import { setupTestDatabase } from '@test-helpers/db'
++import { asc, eq } from 'drizzle-orm'
++import { describe, expect, it } from 'vitest'
++
++const PROMPT_ID_MISSING = '11111111-1111-4111-8111-111111111111'
++
++async function seedPrompt(title = 'Hello', content = 'Prompt body') {
++  return promptService.create({ title, content })
++}
++
++describe('PromptService', () => {
++  const dbh = setupTestDatabase()
++
++  it('should export a module-level singleton of PromptService', () => {
++    expect(promptService).toBeInstanceOf(PromptService)
++  })
++
++  describe('create', () => {
++    it('should create a prompt with title, content, timestamps, and an order key', async () => {
++      const result = await promptService.create({ title: 'T1', content: 'C1' })
++
++      expect(result).toMatchObject({ title: 'T1', content: 'C1' })
++      expect(result.orderKey.length).toBeGreaterThan(0)
++      expect(result.createdAt).toEqual(expect.any(String))
++      expect(result.updatedAt).toEqual(expect.any(String))
++
++      const [row] = await dbh.db.select().from(promptTable).where(eq(promptTable.id, result.id))
++      expect(row.orderKey.length).toBeGreaterThan(0)
++      expect(row.title).toBe('T1')
++      expect(row.content).toBe('C1')
++    })
++
++    it('should assign strictly increasing order keys on successive creates', async () => {
++      const a = await promptService.create({ title: 'A', content: 'a' })
++      const b = await promptService.create({ title: 'B', content: 'b' })
++      const c = await promptService.create({ title: 'C', content: 'c' })
++
++      const rows = await dbh.db.select().from(promptTable).orderBy(asc(promptTable.orderKey))
++      expect(rows.map((r) => r.id)).toEqual([a.id, b.id, c.id])
++    })
++  })
++
++  describe('getAll', () => {
++    it('should return prompts ordered by orderKey', async () => {
++      const a = await seedPrompt('A', 'a')
++      const b = await seedPrompt('B', 'b')
++
++      const all = await promptService.getAll()
++      expect(all.map((p) => p.id)).toEqual([a.id, b.id])
++    })
++
++    it('should return an empty array when no prompts exist', async () => {
++      await expect(promptService.getAll()).resolves.toEqual([])
++    })
++  })
++
++  describe('getById', () => {
++    it('should return the prompt when found', async () => {
++      const p = await seedPrompt()
++      await expect(promptService.getById(p.id)).resolves.toMatchObject({ id: p.id, title: p.title, content: p.content })
++    })
++
++    it('should throw NOT_FOUND when the prompt does not exist', async () => {
++      await expect(promptService.getById(PROMPT_ID_MISSING)).rejects.toBeInstanceOf(DataApiError)
++      await expect(promptService.getById(PROMPT_ID_MISSING)).rejects.toMatchObject({
++        code: ErrorCode.NOT_FOUND
++      })
++    })
++  })
++
++  describe('update', () => {
++    it('should update title and content in place', async () => {
++      const p = await seedPrompt('title', 'original')
++
++      const updated = await promptService.update(p.id, { title: 'renamed', content: 'edited' })
++
++      expect(updated).toMatchObject({ id: p.id, title: 'renamed', content: 'edited' })
++      const [row] = await dbh.db.select().from(promptTable).where(eq(promptTable.id, p.id))
++      expect(row).toMatchObject({ title: 'renamed', content: 'edited' })
++    })
++
++    it('should support partial updates', async () => {
++      const p = await seedPrompt('title', 'body')
++
++      await expect(promptService.update(p.id, { title: 'renamed' })).resolves.toMatchObject({
++        title: 'renamed',
++        content: 'body'
++      })
++      await expect(promptService.update(p.id, { content: 'updated' })).resolves.toMatchObject({
++        title: 'renamed',
++        content: 'updated'
++      })
++    })
++
++    it('should throw NOT_FOUND when the prompt does not exist', async () => {
++      await expect(promptService.update(PROMPT_ID_MISSING, { title: 'x' })).rejects.toMatchObject({
++        code: ErrorCode.NOT_FOUND
++      })
++    })
++  })
++
++  describe('delete', () => {
++    it('should delete the prompt row', async () => {
++      const p = await seedPrompt('t', 'v1')
++
++      await promptService.delete(p.id)
++
++      const prompts = await dbh.db.select().from(promptTable).where(eq(promptTable.id, p.id))
++      expect(prompts).toHaveLength(0)
++    })
++
++    it('should throw NOT_FOUND when the prompt does not exist', async () => {
++      await expect(promptService.delete(PROMPT_ID_MISSING)).rejects.toMatchObject({
++        code: ErrorCode.NOT_FOUND
++      })
++    })
++  })
++
++  describe('reorder', () => {
++    it("should move a prompt to the first position via { position: 'first' }", async () => {
++      const a = await seedPrompt('a', 'a')
++      const b = await seedPrompt('b', 'b')
++      const c = await seedPrompt('c', 'c')
++
++      await promptService.reorder(c.id, { position: 'first' })
++
++      const ids = (await promptService.getAll()).map((p) => p.id)
++      expect(ids).toEqual([c.id, a.id, b.id])
++    })
++
++    it('should move a prompt to before an anchor', async () => {
++      const a = await seedPrompt('a', 'a')
++      const b = await seedPrompt('b', 'b')
++      const c = await seedPrompt('c', 'c')
++
++      await promptService.reorder(c.id, { before: b.id })
++
++      const ids = (await promptService.getAll()).map((p) => p.id)
++      expect(ids).toEqual([a.id, c.id, b.id])
++    })
++
++    it('should throw NOT_FOUND when the target does not exist', async () => {
++      await expect(promptService.reorder(PROMPT_ID_MISSING, { position: 'first' })).rejects.toMatchObject({
++        code: ErrorCode.NOT_FOUND
++      })
++    })
++
++    it('should throw NOT_FOUND when the before anchor does not exist', async () => {
++      const a = await seedPrompt('a', 'a')
++      await expect(promptService.reorder(a.id, { before: PROMPT_ID_MISSING })).rejects.toMatchObject({
++        code: ErrorCode.NOT_FOUND
++      })
++    })
++
++    it('should touch only the target row', async () => {
++      const a = await seedPrompt('a', 'a')
++      const b = await seedPrompt('b', 'b')
++      const c = await seedPrompt('c', 'c')
++
++      const [aBefore] = await dbh.db.select().from(promptTable).where(eq(promptTable.id, a.id))
++      const [bBefore] = await dbh.db.select().from(promptTable).where(eq(promptTable.id, b.id))
++
++      await promptService.reorder(c.id, { position: 'first' })
++
++      const [aAfter] = await dbh.db.select().from(promptTable).where(eq(promptTable.id, a.id))
++      const [bAfter] = await dbh.db.select().from(promptTable).where(eq(promptTable.id, b.id))
++      const [cAfter] = await dbh.db.select().from(promptTable).where(eq(promptTable.id, c.id))
++
++      expect(aAfter.orderKey).toBe(aBefore.orderKey)
++      expect(bAfter.orderKey).toBe(bBefore.orderKey)
++      expect(cAfter.orderKey < aBefore.orderKey).toBe(true)
++    })
++  })
++
++  describe('reorderBatch', () => {
++    it('should apply multiple moves atomically per id', async () => {
++      const a = await seedPrompt('a', 'a')
++      const b = await seedPrompt('b', 'b')
++      const c = await seedPrompt('c', 'c')
++
++      await promptService.reorderBatch([
++        { id: c.id, anchor: { position: 'first' } },
++        { id: a.id, anchor: { position: 'last' } }
++      ])
++
++      const ids = (await promptService.getAll()).map((p) => p.id)
++      expect(ids).toEqual([c.id, b.id, a.id])
++    })
++
++    it('should throw NOT_FOUND when a move references a missing anchor', async () => {
++      const a = await seedPrompt('a', 'a')
++      const b = await seedPrompt('b', 'b')
++
++      await expect(
++        promptService.reorderBatch([
++          { id: a.id, anchor: { position: 'first' } },
++          { id: b.id, anchor: { before: PROMPT_ID_MISSING } }
++        ])
++      ).rejects.toMatchObject({ code: ErrorCode.NOT_FOUND })
++    })
++  })
++})
+diff --git a/src/renderer/src/pages/home/Inputbar/components/__tests__/promptVariableNavigation.test.ts b/src/renderer/src/pages/home/Inputbar/components/__tests__/promptVariableNavigation.test.ts
+new file mode 100644
+index 0000000000..16f71412a8
+--- /dev/null
++++ b/src/renderer/src/pages/home/Inputbar/components/__tests__/promptVariableNavigation.test.ts
+@@ -0,0 +1,27 @@
++import { describe, expect, it } from 'vitest'
++
++import { findNextPromptVariableRange } from '../promptVariableNavigation'
++
++describe('findNextPromptVariableRange', () => {
++  it('finds the first prompt variable after the cursor', () => {
++    const text = 'Plan a route from ${from} to ${to}'
++
++    expect(findNextPromptVariableRange(text, 0, 0)).toEqual({ start: 18, end: 25 })
++  })
++
++  it('continues after the current selection before wrapping', () => {
++    const text = 'Plan a route from ${from} to ${to}'
++
++    expect(findNextPromptVariableRange(text, 18, '${from}'.length)).toEqual({ start: 29, end: 34 })
++  })
++
++  it('wraps to the first prompt variable when none remain after the cursor', () => {
++    const text = 'Plan a route from ${from} to ${to}'
++
++    expect(findNextPromptVariableRange(text, text.length, 0)).toEqual({ start: 18, end: 25 })
++  })
++
++  it('returns null when no prompt variables exist', () => {
++    expect(findNextPromptVariableRange('Plain prompt text', 0, 0)).toBeNull()
++  })
++})
+diff --git a/src/renderer/src/pages/home/Inputbar/tools/components/__tests__/quickPhraseInsert.test.ts b/src/renderer/src/pages/home/Inputbar/tools/components/__tests__/quickPhraseInsert.test.ts
+new file mode 100644
+index 0000000000..31575e0a1c
+--- /dev/null
++++ b/src/renderer/src/pages/home/Inputbar/tools/components/__tests__/quickPhraseInsert.test.ts
+@@ -0,0 +1,61 @@
++import { describe, expect, it } from 'vitest'
++
++import { computeQuickPhraseInsertResult } from '../quickPhraseInsert'
++
++describe('computeQuickPhraseInsertResult', () => {
++  it('replaces the quick-panel trigger token and selects inserted text', () => {
++    expect(
++      computeQuickPhraseInsertResult({
++        currentValue: 'Please /trip today',
++        insertText: 'plan ${from}',
++        rootSymbol: '/',
++        triggerInfo: { type: 'input', position: 7, symbol: '/', searchText: 'trip' }
++      })
++    ).toEqual({
++      value: 'Please plan ${from} today',
++      selectionStart: 7,
++      selectionEnd: 19
++    })
++  })
++
++  it('falls back to token scanning when search text no longer matches', () => {
++    expect(
++      computeQuickPhraseInsertResult({
++        currentValue: 'Please /stale today',
++        insertText: 'fresh',
++        rootSymbol: '/',
++        triggerInfo: { type: 'input', position: 7, symbol: '/', searchText: 'trip' }
++      }).value
++    ).toBe('Please fresh today')
++  })
++
++  it('replaces the current textarea selection', () => {
++    expect(
++      computeQuickPhraseInsertResult({
++        currentValue: 'Hello old world',
++        insertText: 'new',
++        rootSymbol: '/',
++        selectionStart: 6,
++        selectionEnd: 9
++      })
++    ).toEqual({
++      value: 'Hello new world',
++      selectionStart: 6,
++      selectionEnd: 9
++    })
++  })
++
++  it('appends when no textarea selection is available', () => {
++    expect(
++      computeQuickPhraseInsertResult({
++        currentValue: 'Hello ',
++        insertText: 'world',
++        rootSymbol: '/'
++      })
++    ).toEqual({
++      value: 'Hello world',
++      selectionStart: 6,
++      selectionEnd: 11
++    })
++  })
++})
+diff --git a/src/renderer/src/pages/settings/__tests__/PromptSettings.test.tsx b/src/renderer/src/pages/settings/__tests__/PromptSettings.test.tsx
+new file mode 100644
+index 0000000000..186eef9224
+--- /dev/null
++++ b/src/renderer/src/pages/settings/__tests__/PromptSettings.test.tsx
+@@ -0,0 +1,274 @@
++import type { Prompt } from '@shared/data/types/prompt'
++import { MockUseDataApiUtils, mockUseMutation } from '@test-mocks/renderer/useDataApi'
++import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
++import type React from 'react'
++import { beforeEach, describe, expect, it, vi } from 'vitest'
++
++import PromptSettings from '../PromptSettings'
++
++const applyReorderedListMock = vi.hoisted(() => vi.fn())
++
++vi.mock('react-i18next', () => ({
++  initReactI18next: {
++    type: '3rdParty',
++    init: vi.fn()
++  },
++  useTranslation: () => ({
++    t: (key: string) => key
++  })
++}))
++
++vi.mock('@renderer/context/ThemeProvider', () => ({
++  useTheme: () => ({ theme: 'light' })
++}))
++
++vi.mock('@data/hooks/useReorder', () => ({
++  useReorder: () => ({
++    applyReorderedList: applyReorderedListMock,
++    isPending: false
++  })
++}))
++
++vi.mock('@renderer/utils', () => ({
++  cn: (...classes: Array<string | false | null | undefined>) => classes.filter(Boolean).join(' ')
++}))
++
++vi.mock('@renderer/components/Icons', () => ({
++  DeleteIcon: () => <span>Delete</span>,
++  EditIcon: () => <span>Edit</span>
++}))
++
++vi.mock('@renderer/pages/files/FileItem', () => ({
++  default: ({ fileInfo }: { fileInfo: { name: string; extra?: React.ReactNode; actions: React.ReactNode } }) => (
++    <div data-testid={`prompt-row-${fileInfo.name}`}>
++      <div>{fileInfo.name}</div>
++      <div>{fileInfo.extra}</div>
++      <div>{fileInfo.actions}</div>
++    </div>
++  )
++}))
++
++vi.mock('@renderer/components/DraggableList', () => ({
++  DraggableList: ({
++    list,
++    onUpdate,
++    children
++  }: {
++    list: Prompt[]
++    onUpdate: (items: Prompt[]) => void
++    children: (item: Prompt) => React.ReactNode
++  }) => (
++    <div>
++      {list.map((item) => (
++        <div key={item.id}>{children(item)}</div>
++      ))}
++      <button type="button" onClick={() => onUpdate([...list].reverse())}>
++        mock-reorder
++      </button>
++    </div>
++  )
++}))
++
++vi.mock('@cherrystudio/ui', async () => {
++  // Use the existing Dialog family together so Close shares the real Root context.
++  // Import its small base module, avoiding the unrelated full UI barrel.
++  const dialog = await vi.importActual<typeof import('@cherrystudio/ui/components/primitives/dialog')>(
++    '@cherrystudio/ui/components/primitives/dialog'
++  )
++  const Textarea = {
++    Input: ({
++      onValueChange,
++      ...props
++    }: React.TextareaHTMLAttributes<HTMLTextAreaElement> & { onValueChange?: (value: string) => void }) => (
++      <textarea {...props} onChange={(event) => onValueChange?.(event.target.value)} />
++    )
++  }
++
++  return {
++    ...dialog,
++    Button: ({
++      children,
++      loading,
++      ...props
++    }: React.ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean }) => (
++      <button type="button" {...props} disabled={props.disabled || loading}>
++        {children}
++      </button>
++    ),
++    ConfirmDialog: ({
++      open,
++      title,
++      description,
++      confirmText,
++      cancelText,
++      onConfirm,
++      onOpenChange
++    }: {
++      open: boolean
++      title: string
++      description: string
++      confirmText: string
++      cancelText: string
++      onConfirm: () => void
++      onOpenChange: (open: boolean) => void
++    }) =>
++      open ? (
++        <div role="dialog">
++          <div>{title}</div>
++          <div>{description}</div>
++          <button type="button" onClick={onConfirm}>
++            {confirmText}
++          </button>
++          <button type="button" onClick={() => onOpenChange(false)}>
++            {cancelText}
++          </button>
++        </div>
++      ) : null,
++    Divider: () => <hr />,
++    ColFlex: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
++    Flex: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
++    Input: (props: React.InputHTMLAttributes<HTMLInputElement>) => <input {...props} />,
++    RowFlex: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => <div {...props}>{children}</div>,
++    Spinner: ({ text }: { text: string }) => <div>{text}</div>,
++    Textarea
++  }
++})
++
++const prompts: Prompt[] = [
++  {
++    id: '550e8400-e29b-41d4-a716-446655440130',
++    title: 'Old prompt',
++    content: 'old content',
++    orderKey: 'a0',
++    createdAt: '2024-01-01T00:00:00.000Z',
++    updatedAt: '2024-01-01T00:00:00.000Z'
++  },
++  {
++    id: '550e8400-e29b-41d4-a716-446655440131',
++    title: 'New prompt',
++    content: 'new content',
++    orderKey: 'a1',
++    createdAt: '2024-01-02T00:00:00.000Z',
++    updatedAt: '2024-01-02T00:00:00.000Z'
++  }
++]
++
++const mutationTriggers = new Map<string, ReturnType<typeof vi.fn>>()
++
++describe('PromptSettings', () => {
++  beforeEach(() => {
++    MockUseDataApiUtils.resetMocks()
++    mutationTriggers.clear()
++    applyReorderedListMock.mockReset()
++    applyReorderedListMock.mockResolvedValue(undefined)
++    MockUseDataApiUtils.mockQueryData('/prompts', prompts)
++    MockUseDataApiUtils.seedCache('/prompts', prompts)
++    mockUseMutation.mockImplementation((method: string, path: string) => {
++      // Preserve one endpoint trigger across rerenders, like the real hook.
++      const key = `${method} ${path}`
++      const trigger = mutationTriggers.get(key) ?? vi.fn().mockResolvedValue(undefined)
++      mutationTriggers.set(key, trigger)
++      return {
++        trigger,
++        isLoading: false,
++        error: undefined
++      }
++    })
++    window.toast = {
++      error: vi.fn(),
++      success: vi.fn(),
++      warning: vi.fn(),
++      info: vi.fn(),
++      loading: vi.fn()
++    } as unknown as typeof window.toast
++  })
++
++  it('creates a prompt through the visible settings creation flow', async () => {
++    render(<PromptSettings />)
++
++    // The existing row/list mocks identify editing/deletion/reorder controls.
++    // Exercise the remaining rendered action(s) without prescribing the add
++    // callback name, icon, label, button index, or private modal state.
++    const rowElements = screen.queryAllByTestId(/^prompt-row-/)
++    const creationActions = screen.getAllByRole('button').filter(
++      (button) =>
++        !(button as HTMLButtonElement).disabled &&
++        !rowElements.some((row) => row.contains(button)) &&
++        button.textContent?.trim() !== 'mock-reorder'
++    )
++    expect(creationActions.length, 'settings must expose a usable creation action').toBeGreaterThan(0)
++    for (const button of creationActions) {
++      fireEvent.click(button)
++      if (
++        screen.queryByPlaceholderText('settings.prompts.titlePlaceholder') &&
++        screen.queryByPlaceholderText('settings.prompts.contentPlaceholder')
++      ) {
++        break
++      }
++    }
++
++    const titleInput = screen.getByPlaceholderText('settings.prompts.titlePlaceholder')
++    const contentInput = screen.getByPlaceholderText('settings.prompts.contentPlaceholder')
++    expect(mutationTriggers.get('POST /prompts')).not.toHaveBeenCalled()
++    fireEvent.change(titleInput, { target: { value: 'Created through settings' } })
++    fireEvent.change(contentInput, { target: { value: 'Unique content supplied in the create form' } })
++    fireEvent.click(screen.getByRole('button', { name: 'common.confirm' }))
++
++    await waitFor(() => {
++      expect(mutationTriggers.get('POST /prompts')).toHaveBeenCalledTimes(1)
++      expect(mutationTriggers.get('POST /prompts')).toHaveBeenCalledWith({
++        body: {
++          title: 'Created through settings',
++          content: 'Unique content supplied in the create form'
++        }
++      })
++    })
++    expect(mutationTriggers.get('PATCH /prompts/:id')).not.toHaveBeenCalled()
++    expect(mutationTriggers.get('DELETE /prompts/:id')).not.toHaveBeenCalled()
++  })
++
++  it('updates an existing prompt through the edit modal', async () => {
++    render(<PromptSettings />)
++
++    const row = screen.getByTestId('prompt-row-New prompt')
++    fireEvent.click(within(row).getByRole('button', { name: 'Edit' }))
++
++    fireEvent.change(screen.getByPlaceholderText('settings.prompts.titlePlaceholder'), {
++      target: { value: 'Updated prompt' }
++    })
++    fireEvent.change(screen.getByPlaceholderText('settings.prompts.contentPlaceholder'), {
++      target: { value: 'updated content' }
++    })
++    fireEvent.click(screen.getByRole('button', { name: 'common.confirm' }))
++
++    await waitFor(() => {
++      expect(mutationTriggers.get('PATCH /prompts/:id')).toHaveBeenCalledWith({
++        params: { id: '550e8400-e29b-41d4-a716-446655440131' },
++        body: { title: 'Updated prompt', content: 'updated content' }
++      })
++    })
++  })
++
++  it('deletes a prompt after confirmation', async () => {
++    render(<PromptSettings />)
++
++    const row = screen.getByTestId('prompt-row-Old prompt')
++    fireEvent.click(within(row).getByRole('button', { name: 'Delete' }))
++    expect(mutationTriggers.get('DELETE /prompts/:id')).not.toHaveBeenCalled()
++    fireEvent.click(screen.getByRole('button', { name: 'common.confirm' }))
++
++    await waitFor(() => {
++      expect(mutationTriggers.get('DELETE /prompts/:id')).toHaveBeenCalledWith({ params: { id: '550e8400-e29b-41d4-a716-446655440130' } })
++    })
++  })
++
++  it('reorders display order back to canonical API order before patching', async () => {
++    render(<PromptSettings />)
++
++    fireEvent.click(screen.getByRole('button', { name: 'mock-reorder' }))
++
++    await waitFor(() => {
++      expect(applyReorderedListMock).toHaveBeenCalledWith([prompts[1], prompts[0]])
++    })
++  })
++})

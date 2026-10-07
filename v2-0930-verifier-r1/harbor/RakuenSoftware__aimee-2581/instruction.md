@@ -1,0 +1,7 @@
+Delegate routing should be decided by a delegates module stage so agent eligibility is based on one shared capability filter. Add route-filter logic that combines enabled state, role availability, declared model capabilities, tools availability, context-window size, and deprecation policy, then returns a keep/drop vector, effective capability mask, and whether soft modality requirements had to be relaxed.
+
+Implement the route-filter wire protocol and register the stage in the module process contract. The C delegate routing path should call this provider through `delegate_launch_args` and preserve existing role override behavior while replacing local filtering decisions with the module result.
+
+Update Go and C tests to cover hard capability filtering, tools-on/tools-off behavior, context precedence from overrides/catalog/CLI defaults, deprecated model exclusion, no-candidate handling, and soft relaxation for vision/PDF/audio requirements. Server compute tests should show that only agents satisfying the resulting policy may serve a packet.
+
+Additional Go-side API contracts covered by the tests: expose the route-filter implementation through the package-level types and helpers `RouteFilter`, `AgentMeetsFilter`, `EffectiveContext`, `RouteAgent`, and `RouteFilterResult`. `RouteFilterResult` should include the `Keep`, `Relaxed`, and `EffectiveCaps` fields used by callers and tests, with semantics matching the shared delegate routing policy described above.

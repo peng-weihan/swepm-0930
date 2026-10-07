@@ -1,0 +1,1257 @@
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java
+index 46a0dad..e4cbc30 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/DefaultMemoryTest.java
+@@ -16,12 +16,18 @@ package com.openmemind.ai.memory.core;
+ import static org.assertj.core.api.Assertions.assertThat;
+ import static org.mockito.ArgumentMatchers.any;
+ import static org.mockito.ArgumentMatchers.eq;
++import static org.mockito.Mockito.inOrder;
+ import static org.mockito.Mockito.verify;
++import static org.mockito.Mockito.verifyNoInteractions;
+ import static org.mockito.Mockito.when;
+ 
+ import com.openmemind.ai.memory.core.data.DefaultMemoryId;
+ import com.openmemind.ai.memory.core.data.MemoryId;
++import com.openmemind.ai.memory.core.data.MemoryItem;
+ import com.openmemind.ai.memory.core.data.ToolCallStats;
++import com.openmemind.ai.memory.core.data.enums.MemoryCategory;
++import com.openmemind.ai.memory.core.data.enums.MemoryItemType;
++import com.openmemind.ai.memory.core.data.enums.MemoryScope;
+ import com.openmemind.ai.memory.core.extraction.ExtractionRequest;
+ import com.openmemind.ai.memory.core.extraction.ExtractionResult;
+ import com.openmemind.ai.memory.core.extraction.MemoryExtractor;
+@@ -36,6 +42,7 @@ import com.openmemind.ai.memory.core.retrieval.RetrievalRequest;
+ import com.openmemind.ai.memory.core.retrieval.RetrievalResult;
+ import com.openmemind.ai.memory.core.stats.ToolStatsService;
+ import com.openmemind.ai.memory.core.store.MemoryStore;
++import com.openmemind.ai.memory.core.vector.MemoryVector;
+ import java.time.Duration;
+ import java.time.Instant;
+ import java.util.List;
+@@ -45,6 +52,7 @@ import org.junit.jupiter.api.DisplayName;
+ import org.junit.jupiter.api.Nested;
+ import org.junit.jupiter.api.Test;
+ import org.junit.jupiter.api.extension.ExtendWith;
++import org.mockito.InOrder;
+ import org.mockito.Mock;
+ import org.mockito.junit.jupiter.MockitoExtension;
+ import reactor.core.publisher.Mono;
+@@ -57,6 +65,7 @@ class DefaultMemoryTest {
+     @Mock private MemoryExtractor extractor;
+     @Mock private MemoryRetriever retriever;
+     @Mock private MemoryStore store;
++    @Mock private MemoryVector vector;
+     @Mock private ToolStatsService toolStatsService;
+ 
+     private Memory memind;
+@@ -64,7 +73,7 @@ class DefaultMemoryTest {
+ 
+     @BeforeEach
+     void setUp() {
+-        memind = new DefaultMemory(extractor, retriever, store, toolStatsService);
++        memind = new DefaultMemory(extractor, retriever, store, vector, toolStatsService);
+         memoryId = DefaultMemoryId.of("user1", "agent1");
+     }
+ 
+@@ -123,6 +132,56 @@ class DefaultMemoryTest {
+         }
+     }
+ 
++    @Nested
++    @DisplayName("Deletion APIs")
++    class DeleteApis {
++
++        @Test
++        @DisplayName("deleteItems deletes vectors before store rows and invalidates retriever")
++        void deleteItemsDeletesVectorsThenStoreRowsAndInvalidatesRetriever() {
++            var itemIds = List.of(1L, 2L);
++            var items = List.of(memoryItem(1L, "vec-1"), memoryItem(2L, "vec-2"));
++            when(store.getItemsByIds(memoryId, itemIds)).thenReturn(items);
++            when(vector.deleteBatch(memoryId, List.of("vec-1", "vec-2"))).thenReturn(Mono.empty());
++
++            StepVerifier.create(memind.deleteItems(memoryId, itemIds)).verifyComplete();
++
++            InOrder inOrder = inOrder(store, vector, retriever);
++            inOrder.verify(store).getItemsByIds(memoryId, itemIds);
++            inOrder.verify(vector).deleteBatch(memoryId, List.of("vec-1", "vec-2"));
++            inOrder.verify(store).deleteItems(memoryId, itemIds);
++            inOrder.verify(retriever).onDataChanged(memoryId);
++        }
++
++        @Test
++        @DisplayName("deleteItems skips vector delete when no vector ids exist")
++        void deleteItemsSkipsVectorDeleteWhenNoVectorIdsExist() {
++            var itemIds = List.of(3L);
++            when(store.getItemsByIds(memoryId, itemIds)).thenReturn(List.of(memoryItem(3L, null)));
++
++            StepVerifier.create(memind.deleteItems(memoryId, itemIds)).verifyComplete();
++
++            InOrder inOrder = inOrder(store, retriever);
++            inOrder.verify(store).getItemsByIds(memoryId, itemIds);
++            inOrder.verify(store).deleteItems(memoryId, itemIds);
++            inOrder.verify(retriever).onDataChanged(memoryId);
++            verifyNoInteractions(vector);
++        }
++
++        @Test
++        @DisplayName("deleteInsights deletes only requested insights and invalidates retriever")
++        void deleteInsightsDeletesOnlyRequestedInsightsAndInvalidatesRetriever() {
++            var insightIds = List.of(11L, 12L);
++
++            StepVerifier.create(memind.deleteInsights(memoryId, insightIds)).verifyComplete();
++
++            InOrder inOrder = inOrder(store, retriever);
++            inOrder.verify(store).deleteInsights(memoryId, insightIds);
++            inOrder.verify(retriever).onDataChanged(memoryId);
++            verifyNoInteractions(vector);
++        }
++    }
++
+     // ===== Agent Memory Reporting =====
+ 
+     @Nested
+@@ -271,4 +330,21 @@ class DefaultMemoryTest {
+             verify(toolStatsService).getAllToolStats(memoryId);
+         }
+     }
++
++    private MemoryItem memoryItem(Long itemId, String vectorId) {
++        return new MemoryItem(
++                itemId,
++                memoryId.toIdentifier(),
++                "content-" + itemId,
++                MemoryScope.USER,
++                MemoryCategory.PROFILE,
++                "conversation",
++                vectorId,
++                "raw-" + itemId,
++                "hash-" + itemId,
++                Instant.now(),
++                Map.of(),
++                Instant.now(),
++                MemoryItemType.FACT);
++    }
+ }
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/group/InsightGroupRouterTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/group/InsightGroupRouterTest.java
+index fc7a61e..a967b3e 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/group/InsightGroupRouterTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/group/InsightGroupRouterTest.java
+@@ -103,20 +103,7 @@ class InsightGroupRouterTest {
+ 
+     private MemoryInsightType createInsightType() {
+         return new MemoryInsightType(
+-                1L,
+-                "test-memory",
+-                "test",
+-                "desc",
+-                null,
+-                List.of(),
+-                400,
+-                null,
+-                null,
+-                null,
+-                null,
+-                null,
+-                null,
+-                null,
++                1L, "test", "desc", null, List.of(), 400, null, null, null, null, null, null, null,
+                 null);
+     }
+ 
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java
+index ca76ec0..b07cd47 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/insight/tree/InsightTreeReorganizerTest.java
+@@ -92,16 +92,16 @@ class InsightTreeReorganizerTest {
+         void shouldLinkLeafButNotResummarizeBelowThreshold() {
+             var leaf = createLeaf(1L, "The user likes coffee");
+ 
+-            when(store.getInsightsByTypeId(memoryId, TYPE_NAME)).thenReturn(List.of(leaf));
++            when(store.getInsightsByType(memoryId, TYPE_NAME)).thenReturn(List.of(leaf));
+             when(store.getBranchByType(memoryId, TYPE_NAME)).thenReturn(Optional.empty());
+-            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH)).thenReturn(List.of());
+-            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of());
++            when(store.getInsightsByTier(memoryId, InsightTier.BRANCH)).thenReturn(List.of());
++            when(store.listInsightTypes()).thenReturn(List.of());
+ 
+             reorganizer.onLeafUpdated(memoryId, TYPE_NAME, createInsightType(), leaf, config);
+ 
+             // BRANCH should be created and linked (through saveInsights)
+             verify(store, atLeastOnce())
+-                    .saveInsights(
++                    .upsertInsights(
+                             eq(memoryId),
+                             argThat(
+                                     list ->
+@@ -115,7 +115,7 @@ class InsightTreeReorganizerTest {
+ 
+             // LEAF should have parentInsightId set
+             verify(store, atLeastOnce())
+-                    .saveInsights(
++                    .upsertInsights(
+                             eq(memoryId),
+                             argThat(
+                                     list ->
+@@ -139,14 +139,14 @@ class InsightTreeReorganizerTest {
+             var leaf = createLeaf(3L, "Third piece of information");
+ 
+             when(store.getBranchByType(memoryId, TYPE_NAME)).thenReturn(Optional.empty());
+-            when(store.getInsightsByTypeId(memoryId, TYPE_NAME))
++            when(store.getInsightsByType(memoryId, TYPE_NAME))
+                     .thenReturn(
+                             List.of(
+                                     createLeaf(1L, "First piece"),
+                                     createLeaf(2L, "Second piece"),
+                                     leaf));
+-            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH)).thenReturn(List.of());
+-            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of());
++            when(store.getInsightsByTier(memoryId, InsightTier.BRANCH)).thenReturn(List.of());
++            when(store.listInsightTypes()).thenReturn(List.of());
+ 
+             var point =
+                     new InsightPoint(
+@@ -167,7 +167,7 @@ class InsightTreeReorganizerTest {
+ 
+             // Verify BRANCH is saved in batchLinkLeafsToBranch through saveInsights
+             verify(store, atLeastOnce())
+-                    .saveInsights(
++                    .upsertInsights(
+                             eq(memoryId),
+                             argThat(
+                                     list ->
+@@ -199,11 +199,10 @@ class InsightTreeReorganizerTest {
+             var leaf3 = createLeaf(3L, "Third piece");
+ 
+             when(store.getBranchByType(memoryId, TYPE_NAME)).thenReturn(Optional.of(branch));
+-            when(store.getInsightsByTypeId(memoryId, TYPE_NAME))
++            when(store.getInsightsByType(memoryId, TYPE_NAME))
+                     .thenReturn(List.of(leaf1, leaf2, leaf3));
+-            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH))
+-                    .thenReturn(List.of(branch));
+-            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of());
++            when(store.getInsightsByTier(memoryId, InsightTier.BRANCH)).thenReturn(List.of(branch));
++            when(store.listInsightTypes()).thenReturn(List.of());
+ 
+             var point =
+                     new InsightPoint(
+@@ -225,7 +224,7 @@ class InsightTreeReorganizerTest {
+             // Verify batchLinkLeafsToBranch saves in bulk (including branch + leaf parentId
+             // updates)
+             verify(store, atLeastOnce())
+-                    .saveInsights(
++                    .upsertInsights(
+                             eq(memoryId),
+                             argThat(
+                                     list -> {
+@@ -268,15 +267,14 @@ class InsightTreeReorganizerTest {
+             var leaf = createLeaf(3L, "Third piece of information");
+ 
+             when(store.getBranchByType(memoryId, TYPE_NAME)).thenReturn(Optional.of(branch));
+-            when(store.getInsightsByTypeId(memoryId, TYPE_NAME))
++            when(store.getInsightsByType(memoryId, TYPE_NAME))
+                     .thenReturn(
+                             List.of(
+                                     createLeaf(1L, "First piece"),
+                                     createLeaf(2L, "Second piece"),
+                                     leaf));
+-            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH))
+-                    .thenReturn(List.of(branch));
+-            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of());
++            when(store.getInsightsByTier(memoryId, InsightTier.BRANCH)).thenReturn(List.of(branch));
++            when(store.listInsightTypes()).thenReturn(List.of());
+ 
+             var point =
+                     new InsightPoint(
+@@ -306,10 +304,10 @@ class InsightTreeReorganizerTest {
+         void shouldNotResummarizeBelowThreshold() {
+             var leaf = createLeaf(1L, "First piece");
+ 
+-            when(store.getInsightsByTypeId(memoryId, TYPE_NAME)).thenReturn(List.of(leaf));
++            when(store.getInsightsByType(memoryId, TYPE_NAME)).thenReturn(List.of(leaf));
+             when(store.getBranchByType(memoryId, TYPE_NAME)).thenReturn(Optional.empty());
+-            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH)).thenReturn(List.of());
+-            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of());
++            when(store.getInsightsByTier(memoryId, InsightTier.BRANCH)).thenReturn(List.of());
++            when(store.listInsightTypes()).thenReturn(List.of());
+ 
+             reorganizer.onLeafUpdated(memoryId, TYPE_NAME, createInsightType(), leaf, config);
+ 
+@@ -335,10 +333,10 @@ class InsightTreeReorganizerTest {
+             var rootInsightType = createRootInsightType(ROOT_TYPE_NAME);
+ 
+             when(store.getBranchByType(memoryId, TYPE_NAME)).thenReturn(Optional.of(branch1));
+-            when(store.getInsightsByTypeId(memoryId, TYPE_NAME)).thenReturn(List.of(leaf));
+-            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH))
++            when(store.getInsightsByType(memoryId, TYPE_NAME)).thenReturn(List.of(leaf));
++            when(store.getInsightsByTier(memoryId, InsightTier.BRANCH))
+                     .thenReturn(List.of(branch1, branch2));
+-            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of(rootInsightType));
++            when(store.listInsightTypes()).thenReturn(List.of(rootInsightType));
+             when(store.getRootByType(memoryId, ROOT_TYPE_NAME)).thenReturn(Optional.empty());
+ 
+             reorganizer.onLeafUpdated(
+@@ -351,13 +349,19 @@ class InsightTreeReorganizerTest {
+ 
+             // But ROOT should be created and include BRANCH as child
+             verify(store, atLeastOnce())
+-                    .saveInsight(
++                    .upsertInsights(
+                             eq(memoryId),
+                             argThat(
+-                                    i ->
+-                                            i.tier() == InsightTier.ROOT
+-                                                    && i.childInsightIds()
+-                                                            .containsAll(List.of(10L, 20L))));
++                                    (List<MemoryInsight> list) ->
++                                            list.stream()
++                                                    .anyMatch(
++                                                            i ->
++                                                                    i.tier() == InsightTier.ROOT
++                                                                            && i.childInsightIds()
++                                                                                    .containsAll(
++                                                                                            List.of(
++                                                                                                    10L,
++                                                                                                    20L)))));
+         }
+     }
+ 
+@@ -374,11 +378,11 @@ class InsightTreeReorganizerTest {
+             var rootInsightType = createRootInsightType(ROOT_TYPE_NAME);
+ 
+             when(store.getBranchByType(memoryId, TYPE_NAME)).thenReturn(Optional.of(branch1));
+-            when(store.getInsightsByTypeId(memoryId, TYPE_NAME))
++            when(store.getInsightsByType(memoryId, TYPE_NAME))
+                     .thenReturn(List.of(createLeaf(1L, "Old information"), leaf));
+-            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH))
++            when(store.getInsightsByTier(memoryId, InsightTier.BRANCH))
+                     .thenReturn(List.of(branch1, branch2));
+-            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of(rootInsightType));
++            when(store.listInsightTypes()).thenReturn(List.of(rootInsightType));
+             when(store.getRootByType(memoryId, ROOT_TYPE_NAME)).thenReturn(Optional.empty());
+ 
+             var point =
+@@ -397,7 +401,12 @@ class InsightTreeReorganizerTest {
+ 
+             // Verify ROOT is created (ensureRoot uses saveInsight to save the root itself)
+             verify(store, atLeastOnce())
+-                    .saveInsight(eq(memoryId), argThat(i -> i.tier() == InsightTier.ROOT));
++                    .upsertInsights(
++                            eq(memoryId),
++                            argThat(
++                                    (List<MemoryInsight> list) ->
++                                            list.stream()
++                                                    .anyMatch(i -> i.tier() == InsightTier.ROOT)));
+         }
+ 
+         @Test
+@@ -411,11 +420,11 @@ class InsightTreeReorganizerTest {
+ 
+             when(store.getBranchByType(memoryId, TYPE_NAME)).thenReturn(Optional.of(branch1));
+             when(store.getInsight(memoryId, 100L)).thenReturn(Optional.of(root));
+-            when(store.getInsightsByTypeId(memoryId, TYPE_NAME))
++            when(store.getInsightsByType(memoryId, TYPE_NAME))
+                     .thenReturn(List.of(createLeaf(1L, "Old information"), leaf));
+-            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH))
++            when(store.getInsightsByTier(memoryId, InsightTier.BRANCH))
+                     .thenReturn(List.of(branch1, branch2));
+-            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of(rootInsightType));
++            when(store.listInsightTypes()).thenReturn(List.of(rootInsightType));
+             when(store.getRootByType(memoryId, ROOT_TYPE_NAME)).thenReturn(Optional.of(root));
+ 
+             var branchPoint =
+@@ -468,11 +477,11 @@ class InsightTreeReorganizerTest {
+ 
+             when(store.getBranchByType(memoryId, TYPE_NAME)).thenReturn(Optional.of(branch1));
+             when(store.getInsight(memoryId, 100L)).thenReturn(Optional.of(root));
+-            when(store.getInsightsByTypeId(memoryId, TYPE_NAME))
++            when(store.getInsightsByType(memoryId, TYPE_NAME))
+                     .thenReturn(List.of(createLeaf(1L, "Old information"), leaf));
+-            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH))
++            when(store.getInsightsByTier(memoryId, InsightTier.BRANCH))
+                     .thenReturn(List.of(branch1, branch2));
+-            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of(rootInsightType));
++            when(store.listInsightTypes()).thenReturn(List.of(rootInsightType));
+             when(store.getRootByType(memoryId, ROOT_TYPE_NAME)).thenReturn(Optional.of(root));
+ 
+             var branchPoint =
+@@ -519,11 +528,11 @@ class InsightTreeReorganizerTest {
+             var root2 = createRoot(200L, "behavior-analysis", List.of(10L, 20L));
+ 
+             when(store.getBranchByType(memoryId, TYPE_NAME)).thenReturn(Optional.of(branch1));
+-            when(store.getInsightsByTypeId(memoryId, TYPE_NAME))
++            when(store.getInsightsByType(memoryId, TYPE_NAME))
+                     .thenReturn(List.of(createLeaf(1L, "Old information"), leaf));
+-            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH))
++            when(store.getInsightsByTier(memoryId, InsightTier.BRANCH))
+                     .thenReturn(List.of(branch1, branch2));
+-            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of(rootType1, rootType2));
++            when(store.listInsightTypes()).thenReturn(List.of(rootType1, rootType2));
+             when(store.getRootByType(memoryId, "user-profile")).thenReturn(Optional.of(root1));
+             when(store.getRootByType(memoryId, "behavior-analysis")).thenReturn(Optional.of(root2));
+             when(store.getInsight(memoryId, 100L)).thenReturn(Optional.of(root1));
+@@ -588,11 +597,11 @@ class InsightTreeReorganizerTest {
+             when(store.getBranchByType(memoryId, "type-a")).thenReturn(Optional.of(branchA));
+             when(store.getBranchByType(memoryId, "type-b")).thenReturn(Optional.of(branchB));
+             when(store.getInsight(memoryId, 100L)).thenReturn(Optional.of(root));
+-            when(store.getInsightsByTypeId(eq(memoryId), eq("type-a"))).thenReturn(List.of(leafA));
+-            when(store.getInsightsByTypeId(eq(memoryId), eq("type-b"))).thenReturn(List.of(leafB));
+-            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH))
++            when(store.getInsightsByType(eq(memoryId), eq("type-a"))).thenReturn(List.of(leafA));
++            when(store.getInsightsByType(eq(memoryId), eq("type-b"))).thenReturn(List.of(leafB));
++            when(store.getInsightsByTier(memoryId, InsightTier.BRANCH))
+                     .thenReturn(List.of(branchA, branchB));
+-            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of(rootInsightType));
++            when(store.listInsightTypes()).thenReturn(List.of(rootInsightType));
+             when(store.getRootByType(memoryId, ROOT_TYPE_NAME)).thenReturn(Optional.of(root));
+ 
+             var branchPoint =
+@@ -777,7 +786,6 @@ class InsightTreeReorganizerTest {
+     private MemoryInsightType createInsightTypeWithNameAndScope(String name, MemoryScope scope) {
+         return new MemoryInsightType(
+                 1L,
+-                "test-memory",
+                 name,
+                 "desc",
+                 null,
+@@ -800,7 +808,6 @@ class InsightTreeReorganizerTest {
+     private MemoryInsightType createRootInsightTypeWithScope(String name, MemoryScope scope) {
+         return new MemoryInsightType(
+                 null,
+-                "test-memory",
+                 name,
+                 "Cross-type comprehensive insight",
+                 null,
+@@ -826,15 +833,15 @@ class InsightTreeReorganizerTest {
+             var leaf = createLeaf(1L, "agent information");
+             var agentInsightType = createInsightTypeWithNameAndScope(TYPE_NAME, MemoryScope.AGENT);
+ 
+-            when(store.getInsightsByTypeId(memoryId, TYPE_NAME)).thenReturn(List.of(leaf));
++            when(store.getInsightsByType(memoryId, TYPE_NAME)).thenReturn(List.of(leaf));
+             when(store.getBranchByType(memoryId, TYPE_NAME)).thenReturn(Optional.empty());
+-            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH)).thenReturn(List.of());
+-            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of());
++            when(store.getInsightsByTier(memoryId, InsightTier.BRANCH)).thenReturn(List.of());
++            when(store.listInsightTypes()).thenReturn(List.of());
+ 
+             reorganizer.onLeafUpdated(memoryId, TYPE_NAME, agentInsightType, leaf, config);
+ 
+             verify(store, atLeastOnce())
+-                    .saveInsights(
++                    .upsertInsights(
+                             eq(memoryId),
+                             argThat(
+                                     list ->
+@@ -857,22 +864,27 @@ class InsightTreeReorganizerTest {
+             var agentRootType = createRootInsightTypeWithScope(ROOT_TYPE_NAME, MemoryScope.AGENT);
+ 
+             when(store.getBranchByType(memoryId, TYPE_NAME)).thenReturn(Optional.of(branch1));
+-            when(store.getInsightsByTypeId(memoryId, TYPE_NAME)).thenReturn(List.of(leaf));
+-            when(store.getAllInsightsByTier(memoryId, InsightTier.BRANCH))
++            when(store.getInsightsByType(memoryId, TYPE_NAME)).thenReturn(List.of(leaf));
++            when(store.getInsightsByTier(memoryId, InsightTier.BRANCH))
+                     .thenReturn(List.of(branch1, branch2));
+-            when(store.getAllInsightTypes(memoryId)).thenReturn(List.of(agentRootType));
++            when(store.listInsightTypes()).thenReturn(List.of(agentRootType));
+             when(store.getRootByType(memoryId, ROOT_TYPE_NAME)).thenReturn(Optional.empty());
+ 
+             reorganizer.onLeafUpdated(
+                     memoryId, TYPE_NAME, createInsightType(), leaf, highThresholdConfig);
+ 
+             verify(store, atLeastOnce())
+-                    .saveInsight(
++                    .upsertInsights(
+                             eq(memoryId),
+                             argThat(
+-                                    i ->
+-                                            i.tier() == InsightTier.ROOT
+-                                                    && i.scope() == MemoryScope.AGENT));
++                                    (List<MemoryInsight> list) ->
++                                            list.stream()
++                                                    .anyMatch(
++                                                            i ->
++                                                                    i.tier() == InsightTier.ROOT
++                                                                            && i.scope()
++                                                                                    == MemoryScope
++                                                                                            .AGENT)));
+         }
+     }
+ }
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/dedup/SemanticDeduplicatorTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/dedup/SemanticDeduplicatorTest.java
+index 41fe4c0..5c32eb2 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/dedup/SemanticDeduplicatorTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/extraction/item/dedup/SemanticDeduplicatorTest.java
+@@ -42,7 +42,7 @@ class SemanticDeduplicatorTest {
+     void batchLoadsMatchedItemsByVectorIdsWithoutScanningAllItems() {
+         var store = new TrackingMemoryStore();
+         var matchedItem = memoryItem(1L, "v-1", "existing item");
+-        store.addItem(memoryId, matchedItem);
++        store.insertItems(memoryId, List.of(matchedItem));
+ 
+         var vector = new StubMemoryVector();
+         vector.register("first", new VectorSearchResult("v-1", "existing item", 0.95f, Map.of()));
+@@ -70,7 +70,7 @@ class SemanticDeduplicatorTest {
+     @org.junit.jupiter.api.Test
+     void keepsEntryWhenMatchedVectorIdHasNoBackingItem() {
+         var store = new TrackingMemoryStore();
+-        store.addItem(memoryId, memoryItem(1L, "other-vector", "existing item"));
++        store.insertItems(memoryId, List.of(memoryItem(1L, "other-vector", "existing item")));
+ 
+         var vector = new StubMemoryVector();
+         vector.register(
+@@ -94,7 +94,7 @@ class SemanticDeduplicatorTest {
+     @org.junit.jupiter.api.Test
+     void skipsBatchLookupWhenSearchFindsNoSimilarItem() {
+         var store = new TrackingMemoryStore();
+-        store.addItem(memoryId, memoryItem(1L, "v-1", "existing item"));
++        store.insertItems(memoryId, List.of(memoryItem(1L, "v-1", "existing item")));
+ 
+         var vector = new StubMemoryVector();
+         var deduplicator = new SemanticDeduplicator(store, vector, 0.8);
+@@ -148,9 +148,9 @@ class SemanticDeduplicatorTest {
+         private List<String> lastRequestedVectorIds = List.of();
+ 
+         @Override
+-        public List<MemoryItem> getAllItems(MemoryId id) {
++        public List<MemoryItem> listItems(MemoryId id) {
+             getAllItemsCalls++;
+-            return super.getAllItems(id);
++            return super.listItems(id);
+         }
+ 
+         @Override
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPromptsTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPromptsTest.java
+index 9f33532..c53bc4c 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPromptsTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/MemoryItemUnifiedPromptsTest.java
+@@ -50,7 +50,6 @@ class MemoryItemUnifiedPromptsTest {
+ 
+     private static MemoryInsightType createInsightType(String name, List<String> categories) {
+         return new MemoryInsightType(
+-                null,
+                 null,
+                 name,
+                 null,
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPromptsTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPromptsTest.java
+index fdf9877..4cfb567 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPromptsTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/prompt/extraction/item/SelfVerificationPromptsTest.java
+@@ -114,7 +114,6 @@ class SelfVerificationPromptsTest {
+ 
+     private static MemoryInsightType createInsightType(String name, List<String> categories) {
+         return new MemoryInsightType(
+-                null,
+                 null,
+                 name,
+                 null,
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetrieverTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetrieverTest.java
+index 4359ca5..476d91e 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetrieverTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/retrieval/tier/InsightTierRetrieverTest.java
+@@ -109,7 +109,6 @@ class InsightTierRetrieverTest {
+             String name, String description, InsightAnalysisMode mode, MemoryScope scope) {
+         return new MemoryInsightType(
+                 1L,
+-                null,
+                 name,
+                 description,
+                 null,
+@@ -149,9 +148,9 @@ class InsightTierRetrieverTest {
+                             null,
+                             List.of());
+ 
+-            when(memoryStore.getAllInsights(memoryId))
++            when(memoryStore.listInsights(memoryId))
+                     .thenReturn(List.of(rootInsight, branchInsight));
+-            when(memoryStore.getAllInsightTypes(memoryId))
++            when(memoryStore.listInsightTypes())
+                     .thenReturn(
+                             List.of(
+                                     buildType("profile", "User portrait", InsightAnalysisMode.ROOT),
+@@ -200,9 +199,9 @@ class InsightTierRetrieverTest {
+                             null,
+                             List.of());
+ 
+-            when(memoryStore.getAllInsights(memoryId))
++            when(memoryStore.listInsights(memoryId))
+                     .thenReturn(List.of(rootInsight, branchInsight));
+-            when(memoryStore.getAllInsightTypes(memoryId))
++            when(memoryStore.listInsightTypes())
+                     .thenReturn(
+                             List.of(
+                                     buildType("profile", "User portrait", InsightAnalysisMode.ROOT),
+@@ -256,9 +255,9 @@ class InsightTierRetrieverTest {
+                             null,
+                             List.of());
+ 
+-            when(memoryStore.getAllInsights(memoryId))
++            when(memoryStore.listInsights(memoryId))
+                     .thenReturn(List.of(branchProfile, branchPrefs));
+-            when(memoryStore.getAllInsightTypes(memoryId))
++            when(memoryStore.listInsightTypes())
+                     .thenReturn(
+                             List.of(
+                                     buildType(
+@@ -297,8 +296,8 @@ class InsightTierRetrieverTest {
+                             null,
+                             List.of());
+ 
+-            when(memoryStore.getAllInsights(memoryId)).thenReturn(List.of(branchInsight));
+-            when(memoryStore.getAllInsightTypes(memoryId))
++            when(memoryStore.listInsights(memoryId)).thenReturn(List.of(branchInsight));
++            when(memoryStore.listInsightTypes())
+                     .thenReturn(
+                             List.of(
+                                     buildType(
+@@ -337,8 +336,8 @@ class InsightTierRetrieverTest {
+                     buildInsight(1L, "identity", "Likes coffee", InsightTier.LEAF, 10L, List.of());
+             var leaf2 = buildInsight(2L, "identity", "Likes tea", InsightTier.LEAF, 10L, List.of());
+ 
+-            when(memoryStore.getAllInsights(memoryId)).thenReturn(List.of(branch, leaf1, leaf2));
+-            when(memoryStore.getAllInsightTypes(memoryId))
++            when(memoryStore.listInsights(memoryId)).thenReturn(List.of(branch, leaf1, leaf2));
++            when(memoryStore.listInsightTypes())
+                     .thenReturn(
+                             List.of(
+                                     buildType(
+@@ -391,8 +390,8 @@ class InsightTierRetrieverTest {
+             var leaf =
+                     buildInsight(1L, "identity", "Likes coffee", InsightTier.LEAF, 10L, List.of());
+ 
+-            when(memoryStore.getAllInsights(memoryId)).thenReturn(List.of(branch, leaf));
+-            when(memoryStore.getAllInsightTypes(memoryId))
++            when(memoryStore.listInsights(memoryId)).thenReturn(List.of(branch, leaf));
++            when(memoryStore.listInsightTypes())
+                     .thenReturn(
+                             List.of(
+                                     buildType(
+@@ -432,9 +431,9 @@ class InsightTierRetrieverTest {
+             var leaf2 = buildInsight(2L, "identity", "Tea", InsightTier.LEAF, 10L, List.of());
+             var leaf3 = buildInsight(3L, "identity", "Cola", InsightTier.LEAF, 10L, List.of());
+ 
+-            when(memoryStore.getAllInsights(memoryId))
++            when(memoryStore.listInsights(memoryId))
+                     .thenReturn(List.of(branch, leaf1, leaf2, leaf3));
+-            when(memoryStore.getAllInsightTypes(memoryId))
++            when(memoryStore.listInsightTypes())
+                     .thenReturn(
+                             List.of(
+                                     buildType(
+@@ -487,8 +486,8 @@ class InsightTierRetrieverTest {
+                     buildInsight(2L, "identity", "Likes tea", InsightTier.LEAF, 10L, List.of())
+                             .withSummaryEmbedding(List.of(0.0f, 0.0f, 1.0f));
+ 
+-            when(memoryStore.getAllInsights(memoryId)).thenReturn(List.of(branch, leaf1, leaf2));
+-            when(memoryStore.getAllInsightTypes(memoryId))
++            when(memoryStore.listInsights(memoryId)).thenReturn(List.of(branch, leaf1, leaf2));
++            when(memoryStore.listInsightTypes())
+                     .thenReturn(
+                             List.of(
+                                     buildType(
+@@ -527,8 +526,8 @@ class InsightTierRetrieverTest {
+                     buildInsight(
+                             100L, "profile", "User portrait", InsightTier.ROOT, null, List.of());
+ 
+-            when(memoryStore.getAllInsights(memoryId)).thenReturn(List.of(rootInsight));
+-            when(memoryStore.getAllInsightTypes(memoryId))
++            when(memoryStore.listInsights(memoryId)).thenReturn(List.of(rootInsight));
++            when(memoryStore.listInsightTypes())
+                     .thenReturn(
+                             List.of(
+                                     buildType(
+@@ -545,7 +544,7 @@ class InsightTierRetrieverTest {
+                     .assertNext(result -> assertThat(result.results()).isNotEmpty())
+                     .verifyComplete();
+ 
+-            verify(memoryStore, times(1)).getAllInsights(memoryId);
++            verify(memoryStore, times(1)).listInsights(memoryId);
+         }
+ 
+         @Test
+@@ -555,8 +554,8 @@ class InsightTierRetrieverTest {
+                     buildInsight(
+                             100L, "profile", "User portrait", InsightTier.ROOT, null, List.of());
+ 
+-            when(memoryStore.getAllInsights(memoryId)).thenReturn(List.of(rootInsight));
+-            when(memoryStore.getAllInsightTypes(memoryId))
++            when(memoryStore.listInsights(memoryId)).thenReturn(List.of(rootInsight));
++            when(memoryStore.listInsightTypes())
+                     .thenReturn(
+                             List.of(
+                                     buildType(
+@@ -575,7 +574,7 @@ class InsightTierRetrieverTest {
+                     .assertNext(result -> assertThat(result.results()).isNotEmpty())
+                     .verifyComplete();
+ 
+-            verify(memoryStore, times(2)).getAllInsights(memoryId);
++            verify(memoryStore, times(2)).listInsights(memoryId);
+         }
+ 
+         @Test
+@@ -606,7 +605,7 @@ class InsightTierRetrieverTest {
+         @Test
+         @DisplayName("When there are no insights, should return empty result")
+         void shouldReturnEmptyWhenNoInsights() {
+-            when(memoryStore.getAllInsights(memoryId)).thenReturn(List.of());
++            when(memoryStore.listInsights(memoryId)).thenReturn(List.of());
+ 
+             var context =
+                     new QueryContext(memoryId, "Query", "Query", List.of(), Map.of(), null, null);
+@@ -641,9 +640,8 @@ class InsightTierRetrieverTest {
+                             null,
+                             List.of());
+ 
+-            when(memoryStore.getAllInsights(memoryId))
+-                    .thenReturn(List.of(agentInsight, userInsight));
+-            when(memoryStore.getAllInsightTypes(memoryId))
++            when(memoryStore.listInsights(memoryId)).thenReturn(List.of(agentInsight, userInsight));
++            when(memoryStore.listInsightTypes())
+                     .thenReturn(
+                             List.of(
+                                     buildType(
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/store/InMemoryMemoryStoreTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/store/InMemoryMemoryStoreTest.java
+new file mode 100644
+index 0000000..b7715be
+--- /dev/null
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/store/InMemoryMemoryStoreTest.java
+@@ -0,0 +1,174 @@
++/*
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ * http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.openmemind.ai.memory.core.store;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++import com.openmemind.ai.memory.core.data.DefaultMemoryId;
++import com.openmemind.ai.memory.core.data.InsightPoint;
++import com.openmemind.ai.memory.core.data.MemoryId;
++import com.openmemind.ai.memory.core.data.MemoryInsight;
++import com.openmemind.ai.memory.core.data.MemoryInsightType;
++import com.openmemind.ai.memory.core.data.MemoryItem;
++import com.openmemind.ai.memory.core.data.MemoryRawData;
++import com.openmemind.ai.memory.core.data.enums.InsightAnalysisMode;
++import com.openmemind.ai.memory.core.data.enums.InsightTier;
++import com.openmemind.ai.memory.core.data.enums.MemoryCategory;
++import com.openmemind.ai.memory.core.data.enums.MemoryItemType;
++import com.openmemind.ai.memory.core.data.enums.MemoryScope;
++import com.openmemind.ai.memory.core.extraction.rawdata.segment.Segment;
++import java.time.Instant;
++import java.util.List;
++import java.util.Map;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++
++@DisplayName("InMemoryMemoryStore")
++class InMemoryMemoryStoreTest {
++
++    private static final MemoryId MEMORY_ID = DefaultMemoryId.of("user-1", "agent-1");
++    private static final Instant BASE_TIME = Instant.parse("2026-03-21T00:00:00Z");
++
++    @Test
++    @DisplayName("upsertRawData replaces an existing record")
++    void upsertRawDataReplacesExistingRecord() {
++        var store = new InMemoryMemoryStore();
++
++        store.upsertRawData(
++                MEMORY_ID,
++                List.of(rawData("raw-1", "old caption", "content-1", Map.of("source", "seed"))));
++
++        store.upsertRawData(
++                MEMORY_ID,
++                List.of(rawData("raw-1", "new caption", "content-1", Map.of("source", "updated"))));
++
++        assertThat(store.listRawData(MEMORY_ID))
++                .singleElement()
++                .extracting(MemoryRawData::caption)
++                .isEqualTo("new caption");
++    }
++
++    @Test
++    @DisplayName("upsertInsightTypes uses a global namespace")
++    void upsertInsightTypesUsesGlobalNamespace() {
++        var store = new InMemoryMemoryStore();
++
++        store.upsertInsightTypes(List.of(insightType(1L, "profile"), insightType(2L, "agent")));
++
++        assertThat(store.getInsightType("profile")).isPresent();
++        assertThat(store.listInsightTypes())
++                .extracting(MemoryInsightType::name)
++                .containsExactlyInAnyOrder("profile", "agent");
++    }
++
++    @Test
++    @DisplayName("deleteItems removes only requested items")
++    void deleteItemsRemovesOnlyRequestedItems() {
++        var store = new InMemoryMemoryStore();
++
++        store.insertItems(MEMORY_ID, List.of(item(1L), item(2L), item(3L)));
++
++        store.deleteItems(MEMORY_ID, List.of(2L, 3L));
++
++        assertThat(store.listItems(MEMORY_ID)).extracting(MemoryItem::id).containsExactly(1L);
++    }
++
++    @Test
++    @DisplayName("deleteInsights removes only requested insights")
++    void deleteInsightsRemovesOnlyRequestedInsights() {
++        var store = new InMemoryMemoryStore();
++
++        store.upsertInsights(MEMORY_ID, List.of(insight(10L), insight(20L), insight(30L)));
++
++        store.deleteInsights(MEMORY_ID, List.of(20L, 30L));
++
++        assertThat(store.listInsights(MEMORY_ID))
++                .extracting(MemoryInsight::id)
++                .containsExactly(10L);
++    }
++
++    private static MemoryRawData rawData(
++            String id, String caption, String contentId, Map<String, Object> metadata) {
++        return new MemoryRawData(
++                id,
++                MEMORY_ID.toIdentifier(),
++                "conversation",
++                contentId,
++                Segment.single("segment-" + id),
++                caption,
++                null,
++                metadata,
++                BASE_TIME,
++                BASE_TIME,
++                BASE_TIME.plusSeconds(30));
++    }
++
++    private static MemoryInsightType insightType(Long id, String name) {
++        return new MemoryInsightType(
++                id,
++                name,
++                "description-" + name,
++                null,
++                List.of("profile"),
++                600,
++                Map.of("summary", "prompt"),
++                BASE_TIME,
++                BASE_TIME,
++                BASE_TIME,
++                InsightAnalysisMode.BRANCH,
++                null,
++                MemoryScope.USER,
++                List.of("conversation"));
++    }
++
++    private static MemoryItem item(Long id) {
++        return new MemoryItem(
++                id,
++                MEMORY_ID.toIdentifier(),
++                "content-" + id,
++                MemoryScope.USER,
++                MemoryCategory.PROFILE,
++                "conversation",
++                "vector-" + id,
++                "raw-" + id,
++                "hash-" + id,
++                BASE_TIME,
++                Map.of("id", id),
++                BASE_TIME,
++                MemoryItemType.FACT);
++    }
++
++    private static MemoryInsight insight(Long id) {
++        return new MemoryInsight(
++                id,
++                MEMORY_ID.toIdentifier(),
++                "profile",
++                MemoryScope.USER,
++                "name-" + id,
++                List.of("profile"),
++                List.of(
++                        new InsightPoint(
++                                InsightPoint.PointType.SUMMARY, "point-" + id, 0.9f, List.of())),
++                "group",
++                0.9f,
++                BASE_TIME,
++                List.of(),
++                BASE_TIME,
++                BASE_TIME,
++                InsightTier.LEAF,
++                null,
++                List.of(),
++                1);
++    }
++}
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGeneratorTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGeneratorTest.java
+index a77fdb6..ce5adb2 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGeneratorTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGeneratorTest.java
+@@ -41,7 +41,6 @@ class TracingInsightGeneratorTest {
+ 
+     private static MemoryInsightType insightType() {
+         return new MemoryInsightType(
+-                null,
+                 null,
+                 "test-type",
+                 null,
+diff --git a/memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGroupClassifierTest.java b/memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGroupClassifierTest.java
+index 3f041c1..e20713a 100644
+--- a/memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGroupClassifierTest.java
++++ b/memind-core/src/test/java/com/openmemind/ai/memory/core/tracing/decorator/TracingInsightGroupClassifierTest.java
+@@ -50,8 +50,8 @@ class TracingInsightGroupClassifierTest {
+                             null, null);
+             var insightType =
+                     new MemoryInsightType(
+-                            1L, "m1", "PROFILE", "desc", null, List.of(), 400, null, null, null,
+-                            null, null, null, null, null);
++                            1L, "PROFILE", "desc", null, List.of(), 400, null, null, null, null,
++                            null, null, null, null);
+             var result = Map.of("group1", List.of(item));
+             var items = List.of(item);
+             var existingGroupNames = List.of("group1");
+diff --git a/memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStoreBatchOperationsTest.java b/memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStoreBatchOperationsTest.java
+index ad7eca1..d743955 100644
+--- a/memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStoreBatchOperationsTest.java
++++ b/memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/MybatisPlusMemoryStoreBatchOperationsTest.java
+@@ -60,8 +60,8 @@ class MybatisPlusMemoryStoreBatchOperationsTest {
+     @TempDir Path tempDir;
+ 
+     @Test
+-    @DisplayName("saveRawDataList prefetches existing rows once before upsert")
+-    void saveRawDataListPrefetchesExistingRowsOnce() {
++    @DisplayName("upsertRawData prefetches existing rows once before upsert")
++    void upsertRawDataPrefetchesExistingRowsOnce() {
+         newContextRunner(tempDir.resolve("save-raw-data.db"))
+                 .run(
+                         context -> {
+@@ -69,12 +69,16 @@ class MybatisPlusMemoryStoreBatchOperationsTest {
+                             MapperMethodCounter counter =
+                                     context.getBean(MapperMethodCounter.class);
+ 
+-                            store.saveRawData(
++                            store.upsertRawData(
+                                     MEMORY_ID,
+-                                    rawData("raw-1", "old caption", Map.of("source", "seed")));
++                                    List.of(
++                                            rawData(
++                                                    "raw-1",
++                                                    "old caption",
++                                                    Map.of("source", "seed"))));
+                             counter.reset();
+ 
+-                            store.saveRawDataList(
++                            store.upsertRawData(
+                                     MEMORY_ID,
+                                     List.of(
+                                             rawData(
+@@ -90,7 +94,7 @@ class MybatisPlusMemoryStoreBatchOperationsTest {
+                                     .isZero();
+                             assertThat(counter.count(MemoryRawDataMapper.class, "selectList"))
+                                     .isEqualTo(1);
+-                            assertThat(store.getAllRawData(MEMORY_ID)).hasSize(2);
++                            assertThat(store.listRawData(MEMORY_ID)).hasSize(2);
+                             assertThat(store.getRawData(MEMORY_ID, "raw-1"))
+                                     .get()
+                                     .extracting(MemoryRawData::caption)
+@@ -99,32 +103,25 @@ class MybatisPlusMemoryStoreBatchOperationsTest {
+     }
+ 
+     @Test
+-    @DisplayName("updateItems prefetches existing rows once and updates only existing items")
+-    void updateItemsPrefetchesExistingRowsOnce() {
+-        newContextRunner(tempDir.resolve("update-items.db"))
++    @DisplayName("deleteItems removes only the requested rows in batch")
++    void deleteItemsRemovesOnlyRequestedRowsInBatch() {
++        newContextRunner(tempDir.resolve("delete-items.db"))
+                 .run(
+                         context -> {
+                             MemoryStore store = context.getBean(MemoryStore.class);
+-                            MapperMethodCounter counter =
+-                                    context.getBean(MapperMethodCounter.class);
+-
+-                            store.addItem(MEMORY_ID, memoryItem(1L, "original content"));
+-                            counter.reset();
+ 
+-                            store.updateItems(
++                            store.insertItems(
+                                     MEMORY_ID,
+                                     List.of(
+-                                            memoryItem(1L, "updated content"),
+-                                            memoryItem(2L, "missing content")));
++                                            memoryItem(1L, "first content"),
++                                            memoryItem(2L, "second content"),
++                                            memoryItem(3L, "third content")));
+ 
+-                            assertThat(counter.count(MemoryItemMapper.class, "selectOne")).isZero();
+-                            assertThat(counter.count(MemoryItemMapper.class, "selectList"))
+-                                    .isEqualTo(1);
+-                            assertThat(store.getAllItems(MEMORY_ID)).hasSize(1);
+-                            assertThat(store.getItem(MEMORY_ID, 1L))
+-                                    .get()
+-                                    .extracting(MemoryItem::content)
+-                                    .isEqualTo("updated content");
++                            store.deleteItems(MEMORY_ID, List.of(2L, 3L));
++
++                            assertThat(store.listItems(MEMORY_ID))
++                                    .extracting(MemoryItem::id)
++                                    .containsExactly(1L);
+                         });
+     }
+ 
+@@ -138,9 +135,13 @@ class MybatisPlusMemoryStoreBatchOperationsTest {
+                             MapperMethodCounter counter =
+                                     context.getBean(MapperMethodCounter.class);
+ 
+-                            store.saveRawData(
++                            store.upsertRawData(
+                                     MEMORY_ID,
+-                                    rawData("raw-1", "caption", Map.of("existing", "value")));
++                                    List.of(
++                                            rawData(
++                                                    "raw-1",
++                                                    "caption",
++                                                    Map.of("existing", "value"))));
+                             counter.reset();
+ 
+                             store.updateRawDataVectorIds(
+@@ -166,8 +167,8 @@ class MybatisPlusMemoryStoreBatchOperationsTest {
+     }
+ 
+     @Test
+-    @DisplayName("addItems rolls back the whole batch when one insert fails")
+-    void addItemsRollsBackWholeBatchWhenInsertFails() {
++    @DisplayName("insertItems rolls back the whole batch when one insert fails")
++    void insertItemsRollsBackWholeBatchWhenInsertFails() {
+         newContextRunner(tempDir.resolve("add-items-tx.db"))
+                 .run(
+                         context -> {
+@@ -177,7 +178,7 @@ class MybatisPlusMemoryStoreBatchOperationsTest {
+ 
+                             assertThatThrownBy(
+                                             () ->
+-                                                    store.addItems(
++                                                    store.insertItems(
+                                                             MEMORY_ID,
+                                                             List.of(
+                                                                     memoryItem(1L, "first content"),
+@@ -186,7 +187,7 @@ class MybatisPlusMemoryStoreBatchOperationsTest {
+                                                                             "duplicate content"))))
+                                     .isInstanceOf(Exception.class);
+ 
+-                            assertThat(store.getAllItems(MEMORY_ID)).isEmpty();
++                            assertThat(store.listItems(MEMORY_ID)).isEmpty();
+                         });
+     }
+ 
+diff --git a/memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/converter/InsightTypeConverterTest.java b/memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/converter/InsightTypeConverterTest.java
+new file mode 100644
+index 0000000..ef0657e
+--- /dev/null
++++ b/memind-plugin/memind-plugin-store-mybatis-plus/src/test/java/com/openmemind/ai/memory/plugin/store/mybatis/converter/InsightTypeConverterTest.java
+@@ -0,0 +1,85 @@
++/*
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ * http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.openmemind.ai.memory.plugin.store.mybatis.converter;
++
++import static org.assertj.core.api.Assertions.assertThat;
++
++import com.openmemind.ai.memory.core.data.MemoryInsightType;
++import com.openmemind.ai.memory.core.data.enums.InsightAnalysisMode;
++import com.openmemind.ai.memory.core.data.enums.MemoryScope;
++import com.openmemind.ai.memory.core.extraction.insight.tree.InsightTreeConfig;
++import com.openmemind.ai.memory.plugin.store.mybatis.dataobject.MemoryInsightTypeDO;
++import java.time.Instant;
++import java.util.List;
++import java.util.Map;
++import org.junit.jupiter.api.DisplayName;
++import org.junit.jupiter.api.Test;
++
++@DisplayName("InsightTypeConverter")
++class InsightTypeConverterTest {
++
++    private static final Instant BASE_TIME = Instant.parse("2026-03-21T00:00:00Z");
++
++    @Test
++    @DisplayName("toRecord does not require memoryId")
++    void toRecordDoesNotRequireMemoryId() {
++        var dataObject = new MemoryInsightTypeDO();
++        dataObject.setBizId(7L);
++        dataObject.setName("profile");
++        dataObject.setDescription("profile description");
++        dataObject.setDescriptionVectorId("vec-1");
++        dataObject.setTargetTokens(512);
++        dataObject.setCategories(List.of("profile"));
++        dataObject.setSummaryPrompt(Map.of("summary", "prompt"));
++        dataObject.setLastUpdatedAt(BASE_TIME);
++        dataObject.setCreatedAt(BASE_TIME);
++        dataObject.setUpdatedAt(BASE_TIME.plusSeconds(30));
++        dataObject.setAnalysisMode(InsightAnalysisMode.ROOT.name());
++        dataObject.setScope(MemoryScope.USER.name());
++
++        MemoryInsightType record = InsightTypeConverter.toRecord(dataObject);
++
++        assertThat(record.id()).isEqualTo(7L);
++        assertThat(record.name()).isEqualTo("profile");
++        assertThat(record.scope()).isEqualTo(MemoryScope.USER);
++    }
++
++    @Test
++    @DisplayName("toDO preserves prompt scope and mode without memoryId")
++    void toDoPreservesPromptScopeAndModeWithoutMemoryId() {
++        var record =
++                new MemoryInsightType(
++                        9L,
++                        "profile",
++                        "profile description",
++                        "vec-9",
++                        List.of("profile"),
++                        640,
++                        Map.of("summary", "prompt"),
++                        BASE_TIME,
++                        BASE_TIME,
++                        BASE_TIME.plusSeconds(60),
++                        InsightAnalysisMode.ROOT,
++                        InsightTreeConfig.defaults(),
++                        MemoryScope.USER,
++                        List.of("conversation"));
++
++        var dataObject = InsightTypeConverter.toDO(record);
++
++        assertThat(dataObject.getBizId()).isEqualTo(9L);
++        assertThat(dataObject.getSummaryPrompt()).containsEntry("summary", "prompt");
++        assertThat(dataObject.getAnalysisMode()).isEqualTo(InsightAnalysisMode.ROOT.name());
++        assertThat(dataObject.getScope()).isEqualTo(MemoryScope.USER.name());
++    }
++}
+diff --git a/memind-plugin/memind-plugin-tracing-opentelemetry/src/test/java/com/openmemind/ai/memory/plugin/tracing/otel/InsightPipelineTracingTest.java b/memind-plugin/memind-plugin-tracing-opentelemetry/src/test/java/com/openmemind/ai/memory/plugin/tracing/otel/InsightPipelineTracingTest.java
+index c87ab1f..346d303 100644
+--- a/memind-plugin/memind-plugin-tracing-opentelemetry/src/test/java/com/openmemind/ai/memory/plugin/tracing/otel/InsightPipelineTracingTest.java
++++ b/memind-plugin/memind-plugin-tracing-opentelemetry/src/test/java/com/openmemind/ai/memory/plugin/tracing/otel/InsightPipelineTracingTest.java
+@@ -100,7 +100,6 @@ class InsightPipelineTracingTest {
+     private static MemoryInsightType testInsightType(String name) {
+         return new MemoryInsightType(
+                 1L,
+-                "test-memory-1",
+                 name,
+                 "Test insight type",
+                 null,
+@@ -191,8 +190,7 @@ class InsightPipelineTracingTest {
+ 
+             // Mock store
+             var store = mock(MemoryStore.class);
+-            when(store.getInsightType(memoryId, insightTypeName))
+-                    .thenReturn(Optional.of(insightType));
++            when(store.getInsightType(insightTypeName)).thenReturn(Optional.of(insightType));
+             when(store.getItemsByIds(any(), anyList())).thenReturn(List.of(item));
+             when(store.getLeafByGroup(any(), anyString(), anyString()))
+                     .thenReturn(Optional.empty());
+@@ -262,8 +260,7 @@ class InsightPipelineTracingTest {
+ 
+             // Mock store
+             var store = mock(MemoryStore.class);
+-            when(store.getInsightType(memoryId, insightTypeName))
+-                    .thenReturn(Optional.of(insightType));
++            when(store.getInsightType(insightTypeName)).thenReturn(Optional.of(insightType));
+             when(store.getItemsByIds(any(), anyList())).thenReturn(List.of(item));
+             when(store.getLeafByGroup(any(), anyString(), anyString()))
+                     .thenReturn(Optional.empty());
+diff --git a/memind-plugin/memind-plugin-tracing-opentelemetry/src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker b/memind-plugin/memind-plugin-tracing-opentelemetry/src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker
+new file mode 100644
+index 0000000..fdbd0b1
+--- /dev/null
++++ b/memind-plugin/memind-plugin-tracing-opentelemetry/src/test/resources/mockito-extensions/org.mockito.plugins.MockMaker
+@@ -0,0 +1 @@
++mock-maker-subclass
+diff --git a/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java b/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java
+index 445ea61..8f3a053 100644
+--- a/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java
++++ b/memind-spring-boot-starter/src/test/java/com/openmemind/ai/memory/autoconfigure/MemoryAutoConfigurationTest.java
+@@ -20,6 +20,7 @@ import com.openmemind.ai.memory.core.Memory;
+ import com.openmemind.ai.memory.core.extraction.MemoryExtractor;
+ import com.openmemind.ai.memory.core.retrieval.MemoryRetriever;
+ import com.openmemind.ai.memory.core.store.MemoryStore;
++import com.openmemind.ai.memory.core.vector.MemoryVector;
+ import org.junit.jupiter.api.DisplayName;
+ import org.junit.jupiter.api.Nested;
+ import org.junit.jupiter.api.Test;
+@@ -45,7 +46,7 @@ class MemoryAutoConfigurationTest {
+         @DisplayName("Register DefaultMemory when all dependencies exist")
+         void registersMemory4jBean() {
+             contextRunner
+-                    .withUserConfiguration(DependenciesConfig.class)
++                    .withUserConfiguration(DependenciesWithVectorConfig.class)
+                     .run(
+                             context -> {
+                                 assertThat(context).hasSingleBean(Memory.class);
+@@ -53,6 +54,19 @@ class MemoryAutoConfigurationTest {
+                                         .isInstanceOf(DefaultMemory.class);
+                             });
+         }
++
++        @Test
++        @DisplayName("Require MemoryVector bean for default Memory wiring")
++        void requiresMemoryVectorBean() {
++            contextRunner
++                    .withUserConfiguration(DependenciesWithoutVectorConfig.class)
++                    .run(
++                            context -> {
++                                assertThat(context).hasFailed();
++                                assertThat(context.getStartupFailure())
++                                        .hasMessageContaining("MemoryVector");
++                            });
++        }
+     }
+ 
+     @Nested
+@@ -63,7 +77,8 @@ class MemoryAutoConfigurationTest {
+         @DisplayName("Do not register default when user customizes Memory")
+         void userMemory4jTakesPrecedence() {
+             contextRunner
+-                    .withUserConfiguration(DependenciesConfig.class, CustomMemory4jConfig.class)
++                    .withUserConfiguration(
++                            DependenciesWithVectorConfig.class, CustomMemory4jConfig.class)
+                     .run(
+                             context -> {
+                                 assertThat(context).hasSingleBean(Memory.class);
+@@ -74,7 +89,7 @@ class MemoryAutoConfigurationTest {
+     }
+ 
+     @Configuration
+-    static class DependenciesConfig {
++    static class DependenciesWithoutVectorConfig {
+         @Bean
+         ChatClient.Builder chatClientBuilder() {
+             return Mockito.mock(ChatClient.Builder.class);
+@@ -96,6 +111,14 @@ class MemoryAutoConfigurationTest {
+         }
+     }
+ 
++    @Configuration
++    static class DependenciesWithVectorConfig extends DependenciesWithoutVectorConfig {
++        @Bean
++        MemoryVector memoryVector() {
++            return Mockito.mock(MemoryVector.class);
++        }
++    }
++
+     @Configuration
+     static class CustomMemory4jConfig {
+         @Bean

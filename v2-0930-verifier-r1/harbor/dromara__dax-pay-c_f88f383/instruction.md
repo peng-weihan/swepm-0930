@@ -1,0 +1,19 @@
+通道认证模块需要按职责重新拆分并清理旧的门面/策略结构。目前认证相关类集中在 `cn.daxpay.open.payment.auth` 以及旧的 `cn.daxpay.open.payment.strategy.auth` 包中，平台级认证、商户级产品认证、认证会话模型和调试入口耦合在一起，并且存在 `PlatformAuthService` 统一门面层以及 `AbsChannelAuthStrategy` 等旧策略包，导致平台 OAuth、商户通道应用认证、网关 H5 授权、开发调试授权等场景边界不清晰。
+
+需要将认证模块拆分为四类职责包，并同步更新所有引用方，保证项目可编译且原有对外行为保持一致。基础模型应放入 `cn.daxpay.open.payment.auth.core`，包括 `AuthSession`、`AuthSessionStore`、`AuthRedirectUri` 等会话和回调基础对象；商户级认证应放入 `cn.daxpay.open.payment.auth.merchant`，包括 `ChannelAuthService`、`ProductAuthService`、产品认证策略基类及微信/抖音/支付宝等支付产品认证实现；平台级认证应放入 `cn.daxpay.open.payment.auth.platform`，通过 `PlatformAuthProvider` 抽象支付宝、微信公众号、抖音 H5 三种平台配置驱动的授权能力；开发调试入口应放入 `cn.daxpay.open.payment.auth.develop`，`DevelopAuthService` 不再依赖 `PlatformAuthService` 门面，而是直接使用三个平台级 Provider 和商户级通道认证服务。
+
+需要移除旧的 `cn.daxpay.open.payment.strategy.auth` 策略包及其中的 `AbsChannelAuthStrategy`、`AlipayAuthStrategy`、`AuthContext` 等旧结构，同时删除 `PlatformAuthService` 门面层。原来调用 `cn.daxpay.open.payment.auth.ChannelAuthService`、`DevelopAuthService`、`ChannelProductAuthService` 等类的位置需要改为新的包名和类名，例如网关和统一支付授权入口应使用 `cn.daxpay.open.payment.auth.merchant.ChannelAuthService`，后台和商户端开发调试控制器应使用 `cn.daxpay.open.payment.auth.develop.DevelopAuthService`，文档注释中涉及 `ChannelProductAuthService` 的描述也应更新为新的 `ProductAuthService`。
+
+认证会话需要新增场景区分能力，使用 `AuthScene` 枚举标识 `PAYMENT`、`PLATFORM`、`OPEN` 三种认证场景。平台级 Provider 创建的 session 应写入对应的 `source`，例如支付宝为 `AuthSession.SOURCE_PLATFORM_ALIPAY`，微信公众号为 `AuthSession.SOURCE_PLATFORM_MP`，抖音 H5 为 `AuthSession.SOURCE_PLATFORM_DOUYIN`，并将 `scene` 设置为平台场景。商户级/开放平台场景也应能够基于该字段区分后续处理逻辑。
+
+`AuthUrlResult` 需要在现有 `authUrl`、`queryCode` 基础上返回 `authToken` 字段。生成授权链接时，创建认证会话后应将该认证会话码回填到结果中，供 OPEN 场景后续根据 `authToken` 加载并更新 session 中的 `scene`、`redirectUrl` 等上下文。现有生成授权链接接口仍应返回授权地址和查询码，且新增字段不应破坏原接口。
+
+平台级 Provider 需要保持原平台认证行为。支付宝平台认证使用平台支付宝配置生成 OAuth 链接，回调地址仍由 `AuthRedirectUri.ALIPAY` 基于支付网关基础地址拼装，OAuth `state` 透传 `authToken`，未配置时抛出对应业务异常，例如支付宝配置不完整时使用 `error.social.alipayNotConfigured`，网关地址未配置时使用 `error.common.gatewayUrlNotConfigured`。授权码换取结果时应将支付宝用户标识映射到统一的 `AuthResult`，成功状态为 `ChannelAuthStatusEnum.SUCCESS`，并写入 `AuthSessionStore.writeResultByQueryCode`。
+
+微信平台公众号 Provider 不再从旧的 `PlatformWechatMpAuthConfig` 读取配置，而应通过微信应用主数据解析平台公众号应用。解析时应调用 `WxAppFacade.resolve(null, null, PayCapabilityEnum.WECHAT_JSAPI.getCode(), null, ProductEnum.WECHAT_PAY.getCode())` 定位平台级公众号应用；如果应用不存在，应透传 facade 抛出的应用未配置异常，并且不能写入 session；如果应用存在但 `appSecret` 为空，应抛出 `error.payment.wx.appNotConfigured`，并且不能写入 session。正常生成微信授权链接时，应使用 `AuthRedirectUri.WECHAT` 拼装固定回调地址，调用 `WechatMpAuthService.generateAuthUrl(redirectUri, wxAppId, appSecret, authToken)`，保存等待结果，并返回 `authUrl`、`queryCode`、`authToken`。授权码换取 openId 时，应调用 `WechatMpAuthService.getTokenAndOpenId(authCode, wxAppId, appSecret)`；如果返回的 `openId` 为空，应抛出 `error.channel.wechat.authFailed`，且不能写入成功结果；正常情况下返回 `openId`、`accessToken`、成功状态，并从 session 回填 `returnPath`。
+
+抖音 H5 平台 Provider 应保持原平台抖音 H5 静默授权能力，使用平台级抖音 H5 配置生成授权链接，固定回调地址由 `AuthRedirectUri.DOUYIN` 构建，`state` 透传 `authToken`，授权码换取结果后写入查询结果并回填 `returnPath`。配置缺失、网关地址缺失、用户标识为空等情况应继续抛出对应业务异常，避免生成无效 session 或返回成功状态。
+
+商户级 `ChannelAuthService` 仍是统一支付授权对外入口，负责 `GenerateAuthUrlParam` 生成授权链接和 `AuthCodeParam` 授权码换取认证结果。支付宝 `authType=alipay` 的平台级 OAuth 兜底行为、基于 session source 分发到平台级 Provider、其他场景分发到支付产品认证策略的行为需要保持一致。授权失败时应写回 `FAIL` 状态，授权成功后应删除一次性 `authToken` session，避免 TTL 内重复消费。非支付宝且 session 已失效时，应抛出 `pay.error.assist.authSessionExpired`，提示重新生成授权链接。
+
+开发调试接口、统一支付接口和网关 H5 授权接口的对外路径与请求参数应保持兼容。`DevelopAuthAdminController`、`MchDevelopAuthController` 的 `/generate-channel-auth-url` 仍不强制校验 `reqTime`，因为认证链路不走签名/防重放，`channel`、`mchNo` 等字段由业务层兜底校验。`GatewayClientController` 的 `/auth/generate-url` 仍返回 `AuthUrlResult`。`ChannelAuthController` 仍通过新的商户级 `ChannelAuthService` 处理授权链接生成和授权码认证。

@@ -1,0 +1,1207 @@
+diff --git a/tests/api/v2/test_accepted_note_atomicity.py b/tests/api/v2/test_accepted_note_atomicity.py
+new file mode 100644
+index 00000000..339f3a40
+--- /dev/null
++++ b/tests/api/v2/test_accepted_note_atomicity.py
+@@ -0,0 +1,210 @@
++"""Route regressions for indivisible accepted-note snapshots."""
++
++from dataclasses import dataclass, field
++from pathlib import Path
++
++import pytest
++from fastapi import FastAPI
++from httpx import AsyncClient
++from sqlalchemy import select, text
++from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
++
++from basic_memory import db
++from basic_memory.deps.services import get_note_content_materialization_provider
++from basic_memory.models import Entity, NoteContent, Observation, Project, Relation
++from basic_memory.runtime.note_content import (
++    RuntimeAcceptedNoteChange,
++    RuntimeNoteContentResponsePayload,
++    runtime_note_content_payload_as_dict,
++)
++from basic_memory.schemas.v2 import EntityResponseV2
++
++
++@dataclass(frozen=True, slots=True)
++class PersistedAcceptedSnapshot:
++    entity: Entity
++    note_content: NoteContent
++    observations: tuple[Observation, ...]
++    relations: tuple[Relation, ...]
++    search_content: str
++
++
++async def _load_persisted_snapshot(
++    session_maker: async_sessionmaker[AsyncSession],
++    *,
++    project_id: int,
++    entity_id: int,
++) -> PersistedAcceptedSnapshot:
++    async with db.scoped_session(session_maker) as session:
++        entity = await session.get(Entity, entity_id)
++        note_content = await session.get(NoteContent, entity_id)
++        observations = tuple(
++            (
++                await session.scalars(
++                    select(Observation)
++                    .where(
++                        Observation.project_id == project_id,
++                        Observation.entity_id == entity_id,
++                    )
++                    .order_by(Observation.id)
++                )
++            ).all()
++        )
++        relations = tuple(
++            (
++                await session.scalars(
++                    select(Relation)
++                    .where(
++                        Relation.project_id == project_id,
++                        Relation.from_id == entity_id,
++                    )
++                    .order_by(Relation.id)
++                )
++            ).all()
++        )
++        search_content = (
++            await session.execute(
++                text("""
++                    SELECT content_stems
++                    FROM search_index
++                    WHERE project_id = :project_id
++                      AND entity_id = :entity_id
++                      AND type = 'entity'
++                """),
++                {"project_id": project_id, "entity_id": entity_id},
++            )
++        ).scalar_one()
++
++    assert entity is not None
++    assert note_content is not None
++    return PersistedAcceptedSnapshot(
++        entity=entity,
++        note_content=note_content,
++        observations=observations,
++        relations=relations,
++        search_content=str(search_content),
++    )
++
++
++@dataclass(slots=True)
++class InspectingNoteContentMaterializer:
++    """Capture committed DB state at the materialization boundary without writing a file."""
++
++    session_maker: async_sessionmaker[AsyncSession]
++    project_id: int
++    accepted_changes: list[RuntimeAcceptedNoteChange[RuntimeNoteContentResponsePayload]] = field(
++        default_factory=list
++    )
++    persisted_snapshots: list[PersistedAcceptedSnapshot] = field(default_factory=list)
++
++    async def materialize_write_change(
++        self,
++        accepted: RuntimeAcceptedNoteChange[RuntimeNoteContentResponsePayload],
++    ) -> RuntimeAcceptedNoteChange[RuntimeNoteContentResponsePayload]:
++        payload = runtime_note_content_payload_as_dict(accepted.payload)
++        entity_id = payload.get("id")
++        assert isinstance(entity_id, int)
++
++        self.persisted_snapshots.append(
++            await _load_persisted_snapshot(
++                self.session_maker,
++                project_id=self.project_id,
++                entity_id=entity_id,
++            )
++        )
++        self.accepted_changes.append(accepted)
++        return accepted
++
++
++@pytest.mark.asyncio
++async def test_create_and_update_persist_complete_snapshot_at_materialization_boundary(
++    app: FastAPI,
++    client: AsyncClient,
++    db_backend: str,
++    session_maker: async_sessionmaker[AsyncSession],
++    test_project: Project,
++    v2_project_url: str,
++) -> None:
++    """Create and replace expose complete committed state before the file write starts."""
++    if db_backend != "sqlite":
++        pytest.skip("This regression intentionally inspects the SQLite FTS row")
++
++    materializer = InspectingNoteContentMaterializer(
++        session_maker=session_maker,
++        project_id=test_project.id,
++    )
++    app.dependency_overrides[get_note_content_materialization_provider] = lambda: materializer
++
++    create_response = await client.post(
++        f"{v2_project_url}/knowledge/entities",
++        json={
++            "title": "Atomic Snapshot",
++            "directory": "accepted",
++            "content": """
++# Atomic Snapshot
++
++## Facts
++- [fact] Create snapshot observation
++- "created link" [[Create Target]]
++""",
++        },
++    )
++
++    assert create_response.status_code == 202
++    created = EntityResponseV2.model_validate(create_response.json())
++    assert created.content is not None
++    assert created.file_write_status == "pending"
++    note_path = Path(test_project.path) / created.file_path
++    assert not note_path.exists()
++
++    assert len(materializer.persisted_snapshots) == 1
++    created_snapshot = materializer.persisted_snapshots[0]
++    assert created_snapshot.entity.id == created.id
++    assert created_snapshot.entity.title == "Atomic Snapshot"
++    assert created_snapshot.note_content.markdown_content == created.content
++    assert created_snapshot.note_content.db_version == 1
++    assert created_snapshot.note_content.file_write_status == "pending"
++    assert [observation.content for observation in created_snapshot.observations] == [
++        "Create snapshot observation"
++    ]
++    assert [
++        (relation.relation_type, relation.to_name) for relation in created_snapshot.relations
++    ] == [("created link", "Create Target")]
++    assert "Create snapshot observation" in created_snapshot.search_content
++
++    update_response = await client.put(
++        f"{v2_project_url}/knowledge/entities/{created.external_id}",
++        json={
++            "title": "Atomic Snapshot",
++            "directory": "accepted",
++            "content": """
++# Atomic Snapshot
++
++## Replaced Facts
++- [decision] Replacing update observation
++- "updated link" [[Update Target]]
++""",
++        },
++    )
++
++    assert update_response.status_code == 202
++    updated = EntityResponseV2.model_validate(update_response.json())
++    assert updated.content is not None
++    assert updated.file_write_status == "pending"
++    assert not note_path.exists()
++
++    assert len(materializer.persisted_snapshots) == 2
++    updated_snapshot = materializer.persisted_snapshots[1]
++    assert updated_snapshot.entity.id == updated.id
++    assert updated_snapshot.note_content.markdown_content == updated.content
++    assert updated_snapshot.note_content.db_version == 2
++    assert updated_snapshot.note_content.file_write_status == "pending"
++    assert [observation.content for observation in updated_snapshot.observations] == [
++        "Replacing update observation"
++    ]
++    assert [
++        (relation.relation_type, relation.to_name) for relation in updated_snapshot.relations
++    ] == [("updated link", "Update Target")]
++    assert "Replacing update observation" in updated_snapshot.search_content
++    assert "Create snapshot observation" not in updated_snapshot.search_content
++    assert len(materializer.accepted_changes) == 2
+diff --git a/tests/cli/test_command_utils.py b/tests/cli/test_command_utils.py
+index c8b6d1e4..55e1bff6 100644
+--- a/tests/cli/test_command_utils.py
++++ b/tests/cli/test_command_utils.py
+@@ -1,6 +1,6 @@
+ """Tests for CLI command utilities."""
+ 
+-import basic_memory.cloud.note_content_materialization as note_content_materialization
++import basic_memory.index.note_content_materialization as note_content_materialization
+ import basic_memory.db as db
+ import basic_memory.index.local_schedulers as local_schedulers
+ from basic_memory.cli.commands.command_utils import run_with_cleanup
+diff --git a/tests/cloud/test_cloud_services.py b/tests/cloud/test_cloud_services.py
+index 0766d7e5..7063093b 100644
+--- a/tests/cloud/test_cloud_services.py
++++ b/tests/cloud/test_cloud_services.py
+@@ -36,14 +36,14 @@ from basic_memory.schemas.base import Entity as EntitySchema
+ from basic_memory.schemas.request import EditEntityRequest
+ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+ 
+-import basic_memory.cloud.note_content_reads as note_content_reads
+-import basic_memory.cloud.note_content_writes as note_content_writes
+-from basic_memory.cloud.directory_deletes import (
++import basic_memory.services.note_content_reads as note_content_reads
++import basic_memory.services.note_content_writes as note_content_writes
++from basic_memory.services.directory_deletes import (
+     DirectoryDeleteService,
+     DirectoryDeleteServiceError,
+ )
+-from basic_memory.cloud.note_content_reads import NoteContentQueryService
+-from basic_memory.cloud.note_content_writes import (
++from basic_memory.services.note_content_reads import NoteContentQueryService
++from basic_memory.services.note_content_writes import (
+     NoteContentMutationActorContext,
+     NoteContentMutationService,
+     NoteContentMutationServiceError,
+diff --git a/tests/cloud/test_note_content_materialization.py b/tests/cloud/test_note_content_materialization.py
+index ede08c57..f4c2c9bf 100644
+--- a/tests/cloud/test_note_content_materialization.py
++++ b/tests/cloud/test_note_content_materialization.py
+@@ -11,8 +11,8 @@ from typing import Any, cast
+ import pytest
+ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+ 
+-import basic_memory.cloud.note_content_materialization as note_content_materialization
+-from basic_memory.cloud.note_content_materialization import (
++import basic_memory.index.note_content_materialization as note_content_materialization
++from basic_memory.index.note_content_materialization import (
+     InlineNoteFileDeleteEnqueuer,
+     LocalNoteContentMaterializationProvider,
+     LocalNoteContentStorage,
+diff --git a/tests/cloud/test_note_content_read_service.py b/tests/cloud/test_note_content_read_service.py
+index 8892e6a7..247c3433 100644
+--- a/tests/cloud/test_note_content_read_service.py
++++ b/tests/cloud/test_note_content_read_service.py
+@@ -9,8 +9,8 @@ from uuid import uuid4
+ import pytest
+ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+ 
+-import basic_memory.cloud.note_content_reads as note_content_reads
+-from basic_memory.cloud.note_content_reads import NoteContentQueryService
++import basic_memory.services.note_content_reads as note_content_reads
++from basic_memory.services.note_content_reads import NoteContentQueryService
+ from basic_memory.runtime.note_content import (
+     NOTE_CONTENT_EXTERNAL_CHANGE_SYNC_ERROR,
+     runtime_note_content_payload_as_dict,
+diff --git a/tests/cloud/test_project_deletes.py b/tests/cloud/test_project_deletes.py
+index a768bbfb..9c1913bf 100644
+--- a/tests/cloud/test_project_deletes.py
++++ b/tests/cloud/test_project_deletes.py
+@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
+ 
+ import pytest
+ import pytest_asyncio
+-from basic_memory.cloud.project_deletes import (
++from basic_memory.services.project_deletes import (
+     ProjectDeleteAcceptanceError,
+     ProjectDeleteAcceptanceRequest,
+     ProjectDeleteAcceptanceService,
+diff --git a/tests/indexing/test_accepted_note_mutation_runner.py b/tests/indexing/test_accepted_note_mutation_runner.py
+index c6f0115c..dac1f9ca 100644
+--- a/tests/indexing/test_accepted_note_mutation_runner.py
++++ b/tests/indexing/test_accepted_note_mutation_runner.py
+@@ -8,8 +8,10 @@ from datetime import UTC, datetime
+ from pathlib import Path
+ from types import SimpleNamespace
+ from typing import cast
++from unittest.mock import AsyncMock
+ from uuid import UUID
+ 
++import basic_memory.indexing.accepted_note_mutation_runner as accepted_note_mutation_module
+ import pytest
+ from sqlalchemy.ext.asyncio import AsyncSession
+ 
+@@ -32,6 +34,12 @@ from basic_memory.indexing.accepted_note_mutation_runner import (
+     run_accepted_note_update,
+ )
+ from basic_memory.indexing.accepted_note_search import AcceptedNoteSearchRow
++from basic_memory.markdown.schemas import (
++    EntityFrontmatter,
++    EntityMarkdown,
++    Observation as MarkdownObservation,
++    Relation as MarkdownRelation,
++)
+ from basic_memory.models import Entity, NoteContent, Project
+ from basic_memory.repository import (
+     AcceptedNoteContentWrite,
+@@ -43,6 +51,11 @@ from basic_memory.runtime.note_content import RuntimeAcceptedNoteResponse
+ from basic_memory.schemas.base import Entity as EntitySchema
+ from basic_memory.schemas.request import EditEntityRequest
+ from basic_memory.services.exceptions import EntityAlreadyExistsError
++from basic_memory.services.note_preparation import (
++    PreparedEntityFields,
++    PreparedEntityMove,
++    PreparedEntityWrite,
++)
+ 
+ 
+ _NOW = datetime(2026, 6, 20, 14, 30, tzinfo=UTC)
+@@ -51,33 +64,48 @@ _PREPARED_UPDATED_AT = datetime(2024, 1, 16, 11, 45, tzinfo=UTC)
+ _ACTOR_ID = UUID("11111111-1111-4111-8111-111111111111")
+ 
+ 
+-@dataclass(frozen=True, slots=True)
+-class _PreparedFields:
+-    title: str
+-    note_type: str
+-    entity_metadata: dict[str, object] | None
+-    content_type: str
+-    permalink: str | None
+-    file_path: str
+-    created_at: datetime = _PREPARED_CREATED_AT
+-    updated_at: datetime = _PREPARED_UPDATED_AT
+-
+-
+-@dataclass(frozen=True, slots=True)
+-class _PreparedWrite:
+-    markdown_content: str
+-    search_content: str
+-    entity_fields: _PreparedFields
+-    observations: Sequence[AcceptedObservationWrite] = ()
+-    relations: Sequence[AcceptedRelationWrite] = ()
+-
+-
+-@dataclass(frozen=True, slots=True)
+-class _PreparedMove:
+-    file_path: Path
+-    markdown_content: str
+-    search_content: str
+-    permalink: str | None
++def _prepared_write(
++    *,
++    markdown_content: str,
++    search_content: str,
++    entity_fields: PreparedEntityFields,
++    observations: Sequence[AcceptedObservationWrite] = (),
++    relations: Sequence[AcceptedRelationWrite] = (),
++) -> PreparedEntityWrite:
++    entity_markdown = EntityMarkdown(
++        frontmatter=EntityFrontmatter(
++            metadata={
++                "title": entity_fields.title,
++                "type": entity_fields.note_type,
++                "permalink": entity_fields.permalink,
++            }
++        ),
++        content=markdown_content,
++        observations=[
++            MarkdownObservation(
++                content=observation.content,
++                category=observation.category,
++                context=observation.context,
++                tags=observation.tags,
++            )
++            for observation in observations
++        ],
++        relations=[
++            MarkdownRelation(
++                type=relation.relation_type,
++                target=relation.target_name,
++                context=relation.context,
++            )
++            for relation in relations
++        ],
++    )
++    return PreparedEntityWrite(
++        file_path=Path(entity_fields.file_path),
++        markdown_content=markdown_content,
++        search_content=search_content,
++        entity_fields=entity_fields,
++        entity_markdown=entity_markdown,
++    )
+ 
+ 
+ @pytest.fixture(autouse=True)
+@@ -89,6 +117,16 @@ def _freeze_mutation_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+     )
+ 
+ 
++@pytest.fixture
++def persistence_calls(monkeypatch: pytest.MonkeyPatch) -> tuple[AsyncMock, AsyncMock]:
++    """Record which complete or move-only persistence boundary each mutation uses."""
++    snapshot = AsyncMock(wraps=accepted_note_mutation_module.persist_accepted_note_snapshot)
++    move = AsyncMock(wraps=accepted_note_mutation_module.persist_accepted_note_move)
++    monkeypatch.setattr(accepted_note_mutation_module, "persist_accepted_note_snapshot", snapshot)
++    monkeypatch.setattr(accepted_note_mutation_module, "persist_accepted_note_move", move)
++    return snapshot, move
++
++
+ class _MutationSession:
+     def __init__(self) -> None:
+         self.deleted: list[object] = []
+@@ -104,16 +142,16 @@ class _MutationSession:
+ class _CreatePreparer:
+     def __init__(
+         self,
+-        prepared: _PreparedWrite,
++        prepared: PreparedEntityWrite,
+         *,
+-        prepared_move: _PreparedMove | None = None,
++        prepared_move: PreparedEntityMove | None = None,
+         move_destination_error: EntityAlreadyExistsError | None = None,
+         filename_conflicts: list[str] | None = None,
+     ) -> None:
+         self.prepared = prepared
+         self.move_destination_error = move_destination_error
+         self.filename_conflicts = filename_conflicts or []
+-        self.prepared_move = prepared_move or _PreparedMove(
++        self.prepared_move = prepared_move or PreparedEntityMove(
+             file_path=Path(prepared.entity_fields.file_path),
+             markdown_content=prepared.markdown_content,
+             search_content=prepared.search_content,
+@@ -136,7 +174,7 @@ class _CreatePreparer:
+         check_storage_exists: bool = True,
+         skip_conflict_check: bool = False,
+         session: AsyncSession | None = None,
+-    ) -> _PreparedWrite:
++    ) -> PreparedEntityWrite:
+         self.calls.append((schema, check_storage_exists, session))
+         self.skip_conflict_checks.append(skip_conflict_check)
+         return self.prepared
+@@ -157,7 +195,7 @@ class _CreatePreparer:
+         existing_content: str,
+         *,
+         session: AsyncSession | None = None,
+-    ) -> _PreparedWrite:
++    ) -> PreparedEntityWrite:
+         self.replace_calls.append((entity, schema, existing_content, session))
+         return self.prepared
+ 
+@@ -173,7 +211,7 @@ class _CreatePreparer:
+         expected_replacements: int = 1,
+         replace_subsections: bool = True,
+         session: AsyncSession | None = None,
+-    ) -> _PreparedWrite:
++    ) -> PreparedEntityWrite:
+         self.edit_calls.append(
+             (
+                 entity,
+@@ -196,7 +234,7 @@ class _CreatePreparer:
+         destination_path: str,
+         *,
+         session: AsyncSession | None = None,
+-    ) -> _PreparedMove:
++    ) -> PreparedEntityMove:
+         self.move_calls.append((entity, current_content, destination_path, session))
+         return self.prepared_move
+ 
+@@ -455,38 +493,42 @@ def _schema() -> EntitySchema:
+     )
+ 
+ 
+-def _prepared() -> _PreparedWrite:
+-    return _PreparedWrite(
++def _prepared() -> PreparedEntityWrite:
++    return _prepared_write(
+         markdown_content="# Accepted\n",
+         search_content="Accepted",
+-        entity_fields=_PreparedFields(
++        entity_fields=PreparedEntityFields(
+             title="Accepted",
+             note_type="note",
+             entity_metadata={"status": "draft"},
+             content_type="text/markdown",
+             permalink="accepted",
+             file_path="notes/accepted.md",
++            created_at=_PREPARED_CREATED_AT,
++            updated_at=_PREPARED_UPDATED_AT,
+         ),
+     )
+ 
+ 
+-def _prepared_replacement() -> _PreparedWrite:
+-    return _PreparedWrite(
++def _prepared_replacement() -> PreparedEntityWrite:
++    return _prepared_write(
+         markdown_content="# Replacement\n",
+         search_content="Replacement",
+-        entity_fields=_PreparedFields(
++        entity_fields=PreparedEntityFields(
+             title="Replacement",
+             note_type="note",
+             entity_metadata={"status": "updated"},
+             content_type="text/markdown",
+             permalink="replacement",
+             file_path="notes/replacement.md",
++            created_at=_PREPARED_CREATED_AT,
++            updated_at=_PREPARED_UPDATED_AT,
+         ),
+     )
+ 
+ 
+-def _prepared_move() -> _PreparedMove:
+-    return _PreparedMove(
++def _prepared_move() -> PreparedEntityMove:
++    return PreparedEntityMove(
+         file_path=Path("archive/accepted.md"),
+         markdown_content="# Moved\n",
+         search_content="Moved",
+@@ -570,7 +612,9 @@ def _dependencies(
+ 
+ 
+ @pytest.mark.asyncio
+-async def test_run_accepted_note_create_persists_prepared_markdown() -> None:
++async def test_run_accepted_note_create_persists_prepared_markdown(
++    persistence_calls: tuple[AsyncMock, AsyncMock],
++) -> None:
+     session = cast(AsyncSession, object())
+     schema = _schema()
+     project = _project()
+@@ -631,6 +675,8 @@ async def test_run_accepted_note_create_persists_prepared_markdown() -> None:
+     assert change.materialization.actor_kind == "user"
+     assert change.materialization.actor_name == "Ada"
+     assert change.materialization.previous_file_path is None
++    assert persistence_calls[0].await_count == 1
++    assert persistence_calls[1].await_count == 0
+ 
+ 
+ @pytest.mark.asyncio
+@@ -708,7 +754,9 @@ async def test_run_accepted_note_create_allows_equivalent_non_markdown_resource_
+ 
+ 
+ @pytest.mark.asyncio
+-async def test_run_accepted_note_update_replaces_existing_note_content() -> None:
++async def test_run_accepted_note_update_replaces_existing_note_content(
++    persistence_calls: tuple[AsyncMock, AsyncMock],
++) -> None:
+     session = _MutationSession()
+     schema = _schema()
+     project = _project()
+@@ -760,6 +808,8 @@ async def test_run_accepted_note_update_replaces_existing_note_content() -> None
+     assert change.materialization is not None
+     assert change.materialization.db_version == 2
+     assert change.materialization.previous_file_path is None
++    assert persistence_calls[0].await_count == 1
++    assert persistence_calls[1].await_count == 0
+ 
+ 
+ @pytest.mark.asyncio
+@@ -1067,7 +1117,9 @@ async def test_run_accepted_note_update_rejects_non_markdown_existing_entity() -
+ 
+ 
+ @pytest.mark.asyncio
+-async def test_run_accepted_note_edit_applies_patch_against_db_content() -> None:
++async def test_run_accepted_note_edit_applies_patch_against_db_content(
++    persistence_calls: tuple[AsyncMock, AsyncMock],
++) -> None:
+     session = _MutationSession()
+     project = _project()
+     prepared = _prepared_replacement()
+@@ -1126,12 +1178,15 @@ async def test_run_accepted_note_edit_applies_patch_against_db_content() -> None
+     assert change.status_code == 200
+     assert change.materialization is not None
+     assert change.materialization.source == "mcp"
++    assert persistence_calls[0].await_count == 1
++    assert persistence_calls[1].await_count == 0
+ 
+ 
+ @pytest.mark.asyncio
+ @pytest.mark.parametrize("file_checksum", ["file-checksum", None])
+ async def test_run_accepted_note_move_carries_previous_path_and_materialized_cleanup(
+     file_checksum: str | None,
++    persistence_calls: tuple[AsyncMock, AsyncMock],
+ ) -> None:
+     session = _MutationSession()
+     project = _project()
+@@ -1194,6 +1249,8 @@ async def test_run_accepted_note_move_carries_previous_path_and_materialized_cle
+         assert cleanup is not None
+         assert cleanup.file_path == "notes/accepted.md"
+         assert cleanup.file_checksum == "file-checksum"
++    assert persistence_calls[0].await_count == 0
++    assert persistence_calls[1].await_count == 1
+ 
+ 
+ @pytest.mark.asyncio
+@@ -1282,18 +1339,20 @@ def _prepared_with_graph(
+     *,
+     observations: Sequence[AcceptedObservationWrite],
+     relations: Sequence[AcceptedRelationWrite],
+-) -> _PreparedWrite:
++) -> PreparedEntityWrite:
+     """A prepared accepted write carrying a parsed observation/relation graph."""
+-    return _PreparedWrite(
++    return _prepared_write(
+         markdown_content="# Accepted\n",
+         search_content="Accepted",
+-        entity_fields=_PreparedFields(
++        entity_fields=PreparedEntityFields(
+             title="Accepted",
+             note_type="dev_accept_person",
+             entity_metadata={"type": "dev_accept_person"},
+             content_type="text/markdown",
+             permalink="accepted",
+             file_path="notes/accepted.md",
++            created_at=_PREPARED_CREATED_AT,
++            updated_at=_PREPARED_UPDATED_AT,
+         ),
+         observations=observations,
+         relations=relations,
+diff --git a/tests/indexing/test_accepted_note_write_runner.py b/tests/indexing/test_accepted_note_write_runner.py
+index 53d9ed60..d824d105 100644
+--- a/tests/indexing/test_accepted_note_write_runner.py
++++ b/tests/indexing/test_accepted_note_write_runner.py
+@@ -23,16 +23,22 @@ from basic_memory.indexing.accepted_note_write_runner import (
+     create_accepted_pending_entity,
+     delete_accepted_note,
+     delete_accepted_note_entity,
+-    persist_accepted_note_write,
++    persist_accepted_note_move,
++    persist_accepted_note_snapshot,
+     prepare_accepted_note_create,
+     prepare_accepted_note_edit,
+     prepare_accepted_note_move,
+     prepare_accepted_note_replace,
+     refresh_accepted_note_search_index,
+-    replace_accepted_note_graph,
+     delete_accepted_note_search_index,
+ )
+ from basic_memory.models import Entity, NoteContent
++from basic_memory.markdown.schemas import (
++    EntityFrontmatter,
++    EntityMarkdown,
++    Observation as MarkdownObservation,
++    Relation as MarkdownRelation,
++)
+ from basic_memory.repository import (
+     AcceptedNoteContentWrite,
+     AcceptedObservationWrite,
+@@ -40,41 +46,21 @@ from basic_memory.repository import (
+ )
+ from basic_memory.repository.entity_repository import AcceptedPendingEntityWrite
+ from basic_memory.schemas.base import Entity as EntitySchema
++from basic_memory.services.note_preparation import (
++    PreparedEntityFields,
++    PreparedEntityMove,
++    PreparedEntityWrite,
++)
+ 
+ 
++_PreparedFields = PreparedEntityFields
++_PreparedWrite = PreparedEntityWrite
++_PreparedMove = PreparedEntityMove
++
+ _PREPARED_CREATED_AT = datetime(2024, 1, 15, 10, 30, tzinfo=UTC)
+ _PREPARED_UPDATED_AT = datetime(2024, 1, 16, 11, 45, tzinfo=UTC)
+ 
+ 
+-@dataclass(frozen=True, slots=True)
+-class _PreparedFields:
+-    title: str
+-    note_type: str
+-    entity_metadata: dict[str, object] | None
+-    content_type: str
+-    permalink: str | None
+-    file_path: str
+-    created_at: datetime = _PREPARED_CREATED_AT
+-    updated_at: datetime = _PREPARED_UPDATED_AT
+-
+-
+-@dataclass(frozen=True, slots=True)
+-class _PreparedWrite:
+-    markdown_content: str
+-    search_content: str
+-    entity_fields: _PreparedFields
+-    observations: Sequence[AcceptedObservationWrite] = ()
+-    relations: Sequence[AcceptedRelationWrite] = ()
+-
+-
+-@dataclass(frozen=True, slots=True)
+-class _PreparedMove:
+-    file_path: Path
+-    markdown_content: str
+-    search_content: str
+-    permalink: str | None
+-
+-
+ class _FlushSession:
+     def __init__(self) -> None:
+         self.flush_count = 0
+@@ -230,7 +216,7 @@ class _DeleteSession:
+ 
+ 
+ class _CreatePreparer:
+-    def __init__(self, prepared: _PreparedWrite) -> None:
++    def __init__(self, prepared: PreparedEntityWrite) -> None:
+         self.prepared = prepared
+         self.calls: list[tuple[EntitySchema, bool, AsyncSession | None]] = []
+         self.skip_conflict_checks: list[bool] = []
+@@ -242,14 +228,14 @@ class _CreatePreparer:
+         check_storage_exists: bool = True,
+         skip_conflict_check: bool = False,
+         session: AsyncSession | None = None,
+-    ) -> _PreparedWrite:
++    ) -> PreparedEntityWrite:
+         self.calls.append((schema, check_storage_exists, session))
+         self.skip_conflict_checks.append(skip_conflict_check)
+         return self.prepared
+ 
+ 
+ class _ReplacePreparer:
+-    def __init__(self, prepared: _PreparedWrite) -> None:
++    def __init__(self, prepared: PreparedEntityWrite) -> None:
+         self.prepared = prepared
+         self.calls: list[tuple[Entity, EntitySchema, str, AsyncSession | None]] = []
+ 
+@@ -260,13 +246,13 @@ class _ReplacePreparer:
+         existing_content: str,
+         *,
+         session: AsyncSession | None = None,
+-    ) -> _PreparedWrite:
++    ) -> PreparedEntityWrite:
+         self.calls.append((entity, schema, existing_content, session))
+         return self.prepared
+ 
+ 
+ class _EditPreparer:
+-    def __init__(self, prepared: _PreparedWrite) -> None:
++    def __init__(self, prepared: PreparedEntityWrite) -> None:
+         self.prepared = prepared
+         self.calls: list[
+             tuple[Entity, str, str, str, str | None, str | None, int, bool, AsyncSession | None]
+@@ -284,7 +270,7 @@ class _EditPreparer:
+         expected_replacements: int = 1,
+         replace_subsections: bool = True,
+         session: AsyncSession | None = None,
+-    ) -> _PreparedWrite:
++    ) -> PreparedEntityWrite:
+         self.calls.append(
+             (
+                 entity,
+@@ -302,7 +288,7 @@ class _EditPreparer:
+ 
+ 
+ class _MovePreparer:
+-    def __init__(self, prepared: _PreparedMove) -> None:
++    def __init__(self, prepared: PreparedEntityMove) -> None:
+         self.prepared = prepared
+         self.calls: list[tuple[Entity, str, str, AsyncSession | None]] = []
+ 
+@@ -313,7 +299,7 @@ class _MovePreparer:
+         destination_path: str,
+         *,
+         session: AsyncSession | None = None,
+-    ) -> _PreparedMove:
++    ) -> PreparedEntityMove:
+         self.calls.append((entity, current_content, destination_path, session))
+         return self.prepared
+ 
+@@ -402,19 +388,51 @@ def _prepared(
+     *,
+     markdown_content: str = "# Accepted\n",
+     search_content: str = "Accepted",
+-    fields: _PreparedFields | None = None,
+-) -> _PreparedWrite:
+-    return _PreparedWrite(
++    fields: PreparedEntityFields | None = None,
++    observations: Sequence[AcceptedObservationWrite] = (),
++    relations: Sequence[AcceptedRelationWrite] = (),
++) -> PreparedEntityWrite:
++    prepared_fields = fields or PreparedEntityFields(
++        title="Accepted",
++        note_type="note",
++        entity_metadata={"status": "draft"},
++        content_type="text/markdown",
++        permalink="accepted",
++        file_path="notes/accepted.md",
++        created_at=_PREPARED_CREATED_AT,
++        updated_at=_PREPARED_UPDATED_AT,
++    )
++    return PreparedEntityWrite(
++        file_path=Path(prepared_fields.file_path),
+         markdown_content=markdown_content,
+         search_content=search_content,
+-        entity_fields=fields
+-        or _PreparedFields(
+-            title="Accepted",
+-            note_type="note",
+-            entity_metadata={"status": "draft"},
+-            content_type="text/markdown",
+-            permalink="accepted",
+-            file_path="notes/accepted.md",
++        entity_fields=prepared_fields,
++        entity_markdown=EntityMarkdown(
++            frontmatter=EntityFrontmatter(
++                metadata={
++                    "title": prepared_fields.title,
++                    "type": prepared_fields.note_type,
++                    "permalink": prepared_fields.permalink,
++                }
++            ),
++            content=search_content,
++            observations=[
++                MarkdownObservation(
++                    content=observation.content,
++                    category=observation.category,
++                    context=observation.context,
++                    tags=observation.tags,
++                )
++                for observation in observations
++            ],
++            relations=[
++                MarkdownRelation(
++                    type=relation.relation_type,
++                    target=relation.target_name,
++                    context=relation.context,
++                )
++                for relation in relations
++            ],
+         ),
+     )
+ 
+@@ -461,7 +479,7 @@ def _note_content() -> NoteContent:
+ 
+ @pytest.mark.asyncio
+ async def test_prepare_accepted_note_create_hashes_prepared_markdown() -> None:
+-    session = cast(AsyncSession, object())
++    session = cast(AsyncSession, _FlushSession())
+     schema = _schema()
+     prepared = _prepared(markdown_content="# Created\n")
+     preparer = _CreatePreparer(prepared)
+@@ -491,6 +509,8 @@ async def test_prepare_accepted_note_replace_applies_entity_fields() -> None:
+         content_type="text/markdown",
+         permalink="replacement",
+         file_path="notes/replacement.md",
++        created_at=_PREPARED_CREATED_AT,
++        updated_at=_PREPARED_UPDATED_AT,
+     )
+     prepared = _prepared(markdown_content="# Replacement\n", fields=fields)
+     preparer = _ReplacePreparer(prepared)
+@@ -530,6 +550,8 @@ async def test_prepare_accepted_note_edit_applies_entity_fields() -> None:
+         content_type="text/markdown",
+         permalink="edited",
+         file_path="notes/edited.md",
++        created_at=_PREPARED_CREATED_AT,
++        updated_at=_PREPARED_UPDATED_AT,
+     )
+     prepared = _prepared(markdown_content="# Edited\n", fields=fields)
+     preparer = _EditPreparer(prepared)
+@@ -584,6 +606,8 @@ def test_apply_accepted_prepared_entity_fields_updates_mutable_entity() -> None:
+             content_type="text/markdown",
+             permalink="applied",
+             file_path="schemas/applied.md",
++            created_at=_PREPARED_CREATED_AT,
++            updated_at=_PREPARED_UPDATED_AT,
+         ),
+         user_profile_value="user-3",
+     )
+@@ -698,6 +722,7 @@ async def test_create_accepted_pending_entity_uses_repository_protocol() -> None
+     session = cast(AsyncSession, object())
+     entity = _entity()
+     repository = _PendingEntityRepository(entity)
++
+     result = await create_accepted_pending_entity(
+         session,
+         prepared=_prepared(),
+@@ -819,7 +844,7 @@ async def test_delete_accepted_note_search_index_uses_repository_protocol() -> N
+ 
+ 
+ @pytest.mark.asyncio
+-async def test_persist_accepted_note_write_plans_content_and_refreshes_search() -> None:
++async def test_persist_accepted_note_snapshot_persists_content_search_and_graph() -> None:
+     session = cast(AsyncSession, object())
+     entity = _entity()
+     entity.file_path = "notes/new.md"
+@@ -832,13 +857,32 @@ async def test_persist_accepted_note_write_plans_content_and_refreshes_search()
+     persisted_note_content = _note_content()
+     content_repository = _NoteContentRepository(persisted_note_content)
+     search_repository = _SearchRepository()
++    observation_repository = _ObservationRepository()
++    relation_repository = _RelationRepository()
++    observation = AcceptedObservationWrite(
++        content="Snapshot is complete",
++        category="status",
++        context=None,
++        tags=None,
++    )
++    relation = AcceptedRelationWrite(
++        relation_type="documents",
++        target_name="Another Note",
++        context=None,
++    )
++    prepared = _prepared(
++        markdown_content="# New\n",
++        search_content="New body",
++        observations=(observation,),
++        relations=(relation,),
++    )
+ 
+-    result = await persist_accepted_note_write(
++    result = await persist_accepted_note_snapshot(
+         session,
+         entity=entity,
+-        markdown_content="# New\n",
+-        search_content="New body",
++        prepared=prepared,
+         db_checksum="new-db-checksum",
++        self_relation_resolver=_SelfRelationResolver(),
+         last_source="api",
+         updated_at=updated_at,
+         current_note_content=current_note_content,
+@@ -847,6 +891,8 @@ async def test_persist_accepted_note_write_plans_content_and_refreshes_search()
+         repositories=_repository_provider(
+             note_content_repository=content_repository,
+             search_repository=search_repository,
++            observation_repository=observation_repository,
++            relation_repository=relation_repository,
+         ),
+     )
+ 
+@@ -872,6 +918,45 @@ async def test_persist_accepted_note_write_plans_content_and_refreshes_search()
+     assert len(search_repository.calls) == 1
+     assert search_repository.calls[0].entity_id == entity.id
+     assert search_repository.calls[0].content_snippet == "New body"
++    assert observation_repository.calls == [(entity.id, prepared.observations)]
++    assert relation_repository.calls == [(entity.id, prepared.relations)]
++
++
++@pytest.mark.asyncio
++async def test_persist_accepted_note_move_is_explicitly_content_and_search_only() -> None:
++    session = cast(AsyncSession, _FlushSession())
++    entity = _entity()
++    entity.file_path = "notes/new.md"
++    current_note_content = _note_content()
++    current_note_content.file_path = "notes/old.md"
++    content_repository = _NoteContentRepository(_note_content())
++    search_repository = _SearchRepository()
++    prepared = await prepare_accepted_note_move(
++        None,
++        session,
++        entity=entity,
++        current_note_content=current_note_content,
++        accepted_file_path="notes/new.md",
++        should_update_permalink=False,
++        user_profile_value=None,
++    )
++
++    await persist_accepted_note_move(
++        session,
++        entity=entity,
++        prepared=prepared,
++        last_source="api",
++        updated_at=datetime(2026, 6, 19, 14, 0, tzinfo=UTC),
++        current_note_content=current_note_content,
++        existing_file_path="notes/old.md",
++        repositories=_repository_provider(
++            note_content_repository=content_repository,
++            search_repository=search_repository,
++        ),
++    )
++
++    assert len(content_repository.calls) == 1
++    assert len(search_repository.calls) == 1
+ 
+ 
+ @pytest.mark.asyncio
+@@ -946,73 +1031,22 @@ async def test_delete_accepted_note_plans_cleanup_and_deletes_entity() -> None:
+ 
+ 
+ @pytest.mark.asyncio
+-async def test_replace_accepted_note_graph_persists_observations_and_relations() -> None:
+-    """The graph handoff forwards the prepared observation/relation set to the repos."""
+-    observation_repository = _ObservationRepository()
+-    relation_repository = _RelationRepository()
+-    repositories = _repository_provider(
+-        observation_repository=observation_repository,
+-        relation_repository=relation_repository,
+-    )
+-    prepared = _PreparedWrite(
+-        markdown_content="# Accepted\n",
+-        search_content="Accepted",
+-        entity_fields=_PreparedFields(
+-            title="Accepted",
+-            note_type="note",
+-            entity_metadata=None,
+-            content_type="text/markdown",
+-            permalink="accepted",
+-            file_path="notes/accepted.md",
+-        ),
+-        observations=[
+-            AcceptedObservationWrite(
+-                content="Ada Acceptance",
+-                category="name",
+-                context=None,
+-                tags=None,
+-            )
+-        ],
+-        relations=[
+-            AcceptedRelationWrite(
+-                relation_type="works_at",
+-                target_name="XSYS Target",
+-                context=None,
+-            )
+-        ],
+-    )
+-    resolver = _SelfRelationResolver()
+-    session = cast(AsyncSession, _FlushSession())
+-
+-    await replace_accepted_note_graph(
+-        session,
+-        entity=_entity(),
+-        prepared=prepared,
+-        self_relation_resolver=resolver,
+-        repositories=repositories,
+-    )
+-
+-    # Both repos are scoped to the entity's project (7) and receive the parsed set.
+-    assert observation_repository.calls == [(42, prepared.observations)]
+-    assert relation_repository.calls == [(42, prepared.relations)]
+-    assert [call[0] for call in resolver.calls] == ["XSYS Target"]
+-
+-
+-@pytest.mark.asyncio
+-async def test_replace_accepted_note_graph_resolves_safe_self_relation() -> None:
++async def test_persist_accepted_note_snapshot_resolves_safe_self_relation() -> None:
+     """A safe self-link carries its ID because deferred resolution skips self targets."""
+     relation_repository = _RelationRepository()
+     entity = _entity()
+-    prepared = _PreparedWrite(
++    prepared = _prepared(
+         markdown_content="# Accepted\n",
+         search_content="Accepted",
+-        entity_fields=_PreparedFields(
++        fields=_PreparedFields(
+             title="Accepted",
+             note_type="note",
+             entity_metadata=None,
+             content_type="text/markdown",
+             permalink="accepted",
+             file_path="notes/accepted.md",
++            created_at=_PREPARED_CREATED_AT,
++            updated_at=_PREPARED_UPDATED_AT,
+         ),
+         relations=[
+             AcceptedRelationWrite(
+@@ -1024,12 +1058,17 @@ async def test_replace_accepted_note_graph_resolves_safe_self_relation() -> None
+     )
+     resolver = _SelfRelationResolver(entity)
+ 
+-    await replace_accepted_note_graph(
+-        cast(AsyncSession, _FlushSession()),
++    await persist_accepted_note_snapshot(
++        cast(AsyncSession, object()),
+         entity=entity,
+         prepared=prepared,
++        db_checksum="snapshot-checksum",
+         self_relation_resolver=resolver,
++        last_source="api",
++        updated_at=entity.updated_at,
+         repositories=_repository_provider(
++            note_content_repository=_NoteContentRepository(_note_content()),
++            search_repository=_SearchRepository(),
+             observation_repository=_ObservationRepository(),
+             relation_repository=relation_repository,
+         ),
+@@ -1051,23 +1090,29 @@ async def test_replace_accepted_note_graph_resolves_safe_self_relation() -> None
+ 
+ 
+ @pytest.mark.asyncio
+-async def test_replace_accepted_note_graph_forwards_empty_sets() -> None:
++async def test_persist_accepted_note_snapshot_forwards_empty_graph_sets() -> None:
+     """A note with no observations/relations still clears the graph (empty replace)."""
+     observation_repository = _ObservationRepository()
+     relation_repository = _RelationRepository()
+     repositories = _repository_provider(
++        note_content_repository=_NoteContentRepository(_note_content()),
++        search_repository=_SearchRepository(),
+         observation_repository=observation_repository,
+         relation_repository=relation_repository,
+     )
+     prepared = _prepared()
+ 
+-    await replace_accepted_note_graph(
+-        cast(AsyncSession, _FlushSession()),
+-        entity=_entity(),
++    entity = _entity()
++    await persist_accepted_note_snapshot(
++        cast(AsyncSession, object()),
++        entity=entity,
+         prepared=prepared,
++        db_checksum="snapshot-checksum",
+         self_relation_resolver=_SelfRelationResolver(),
++        last_source="api",
++        updated_at=entity.updated_at,
+         repositories=repositories,
+     )
+ 
+-    assert observation_repository.calls == [(42, ())]
++    assert observation_repository.calls == [(42, [])]
+     assert relation_repository.calls == [(42, [])]
+diff --git a/tests/indexing/test_project_index_maintenance.py b/tests/indexing/test_project_index_maintenance.py
+index e83bd635..6f06eafc 100644
+--- a/tests/indexing/test_project_index_maintenance.py
++++ b/tests/indexing/test_project_index_maintenance.py
+@@ -7,6 +7,7 @@ from types import SimpleNamespace
+ from typing import cast
+ 
+ import basic_memory.indexing.project_index_maintenance as project_index_maintenance_module
++import basic_memory.repository.accepted_note_vector_cleanup as accepted_note_vector_cleanup_module
+ import pytest
+ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+ 
+@@ -1255,7 +1256,7 @@ async def test_repository_project_index_maintenance_store_deletes_vector_embeddi
+         return True
+ 
+     monkeypatch.setattr(
+-        project_index_maintenance_module,
++        accepted_note_vector_cleanup_module,
+         "_load_sqlite_vec_on_session",
+         fake_load_sqlite_vec_on_session,
+     )
+diff --git a/tests/mcp/test_server_lifespan_branches.py b/tests/mcp/test_server_lifespan_branches.py
+index aec8f6db..26aabc1b 100644
+--- a/tests/mcp/test_server_lifespan_branches.py
++++ b/tests/mcp/test_server_lifespan_branches.py
+@@ -2,7 +2,7 @@ import asyncio
+ 
+ import pytest
+ 
+-import basic_memory.cloud.note_content_materialization as note_content_materialization
++import basic_memory.index.note_content_materialization as note_content_materialization
+ import basic_memory.mcp.server as server_module
+ from basic_memory import db
+ from basic_memory.mcp.server import lifespan, mcp
+diff --git a/tests/test_architecture_boundaries.py b/tests/test_architecture_boundaries.py
+new file mode 100644
+index 00000000..a14328a5
+--- /dev/null
++++ b/tests/test_architecture_boundaries.py
+@@ -0,0 +1,42 @@
++"""Static assertions for core runtime dependency direction."""
++
++import ast
++from pathlib import Path
++
++
++PACKAGE_ROOT = Path(__file__).parents[1] / "src" / "basic_memory"
++
++
++def _imported_modules(path: Path) -> set[str]:
++    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
++    modules: set[str] = set()
++    for node in ast.walk(tree):
++        if isinstance(node, ast.Import):
++            modules.update(alias.name for alias in node.names)
++        elif isinstance(node, ast.ImportFrom) and node.module is not None:
++            modules.add(node.module)
++    return modules
++
++
++def test_core_production_modules_do_not_import_cloud_compatibility_package() -> None:
++    violations = {
++        path.relative_to(PACKAGE_ROOT).as_posix(): sorted(
++            module for module in _imported_modules(path) if module.startswith("basic_memory.cloud")
++        )
++        for path in PACKAGE_ROOT.rglob("*.py")
++        if "cloud" not in path.relative_to(PACKAGE_ROOT).parts
++    }
++    assert not {path: modules for path, modules in violations.items() if modules}
++
++
++def test_repositories_do_not_import_indexing_workflows() -> None:
++    repository_root = PACKAGE_ROOT / "repository"
++    violations = {
++        path.relative_to(PACKAGE_ROOT).as_posix(): sorted(
++            module
++            for module in _imported_modules(path)
++            if module.startswith("basic_memory.indexing")
++        )
++        for path in repository_root.rglob("*.py")
++    }
++    assert not {path: modules for path, modules in violations.items() if modules}

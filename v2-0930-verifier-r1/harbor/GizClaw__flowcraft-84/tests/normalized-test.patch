@@ -1,0 +1,4344 @@
+diff --git a/sdk/engine/board_test.go b/sdk/engine/board_test.go
+index efefcdd3..8b255128 100644
+--- a/sdk/engine/board_test.go
++++ b/sdk/engine/board_test.go
+@@ -292,6 +292,45 @@ func TestBoard_RestoreFrom_EmptyChannelsRehydratesMain(t *testing.T) {
+ 	}
+ }
+ 
++func TestBoard_RestoreBoard_MigratesLegacyMainChannelKey(t *testing.T) {
++	// Pre-v0.3.0 checkpoints stored MainChannel under the empty-string
++	// key. RestoreBoard must lift those messages onto the new key so
++	// resume on a v0.3+ binary keeps the transcript.
++	snap := &engine.BoardSnapshot{
++		Channels: map[string][]model.Message{
++			"": {model.NewTextMessage(model.RoleUser, "from-legacy")},
++		},
++	}
++
++	b := engine.RestoreBoard(snap)
++
++	if got := b.Channel(engine.MainChannel); len(got) != 1 || got[0].Content() != "from-legacy" {
++		t.Fatalf("MainChannel = %+v, want one legacy message", got)
++	}
++	if got := b.Channel(""); got != nil {
++		t.Fatalf("legacy empty-string channel should not be reachable, got %+v", got)
++	}
++}
++
++func TestBoard_RestoreBoard_LegacyDoesNotOverwriteNewKey(t *testing.T) {
++	// A snapshot that carries both the legacy "" key and the modern
++	// MainChannel key is treated as already migrated: the modern
++	// content wins and the legacy bucket is dropped.
++	snap := &engine.BoardSnapshot{
++		Channels: map[string][]model.Message{
++			"":                 {model.NewTextMessage(model.RoleUser, "legacy")},
++			engine.MainChannel: {model.NewTextMessage(model.RoleUser, "modern")},
++		},
++	}
++
++	b := engine.RestoreBoard(snap)
++
++	got := b.Channel(engine.MainChannel)
++	if len(got) != 1 || got[0].Content() != "modern" {
++		t.Fatalf("MainChannel = %+v, want modern content", got)
++	}
++}
++
+ func TestBoard_RestoreFrom_NilIsNoOp(t *testing.T) {
+ 	b := engine.NewBoard()
+ 	b.SetVar("k", "v")
+diff --git a/sdk/errdefs/http_test.go b/sdk/errdefs/http_test.go
+index 2b7562ad..145b2812 100644
+--- a/sdk/errdefs/http_test.go
++++ b/sdk/errdefs/http_test.go
+@@ -19,8 +19,8 @@ func (e *httpErr) HTTPStatusCode() int { return e.code }
+ 
+ // TestClassifyProvider pins the structured-error / keyword / regex
+ // dispatcher. Behaviour change here means every dependent (sdk/llm
+-// fallback, sdkx/embedding, future sdkx/rerank) silently shifts how it
+-// classifies the same upstream error.
++// fallback plus external embedding / rerank adapters) silently shifts
++// how it classifies the same upstream error.
+ func TestClassifyProvider(t *testing.T) {
+ 	cases := []struct {
+ 		name string
+diff --git a/sdk/graph/adapter/strategy_test.go b/sdk/graph/adapter/strategy_test.go
+deleted file mode 100644
+index 03984b64..00000000
+--- a/sdk/graph/adapter/strategy_test.go
++++ /dev/null
+@@ -1,218 +0,0 @@
+-package adapter
+-
+-import (
+-	"context"
+-	"testing"
+-
+-	"github.com/GizClaw/flowcraft/sdk/graph"
+-	"github.com/GizClaw/flowcraft/sdk/graph/node"
+-	"github.com/GizClaw/flowcraft/sdk/graph/node/scriptnode"
+-	"github.com/GizClaw/flowcraft/sdk/script/jsrt"
+-	"github.com/GizClaw/flowcraft/sdk/workflow"
+-)
+-
+-// scriptFactory builds a fresh node.Factory wired with the script runtime
+-// for each adapter test case.
+-func scriptFactory() *node.Factory {
+-	f := node.NewFactory()
+-	scriptnode.Register(f, scriptnode.Deps{ScriptRuntime: jsrt.New()})
+-	return f
+-}
+-
+-func TestFromDefinition_BuildRequiresFactory(t *testing.T) {
+-	s := FromDefinition(&graph.GraphDefinition{Name: "t", Entry: "x"})
+-	_, err := s.Build(context.Background(), workflow.NewDependencies())
+-	if err == nil {
+-		t.Fatal("expected error without factory")
+-	}
+-}
+-
+-func TestFromDefinition_Kind(t *testing.T) {
+-	s := FromDefinition(&graph.GraphDefinition{Name: "t", Entry: "x"})
+-	if s.Kind() != "graph" {
+-		t.Fatalf("Kind()=%q, want graph", s.Kind())
+-	}
+-}
+-
+-func TestFromDefinition_Capabilities(t *testing.T) {
+-	s := FromDefinition(&graph.GraphDefinition{Name: "t", Entry: "x"})
+-	if s.Capabilities().AnswerVar() != workflow.VarAnswer {
+-		t.Fatalf("AnswerVar()=%q", s.Capabilities().AnswerVar())
+-	}
+-}
+-
+-func TestFromDefinition_NilDefinition(t *testing.T) {
+-	s := FromDefinition(nil)
+-	_, err := s.Build(context.Background(), workflow.NewDependencies())
+-	if err == nil {
+-		t.Fatal("expected error for nil definition")
+-	}
+-}
+-
+-func TestFromDefinition_CompileErrorNotCached(t *testing.T) {
+-	s := FromDefinition(&graph.GraphDefinition{Name: "bad"})
+-
+-	_, err1 := s.Build(context.Background(), workflow.NewDependencies())
+-	if err1 == nil {
+-		t.Fatal("first build should fail")
+-	}
+-
+-	_, err2 := s.Build(context.Background(), workflow.NewDependencies())
+-	if err2 == nil {
+-		t.Fatal("second build should also fail (retried, not cached)")
+-	}
+-}
+-
+-func TestFromCompiled_NilCompiledGraph(t *testing.T) {
+-	s := FromCompiled(nil)
+-	if s.Kind() != "graph" {
+-		t.Fatalf("Kind()=%q", s.Kind())
+-	}
+-	_, err := s.Build(context.Background(), workflow.NewDependencies())
+-	if err == nil {
+-		t.Fatal("expected error for nil compiled graph")
+-	}
+-}
+-
+-func TestFromCompiled_Capabilities(t *testing.T) {
+-	s := FromCompiled(nil)
+-	if s.Capabilities().AnswerVar() != workflow.VarAnswer {
+-		t.Fatalf("AnswerVar()=%q", s.Capabilities().AnswerVar())
+-	}
+-}
+-
+-func TestNewGraphRunnable_WithFactory(t *testing.T) {
+-	def := &graph.GraphDefinition{
+-		Name:  "test",
+-		Entry: "start",
+-		Nodes: []graph.NodeDefinition{
+-			{ID: "start", Type: "answer"},
+-		},
+-	}
+-
+-	cg, err := graph.Compile(def)
+-	if err != nil {
+-		t.Fatalf("compile: %v", err)
+-	}
+-
+-	deps := workflow.NewDependencies()
+-	fac := scriptFactory()
+-	workflow.SetDep(deps, DepNodeFactory, fac)
+-
+-	s := FromCompiled(cg)
+-	runnable, err := s.Build(context.Background(), deps)
+-	if err != nil {
+-		t.Fatalf("Build: %v", err)
+-	}
+-	if runnable == nil {
+-		t.Fatal("expected non-nil runnable")
+-	}
+-}
+-
+-// TestNewGraphRunnable_DepExecutorIgnored checks the DepExecutor key is
+-// accepted but ignored (graph/runner.Runner is the only execution backend
+-// since the executor was internalised). Build must not fail just because
+-// the workflow.Dependencies still carries the old key.
+-func TestNewGraphRunnable_DepExecutorIgnored(t *testing.T) {
+-	def := &graph.GraphDefinition{
+-		Name:  "test",
+-		Entry: "start",
+-		Nodes: []graph.NodeDefinition{
+-			{ID: "start", Type: "answer"},
+-		},
+-	}
+-
+-	cg, err := graph.Compile(def)
+-	if err != nil {
+-		t.Fatalf("compile: %v", err)
+-	}
+-
+-	deps := workflow.NewDependencies()
+-	fac := scriptFactory()
+-	workflow.SetDep(deps, DepNodeFactory, fac)
+-	workflow.SetDep(deps, DepExecutor, "anything-goes-this-is-ignored")
+-
+-	s := FromCompiled(cg)
+-	runnable, err := s.Build(context.Background(), deps)
+-	if err != nil {
+-		t.Fatalf("Build: %v", err)
+-	}
+-	if runnable == nil {
+-		t.Fatal("expected non-nil runnable")
+-	}
+-}
+-
+-func TestGraphRunnable_ResolvesVariableReferences(t *testing.T) {
+-	def := &graph.GraphDefinition{
+-		Name:  "var-resolve",
+-		Entry: "s1",
+-		Nodes: []graph.NodeDefinition{
+-			{
+-				ID:   "s1",
+-				Type: "script",
+-				Config: map[string]any{
+-					"source":   `board.setVar("resolved_greeting", config.greeting);`,
+-					"greeting": "${board.greeting}",
+-				},
+-			},
+-		},
+-	}
+-
+-	cg, err := graph.Compile(def)
+-	if err != nil {
+-		t.Fatalf("compile: %v", err)
+-	}
+-
+-	deps := workflow.NewDependencies()
+-	fac := scriptFactory()
+-	workflow.SetDep(deps, DepNodeFactory, fac)
+-
+-	s := FromCompiled(cg)
+-	runnable, err := s.Build(context.Background(), deps)
+-	if err != nil {
+-		t.Fatalf("Build: %v", err)
+-	}
+-
+-	board := workflow.NewBoard()
+-	board.SetVar("greeting", "hello from board")
+-
+-	result, err := runnable.Execute(context.Background(), board, nil)
+-	if err != nil {
+-		t.Fatalf("Execute: %v", err)
+-	}
+-
+-	got := result.GetVarString("resolved_greeting")
+-	if got != "hello from board" {
+-		t.Fatalf("expected resolved_greeting=%q, got %q (variable reference was not resolved)", "hello from board", got)
+-	}
+-}
+-
+-func TestFromDefinition_CompiledCacheHit(t *testing.T) {
+-	def := &graph.GraphDefinition{
+-		Name:  "cache-test",
+-		Entry: "start",
+-		Nodes: []graph.NodeDefinition{
+-			{ID: "start", Type: "answer"},
+-		},
+-	}
+-
+-	s := FromDefinition(def)
+-
+-	deps := workflow.NewDependencies()
+-	fac := scriptFactory()
+-	workflow.SetDep(deps, DepNodeFactory, fac)
+-
+-	r1, err := s.Build(context.Background(), deps)
+-	if err != nil {
+-		t.Fatalf("first build: %v", err)
+-	}
+-
+-	r2, err := s.Build(context.Background(), deps)
+-	if err != nil {
+-		t.Fatalf("second build: %v", err)
+-	}
+-
+-	if r1 == nil || r2 == nil {
+-		t.Fatal("expected non-nil runnables")
+-	}
+-}
+diff --git a/sdk/graph/compile_test.go b/sdk/graph/compile_test.go
+index 4c60e5c8..b4891c27 100644
+--- a/sdk/graph/compile_test.go
++++ b/sdk/graph/compile_test.go
+@@ -245,104 +245,3 @@ func TestCompiler_Compile_DetectsCycles(t *testing.T) {
+ 		t.Fatal("expected HasCycles to be true")
+ 	}
+ }
+-
+-func TestCompiler_Compile_LLMIsolatedMessagesKeyWarning(t *testing.T) {
+-	t.Run("warns when query_fallback missing", func(t *testing.T) {
+-		def := &graph.GraphDefinition{
+-			Name:  "test",
+-			Entry: "llm1",
+-			Nodes: []graph.NodeDefinition{
+-				{ID: "llm1", Type: "llm", Config: map[string]any{
+-					"messages_key": "custom_messages",
+-				}},
+-			},
+-			Edges: []graph.EdgeDefinition{
+-				{From: "llm1", To: graph.END},
+-			},
+-		}
+-		result, err := graph.Compile(def)
+-		if err != nil {
+-			t.Fatalf("compile failed: %v", err)
+-		}
+-		found := false
+-		for _, w := range result.Warnings {
+-			if w.Code == "llm_isolated_messages_no_fallback" {
+-				found = true
+-			}
+-		}
+-		if !found {
+-			t.Fatal("expected llm_isolated_messages_no_fallback warning")
+-		}
+-	})
+-
+-	t.Run("no warning when query_fallback is true", func(t *testing.T) {
+-		def := &graph.GraphDefinition{
+-			Name:  "test",
+-			Entry: "llm1",
+-			Nodes: []graph.NodeDefinition{
+-				{ID: "llm1", Type: "llm", Config: map[string]any{
+-					"messages_key":   "custom_messages",
+-					"query_fallback": true,
+-				}},
+-			},
+-			Edges: []graph.EdgeDefinition{
+-				{From: "llm1", To: graph.END},
+-			},
+-		}
+-		result, err := graph.Compile(def)
+-		if err != nil {
+-			t.Fatalf("compile failed: %v", err)
+-		}
+-		for _, w := range result.Warnings {
+-			if w.Code == "llm_isolated_messages_no_fallback" {
+-				t.Fatalf("unexpected warning: %s", w.Message)
+-			}
+-		}
+-	})
+-
+-	t.Run("no warning when using default messages key", func(t *testing.T) {
+-		def := &graph.GraphDefinition{
+-			Name:  "test",
+-			Entry: "llm1",
+-			Nodes: []graph.NodeDefinition{
+-				{ID: "llm1", Type: "llm", Config: map[string]any{
+-					"messages_key": "messages",
+-				}},
+-			},
+-			Edges: []graph.EdgeDefinition{
+-				{From: "llm1", To: graph.END},
+-			},
+-		}
+-		result, err := graph.Compile(def)
+-		if err != nil {
+-			t.Fatalf("compile failed: %v", err)
+-		}
+-		for _, w := range result.Warnings {
+-			if w.Code == "llm_isolated_messages_no_fallback" {
+-				t.Fatalf("unexpected warning for default messages key")
+-			}
+-		}
+-	})
+-
+-	t.Run("no warning when messages_key omitted", func(t *testing.T) {
+-		def := &graph.GraphDefinition{
+-			Name:  "test",
+-			Entry: "llm1",
+-			Nodes: []graph.NodeDefinition{
+-				{ID: "llm1", Type: "llm", Config: map[string]any{}},
+-			},
+-			Edges: []graph.EdgeDefinition{
+-				{From: "llm1", To: graph.END},
+-			},
+-		}
+-		result, err := graph.Compile(def)
+-		if err != nil {
+-			t.Fatalf("compile failed: %v", err)
+-		}
+-		for _, w := range result.Warnings {
+-			if w.Code == "llm_isolated_messages_no_fallback" {
+-				t.Fatalf("unexpected warning when messages_key is omitted")
+-			}
+-		}
+-	})
+-}
+diff --git a/sdk/graph/node/knowledgenode/knowledgenode_test.go b/sdk/graph/node/knowledgenode/knowledgenode_test.go
+index 9b9d2a0f..c5a25ab0 100644
+--- a/sdk/graph/node/knowledgenode/knowledgenode_test.go
++++ b/sdk/graph/node/knowledgenode/knowledgenode_test.go
+@@ -75,7 +75,7 @@ func TestNode_SingleScope_PerDatasetStateKey(t *testing.T) {
+ 	n := knowledgenode.New("k", svc, knowledgenode.Config{
+ 		Scope: knowledge.ScopeSingleDataset,
+ 		Mode:  knowledge.ModeBM25,
+-		Datasets: []knowledge.DatasetQuery{
++		Datasets: []knowledgenode.DatasetQuery{
+ 			{DatasetID: "docs", StateKey: "docsHits", TopK: 5},
+ 		},
+ 	})
+@@ -162,6 +162,42 @@ func TestConfigFromMap_AllScopeAndDatasets(t *testing.T) {
+ 	}
+ }
+ 
++func TestNode_CustomQueryKey(t *testing.T) {
++	svc := newLocalService(t)
++	if err := svc.PutDocument(context.Background(), "ds1", "a.md", "alpha banana"); err != nil {
++		t.Fatalf("put: %v", err)
++	}
++
++	n := knowledgenode.New("k", svc, knowledgenode.Config{
++		QueryKey: "search_text",
++		Datasets: []knowledgenode.DatasetQuery{{DatasetID: "ds1", TopK: 3}},
++	})
++
++	ports := n.InputPorts()
++	if len(ports) == 0 || ports[0].Name != "search_text" {
++		t.Fatalf("input port[0] = %+v, want name=search_text", ports[0])
++	}
++
++	ectx, board := newNodeBoardCtx()
++	board.SetVar("search_text", "alpha")
++
++	if err := n.ExecuteBoard(ectx, board); err != nil {
++		t.Fatalf("execute: %v", err)
++	}
++	hits, _ := board.GetVar("hits")
++	h, ok := hits.([]knowledge.Hit)
++	if !ok || len(h) == 0 {
++		t.Fatalf("hits = %v, want non-empty []Hit", hits)
++	}
++}
++
++func TestConfigFromMap_QueryKey(t *testing.T) {
++	cfg := knowledgenode.ConfigFromMap(map[string]any{"query_key": "user_input"})
++	if cfg.QueryKey != "user_input" {
++		t.Fatalf("QueryKey = %q", cfg.QueryKey)
++	}
++}
++
+ func TestRegister_BuildsKnowledgeNode(t *testing.T) {
+ 	f := node.NewFactory()
+ 	knowledgenode.Register(f, nil) // nil svc is fine — node falls back to empty hits
+diff --git a/sdk/graph/node/llmnode/config_test.go b/sdk/graph/node/llmnode/config_test.go
+index 0d4bea29..6762f062 100644
+--- a/sdk/graph/node/llmnode/config_test.go
++++ b/sdk/graph/node/llmnode/config_test.go
+@@ -22,15 +22,14 @@ func mustConfigFromMap(t *testing.T, m map[string]any) Config {
+ 
+ func TestConfigFromMap_Full(t *testing.T) {
+ 	m := map[string]any{
+-		"system_prompt":  "You are helpful.",
+-		"model":          "openai/gpt-4o",
+-		"temperature":    0.7,
+-		"max_tokens":     float64(1024),
+-		"output_key":     "answer",
+-		"messages_key":   "msgs",
+-		"json_mode":      true,
+-		"query_fallback": false,
+-		"track_steps":    true,
++		"system_prompt":    "You are helpful.",
++		"model":            "openai/gpt-4o",
++		"temperature":      0.7,
++		"max_tokens":       float64(1024),
++		"output_key":       "answer",
++		"messages_channel": "msgs",
++		"json_mode":        true,
++		"track_steps":      true,
+ 	}
+ 	cfg := mustConfigFromMap(t, m)
+ 
+@@ -49,8 +48,8 @@ func TestConfigFromMap_Full(t *testing.T) {
+ 	if cfg.OutputKey != "answer" {
+ 		t.Fatalf("OutputKey = %q", cfg.OutputKey)
+ 	}
+-	if cfg.MessagesKey != "msgs" {
+-		t.Fatalf("MessagesKey = %q", cfg.MessagesKey)
++	if cfg.MessagesChannel != "msgs" {
++		t.Fatalf("MessagesChannel = %q", cfg.MessagesChannel)
+ 	}
+ 	if !cfg.JSONMode {
+ 		t.Fatal("JSONMode should be true")
+@@ -180,7 +179,7 @@ func TestBuildMessages_NoSystemDuplicate(t *testing.T) {
+ 		model.NewTextMessage(model.RoleUser, "hi"),
+ 	})
+ 
+-	msgs := n.buildMessages(n.config, board, graph.MainChannel, graph.VarMessages)
++	msgs := n.buildMessages(n.config, board, graph.MainChannel)
+ 	systemCount := 0
+ 	for _, m := range msgs {
+ 		if m.Role == model.RoleSystem {
+@@ -192,19 +191,6 @@ func TestBuildMessages_NoSystemDuplicate(t *testing.T) {
+ 	}
+ }
+ 
+-func TestBuildMessages_FallbackToVar(t *testing.T) {
+-	n := New("n", nil, nil, Config{})
+-	board := newTestBoard()
+-	board.SetVar(graph.VarMessages, []model.Message{
+-		model.NewTextMessage(model.RoleUser, "from var"),
+-	})
+-
+-	msgs := n.buildMessages(n.config, board, "empty_channel", graph.VarMessages)
+-	if len(msgs) != 1 || msgs[0].Content() != "from var" {
+-		t.Fatalf("expected message from var, got %v", msgs)
+-	}
+-}
+-
+ func TestBuildMessages_SummaryIndexInjection(t *testing.T) {
+ 	board := newTestBoard()
+ 	board.SetChannel(graph.MainChannel, []model.Message{
+@@ -213,7 +199,7 @@ func TestBuildMessages_SummaryIndexInjection(t *testing.T) {
+ 	board.SetVar(VarSummaryIndex, "## 摘要\n[s1] seq 0-10")
+ 
+ 	n := New("n", nil, nil, Config{SystemPrompt: "You are helpful."})
+-	msgs := n.buildMessages(n.config, board, graph.MainChannel, graph.VarMessages)
++	msgs := n.buildMessages(n.config, board, graph.MainChannel)
+ 
+ 	if len(msgs) != 2 {
+ 		t.Fatalf("expected 2 messages, got %d", len(msgs))
+diff --git a/sdk/graph/node/llmnode/exec_test.go b/sdk/graph/node/llmnode/exec_test.go
+index 3710db5e..e9c20e65 100644
+--- a/sdk/graph/node/llmnode/exec_test.go
++++ b/sdk/graph/node/llmnode/exec_test.go
+@@ -5,6 +5,7 @@ import (
+ 	"errors"
+ 	"testing"
+ 
++	"github.com/GizClaw/flowcraft/sdk/errdefs"
+ 	"github.com/GizClaw/flowcraft/sdk/graph"
+ 	"github.com/GizClaw/flowcraft/sdk/llm"
+ 	"github.com/GizClaw/flowcraft/sdk/model"
+@@ -224,22 +225,6 @@ func TestNode_ExecuteBoard_JSONMode_InvalidJSON(t *testing.T) {
+ 	}
+ }
+ 
+-func TestNode_ExecuteBoard_QueryFallback(t *testing.T) {
+-	stream := &mockStream{chunks: []model.StreamChunk{{Content: "resp"}}}
+-	resolver := &mockResolver{llmInst: &streamOnlyLLM{stream: stream}}
+-	n := New("llm1", resolver, nil, Config{
+-		MessagesKey:   "alt_msgs",
+-		QueryFallback: true,
+-	})
+-
+-	board := graph.NewBoard()
+-	board.SetVar(graph.VarQuery, "what is this?")
+-
+-	if err := n.ExecuteBoard(execCtx(), board); err != nil {
+-		t.Fatalf("unexpected error: %v", err)
+-	}
+-}
+-
+ func TestNode_ExecuteBoard_TrackSteps(t *testing.T) {
+ 	stream := &mockStream{chunks: []model.StreamChunk{{Content: "step1"}}}
+ 	resolver := &mockResolver{llmInst: &streamOnlyLLM{stream: stream}}
+@@ -329,3 +314,38 @@ func TestNode_ExecuteBoard_WithToolCalls(t *testing.T) {
+ 		t.Fatalf("expected tool_call and tool_result events, got %v", events)
+ 	}
+ }
++
++func TestNode_ExecuteBoard_EmptyMessages_RejectsRequest(t *testing.T) {
++	resolver := &mockResolver{llmInst: &mockLLM{}}
++	n := New("llm1", resolver, nil, Config{
++		MessagesChannel: "isolated",
++	})
++
++	board := graph.NewBoard()
++
++	err := n.ExecuteBoard(execCtx(), board)
++	if err == nil {
++		t.Fatal("expected validation error for empty messages, got nil")
++	}
++	if !errdefs.IsValidation(err) {
++		t.Fatalf("expected validation error, got %v", err)
++	}
++}
++
++func TestNode_ExecuteBoard_SystemPromptOnly_Allowed(t *testing.T) {
++	stream := &mockStream{chunks: []model.StreamChunk{{Content: "hi from system-only"}}}
++	resolver := &mockResolver{llmInst: &streamOnlyLLM{stream: stream}}
++	n := New("llm1", resolver, nil, Config{
++		SystemPrompt:    "You are an autonomous worker. Greet the user.",
++		MessagesChannel: "isolated",
++	})
++
++	board := graph.NewBoard()
++
++	if err := n.ExecuteBoard(execCtx(), board); err != nil {
++		t.Fatalf("system-only request should be allowed, got %v", err)
++	}
++	if resp, _ := board.GetVar(VarResponse); resp != "hi from system-only" {
++		t.Fatalf("response = %q", resp)
++	}
++}
+diff --git a/sdk/graph/node/llmnode/host_test.go b/sdk/graph/node/llmnode/host_test.go
+index 2f826368..249f25fd 100644
+--- a/sdk/graph/node/llmnode/host_test.go
++++ b/sdk/graph/node/llmnode/host_test.go
+@@ -98,10 +98,14 @@ func TestNode_DoesNotReportZeroUsage(t *testing.T) {
+ 	}}
+ 	n := New("llm1", resolver, nil, Config{})
+ 
++	board := graph.NewBoard()
++	board.SetChannel(graph.MainChannel, []model.Message{
++		model.NewTextMessage(model.RoleUser, "hi"),
++	})
+ 	err := n.ExecuteBoard(graph.ExecutionContext{
+ 		Context: context.Background(),
+ 		Host:    host,
+-	}, graph.NewBoard())
++	}, board)
+ 	if err != nil {
+ 		t.Fatalf("ExecuteBoard error: %v", err)
+ 	}
+diff --git a/sdk/graph/runner/internal/executor/checkpoint_test.go b/sdk/graph/runner/internal/executor/checkpoint_test.go
+index 3a8ce2cf..fe07ade9 100644
+--- a/sdk/graph/runner/internal/executor/checkpoint_test.go
++++ b/sdk/graph/runner/internal/executor/checkpoint_test.go
+@@ -9,50 +9,6 @@ import (
+ 	"github.com/GizClaw/flowcraft/sdk/graph"
+ )
+ 
+-func TestLocalExecutor_Checkpoint(t *testing.T) {
+-	dir := t.TempDir()
+-	store, err := NewFileCheckpointStore(FileCheckpointConfig{Dir: dir})
+-	if err != nil {
+-		t.Fatalf("create checkpoint store: %v", err)
+-	}
+-
+-	g := buildGraph("test", "a",
+-		map[string]graph.Node{
+-			"a": newTestNode("a", func(_ graph.ExecutionContext, b *graph.Board) error {
+-				b.SetVar("a_done", true)
+-				return nil
+-			}),
+-			"b": newTestNode("b", func(_ graph.ExecutionContext, b *graph.Board) error {
+-				b.SetVar("b_done", true)
+-				return nil
+-			}),
+-		},
+-		[]graph.Edge{
+-			{From: "a", To: "b"},
+-			{From: "b", To: graph.END},
+-		},
+-	)
+-
+-	board := graph.NewBoard()
+-	exec := NewLocalExecutor()
+-	_, err = exec.Execute(context.Background(), g, board,
+-		WithCheckpointStore(store))
+-	if err != nil {
+-		t.Fatalf("execute failed: %v", err)
+-	}
+-
+-	cp, err := store.Load("test", "")
+-	if err != nil {
+-		t.Fatalf("load checkpoint: %v", err)
+-	}
+-	if cp == nil {
+-		t.Fatal("expected checkpoint to exist")
+-	}
+-	if cp.NodeID != "b" {
+-		t.Fatalf("expected last checkpoint at node 'b', got %q", cp.NodeID)
+-	}
+-}
+-
+ func TestFileCheckpointStore_ListSkipsBackups(t *testing.T) {
+ 	dir := t.TempDir()
+ 	store, err := NewFileCheckpointStore(FileCheckpointConfig{Dir: dir})
+@@ -269,45 +225,6 @@ func TestCheckpoint_RunID_InStruct(t *testing.T) {
+ 	}
+ }
+ 
+-func TestCheckpoint_WithRunID_IntegrationExecution(t *testing.T) {
+-	dir := t.TempDir()
+-	store, err := NewFileCheckpointStore(FileCheckpointConfig{Dir: dir})
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-
+-	g := buildGraph("test", "a",
+-		map[string]graph.Node{
+-			"a": newTestNode("a", func(_ graph.ExecutionContext, b *graph.Board) error {
+-				b.SetVar("done", true)
+-				return nil
+-			}),
+-		},
+-		[]graph.Edge{{From: "a", To: graph.END}},
+-	)
+-
+-	board := graph.NewBoard()
+-	exec := NewLocalExecutor()
+-	_, err = exec.Execute(context.Background(), g, board,
+-		WithRunID("run-abc"),
+-		WithCheckpointStore(store),
+-	)
+-	if err != nil {
+-		t.Fatalf("execute failed: %v", err)
+-	}
+-
+-	cp, err := store.Load("test", "run-abc")
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if cp == nil {
+-		t.Fatal("expected checkpoint with runID")
+-	}
+-	if cp.RunID != "run-abc" {
+-		t.Fatalf("expected RunID=run-abc, got %q", cp.RunID)
+-	}
+-}
+-
+ // recordingCheckpointHost embeds engine.NoopHost so it satisfies the
+ // full Host interface; only Checkpoint is overridden so executor-side
+ // tests can assert on the engine.Checkpoint shape without standing up
+@@ -322,20 +239,11 @@ func (h *recordingCheckpointHost) Checkpoint(_ context.Context, cp engine.Checkp
+ 	return nil
+ }
+ 
+-// TestExecutor_HostCheckpoint_PreferredOverStore verifies the contract
+-// resolveCheckpointHost documents: when WithHost is supplied, the
+-// deprecated WithCheckpointStore is ignored. Checkpointing is state
+-// (not observability), so unlike the publisher path we do NOT fan out
+-// to both sinks — that would invite conflicting reads.
+-func TestExecutor_HostCheckpoint_PreferredOverStore(t *testing.T) {
++// TestExecutor_HostCheckpoint verifies host.Checkpoint is invoked once
++// per node by the executor's main loop.
++func TestExecutor_HostCheckpoint(t *testing.T) {
+ 	host := &recordingCheckpointHost{}
+ 
+-	dir := t.TempDir()
+-	store, err := NewFileCheckpointStore(FileCheckpointConfig{Dir: dir})
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-
+ 	g := buildGraph("test", "a",
+ 		map[string]graph.Node{
+ 			"a": newTestNode("a", func(_ graph.ExecutionContext, b *graph.Board) error {
+@@ -346,12 +254,10 @@ func TestExecutor_HostCheckpoint_PreferredOverStore(t *testing.T) {
+ 		[]graph.Edge{{From: "a", To: graph.END}},
+ 	)
+ 
+-	board := graph.NewBoard()
+ 	exec := NewLocalExecutor()
+-	_, err = exec.Execute(context.Background(), g, board,
++	_, err := exec.Execute(context.Background(), g, graph.NewBoard(),
+ 		WithRunID("run-host"),
+ 		WithHost(host),
+-		WithCheckpointStore(store), // intentionally also set; should be ignored
+ 	)
+ 	if err != nil {
+ 		t.Fatalf("execute failed: %v", err)
+@@ -371,56 +277,4 @@ func TestExecutor_HostCheckpoint_PreferredOverStore(t *testing.T) {
+ 		t.Fatalf("Attributes[graph_name] = %q, want %q",
+ 			got.Attributes["graph_name"], "test")
+ 	}
+-
+-	// The legacy file store must remain empty: when the user supplied
+-	// a host, the deprecated path is silently shadowed.
+-	cp, err := store.Load("test", "run-host")
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if cp != nil {
+-		t.Fatalf("legacy store should be empty when host is set, got %+v", cp)
+-	}
+-}
+-
+-// TestExecutor_StoreOnlyHost_ForwardsToStore confirms that the
+-// transitional path (only WithCheckpointStore, no WithHost) keeps
+-// working: the store is folded into a storeOnlyHost so the executor's
+-// host-driven main loop ends up calling the deprecated Save.
+-func TestExecutor_StoreOnlyHost_ForwardsToStore(t *testing.T) {
+-	dir := t.TempDir()
+-	store, err := NewFileCheckpointStore(FileCheckpointConfig{Dir: dir})
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-
+-	g := buildGraph("test", "a",
+-		map[string]graph.Node{
+-			"a": newTestNode("a", func(_ graph.ExecutionContext, b *graph.Board) error {
+-				b.SetVar("done", true)
+-				return nil
+-			}),
+-		},
+-		[]graph.Edge{{From: "a", To: graph.END}},
+-	)
+-
+-	exec := NewLocalExecutor()
+-	_, err = exec.Execute(context.Background(), g, graph.NewBoard(),
+-		WithRunID("run-store"),
+-		WithCheckpointStore(store),
+-	)
+-	if err != nil {
+-		t.Fatalf("execute failed: %v", err)
+-	}
+-
+-	cp, err := store.Load("test", "run-store")
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if cp == nil {
+-		t.Fatal("legacy store should have received the checkpoint")
+-	}
+-	if cp.RunID != "run-store" || cp.NodeID != "a" || cp.GraphName != "test" {
+-		t.Fatalf("checkpoint round-trip wrong: %+v", cp)
+-	}
+ }
+diff --git a/sdk/graph/runner/internal/executor/executor_test.go b/sdk/graph/runner/internal/executor/executor_test.go
+index addab34c..697fe88d 100644
+--- a/sdk/graph/runner/internal/executor/executor_test.go
++++ b/sdk/graph/runner/internal/executor/executor_test.go
+@@ -8,7 +8,6 @@ import (
+ 
+ 	"github.com/GizClaw/flowcraft/sdk/engine"
+ 	"github.com/GizClaw/flowcraft/sdk/errdefs"
+-	"github.com/GizClaw/flowcraft/sdk/event"
+ 	"github.com/GizClaw/flowcraft/sdk/graph"
+ 	"github.com/GizClaw/flowcraft/sdk/graph/variable"
+ )
+@@ -142,7 +141,7 @@ func TestLocalExecutor_Interrupt_Resume(t *testing.T) {
+ 				n := atomic.AddInt32(&callCount, 1)
+ 				if n == 1 {
+ 					b.SetVar("approval_status", "pending")
+-					return graph.ErrInterrupt
++					return engine.Interrupted(engine.Interrupt{Cause: engine.CauseUnknown})
+ 				}
+ 				b.SetVar("approval_status", "approved")
+ 				return nil
+@@ -162,8 +161,8 @@ func TestLocalExecutor_Interrupt_Resume(t *testing.T) {
+ 	exec := NewLocalExecutor()
+ 
+ 	result, err := exec.Execute(context.Background(), g, board)
+-	if !errdefs.Is(err, graph.ErrInterrupt) {
+-		t.Fatalf("expected ErrInterrupt, got %v", err)
++	if !errdefs.IsInterrupted(err) {
++		t.Fatalf("expected interrupt error, got %v", err)
+ 	}
+ 
+ 	interruptedNode := result.GetVarString(graph.VarInterruptedNode)
+@@ -388,66 +387,6 @@ func TestLocalExecutor_AbortBetweenNodes(t *testing.T) {
+ 	}
+ }
+ 
+-func TestLocalExecutor_EventBus_Integration(t *testing.T) {
+-	bus := event.NewMemoryBus()
+-	defer func() { _ = bus.Close() }()
+-
+-	ctx := context.Background()
+-	const runID = "rint-1"
+-	sub, err := bus.Subscribe(ctx, engine.PatternRun(runID))
+-	if err != nil {
+-		t.Fatalf("subscribe: %v", err)
+-	}
+-
+-	g := buildGraph("test", "start",
+-		map[string]graph.Node{
+-			"start": graph.NewPassthroughNode("start", "passthrough"),
+-		},
+-		[]graph.Edge{
+-			{From: "start", To: graph.END},
+-		},
+-	)
+-
+-	board := graph.NewBoard()
+-	exec := NewLocalExecutor()
+-	_, err = exec.Execute(ctx, g, board, WithEventBus(bus), WithRunID(runID))
+-	if err != nil {
+-		t.Fatalf("execute failed: %v", err)
+-	}
+-
+-	wantStart := engine.SubjectRunStart(runID)
+-	wantEnd := engine.SubjectRunEnd(runID)
+-
+-	var envelopes []event.Envelope
+-	timeout := time.After(time.Second)
+-loop:
+-	for {
+-		select {
+-		case env, ok := <-sub.C():
+-			if !ok {
+-				break loop
+-			}
+-			envelopes = append(envelopes, env)
+-			if env.Subject == wantEnd {
+-				break loop
+-			}
+-		case <-timeout:
+-			break loop
+-		}
+-	}
+-
+-	if len(envelopes) < 2 {
+-		t.Fatalf("expected at least 2 envelopes (start+end), got %d", len(envelopes))
+-	}
+-	if envelopes[0].Subject != wantStart {
+-		t.Fatalf("first envelope should be %s, got %s", wantStart, envelopes[0].Subject)
+-	}
+-	// Headers must carry the run id for downstream predicate filters.
+-	if envelopes[0].RunID() != runID {
+-		t.Fatalf("envelope missing run_id header, got %q", envelopes[0].RunID())
+-	}
+-}
+-
+ func TestLocalExecutor_Compiler_Integration(t *testing.T) {
+ 	def := &graph.GraphDefinition{
+ 		Name:  "integration_test",
+diff --git a/sdk/graph/runner/internal/executor/retry_test.go b/sdk/graph/runner/internal/executor/retry_test.go
+index 18cf39bf..4fd3b1cc 100644
+--- a/sdk/graph/runner/internal/executor/retry_test.go
++++ b/sdk/graph/runner/internal/executor/retry_test.go
+@@ -41,43 +41,27 @@ func TestLocalExecutor_NodeRetry(t *testing.T) {
+ 	}
+ }
+ 
+-func TestLocalExecutor_StreamCallback_ToolCallCapture(t *testing.T) {
++func TestLocalExecutor_StreamPublisher_ToolCallCapture(t *testing.T) {
+ 	node := newTestNode("llm", func(ctx graph.ExecutionContext, b *graph.Board) error {
+-		if ctx.Stream != nil {
+-			ctx.Stream(graph.StreamEvent{
+-				Type:   "tool_call",
+-				NodeID: "llm",
+-				Payload: map[string]any{
+-					"id":        "tc-1",
+-					"name":      "web_search",
+-					"arguments": `{"q":"golang"}`,
+-				},
++		if ctx.Publisher != nil {
++			ctx.Publisher.Emit("tool_call", map[string]any{
++				"id":        "tc-1",
++				"name":      "web_search",
++				"arguments": `{"q":"golang"}`,
+ 			})
+-			ctx.Stream(graph.StreamEvent{
+-				Type:   "tool_call",
+-				NodeID: "llm",
+-				Payload: map[string]any{
+-					"id":        "tc-2",
+-					"name":      "code_run",
+-					"arguments": `{"code":"fmt.Println()"}`,
+-				},
++			ctx.Publisher.Emit("tool_call", map[string]any{
++				"id":        "tc-2",
++				"name":      "code_run",
++				"arguments": `{"code":"fmt.Println()"}`,
+ 			})
+-			ctx.Stream(graph.StreamEvent{
+-				Type:   "tool_result",
+-				NodeID: "llm",
+-				Payload: map[string]any{
+-					"tool_call_id": "tc-1",
+-					"content":      "search result",
+-				},
++			ctx.Publisher.Emit("tool_result", map[string]any{
++				"tool_call_id": "tc-1",
++				"content":      "search result",
+ 			})
+-			ctx.Stream(graph.StreamEvent{
+-				Type:   "tool_result",
+-				NodeID: "llm",
+-				Payload: map[string]any{
+-					"tool_call_id": "tc-2",
+-					"content":      "error output",
+-					"is_error":     true,
+-				},
++			ctx.Publisher.Emit("tool_result", map[string]any{
++				"tool_call_id": "tc-2",
++				"content":      "error output",
++				"is_error":     true,
+ 			})
+ 		}
+ 		b.SetVar("answer", "done")
+@@ -89,22 +73,13 @@ func TestLocalExecutor_StreamCallback_ToolCallCapture(t *testing.T) {
+ 		[]graph.Edge{{From: "llm", To: graph.END}},
+ 	)
+ 
+-	var captured []graph.StreamEvent
+-	cb := func(se graph.StreamEvent) {
+-		captured = append(captured, se)
+-	}
+-
+ 	board := graph.NewBoard()
+ 	exec := NewLocalExecutor()
+-	result, err := exec.Execute(context.Background(), g, board, WithStreamCallback(cb))
++	result, err := exec.Execute(context.Background(), g, board)
+ 	if err != nil {
+ 		t.Fatalf("execute failed: %v", err)
+ 	}
+ 
+-	if len(captured) != 4 {
+-		t.Fatalf("expected 4 stream events, got %d", len(captured))
+-	}
+-
+ 	tcRaw, ok := result.GetVar(graph.VarToolCalls)
+ 	if !ok {
+ 		t.Fatal("expected VarToolCalls on board")
+@@ -140,14 +115,10 @@ func TestLocalExecutor_StreamCallback_ToolCallCapture(t *testing.T) {
+ 	}
+ }
+ 
+-func TestLocalExecutor_StreamCallback_NoToolCalls(t *testing.T) {
++func TestLocalExecutor_StreamPublisher_NoToolCalls(t *testing.T) {
+ 	node := newTestNode("simple", func(ctx graph.ExecutionContext, b *graph.Board) error {
+-		if ctx.Stream != nil {
+-			ctx.Stream(graph.StreamEvent{
+-				Type:    "token",
+-				NodeID:  "simple",
+-				Payload: map[string]any{"chunk": "hello"},
+-			})
++		if ctx.Publisher != nil {
++			ctx.Publisher.Emit("token", map[string]any{"chunk": "hello"})
+ 		}
+ 		b.SetVar("answer", "done")
+ 		return nil
+@@ -160,7 +131,7 @@ func TestLocalExecutor_StreamCallback_NoToolCalls(t *testing.T) {
+ 
+ 	board := graph.NewBoard()
+ 	exec := NewLocalExecutor()
+-	result, err := exec.Execute(context.Background(), g, board, WithStreamCallback(func(se graph.StreamEvent) {}))
++	result, err := exec.Execute(context.Background(), g, board)
+ 	if err != nil {
+ 		t.Fatalf("execute failed: %v", err)
+ 	}
+@@ -169,39 +140,3 @@ func TestLocalExecutor_StreamCallback_NoToolCalls(t *testing.T) {
+ 		t.Fatal("expected no VarToolCalls for non-tool stream events")
+ 	}
+ }
+-
+-func TestLocalExecutor_StreamCallback_NilCallback(t *testing.T) {
+-	node := newTestNode("llm", func(ctx graph.ExecutionContext, b *graph.Board) error {
+-		if ctx.Stream != nil {
+-			ctx.Stream(graph.StreamEvent{
+-				Type:   "tool_call",
+-				NodeID: "llm",
+-				Payload: map[string]any{
+-					"id": "tc-1", "name": "search", "arguments": "{}",
+-				},
+-			})
+-		}
+-		return nil
+-	})
+-
+-	g := buildGraph("test", "llm",
+-		map[string]graph.Node{"llm": node},
+-		[]graph.Edge{{From: "llm", To: graph.END}},
+-	)
+-
+-	board := graph.NewBoard()
+-	exec := NewLocalExecutor()
+-	_, err := exec.Execute(context.Background(), g, board)
+-	if err != nil {
+-		t.Fatalf("execute failed: %v", err)
+-	}
+-
+-	tcRaw, ok := board.GetVar(graph.VarToolCalls)
+-	if !ok {
+-		t.Fatal("expected VarToolCalls even without external callback")
+-	}
+-	tc := tcRaw.([]any)
+-	if len(tc) != 1 {
+-		t.Fatalf("expected 1 tool call, got %d", len(tc))
+-	}
+-}
+diff --git a/sdk/graph/runner/runner_test.go b/sdk/graph/runner/runner_test.go
+index 0fb69847..c46f24ef 100644
+--- a/sdk/graph/runner/runner_test.go
++++ b/sdk/graph/runner/runner_test.go
+@@ -6,11 +6,9 @@ import (
+ 	"sync"
+ 	"sync/atomic"
+ 	"testing"
+-	"time"
+ 
+ 	"github.com/GizClaw/flowcraft/sdk/engine"
+ 	"github.com/GizClaw/flowcraft/sdk/engine/enginetest"
+-	"github.com/GizClaw/flowcraft/sdk/event"
+ 	"github.com/GizClaw/flowcraft/sdk/graph"
+ 	"github.com/GizClaw/flowcraft/sdk/graph/node"
+ 	"github.com/GizClaw/flowcraft/sdk/graph/runner"
+@@ -223,67 +221,6 @@ func TestRunner_ConcurrentSafety(t *testing.T) {
+ 	}
+ }
+ 
+-func TestRunner_WithEventBus(t *testing.T) {
+-	bus := event.NewMemoryBus()
+-	defer func() { _ = bus.Close() }()
+-
+-	def := &graph.GraphDefinition{
+-		Name:  "bus_test",
+-		Entry: "start",
+-		Nodes: []graph.NodeDefinition{
+-			{ID: "start", Type: "passthrough"},
+-		},
+-		Edges: []graph.EdgeDefinition{
+-			{From: "start", To: graph.END},
+-		},
+-	}
+-
+-	r, err := runner.New(def, node.NewFactory(), runner.WithEventBus(bus))
+-	if err != nil {
+-		t.Fatalf("runner.New: %v", err)
+-	}
+-
+-	if r.Bus() != bus {
+-		t.Fatal("Bus() should return the configured bus")
+-	}
+-
+-	const runID = "rb-1"
+-	sub, err := bus.Subscribe(context.Background(), engine.PatternRun(runID), event.WithBufferSize(16))
+-	if err != nil {
+-		t.Fatalf("subscribe: %v", err)
+-	}
+-
+-	_, err = r.Execute(context.Background(),
+-		engine.Run{ID: runID}, r.Host(), engine.NewBoard())
+-	if err != nil {
+-		t.Fatalf("Execute: %v", err)
+-	}
+-
+-	wantPrefix := string(engine.SubjectPrefix) + runID + "."
+-	sawStart, sawEnd := false, false
+-	timeout := time.After(time.Second)
+-	for !(sawStart && sawEnd) {
+-		select {
+-		case env, ok := <-sub.C():
+-			if !ok {
+-				t.Fatalf("subscription closed before seeing start+end (sawStart=%v sawEnd=%v)", sawStart, sawEnd)
+-			}
+-			subj := string(env.Subject)
+-			if subj == wantPrefix+"start" {
+-				sawStart = true
+-			}
+-			if subj == wantPrefix+"end" {
+-				sawEnd = true
+-			}
+-			if !strings.HasPrefix(subj, wantPrefix) {
+-				t.Fatalf("unexpected subject %q", subj)
+-			}
+-		case <-timeout:
+-			t.Fatalf("timeout waiting for start+end (sawStart=%v sawEnd=%v)", sawStart, sawEnd)
+-		}
+-	}
+-}
+-
+ // TestRunner_WithHost confirms graph lifecycle envelopes are routed through
+ // engine.Host.Publish (the v0.3 path) when the user supplies WithHost. The
+ // MockHost lets us assert on every envelope without standing up an event
+@@ -339,47 +276,6 @@ func TestRunner_WithHost(t *testing.T) {
+ 	}
+ }
+ 
+-func TestRunner_StreamCallback(t *testing.T) {
+-	factory := testFactory(map[string]node.NodeBuilder{
+-		"emitter": testNodeBuilder(func(ctx graph.ExecutionContext, b *graph.Board) error {
+-			if ctx.Stream != nil {
+-				ctx.Stream(graph.StreamEvent{Type: "token", NodeID: "emit", Payload: map[string]any{"content": "hi"}})
+-			}
+-			b.SetVar("done", true)
+-			return nil
+-		}),
+-	})
+-
+-	def := &graph.GraphDefinition{
+-		Name:  "stream",
+-		Entry: "emit",
+-		Nodes: []graph.NodeDefinition{
+-			{ID: "emit", Type: "emitter"},
+-		},
+-		Edges: []graph.EdgeDefinition{
+-			{From: "emit", To: graph.END},
+-		},
+-	}
+-
+-	var captured []graph.StreamEvent
+-	r, err := runner.New(def, factory,
+-		runner.WithStreamCallback(func(se graph.StreamEvent) {
+-			captured = append(captured, se)
+-		}),
+-	)
+-	if err != nil {
+-		t.Fatalf("runner.New: %v", err)
+-	}
+-
+-	_, err = r.Run(context.Background(), nil)
+-	if err != nil {
+-		t.Fatalf("Run: %v", err)
+-	}
+-	if len(captured) != 1 {
+-		t.Fatalf("expected 1 stream event, got %d", len(captured))
+-	}
+-}
+-
+ func TestRunner_Graph(t *testing.T) {
+ 	def := &graph.GraphDefinition{
+ 		Name:  "inspect",
+diff --git a/sdk/history/archive_test.go b/sdk/history/archive_test.go
+index cb730b88..7b11943f 100644
+--- a/sdk/history/archive_test.go
++++ b/sdk/history/archive_test.go
+@@ -123,7 +123,7 @@ func TestRecoverArchive_NoIntent(t *testing.T) {
+ 	ctx := context.Background()
+ 
+ 	// No pending intent — should be a no-op.
+-	if err := RecoverArchive(ctx, ws, store, "memory", "archive", "no-intent-conv"); err != nil {
++	if err := recoverArchiveImpl(ctx, ws, store, "memory", "archive", "no-intent-conv"); err != nil {
+ 		t.Fatal(err)
+ 	}
+ }
+@@ -172,7 +172,7 @@ func TestRecoverArchive_GzipWrittenPhase(t *testing.T) {
+ 	_ = writeIntent(ctx, ws, "memory", "archive", convID, intent)
+ 
+ 	// Recovery should: update manifest, trim messages.
+-	if err := RecoverArchive(ctx, ws, store, "memory", "archive", convID); err != nil {
++	if err := recoverArchiveImpl(ctx, ws, store, "memory", "archive", convID); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 
+@@ -221,7 +221,7 @@ func TestRecoverArchive_ManifestUpdatedPhase(t *testing.T) {
+ 	}
+ 	_ = writeIntent(ctx, ws, "memory", "archive", convID, intent)
+ 
+-	if err := RecoverArchive(ctx, ws, store, "memory", "archive", convID); err != nil {
++	if err := recoverArchiveImpl(ctx, ws, store, "memory", "archive", convID); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 
+@@ -264,9 +264,9 @@ func TestArchive_IntentCleanup(t *testing.T) {
+ 	}
+ }
+ 
+-// TestSaveManifest_RoundTrip exercises the deprecated SaveManifest /
+-// LoadManifest pair declared in deprecated.go: write a manifest, read it
+-// back, and assert all fields survive the JSON round-trip.
++// TestSaveManifest_RoundTrip exercises the saveManifestImpl /
++// LoadManifest pair: write a manifest, read it back, and assert all
++// fields survive the JSON round-trip.
+ func TestSaveManifest_RoundTrip(t *testing.T) {
+ 	ws, err := workspace.NewLocalWorkspace(t.TempDir())
+ 	if err != nil {
+@@ -282,7 +282,7 @@ func TestSaveManifest_RoundTrip(t *testing.T) {
+ 			{File: "messages_10_24.jsonl.gz", StartSeq: 10, EndSeq: 24, Count: 15, CreatedAt: time.Now().UTC().Truncate(time.Second)},
+ 		},
+ 	}
+-	if err := SaveManifest(ctx, ws, "memory", "archive", convID, in); err != nil {
++	if err := saveManifestImpl(ctx, ws, "memory", "archive", convID, in); err != nil {
+ 		t.Fatalf("SaveManifest: %v", err)
+ 	}
+ 
+diff --git a/sdk/history/compact_test.go b/sdk/history/compact_test.go
+index 4e85f55a..a6000860 100644
+--- a/sdk/history/compact_test.go
++++ b/sdk/history/compact_test.go
+@@ -141,48 +141,5 @@ func TestCompactArchive_ManualCompact(t *testing.T) {
+ 	}
+ }
+ 
+-func TestCompactArchive_ArchiveAndExpand(t *testing.T) {
+-	ws, err := workspace.NewLocalWorkspace(t.TempDir())
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	store := NewFileStore(ws, "memory")
+-	ctx := context.Background()
+-	convID := "archive-expand"
+-
+-	msgs := make([]model.Message, 30)
+-	for i := range msgs {
+-		msgs[i] = model.NewTextMessage(model.RoleUser, "content message")
+-	}
+-	_ = store.SaveMessages(ctx, convID, msgs)
+-
+-	// Archive first 15.
+-	cfg := ArchiveConfig{ArchiveThreshold: 20, ArchiveBatchSize: 15}
+-	ar, err := Archive(ctx, ws, store, "memory", convID, cfg)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if ar.MessagesArchived != 15 {
+-		t.Fatalf("expected 15 archived, got %d", ar.MessagesArchived)
+-	}
+-
+-	// Expand across boundary (seq 10-20).
+-	summaryStore := NewFileSummaryStore(ws, "memory")
+-	_ = summaryStore.Save(ctx, &SummaryNode{
+-		ID: "cross-node", ConversationID: convID, Depth: 0,
+-		Content: "summary", EarliestSeq: 10, LatestSeq: 20,
+-	})
+-
+-	expandTool := newHistoryExpandTool(ToolDeps{
+-		SummaryStore: summaryStore, MessageStore: store,
+-		Workspace: ws, Prefix: "memory",
+-	})
+-	expandCtx := WithConversationID(ctx, convID)
+-	result, err := expandTool.Execute(expandCtx, `{"summary_id":"cross-node","max_messages":50}`)
+-	if err != nil {
+-		t.Fatalf("expand: %v", err)
+-	}
+-	if result == "" {
+-		t.Fatal("expand returned empty")
+-	}
+-}
++// Boundary expand (cold archive + hot tail) is exercised by the
++// history_expand tool's own tests in the adapter package.
+diff --git a/sdk/history/compactor_factory_test.go b/sdk/history/compactor_factory_test.go
+index 4d31a1da..c6eeea74 100644
+--- a/sdk/history/compactor_factory_test.go
++++ b/sdk/history/compactor_factory_test.go
+@@ -47,8 +47,8 @@ func TestNewCompacted_SmokeBoots(t *testing.T) {
+ 		t.Fatal("NewCompacted returned nil")
+ 	}
+ 	t.Cleanup(func() {
+-		if c, ok := mem.(Closer); ok {
+-			c.Close()
++		if c, ok := mem.(Coordinator); ok {
++			_ = c.Shutdown(context.Background())
+ 		}
+ 	})
+ 	ctx := context.Background()
+diff --git a/sdk/history/compactor_test.go b/sdk/history/compactor_test.go
+index e785a5d0..946c9789 100644
+--- a/sdk/history/compactor_test.go
++++ b/sdk/history/compactor_test.go
+@@ -199,7 +199,7 @@ func TestCompacted_CloseWaitsForAsync(t *testing.T) {
+ 	// Close should block until all async goroutines complete (not panic or deadlock).
+ 	done := make(chan struct{})
+ 	go func() {
+-		mem.Close()
++		_ = mem.Shutdown(context.Background())
+ 		close(done)
+ 	}()
+ 
+@@ -246,7 +246,7 @@ func TestCompacted_NoIngestDrop(t *testing.T) {
+ 			t.Fatalf("Append %d: %v", i, err)
+ 		}
+ 	}
+-	mem.Close()
++	_ = mem.Shutdown(context.Background())
+ 
+ 	for i := 0; i < conversations; i++ {
+ 		got, err := store.GetMessages(ctx, fmt.Sprintf("conv-%d", i))
+diff --git a/sdk/history/coordinator_test.go b/sdk/history/coordinator_test.go
+index 00b15c3e..bd2364c4 100644
+--- a/sdk/history/coordinator_test.go
++++ b/sdk/history/coordinator_test.go
+@@ -228,7 +228,7 @@ func TestCoordinator_LazyArchiveRecovery(t *testing.T) {
+ 
+ 	// First archive: completes normally so we have a manifest.
+ 	cfg := ArchiveConfig{ArchiveThreshold: 20, ArchiveBatchSize: 15}
+-	if _, err := archiveImpl(ctx, ws, store, "memory", convID, cfg); err != nil {
++	if _, err := Archive(ctx, ws, store, "memory", convID, cfg); err != nil {
+ 		t.Fatal(err)
+ 	}
+ 
+diff --git a/sdk/history/store_test.go b/sdk/history/store_test.go
+index 43f5faaf..03ad1d8f 100644
+--- a/sdk/history/store_test.go
++++ b/sdk/history/store_test.go
+@@ -381,63 +381,6 @@ func TestFileStore_DeleteAndReuse(t *testing.T) {
+ 	}
+ }
+ 
+-// --- FileStore: deprecated SummaryCacheStore surface ---
+-
+-func TestFileStore_SaveAndGetSummary(t *testing.T) {
+-	ws := workspace.NewMemWorkspace()
+-	store := NewFileStore(ws, "memory")
+-	ctx := context.Background()
+-
+-	if err := store.SaveSummary(ctx, "conv-sum", "the summary text", 42); err != nil {
+-		t.Fatalf("SaveSummary: %v", err)
+-	}
+-
+-	text, count, err := store.GetSummary(ctx, "conv-sum")
+-	if err != nil {
+-		t.Fatalf("GetSummary: %v", err)
+-	}
+-	if text != "the summary text" {
+-		t.Fatalf("text mismatch: got %q", text)
+-	}
+-	if count != 42 {
+-		t.Fatalf("count mismatch: got %d", count)
+-	}
+-}
+-
+-func TestFileStore_GetSummary_Missing(t *testing.T) {
+-	ws := workspace.NewMemWorkspace()
+-	store := NewFileStore(ws, "memory")
+-	ctx := context.Background()
+-
+-	text, count, err := store.GetSummary(ctx, "no-such-conv")
+-	if err != nil {
+-		t.Fatalf("GetSummary on missing should be (\"\",0,nil), got err=%v", err)
+-	}
+-	if text != "" || count != 0 {
+-		t.Fatalf("expected zero values for missing conv, got %q,%d", text, count)
+-	}
+-}
+-
+-func TestFileStore_SaveSummary_OverwritesPrevious(t *testing.T) {
+-	ws := workspace.NewMemWorkspace()
+-	store := NewFileStore(ws, "memory")
+-	ctx := context.Background()
+-
+-	if err := store.SaveSummary(ctx, "c", "first", 1); err != nil {
+-		t.Fatal(err)
+-	}
+-	if err := store.SaveSummary(ctx, "c", "second", 2); err != nil {
+-		t.Fatal(err)
+-	}
+-	text, count, err := store.GetSummary(ctx, "c")
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if text != "second" || count != 2 {
+-		t.Fatalf("expected overwrite to win, got %q,%d", text, count)
+-	}
+-}
+-
+ // --- InMemoryStore: options + lifecycle ---
+ 
+ func TestInMemoryStore_LenReflectsSaves(t *testing.T) {
+diff --git a/sdk/history/tools_test.go b/sdk/history/tools_test.go
+deleted file mode 100644
+index c772d986..00000000
+--- a/sdk/history/tools_test.go
++++ /dev/null
+@@ -1,307 +0,0 @@
+-package history
+-
+-import (
+-	"context"
+-	"encoding/json"
+-	"strings"
+-	"testing"
+-
+-	"github.com/GizClaw/flowcraft/sdk/model"
+-	"github.com/GizClaw/flowcraft/sdk/tool"
+-	"github.com/GizClaw/flowcraft/sdk/workspace"
+-)
+-
+-func TestMemoryExpandTool_NoConversationID(t *testing.T) {
+-	tool := newHistoryExpandTool(ToolDeps{})
+-	_, err := tool.Execute(context.Background(), `{"summary_id":"n1"}`)
+-	if err == nil || !strings.Contains(err.Error(), "no conversation ID") {
+-		t.Fatalf("expected no conversation ID error, got: %v", err)
+-	}
+-}
+-
+-func TestMemoryCompactTool_Definition(t *testing.T) {
+-	tool := newHistoryCompactTool(ToolDeps{})
+-	def := tool.Definition()
+-	if def.Name != "history_compact" {
+-		t.Fatalf("expected name history_compact, got %s", def.Name)
+-	}
+-}
+-
+-func TestConversationIDContext(t *testing.T) {
+-	ctx := context.Background()
+-	if id := ConversationIDFrom(ctx); id != "" {
+-		t.Fatal("expected empty")
+-	}
+-
+-	ctx = WithConversationID(ctx, "test-123")
+-	if id := ConversationIDFrom(ctx); id != "test-123" {
+-		t.Fatalf("expected test-123, got %q", id)
+-	}
+-}
+-
+-func TestFileStore_GetMessageRange(t *testing.T) {
+-	store := NewInMemoryStore()
+-	ctx := context.Background()
+-	convID := "range-test"
+-
+-	msgs := make([]model.Message, 20)
+-	for i := range msgs {
+-		msgs[i] = model.NewTextMessage(model.RoleUser, "msg")
+-	}
+-	_ = store.SaveMessages(ctx, convID, msgs)
+-
+-	// InMemoryStore doesn't implement RangeReader, so test FileStore.
+-	// Just verify the interface is defined.
+-	var _ RangeReader = (*FileStore)(nil)
+-}
+-
+-// --- RegisterTools / Definition ---
+-
+-func TestRegisterTools_AddsBothToolsWithCorrectScopes(t *testing.T) {
+-	registry := tool.NewRegistry()
+-	RegisterTools(registry, ToolDeps{})
+-
+-	expand, ok := registry.Get("history_expand")
+-	if !ok {
+-		t.Fatal("expected history_expand to be registered")
+-	}
+-	if registry.ScopeOf("history_expand") != tool.ScopeAgent {
+-		t.Fatalf("history_expand scope = %s, want agent", registry.ScopeOf("history_expand"))
+-	}
+-	if def := expand.Definition(); def.Name != "history_expand" {
+-		t.Fatalf("history_expand definition Name = %q", def.Name)
+-	}
+-
+-	compact, ok := registry.Get("history_compact")
+-	if !ok {
+-		t.Fatal("expected history_compact to be registered")
+-	}
+-	if registry.ScopeOf("history_compact") != tool.ScopePlatform {
+-		t.Fatalf("history_compact scope = %s, want platform", registry.ScopeOf("history_compact"))
+-	}
+-	if def := compact.Definition(); def.Name != "history_compact" {
+-		t.Fatalf("history_compact definition Name = %q", def.Name)
+-	}
+-}
+-
+-func TestHistoryExpandTool_Definition_HasRequiredField(t *testing.T) {
+-	def := newHistoryExpandTool(ToolDeps{}).Definition()
+-	if def.Name != "history_expand" {
+-		t.Fatalf("name = %q", def.Name)
+-	}
+-	if def.Description == "" {
+-		t.Fatal("expected non-empty description")
+-	}
+-}
+-
+-// --- history_expand.Execute ---
+-
+-func TestHistoryExpandTool_Execute_BadJSON(t *testing.T) {
+-	tl := newHistoryExpandTool(ToolDeps{})
+-	_, err := tl.Execute(context.Background(), "{not json")
+-	if err == nil || !strings.Contains(err.Error(), "parse args") {
+-		t.Fatalf("expected parse-args error, got %v", err)
+-	}
+-}
+-
+-func TestHistoryExpandTool_Execute_NoSummaryStore(t *testing.T) {
+-	tl := newHistoryExpandTool(ToolDeps{})
+-	ctx := WithConversationID(context.Background(), "c1")
+-	_, err := tl.Execute(ctx, `{"summary_id":"x"}`)
+-	if err == nil || !strings.Contains(err.Error(), "summary store not available") {
+-		t.Fatalf("expected summary-store error, got %v", err)
+-	}
+-}
+-
+-func TestHistoryExpandTool_Execute_ExpandsLeafFromMessages(t *testing.T) {
+-	ws := workspace.NewMemWorkspace()
+-	fileStore := NewFileStore(ws, "memory")
+-	summaryStore := &inMemSummaryStore{data: make(map[string][]*SummaryNode)}
+-
+-	ctx := WithConversationID(context.Background(), "convX")
+-	for _, text := range []string{"first", "second", "third"} {
+-		existing, _ := fileStore.GetMessages(ctx, "convX")
+-		_ = fileStore.SaveMessages(ctx, "convX", append(existing,
+-			model.NewTextMessage(model.RoleUser, text),
+-		))
+-	}
+-
+-	leaf := &SummaryNode{
+-		ConversationID: "convX",
+-		Depth:          0,
+-		Content:        "leaf",
+-		EarliestSeq:    0,
+-		LatestSeq:      2,
+-	}
+-	_ = summaryStore.Save(ctx, leaf)
+-
+-	tl := newHistoryExpandTool(ToolDeps{
+-		SummaryStore: summaryStore,
+-		MessageStore: fileStore, // FileStore implements RangeReader
+-		Workspace:    ws,
+-		Prefix:       "memory",
+-		Config:       DefaultDAGConfig(),
+-	})
+-
+-	out, err := tl.Execute(ctx, `{"summary_id":"`+leaf.ID+`","max_messages":10}`)
+-	if err != nil {
+-		t.Fatalf("Execute: %v", err)
+-	}
+-	if !strings.Contains(out, "first") || !strings.Contains(out, "third") {
+-		t.Fatalf("expected expanded message text, got %q", out)
+-	}
+-}
+-
+-func TestHistoryExpandTool_Execute_NonLeafFormatsChildren(t *testing.T) {
+-	summaryStore := &inMemSummaryStore{data: make(map[string][]*SummaryNode)}
+-	ctx := WithConversationID(context.Background(), "convY")
+-
+-	// Two depth-0 leaves and one depth-1 node referencing them.
+-	leafA := &SummaryNode{ConversationID: "convY", Depth: 0, Content: "child-a", EarliestSeq: 0, LatestSeq: 4, ExpandHint: "[Expand for details about: a]"}
+-	leafB := &SummaryNode{ConversationID: "convY", Depth: 0, Content: "child-b", EarliestSeq: 5, LatestSeq: 9}
+-	_ = summaryStore.Save(ctx, leafA)
+-	_ = summaryStore.Save(ctx, leafB)
+-
+-	parent := &SummaryNode{
+-		ConversationID: "convY",
+-		Depth:          1,
+-		Content:        "parent",
+-		SourceIDs:      []string{leafA.ID, leafB.ID, "missing-id"},
+-		EarliestSeq:    0,
+-		LatestSeq:      9,
+-	}
+-	_ = summaryStore.Save(ctx, parent)
+-
+-	tl := newHistoryExpandTool(ToolDeps{SummaryStore: summaryStore})
+-	out, err := tl.Execute(ctx, `{"summary_id":"`+parent.ID+`"}`)
+-	if err != nil {
+-		t.Fatalf("Execute: %v", err)
+-	}
+-	if !strings.Contains(out, "child-a") || !strings.Contains(out, "child-b") {
+-		t.Fatalf("expected both children rendered, got %q", out)
+-	}
+-	if !strings.Contains(out, "[Expand for details about: a]") {
+-		t.Fatalf("expected ExpandHint to be rendered, got %q", out)
+-	}
+-}
+-
+-func TestHistoryExpandTool_Execute_GetByConvIDError(t *testing.T) {
+-	summaryStore := &inMemSummaryStore{data: make(map[string][]*SummaryNode)}
+-	ctx := WithConversationID(context.Background(), "convZ")
+-
+-	tl := newHistoryExpandTool(ToolDeps{SummaryStore: summaryStore})
+-	_, err := tl.Execute(ctx, `{"summary_id":"missing"}`)
+-	if err == nil || !strings.Contains(err.Error(), "history_expand") {
+-		t.Fatalf("expected wrapped not-found error, got %v", err)
+-	}
+-}
+-
+-func TestFormatChildSummaries_Format(t *testing.T) {
+-	out := formatChildSummaries([]*SummaryNode{
+-		{Depth: 0, EarliestSeq: 0, LatestSeq: 4, Content: "child0", ExpandHint: "[Expand for details about: a]"},
+-		{Depth: 1, EarliestSeq: 5, LatestSeq: 9, Content: "child1"},
+-	})
+-	if !strings.Contains(out, "[d0 seq 0-4] child0") {
+-		t.Fatalf("missing depth/seq header: %q", out)
+-	}
+-	if !strings.Contains(out, "[Expand for details about: a]") {
+-		t.Fatalf("missing expand hint: %q", out)
+-	}
+-	if !strings.Contains(out, "[d1 seq 5-9] child1") {
+-		t.Fatalf("missing second child: %q", out)
+-	}
+-	if formatChildSummaries(nil) != "" {
+-		t.Fatal("expected empty string for nil input")
+-	}
+-}
+-
+-// --- history_compact.Execute fallback path (no Coordinator wired) ---
+-
+-func TestHistoryCompactTool_Execute_BadJSON(t *testing.T) {
+-	tl := newHistoryCompactTool(ToolDeps{})
+-	_, err := tl.Execute(context.Background(), "{nope")
+-	if err == nil || !strings.Contains(err.Error(), "parse args") {
+-		t.Fatalf("expected parse-args error, got %v", err)
+-	}
+-}
+-
+-func TestHistoryCompactTool_Execute_FallbackPathCompactOnly(t *testing.T) {
+-	// No Coordinator + no Workspace → only the compact branch runs; the
+-	// archive branch is silently skipped because deps.Workspace is nil.
+-	summaryStore := &inMemSummaryStore{data: make(map[string][]*SummaryNode)}
+-	ctx := context.Background()
+-	_ = summaryStore.Save(ctx, &SummaryNode{ConversationID: "c", Depth: 0, Content: "leaf", EarliestSeq: 0, LatestSeq: 5})
+-
+-	tl := newHistoryCompactTool(ToolDeps{
+-		SummaryStore: summaryStore,
+-		Config:       DefaultDAGConfig(),
+-	})
+-	out, err := tl.Execute(ctx, `{"conversation_id":"c"}`)
+-	if err != nil {
+-		t.Fatalf("Execute: %v", err)
+-	}
+-
+-	var parsed struct {
+-		CompactResult *CompactResult `json:"compact_result,omitempty"`
+-		ArchiveResult *ArchiveResult `json:"archive_result,omitempty"`
+-	}
+-	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+-		t.Fatalf("unmarshal: %v (raw=%s)", err, out)
+-	}
+-	if parsed.CompactResult == nil {
+-		t.Fatal("expected compact_result to be populated")
+-	}
+-	if parsed.ArchiveResult != nil {
+-		t.Fatal("expected archive_result to be skipped without workspace")
+-	}
+-}
+-
+-func TestHistoryCompactTool_Execute_FallbackPathArchiveOnly(t *testing.T) {
+-	// Skip compact (compact:false), keep archive — exercises the second
+-	// branch of the fallback path when Workspace + MessageStore are set.
+-	ws, err := workspace.NewLocalWorkspace(t.TempDir())
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	store := NewFileStore(ws, "memory")
+-	ctx := context.Background()
+-	convID := "compact-tool-archive"
+-
+-	msgs := make([]model.Message, 20)
+-	for i := range msgs {
+-		msgs[i] = model.NewTextMessage(model.RoleUser, "x")
+-	}
+-	_ = store.SaveMessages(ctx, convID, msgs)
+-
+-	cfg := DefaultDAGConfig()
+-	cfg.Archive.ArchiveThreshold = 15
+-	cfg.Archive.ArchiveBatchSize = 10
+-	tl := newHistoryCompactTool(ToolDeps{
+-		MessageStore: store,
+-		Workspace:    ws,
+-		Prefix:       "memory",
+-		Config:       cfg,
+-	})
+-
+-	out, err := tl.Execute(ctx, `{"conversation_id":"`+convID+`","compact":false}`)
+-	if err != nil {
+-		t.Fatalf("Execute: %v", err)
+-	}
+-
+-	var parsed struct {
+-		ArchiveResult *ArchiveResult `json:"archive_result,omitempty"`
+-		CompactResult *CompactResult `json:"compact_result,omitempty"`
+-	}
+-	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+-		t.Fatal(err)
+-	}
+-	if parsed.CompactResult != nil {
+-		t.Fatal("expected compact to be skipped when compact:false")
+-	}
+-	if parsed.ArchiveResult == nil {
+-		t.Fatal("expected archive_result to be populated")
+-	}
+-	if parsed.ArchiveResult.MessagesArchived != 10 {
+-		t.Fatalf("expected 10 archived, got %d", parsed.ArchiveResult.MessagesArchived)
+-	}
+-}
+diff --git a/sdk/kanban/tools_test.go b/sdk/kanban/tools_test.go
+deleted file mode 100644
+index 78e4a1fe..00000000
+--- a/sdk/kanban/tools_test.go
++++ /dev/null
+@@ -1,295 +0,0 @@
+-package kanban
+-
+-import (
+-	"context"
+-	"encoding/json"
+-	"strings"
+-	"testing"
+-)
+-
+-func TestSubmitTool(t *testing.T) {
+-	sb := NewBoard("scope-t1")
+-	k := New(context.Background(), sb, WithConfig(KanbanConfig{MaxPendingTasks: 100}))
+-	defer k.Stop()
+-
+-	tool := &SubmitTool{Kanban: k}
+-	def := tool.Definition()
+-	if def.Name != "kanban_submit" {
+-		t.Fatalf("expected 'kanban_submit', got %q", def.Name)
+-	}
+-
+-	result, err := tool.Execute(context.Background(),
+-		`{"query":"create app","target_agent_id":"copilot_builder","user_query":"创建应用","dispatch_note":"完成后通知"}`)
+-	if err != nil {
+-		t.Fatalf("Execute: %v", err)
+-	}
+-	if !strings.Contains(result, `"card_id"`) {
+-		t.Fatalf("expected card_id in result, got %q", result)
+-	}
+-	if !strings.Contains(result, `"status":"submitted"`) {
+-		t.Fatalf("expected submitted status, got %q", result)
+-	}
+-	if !strings.Contains(result, `"message"`) {
+-		t.Fatalf("expected message in result, got %q", result)
+-	}
+-	if !strings.Contains(result, `"target_agent_id":"copilot_builder"`) {
+-		t.Fatalf("expected target_agent_id in result, got %q", result)
+-	}
+-}
+-
+-func TestSubmitTool_NilKanban(t *testing.T) {
+-	tool := &SubmitTool{}
+-	_, err := tool.Execute(context.Background(), `{"query": "test", "target_agent_id": "x"}`)
+-	if err == nil {
+-		t.Fatal("expected error when no kanban available")
+-	}
+-}
+-
+-func TestSubmitTool_FromContext(t *testing.T) {
+-	sb := NewBoard("scope-ctx")
+-	k := New(context.Background(), sb, WithConfig(KanbanConfig{MaxPendingTasks: 100}))
+-	defer k.Stop()
+-
+-	ctx := WithKanban(context.Background(), k)
+-	tool := &SubmitTool{}
+-	result, err := tool.Execute(ctx, `{"query": "test task", "target_agent_id": "tpl1"}`)
+-	if err != nil {
+-		t.Fatalf("Execute: %v", err)
+-	}
+-	if !strings.Contains(result, `"card_id"`) {
+-		t.Fatalf("expected card_id in result, got %q", result)
+-	}
+-}
+-
+-func TestTaskContextTool(t *testing.T) {
+-	sb := NewBoard("scope-tc")
+-	k := New(context.Background(), sb, WithConfig(KanbanConfig{MaxPendingTasks: 100}))
+-
+-	ctx := context.Background()
+-	cardID, err := k.Submit(ctx, TaskOptions{
+-		TargetAgentID: "copilot_builder",
+-		Query:         "创建 RAG 应用",
+-		UserQuery:     "帮我创建一个 RAG 应用",
+-		DispatchNote:  "完成后告知用户应用已创建",
+-	})
+-	if err != nil {
+-		t.Fatalf("Submit: %v", err)
+-	}
+-
+-	k.Stop()
+-
+-	tc := &TaskContextTool{Kanban: k}
+-	def := tc.Definition()
+-	if def.Name != "task_context" {
+-		t.Fatalf("expected 'task_context', got %q", def.Name)
+-	}
+-
+-	result, err := tc.Execute(ctx, `{"card_id":"`+cardID+`"}`)
+-	if err != nil {
+-		t.Fatalf("Execute: %v", err)
+-	}
+-
+-	for _, want := range []string{
+-		"帮我创建一个 RAG 应用",
+-		"完成后告知用户应用已创建",
+-		"copilot_builder",
+-		"创建 RAG 应用",
+-	} {
+-		if !strings.Contains(result, want) {
+-			t.Errorf("task_context missing %q, got:\n%s", want, result)
+-		}
+-	}
+-}
+-
+-func TestTaskContextTool_NotFound(t *testing.T) {
+-	sb := NewBoard("scope-tc-nf")
+-	k := New(context.Background(), sb)
+-
+-	tc := &TaskContextTool{Kanban: k}
+-	_, err := tc.Execute(context.Background(), `{"card_id":"nonexistent"}`)
+-	if err == nil {
+-		t.Fatal("expected error for nonexistent card")
+-	}
+-}
+-
+-func TestTaskContextTool_NilKanban(t *testing.T) {
+-	tc := &TaskContextTool{}
+-	_, err := tc.Execute(context.Background(), `{"card_id":"x"}`)
+-	if err == nil {
+-		t.Fatal("expected error when no kanban available")
+-	}
+-}
+-
+-func TestKanbanSubmitCallbackTaskContextLoop(t *testing.T) {
+-	tb := NewBoard("scope-loop")
+-	k := New(context.Background(), tb, WithConfig(KanbanConfig{MaxPendingTasks: 100}))
+-	defer k.Stop()
+-
+-	submitTool := &SubmitTool{Kanban: k}
+-	result, err := submitTool.Execute(context.Background(),
+-		`{"query":"为用户创建一个 RAG 应用","target_agent_id":"copilot_builder","user_query":"帮我创建一个 RAG 应用","dispatch_note":"完成后总结关键步骤并回复用户"}`)
+-	if err != nil {
+-		t.Fatalf("SubmitTool.Execute: %v", err)
+-	}
+-
+-	var submitResp map[string]any
+-	if err := json.Unmarshal([]byte(result), &submitResp); err != nil {
+-		t.Fatalf("unmarshal submit result: %v", err)
+-	}
+-	cardID, _ := submitResp["card_id"].(string)
+-	if cardID == "" {
+-		t.Fatal("expected non-empty card_id")
+-	}
+-
+-	card, err := k.GetCard(context.Background(), cardID)
+-	if err != nil {
+-		t.Fatalf("GetCard: %v", err)
+-	}
+-	tb.Claim(card.ID, "copilot_builder")
+-	tb.Done(card.ID, map[string]any{
+-		"query":           "为用户创建一个 RAG 应用",
+-		"target_agent_id": "copilot_builder",
+-		"user_query":      "帮我创建一个 RAG 应用",
+-		"dispatch_note":   "完成后总结关键步骤并回复用户",
+-		"output":          "已创建 RAG 应用，并完成基础配置。",
+-	})
+-
+-	doneCard, err := k.GetCard(context.Background(), cardID)
+-	if err != nil {
+-		t.Fatalf("GetCard after done: %v", err)
+-	}
+-	callback := BuildCallbackQuery(doneCard, &ResultPayload{Output: "已创建 RAG 应用，并完成基础配置。"})
+-	if !IsCallbackMessage(callback) {
+-		t.Fatalf("expected callback message, got:\n%s", callback)
+-	}
+-	if !strings.Contains(callback, `task_context(card_id="`+cardID+`")`) {
+-		t.Fatalf("expected callback to reference task_context(card_id=%q), got:\n%s", cardID, callback)
+-	}
+-
+-	taskContextTool := &TaskContextTool{Kanban: k}
+-	contextText, err := taskContextTool.Execute(context.Background(), `{"card_id":"`+cardID+`"}`)
+-	if err != nil {
+-		t.Fatalf("TaskContextTool.Execute: %v", err)
+-	}
+-	for _, want := range []string{
+-		"帮我创建一个 RAG 应用",
+-		"完成后总结关键步骤并回复用户",
+-		"copilot_builder",
+-		"已创建 RAG 应用，并完成基础配置。",
+-	} {
+-		if !strings.Contains(contextText, want) {
+-			t.Fatalf("task_context missing %q, got:\n%s", want, contextText)
+-		}
+-	}
+-}
+-
+-func TestKanbanContext(t *testing.T) {
+-	sb := NewBoard("scope-ctx")
+-	k := New(context.Background(), sb)
+-
+-	ctx := WithKanban(context.Background(), k)
+-	got := KanbanFrom(ctx)
+-	if got != k {
+-		t.Fatal("KanbanFrom should return the injected kanban")
+-	}
+-}
+-
+-func TestKanbanContext_Missing(t *testing.T) {
+-	got := KanbanFrom(context.Background())
+-	if got != nil {
+-		t.Fatal("KanbanFrom should return nil for empty ctx")
+-	}
+-}
+-
+-func TestSubmitTool_DelayResponse(t *testing.T) {
+-	sb := NewBoard("scope-delay")
+-	sched := NewScheduler()
+-	k := New(context.Background(), sb, WithScheduler(sched), WithConfig(KanbanConfig{MaxPendingTasks: 100}))
+-	sched.Start()
+-	defer k.Stop()
+-
+-	tool := &SubmitTool{Kanban: k}
+-	result, err := tool.Execute(context.Background(),
+-		`{"target_agent_id":"builder","query":"delayed task","delay":"5m"}`)
+-	if err != nil {
+-		t.Fatalf("Execute: %v", err)
+-	}
+-
+-	var resp map[string]string
+-	if err := json.Unmarshal([]byte(result), &resp); err != nil {
+-		t.Fatalf("unmarshal: %v", err)
+-	}
+-	if resp["status"] != "delayed" {
+-		t.Fatalf("expected status=delayed, got %q", resp["status"])
+-	}
+-	if resp["timer_id"] == "" {
+-		t.Fatal("expected non-empty timer_id")
+-	}
+-	if _, ok := resp["card_id"]; ok {
+-		t.Fatal("should not have card_id for delayed submission")
+-	}
+-	if !strings.Contains(resp["message"], "5m") {
+-		t.Fatalf("expected message to mention delay, got %q", resp["message"])
+-	}
+-}
+-
+-func TestSubmitTool_CronResponse(t *testing.T) {
+-	sb := NewBoard("scope-cron")
+-	sched := NewScheduler()
+-	k := New(context.Background(), sb, WithScheduler(sched), WithConfig(KanbanConfig{MaxPendingTasks: 100}))
+-	sched.Start()
+-	defer k.Stop()
+-
+-	tool := &SubmitTool{Kanban: k}
+-	result, err := tool.Execute(context.Background(),
+-		`{"target_agent_id":"builder","query":"cron task","cron":"0 9 * * MON-FRI","timezone":"Asia/Shanghai"}`)
+-	if err != nil {
+-		t.Fatalf("Execute: %v", err)
+-	}
+-
+-	var resp map[string]string
+-	if err := json.Unmarshal([]byte(result), &resp); err != nil {
+-		t.Fatalf("unmarshal: %v", err)
+-	}
+-	if resp["status"] != "scheduled" {
+-		t.Fatalf("expected status=scheduled, got %q", resp["status"])
+-	}
+-	if resp["schedule_id"] == "" {
+-		t.Fatal("expected non-empty schedule_id")
+-	}
+-	if _, ok := resp["card_id"]; ok {
+-		t.Fatal("should not have card_id for cron submission")
+-	}
+-	if !strings.Contains(resp["message"], "cron") {
+-		t.Fatalf("expected message to mention cron, got %q", resp["message"])
+-	}
+-}
+-
+-func TestSubmitTool_ImmediateResponse(t *testing.T) {
+-	sb := NewBoard("scope-imm")
+-	sched := NewScheduler()
+-	k := New(context.Background(), sb, WithScheduler(sched), WithConfig(KanbanConfig{MaxPendingTasks: 100}))
+-	sched.Start()
+-	defer k.Stop()
+-
+-	tool := &SubmitTool{Kanban: k}
+-	result, err := tool.Execute(context.Background(),
+-		`{"target_agent_id":"builder","query":"immediate task"}`)
+-	if err != nil {
+-		t.Fatalf("Execute: %v", err)
+-	}
+-
+-	var resp map[string]string
+-	if err := json.Unmarshal([]byte(result), &resp); err != nil {
+-		t.Fatalf("unmarshal: %v", err)
+-	}
+-	if resp["status"] != "submitted" {
+-		t.Fatalf("expected status=submitted, got %q", resp["status"])
+-	}
+-	if resp["card_id"] == "" {
+-		t.Fatal("expected non-empty card_id for immediate submission")
+-	}
+-}
+-
+-// Ensure Card type is wired for tools.
+-var _ = (*Card)(nil)
+diff --git a/sdk/knowledge/tool_test.go b/sdk/knowledge/tool_test.go
+deleted file mode 100644
+index 48060de1..00000000
+--- a/sdk/knowledge/tool_test.go
++++ /dev/null
+@@ -1,115 +0,0 @@
+-package knowledge_test
+-
+-import (
+-	"context"
+-	"encoding/json"
+-	"strings"
+-	"testing"
+-
+-	"github.com/GizClaw/flowcraft/sdk/knowledge"
+-)
+-
+-func TestSearchServiceTool_AllScopeDefault(t *testing.T) {
+-	svc := newLocalService(t)
+-	ctx := context.Background()
+-	if err := svc.PutDocument(ctx, "ds", "go.md", "Go is a compiled programming language"); err != nil {
+-		t.Fatalf("put: %v", err)
+-	}
+-	tool := knowledge.NewSearchServiceTool(svc)
+-	if got := tool.Definition().Name; got != "knowledge_search" {
+-		t.Fatalf("tool name = %q, want knowledge_search", got)
+-	}
+-
+-	out, err := tool.Execute(ctx, `{"query":"Go programming"}`)
+-	if err != nil {
+-		t.Fatalf("execute: %v", err)
+-	}
+-	var hits []knowledge.Hit
+-	if err := json.Unmarshal([]byte(out), &hits); err != nil {
+-		t.Fatalf("unmarshal: %v", err)
+-	}
+-	if len(hits) == 0 {
+-		t.Fatalf("expected hits, got %s", out)
+-	}
+-}
+-
+-func TestSearchServiceTool_NilService(t *testing.T) {
+-	tool := knowledge.NewSearchServiceTool(nil)
+-	if _, err := tool.Execute(context.Background(), `{"query":"x"}`); err == nil {
+-		t.Fatal("expected error for nil service")
+-	}
+-}
+-
+-func TestSearchServiceTool_SingleScope(t *testing.T) {
+-	svc := newLocalService(t)
+-	ctx := context.Background()
+-	if err := svc.PutDocument(ctx, "docs", "go.md", "Go alpha banana"); err != nil {
+-		t.Fatalf("put: %v", err)
+-	}
+-	tool := knowledge.NewSearchServiceTool(svc)
+-	out, err := tool.Execute(ctx, `{"query":"alpha","scope":"single","dataset_id":"docs"}`)
+-	if err != nil {
+-		t.Fatalf("execute: %v", err)
+-	}
+-	if out == "[]" {
+-		t.Fatal("expected hits for single scope, got []")
+-	}
+-}
+-
+-func TestSearchServiceTool_InvalidScope(t *testing.T) {
+-	svc := newLocalService(t)
+-	tool := knowledge.NewSearchServiceTool(svc)
+-	if _, err := tool.Execute(context.Background(), `{"query":"x","scope":"bogus"}`); err == nil {
+-		t.Fatal("expected validation error")
+-	}
+-}
+-
+-func TestPutServiceTool_DefaultDatasetAndVersion(t *testing.T) {
+-	svc := newLocalService(t)
+-	ctx := context.Background()
+-	tool := knowledge.NewPutServiceTool(svc)
+-	if got := tool.Definition().Name; got != "knowledge_put" {
+-		t.Fatalf("tool name = %q, want knowledge_put", got)
+-	}
+-	out, err := tool.Execute(ctx, `{"name":"a.md","content":"alpha"}`)
+-	if err != nil {
+-		t.Fatalf("execute: %v", err)
+-	}
+-	if !strings.Contains(out, `"status":"ok"`) {
+-		t.Fatalf("response missing status: %s", out)
+-	}
+-	if !strings.Contains(out, `"version":1`) {
+-		t.Fatalf("response missing version 1: %s", out)
+-	}
+-
+-	out2, err := tool.Execute(ctx, `{"name":"a.md","content":"beta"}`)
+-	if err != nil {
+-		t.Fatalf("re-put: %v", err)
+-	}
+-	if !strings.Contains(out2, `"version":2`) {
+-		t.Fatalf("response missing version 2: %s", out2)
+-	}
+-}
+-
+-func TestPutServiceTool_NilService(t *testing.T) {
+-	tool := knowledge.NewPutServiceTool(nil)
+-	if _, err := tool.Execute(context.Background(), `{"name":"a.md","content":"x"}`); err == nil {
+-		t.Fatal("expected error for nil service")
+-	}
+-}
+-
+-func TestPutServiceTool_CustomDataset(t *testing.T) {
+-	svc := newLocalService(t)
+-	ctx := context.Background()
+-	tool := knowledge.NewPutServiceTool(svc)
+-	if _, err := tool.Execute(ctx, `{"dataset_id":"recipes","name":"r.md","content":"x"}`); err != nil {
+-		t.Fatalf("execute: %v", err)
+-	}
+-	doc, err := svc.GetDocument(ctx, "recipes", "r.md")
+-	if err != nil {
+-		t.Fatalf("get: %v", err)
+-	}
+-	if doc == nil {
+-		t.Fatal("expected document in custom dataset")
+-	}
+-}
+diff --git a/sdk/llm/deprecated_test.go b/sdk/llm/deprecated_test.go
+deleted file mode 100644
+index 05171c0b..00000000
+--- a/sdk/llm/deprecated_test.go
++++ /dev/null
+@@ -1,69 +0,0 @@
+-package llm
+-
+-import (
+-	"context"
+-	"testing"
+-)
+-
+-// Coverage for the alias shims in deprecated.go: they must remain
+-// behaviorally equivalent to their canonical replacements until the
+-// v0.3.0 cutover removes them.
+-
+-func TestDeprecated_CapsMiddleware_EquivalentToWithCaps(t *testing.T) {
+-	inner := &capsMockLLM{}
+-	wrapped := CapsMiddleware(inner, DisabledCaps(CapTemperature))
+-	_, _, _ = wrapped.Generate(context.Background(), nil, WithTemperature(0.5))
+-	if inner.lastOpts.Temperature != nil {
+-		t.Fatal("CapsMiddleware alias must behave like WithCaps")
+-	}
+-}
+-
+-func TestDeprecated_LookupModelCaps_EquivalentToSpecCaps(t *testing.T) {
+-	reg := NewProviderRegistry()
+-	reg.RegisterModels("p", []ModelInfo{
+-		{Name: "m", Spec: ModelSpec{Caps: DisabledCaps(CapJSONMode)}},
+-	})
+-	if reg.LookupModelCaps("p", "m").Supports(CapJSONMode) {
+-		t.Fatal("LookupModelCaps alias must surface Spec.Caps")
+-	}
+-}
+-
+-func TestDeprecated_WithExtraCaps_EquivalentToWithPolicyCaps(t *testing.T) {
+-	store := newResolverMockStore()
+-	reg := NewProviderRegistry()
+-	reg.Register("p", func(model string, _ map[string]any) (LLM, error) {
+-		return &capsMockLLM{}, nil
+-	})
+-	store.configs["p"] = &ProviderConfig{Provider: "p", Config: map[string]any{}}
+-
+-	r := newResolverWithRegistry(store, reg, WithExtraCaps(DisabledCaps(CapTemperature)))
+-	inst, err := r.Resolve(context.Background(), "p/m")
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	mock := unwrapMock(inst)
+-	_, _, _ = inst.Generate(context.Background(), nil, WithTemperature(0.7))
+-	if mock.lastOpts.Temperature != nil {
+-		t.Fatal("WithExtraCaps alias must behave like WithPolicyCaps")
+-	}
+-}
+-
+-// unwrapMock walks the middleware chain to the inner *capsMockLLM
+-// (Defaults / Caps / Limits wrappers may be present in any order
+-// dictated by the resolver's one-shot assembly).
+-func unwrapMock(l LLM) *capsMockLLM {
+-	for {
+-		switch v := l.(type) {
+-		case *capsMockLLM:
+-			return v
+-		case *defaultsLLM:
+-			l = v.inner
+-		case *capsLLM:
+-			l = v.inner
+-		case *limitsLLM:
+-			l = v.inner
+-		default:
+-			return nil
+-		}
+-	}
+-}
+diff --git a/sdk/llm/factory_test.go b/sdk/llm/factory_test.go
+index 37bbbfc4..a6b5a723 100644
+--- a/sdk/llm/factory_test.go
++++ b/sdk/llm/factory_test.go
+@@ -88,29 +88,6 @@ func TestProviderRegistry_RegisterModels_DoesNotMutateInput(t *testing.T) {
+ 	}
+ }
+ 
+-func TestLookupModelCaps(t *testing.T) {
+-	reg := NewProviderRegistry()
+-	reg.RegisterModels("prov", []ModelInfo{
+-		{Label: "A", Name: "model-a", Caps: DisabledCaps(CapTemperature)},
+-		{Label: "B", Name: "model-b"},
+-	})
+-
+-	caps := reg.LookupModelCaps("prov", "model-a")
+-	if caps.Supports(CapTemperature) {
+-		t.Fatal("expected CapTemperature disabled for model-a")
+-	}
+-
+-	caps = reg.LookupModelCaps("prov", "model-b")
+-	if !caps.IsZero() {
+-		t.Fatal("expected zero caps for model-b")
+-	}
+-
+-	caps = reg.LookupModelCaps("prov", "nonexistent")
+-	if !caps.IsZero() {
+-		t.Fatal("expected zero caps for nonexistent model")
+-	}
+-}
+-
+ func TestNewFromConfig_ReturnsRawInstance_NoSpecWrap(t *testing.T) {
+ 	// Post-redesign contract: NewFromConfig is the bare-provider entry
+ 	// point; spec wrapping (caps / defaults / limits) is the resolver's
+@@ -134,37 +111,3 @@ func TestNewFromConfig_ReturnsRawInstance_NoSpecWrap(t *testing.T) {
+ 		t.Fatal("NewFromConfig must return the raw provider instance unwrapped")
+ 	}
+ }
+-
+-func TestRegisterModels_AutoPromotesDeprecatedCapsToSpec(t *testing.T) {
+-	// Backward-compat contract: callers using the deprecated ModelInfo.Caps
+-	// field (from before the Spec rename) should still see their caps
+-	// reflected in LookupModelSpec — the registry auto-promotes the
+-	// alias on registration.
+-	reg := NewProviderRegistry()
+-	reg.RegisterModels("p", []ModelInfo{
+-		{Name: "legacy", Caps: DisabledCaps(CapTemperature)}, // old shape
+-	})
+-	spec := reg.LookupModelSpec("p", "legacy")
+-	if spec.Caps.Supports(CapTemperature) {
+-		t.Fatal("expected auto-promoted Caps→Spec.Caps to disable temperature")
+-	}
+-}
+-
+-func TestRegisterModels_SpecWinsOverDeprecatedCaps(t *testing.T) {
+-	// When both fields are non-zero, Spec.Caps is authoritative.
+-	reg := NewProviderRegistry()
+-	reg.RegisterModels("p", []ModelInfo{
+-		{
+-			Name: "mixed",
+-			Spec: ModelSpec{Caps: DisabledCaps(CapJSONMode)},
+-			Caps: DisabledCaps(CapTemperature),
+-		},
+-	})
+-	spec := reg.LookupModelSpec("p", "mixed")
+-	if spec.Caps.Supports(CapJSONMode) {
+-		t.Fatal("Spec.Caps should disable JSONMode")
+-	}
+-	if !spec.Caps.Supports(CapTemperature) {
+-		t.Fatal("deprecated Caps should NOT have leaked in when Spec.Caps was set")
+-	}
+-}
+diff --git a/sdk/llm/resolver_test.go b/sdk/llm/resolver_test.go
+index 5e2b130a..280f1985 100644
+--- a/sdk/llm/resolver_test.go
++++ b/sdk/llm/resolver_test.go
+@@ -157,7 +157,8 @@ func (p *probeProviderLLM) GenerateStream(_ context.Context, _ []Message, _ ...G
+ 
+ // captureGenOpts returns a factory that records the GenerateOption set
+ // applied by the most recent Generate call into *into. Used by caps
+-// tests to assert which user-supplied options survived CapsMiddleware.
++// tests to assert which user-supplied options survived the capsLLM
++// wrapper installed by WithCaps / WithPolicyCaps.
+ func captureGenOpts(reg *ProviderRegistry, provider string, into *GenerateOptions) {
+ 	reg.Register(provider, func(model string, _ map[string]any) (LLM, error) {
+ 		return &probeProviderLLM{model: model, onGen: func(opts []GenerateOption) {
+@@ -391,14 +392,14 @@ func TestResolver_NoModelNoFallback(t *testing.T) {
+ 	}
+ }
+ 
+-func TestResolver_CapsMiddleware_Integration(t *testing.T) {
++func TestResolver_Caps_Integration(t *testing.T) {
+ 	store := newResolverMockStore()
+ 	reg := NewProviderRegistry()
+ 	reg.Register("test-prov", func(model string, config map[string]any) (LLM, error) {
+ 		return &resolverMockLLM{model: model}, nil
+ 	})
+ 	reg.RegisterModels("test-prov", []ModelInfo{
+-		{Label: "Test Model", Name: "capped-model", Caps: DisabledCaps(CapTemperature)},
++		{Label: "Test Model", Name: "capped-model", Spec: ModelSpec{Caps: DisabledCaps(CapTemperature)}},
+ 	})
+ 	store.configs["test-prov"] = &ProviderConfig{Provider: "test-prov", Config: map[string]any{"api_key": "k"}}
+ 
+@@ -517,7 +518,7 @@ func TestResolver_Caps_LayeredMerge(t *testing.T) {
+ 
+ 	// Layer 1: registry catalog disables temperature for "reason-model".
+ 	reg.RegisterModels("p", []ModelInfo{
+-		{Name: "reason-model", Caps: DisabledCaps(CapTemperature)},
++		{Name: "reason-model", Spec: ModelSpec{Caps: DisabledCaps(CapTemperature)}},
+ 	})
+ 	// Layer 2: ProviderConfig.SpecOverride disables JSON mode for everything under p.
+ 	store.providers["p"] = &ProviderConfig{
+@@ -554,26 +555,6 @@ func TestResolver_Caps_LayeredMerge(t *testing.T) {
+ 	}
+ }
+ 
+-func TestResolver_Caps_ExtraFromOption(t *testing.T) {
+-	store := newLayeredMockStore()
+-	reg := NewProviderRegistry()
+-
+-	var capturedOpts GenerateOptions
+-	captureGenOpts(reg, "p", &capturedOpts)
+-	store.providers["p"] = &ProviderConfig{Provider: "p", Config: map[string]any{"api_key": "k"}}
+-
+-	r := newResolverWithRegistry(store, reg, WithExtraCaps(DisabledCaps(CapTemperature)))
+-	llm, err := r.Resolve(context.Background(), "p/m")
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	temp := 0.7
+-	_, _, _ = llm.Generate(context.Background(), nil, WithTemperature(temp))
+-	if capturedOpts.Temperature != nil {
+-		t.Fatalf("WithExtraCaps should disable temperature, got %v", *capturedOpts.Temperature)
+-	}
+-}
+-
+ // ---------------------------------------------------------------------------
+ // Backward compatibility — animus-style provider-only stores
+ // ---------------------------------------------------------------------------
+diff --git a/sdk/model/message_test.go b/sdk/model/message_test.go
+index 02bf697d..29e7e2b0 100644
+--- a/sdk/model/message_test.go
++++ b/sdk/model/message_test.go
+@@ -175,3 +175,28 @@ func TestMarshalToolArgs_Error(t *testing.T) {
+ 		t.Fatal("MarshalToolArgs should return error for unsupported type")
+ 	}
+ }
++
++func TestLastByRole(t *testing.T) {
++	msgs := []Message{
++		NewTextMessage(RoleUser, "u1"),
++		NewTextMessage(RoleAssistant, "a1"),
++		NewTextMessage(RoleUser, "u2"),
++		NewTextMessage(RoleAssistant, "a2"),
++	}
++
++	if m, ok := LastByRole(msgs, RoleUser); !ok || m.Content() != "u2" {
++		t.Fatalf("LastByRole(user) = (%q, %v), want (\"u2\", true)", m.Content(), ok)
++	}
++	if m, ok := LastByRole(msgs, RoleAssistant); !ok || m.Content() != "a2" {
++		t.Fatalf("LastByRole(assistant) = (%q, %v), want (\"a2\", true)", m.Content(), ok)
++	}
++	if _, ok := LastByRole(msgs, RoleSystem); ok {
++		t.Fatal("LastByRole(system) should report not-found on a transcript without system turns")
++	}
++	if _, ok := LastByRole(nil, RoleUser); ok {
++		t.Fatal("LastByRole on nil slice should report not-found")
++	}
++	if _, ok := LastByRole([]Message{}, RoleUser); ok {
++		t.Fatal("LastByRole on empty slice should report not-found")
++	}
++}
+diff --git a/sdk/retrieval/explain_test.go b/sdk/retrieval/explain_test.go
+deleted file mode 100644
+index ebba4473..00000000
+--- a/sdk/retrieval/explain_test.go
++++ /dev/null
+@@ -1,39 +0,0 @@
+-package retrieval
+-
+-import "testing"
+-
+-func TestProjectRawByRetrieverNilExecution(t *testing.T) {
+-	if got := ProjectRawByRetriever(nil); got != nil {
+-		t.Fatalf("expected nil for nil execution, got %+v", got)
+-	}
+-	if got := ProjectRawByRetriever(&SearchExecution{}); got != nil {
+-		t.Fatalf("expected nil for empty execution, got %+v", got)
+-	}
+-}
+-
+-func TestProjectRawByRetrieverCopiesLaneHits(t *testing.T) {
+-	hits := []Hit{{Doc: Doc{ID: "a"}}, {Doc: Doc{ID: "b"}}}
+-	exec := &SearchExecution{
+-		Lanes: []LaneResult{{Key: LaneBM25, Hits: hits}},
+-	}
+-	got := ProjectRawByRetriever(exec)
+-	if len(got) != 1 || len(got["bm25"]) != 2 {
+-		t.Fatalf("unexpected projection: %+v", got)
+-	}
+-	got["bm25"][0].Doc.ID = "MUTATED"
+-	if hits[0].Doc.ID != "a" {
+-		t.Fatalf("projection should not alias source slice; src now %s", hits[0].Doc.ID)
+-	}
+-}
+-
+-func TestProjectRawByRetrieverSkipsEmptyLanes(t *testing.T) {
+-	exec := &SearchExecution{
+-		Lanes: []LaneResult{
+-			{Key: LaneBM25},
+-			{Key: "", Hits: []Hit{{Doc: Doc{ID: "x"}}}},
+-		},
+-	}
+-	if got := ProjectRawByRetriever(exec); got != nil {
+-		t.Fatalf("expected nil when no lane has both key and hits, got %+v", got)
+-	}
+-}
+diff --git a/sdk/retrieval/pipeline/pipeline_test.go b/sdk/retrieval/pipeline/pipeline_test.go
+index 28e585b1..8d687552 100644
+--- a/sdk/retrieval/pipeline/pipeline_test.go
++++ b/sdk/retrieval/pipeline/pipeline_test.go
+@@ -59,57 +59,6 @@ func TestPipelineMultiRetrieveAndRRF(t *testing.T) {
+ 	}
+ }
+ 
+-func TestPipelineReturnRawIncludesRetrieverHits(t *testing.T) {
+-	ctx := context.Background()
+-	idx := memory.New()
+-	ns := "ns"
+-	_ = idx.Upsert(ctx, ns, []retrieval.Doc{
+-		{ID: "1", Content: "coffee tea", Vector: []float32{1, 0, 0}, Timestamp: time.Now()},
+-		{ID: "2", Content: "unrelated", Vector: []float32{0, 1, 0}, Timestamp: time.Now()},
+-	})
+-	pipe := New(
+-		MultiRetrieve{
+-			"bm25":   {Mode: ModeBM25, TopK: 10},
+-			"vector": {Mode: ModeVector, TopK: 10},
+-		},
+-		RRFFusion{K: 60},
+-		Limit{TopK: 5},
+-	)
+-	resp, err := pipe.Run(ctx, idx, ns, retrieval.SearchRequest{
+-		QueryText:   "coffee",
+-		QueryVector: []float32{1, 0, 0},
+-		TopK:        5,
+-		ReturnRaw:   true,
+-	})
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if len(resp.RawByRetriever) != 2 {
+-		t.Fatalf("expected raw hits for 2 retrievers, got %+v", resp.RawByRetriever)
+-	}
+-	if len(resp.RawByRetriever["bm25"]) == 0 {
+-		t.Fatalf("expected bm25 raw hits, got %+v", resp.RawByRetriever)
+-	}
+-	if len(resp.RawByRetriever["vector"]) == 0 {
+-		t.Fatalf("expected vector raw hits, got %+v", resp.RawByRetriever)
+-	}
+-	if resp.Execution == nil {
+-		t.Fatal("expected Execution to be populated when ReturnRaw=true")
+-	}
+-	if len(resp.Execution.Lanes) != 2 {
+-		t.Fatalf("expected 2 lanes in Execution, got %+v", resp.Execution.Lanes)
+-	}
+-	for _, lane := range resp.Execution.Lanes {
+-		raw, ok := resp.RawByRetriever[string(lane.Key)]
+-		if !ok {
+-			t.Fatalf("lane %q missing in RawByRetriever projection", lane.Key)
+-		}
+-		if len(raw) != len(lane.Hits) {
+-			t.Fatalf("lane %q raw/exec mismatch: raw=%d exec=%d", lane.Key, len(raw), len(lane.Hits))
+-		}
+-	}
+-}
+-
+ func TestPipelineDebugIncludeStagesRecordsTrace(t *testing.T) {
+ 	ctx := context.Background()
+ 	idx := memory.New()
+@@ -142,9 +91,6 @@ func TestPipelineDebugIncludeStagesRecordsTrace(t *testing.T) {
+ 	if len(resp.Execution.Lanes) != 0 {
+ 		t.Fatalf("expected no lanes when IncludeLanes=false, got %+v", resp.Execution.Lanes)
+ 	}
+-	if resp.RawByRetriever != nil {
+-		t.Fatalf("RawByRetriever should remain nil when ReturnRaw=false, got %+v", resp.RawByRetriever)
+-	}
+ }
+ 
+ func TestPipelineDebugIncludeLanesWithoutLegacyProjection(t *testing.T) {
+@@ -170,9 +116,6 @@ func TestPipelineDebugIncludeLanesWithoutLegacyProjection(t *testing.T) {
+ 	if resp.Execution == nil || len(resp.Execution.Lanes) != 1 {
+ 		t.Fatalf("expected one lane in Execution, got %+v", resp.Execution)
+ 	}
+-	if resp.RawByRetriever != nil {
+-		t.Fatalf("RawByRetriever should only be populated by ReturnRaw, got %+v", resp.RawByRetriever)
+-	}
+ }
+ 
+ func TestEntityBoost(t *testing.T) {
+diff --git a/sdk/workflow/board_test.go b/sdk/workflow/board_test.go
+deleted file mode 100644
+index ddad1577..00000000
+--- a/sdk/workflow/board_test.go
++++ /dev/null
+@@ -1,400 +0,0 @@
+-package workflow
+-
+-import (
+-	"sync"
+-	"testing"
+-
+-	"github.com/GizClaw/flowcraft/sdk/model"
+-)
+-
+-// --- Cloneable test helper ---
+-
+-type cloneableVal struct {
+-	N int
+-}
+-
+-func (c cloneableVal) Clone() any {
+-	return cloneableVal{N: c.N}
+-}
+-
+-// --- Vars ---
+-
+-func TestBoard_SetGetVar(t *testing.T) {
+-	b := NewBoard()
+-	b.SetVar("k", 42)
+-
+-	v, ok := b.GetVar("k")
+-	if !ok || v != 42 {
+-		t.Fatalf("expected 42, got %v ok=%v", v, ok)
+-	}
+-
+-	_, ok = b.GetVar("missing")
+-	if ok {
+-		t.Fatal("expected missing key to return false")
+-	}
+-}
+-
+-func TestBoard_GetVarString(t *testing.T) {
+-	b := NewBoard()
+-	b.SetVar("s", "hello")
+-	b.SetVar("n", 123)
+-
+-	if s := b.GetVarString("s"); s != "hello" {
+-		t.Fatalf("expected 'hello', got %q", s)
+-	}
+-	if s := b.GetVarString("n"); s != "" {
+-		t.Fatalf("expected empty for int, got %q", s)
+-	}
+-	if s := b.GetVarString("missing"); s != "" {
+-		t.Fatalf("expected empty for missing, got %q", s)
+-	}
+-}
+-
+-func TestBoard_GetTyped(t *testing.T) {
+-	b := NewBoard()
+-	b.SetVar("n", 42)
+-
+-	n, ok := GetTyped[int](b, "n")
+-	if !ok || n != 42 {
+-		t.Fatalf("expected 42, got %v ok=%v", n, ok)
+-	}
+-
+-	_, ok = GetTyped[string](b, "n")
+-	if ok {
+-		t.Fatal("expected type mismatch")
+-	}
+-
+-	_, ok = GetTyped[int](b, "missing")
+-	if ok {
+-		t.Fatal("expected missing key")
+-	}
+-}
+-
+-func TestBoard_Vars(t *testing.T) {
+-	b := NewBoard()
+-	b.SetVar("a", 1)
+-	b.SetVar("b", "x")
+-
+-	vars := b.Vars()
+-	if len(vars) != 2 {
+-		t.Fatalf("expected 2 vars, got %d", len(vars))
+-	}
+-
+-	vars["c"] = "injected"
+-	if _, ok := b.GetVar("c"); ok {
+-		t.Fatal("Vars() should return a copy, not a reference")
+-	}
+-}
+-
+-// --- AppendSliceVar ---
+-
+-func TestBoard_AppendSliceVar(t *testing.T) {
+-	b := NewBoard()
+-
+-	if err := b.AppendSliceVar("items", "a"); err != nil {
+-		t.Fatal(err)
+-	}
+-	if err := b.AppendSliceVar("items", "b"); err != nil {
+-		t.Fatal(err)
+-	}
+-
+-	v, ok := b.GetVar("items")
+-	if !ok {
+-		t.Fatal("expected items var")
+-	}
+-	slice := v.([]any)
+-	if len(slice) != 2 || slice[0] != "a" || slice[1] != "b" {
+-		t.Fatalf("unexpected: %v", slice)
+-	}
+-}
+-
+-func TestBoard_AppendSliceVar_ErrorOnTypeMismatch(t *testing.T) {
+-	b := NewBoard()
+-	b.SetVar("val", "not a slice")
+-
+-	err := b.AppendSliceVar("val", "new")
+-	if err == nil {
+-		t.Fatal("expected error when appending to non-slice var")
+-	}
+-
+-	v, _ := b.GetVar("val")
+-	if v != "not a slice" {
+-		t.Fatalf("original value should be preserved, got %v", v)
+-	}
+-}
+-
+-// --- UpdateSliceVarItem ---
+-
+-func TestBoard_UpdateSliceVarItem(t *testing.T) {
+-	b := NewBoard()
+-	_ = b.AppendSliceVar("items", map[string]any{"id": "a", "v": 1})
+-	_ = b.AppendSliceVar("items", map[string]any{"id": "b", "v": 2})
+-
+-	b.UpdateSliceVarItem("items", func(item any) bool {
+-		m := item.(map[string]any)
+-		return m["id"] == "a"
+-	}, func(item any) any {
+-		m := item.(map[string]any)
+-		m["v"] = 99
+-		return m
+-	})
+-
+-	v, _ := b.GetVar("items")
+-	first := v.([]any)[0].(map[string]any)
+-	if first["v"] != 99 {
+-		t.Fatalf("expected updated value 99, got %v", first["v"])
+-	}
+-}
+-
+-func TestBoard_UpdateSliceVarItem_NonSlice(t *testing.T) {
+-	b := NewBoard()
+-	b.SetVar("x", "not slice")
+-	b.UpdateSliceVarItem("x", func(any) bool { return true }, func(item any) any {
+-		t.Fatal("should not be called")
+-		return item
+-	})
+-}
+-
+-// --- Channels ---
+-
+-func TestBoard_ChannelsCopy(t *testing.T) {
+-	b := NewBoard()
+-	b.AppendChannelMessage("ch1", model.NewTextMessage(model.RoleUser, "hi"))
+-	b.AppendChannelMessage("ch2", model.NewTextMessage(model.RoleAssistant, "ok"))
+-
+-	cp := b.ChannelsCopy()
+-	if len(cp) < 2 {
+-		t.Fatalf("expected at least 2 channels, got %d", len(cp))
+-	}
+-	if len(cp["ch1"]) != 1 || cp["ch1"][0].Content() != "hi" {
+-		t.Fatalf("ch1 mismatch: %v", cp["ch1"])
+-	}
+-
+-	cp["ch1"][0] = model.NewTextMessage(model.RoleUser, "mutated")
+-	orig := b.Channel("ch1")
+-	if orig[0].Content() == "mutated" {
+-		t.Fatal("ChannelsCopy should return a deep copy")
+-	}
+-}
+-
+-func TestBoard_Channel_Empty(t *testing.T) {
+-	b := NewBoard()
+-	msgs := b.Channel("nonexistent")
+-	if msgs != nil {
+-		t.Fatalf("expected nil for empty channel, got %v", msgs)
+-	}
+-}
+-
+-// --- Snapshot / Restore ---
+-
+-func TestBoard_Snapshot_Restore_WithChannels(t *testing.T) {
+-	b := NewBoard()
+-	b.SetVar("x", 10)
+-	b.AppendChannelMessage(MainChannel, model.NewTextMessage(model.RoleUser, "hello"))
+-
+-	snap := b.Snapshot()
+-
+-	b.SetVar("x", 999)
+-	b.AppendChannelMessage(MainChannel, model.NewTextMessage(model.RoleUser, "world"))
+-
+-	restored := RestoreBoard(snap)
+-	v, _ := restored.GetVar("x")
+-	if v != 10 {
+-		t.Fatalf("expected 10, got %v", v)
+-	}
+-	msgs := restored.Channel(MainChannel)
+-	if len(msgs) != 1 {
+-		t.Fatalf("expected 1 message, got %d", len(msgs))
+-	}
+-}
+-
+-func TestRestoreBoard_Nil(t *testing.T) {
+-	b := RestoreBoard(nil)
+-	if b == nil {
+-		t.Fatal("expected non-nil board from nil snapshot")
+-	}
+-	msgs := b.Channel(MainChannel)
+-	if msgs != nil {
+-		t.Fatalf("expected empty main channel, got %v", msgs)
+-	}
+-}
+-
+-func TestBoard_RestoreFrom_Nil(t *testing.T) {
+-	b := NewBoard()
+-	b.SetVar("x", 1)
+-	b.RestoreFrom(nil)
+-	v, ok := b.GetVar("x")
+-	if !ok || v != 1 {
+-		t.Fatal("RestoreFrom(nil) should be a no-op")
+-	}
+-}
+-
+-func TestBoard_RestoreFrom_WithChannels(t *testing.T) {
+-	b := NewBoard()
+-	b.SetVar("x", 10)
+-	b.AppendChannelMessage(MainChannel, model.NewTextMessage(model.RoleUser, "hello"))
+-	snap := b.Snapshot()
+-
+-	b.SetVar("x", 999)
+-	_ = b.AppendSliceVar("extra", 1)
+-	b.RestoreFrom(snap)
+-
+-	v, _ := b.GetVar("x")
+-	if v != 10 {
+-		t.Fatalf("expected 10, got %v", v)
+-	}
+-	_, ok := b.GetVar("extra")
+-	if ok {
+-		t.Fatal("RestoreFrom should have removed extra var")
+-	}
+-}
+-
+-func TestRestoreBoard_NoChannels_InitializesMainChannel(t *testing.T) {
+-	snap := &BoardSnapshot{
+-		Vars:     map[string]any{"k": "v"},
+-		Channels: nil,
+-	}
+-	b := RestoreBoard(snap)
+-	msgs := b.Channel(MainChannel)
+-	if msgs != nil {
+-		t.Fatalf("expected empty main channel, got %v", msgs)
+-	}
+-}
+-
+-// TestBoard_RestoreFrom_NoChannels_InitializesMainChannel mirrors
+-// TestRestoreBoard_NoChannels_InitializesMainChannel for the in-place
+-// rollback path: RestoreFrom must guarantee MainChannel exists even
+-// when the snapshot's Channels map is nil/empty (every Board invariant
+-// — including the one NewBoard / RestoreBoard already uphold).
+-func TestBoard_RestoreFrom_NoChannels_InitializesMainChannel(t *testing.T) {
+-	b := NewBoard()
+-	b.AppendChannelMessage(MainChannel, model.NewTextMessage(model.RoleUser, "before"))
+-
+-	snap := &BoardSnapshot{
+-		Vars:     map[string]any{"k": "v"},
+-		Channels: nil,
+-	}
+-	b.RestoreFrom(snap)
+-
+-	if _, ok := b.channels[MainChannel]; !ok {
+-		t.Fatal("RestoreFrom must initialize MainChannel when snapshot carries no channels")
+-	}
+-	if got := b.Channel(MainChannel); len(got) != 0 {
+-		t.Fatalf("expected empty MainChannel after restore, got %v", got)
+-	}
+-}
+-
+-// --- deepCopyValue ---
+-
+-func TestDeepCopyValue_Nil(t *testing.T) {
+-	if deepCopyValue(nil) != nil {
+-		t.Fatal("expected nil")
+-	}
+-}
+-
+-func TestDeepCopyValue_Primitives(t *testing.T) {
+-	cases := []any{
+-		"hello", 42, int8(1), int16(2), int32(3), int64(4),
+-		uint(5), uint8(6), uint16(7), uint32(8), uint64(9),
+-		float32(1.0), float64(2.0), true,
+-	}
+-	for _, c := range cases {
+-		cp := deepCopyValue(c)
+-		if cp != c {
+-			t.Fatalf("primitive copy failed for %T: %v != %v", c, cp, c)
+-		}
+-	}
+-}
+-
+-func TestDeepCopyValue_Messages(t *testing.T) {
+-	msgs := []model.Message{model.NewTextMessage(model.RoleUser, "hi")}
+-	cp := deepCopyValue(msgs).([]model.Message)
+-	if len(cp) != 1 || cp[0].Content() != "hi" {
+-		t.Fatalf("message copy failed: %v", cp)
+-	}
+-	cp[0] = model.NewTextMessage(model.RoleUser, "mutated")
+-	if msgs[0].Content() == "mutated" {
+-		t.Fatal("should be a deep copy")
+-	}
+-}
+-
+-func TestDeepCopyValue_SliceAny(t *testing.T) {
+-	src := []any{"a", 42, []any{"nested"}}
+-	cp := deepCopyValue(src).([]any)
+-	if len(cp) != 3 {
+-		t.Fatalf("expected 3 items, got %d", len(cp))
+-	}
+-
+-	nested := cp[2].([]any)
+-	nested[0] = "mutated"
+-	if src[2].([]any)[0] == "mutated" {
+-		t.Fatal("should be a deep copy")
+-	}
+-}
+-
+-func TestDeepCopyValue_MapStringAny(t *testing.T) {
+-	src := map[string]any{
+-		"a": 1,
+-		"b": map[string]any{"nested": true},
+-	}
+-	cp := deepCopyValue(src).(map[string]any)
+-	if cp["a"] != 1 {
+-		t.Fatal("top-level value mismatch")
+-	}
+-
+-	nested := cp["b"].(map[string]any)
+-	nested["nested"] = false
+-	if src["b"].(map[string]any)["nested"] != true {
+-		t.Fatal("should be a deep copy")
+-	}
+-}
+-
+-func TestDeepCopyValue_Cloneable(t *testing.T) {
+-	src := cloneableVal{N: 42}
+-	cp := deepCopyValue(src).(cloneableVal)
+-	if cp.N != 42 {
+-		t.Fatalf("expected 42, got %d", cp.N)
+-	}
+-}
+-
+-func TestDeepCopyValue_ReflectFallback(t *testing.T) {
+-	type custom struct{ Data []int }
+-	orig := custom{Data: []int{1, 2, 3}}
+-	copied := deepCopyValue(orig).(custom)
+-
+-	copied.Data[0] = 99
+-	if orig.Data[0] != 1 {
+-		t.Fatal("reflect deep copy did not isolate slice")
+-	}
+-}
+-
+-func TestDeepCopyVars_Nil(t *testing.T) {
+-	cp := deepCopyVars(nil)
+-	if cp == nil {
+-		t.Fatal("expected non-nil map")
+-	}
+-	if len(cp) != 0 {
+-		t.Fatalf("expected empty map, got %d entries", len(cp))
+-	}
+-}
+-
+-// --- concurrency ---
+-
+-func TestBoard_ConcurrentAppendSliceVar(t *testing.T) {
+-	b := NewBoard()
+-	var wg sync.WaitGroup
+-	for i := 0; i < 50; i++ {
+-		wg.Add(1)
+-		go func(val int) {
+-			defer wg.Done()
+-			_ = b.AppendSliceVar("items", val)
+-		}(i)
+-	}
+-	wg.Wait()
+-
+-	v, _ := b.GetVar("items")
+-	slice := v.([]any)
+-	if len(slice) != 50 {
+-		t.Fatalf("expected 50 items, got %d", len(slice))
+-	}
+-}
+diff --git a/sdk/workflow/run_integration_test.go b/sdk/workflow/run_integration_test.go
+deleted file mode 100644
+index ce4aaf9c..00000000
+--- a/sdk/workflow/run_integration_test.go
++++ /dev/null
+@@ -1,681 +0,0 @@
+-package workflow
+-
+-import (
+-	"context"
+-	"errors"
+-	"sync/atomic"
+-	"testing"
+-
+-	"github.com/GizClaw/flowcraft/sdk/errdefs"
+-	"github.com/GizClaw/flowcraft/sdk/model"
+-)
+-
+-// --- mock helpers ---
+-
+-type recordingSession struct {
+-	BaseSession
+-	history []model.Message
+-	vars    map[string]any
+-	loadErr error
+-	saveErr error
+-
+-	loaded    atomic.Bool
+-	saved     atomic.Bool
+-	savedMsgs []model.Message
+-	closed    atomic.Bool
+-	closedErr error // runErr passed to Close
+-}
+-
+-func (s *recordingSession) Load(_ context.Context) ([]model.Message, error) {
+-	s.loaded.Store(true)
+-	if s.loadErr != nil {
+-		return nil, s.loadErr
+-	}
+-	cp := make([]model.Message, len(s.history))
+-	copy(cp, s.history)
+-	return cp, nil
+-}
+-
+-func (s *recordingSession) Vars(_ context.Context) (map[string]any, error) { return s.vars, nil }
+-
+-func (s *recordingSession) Save(_ context.Context, msgs []model.Message) error {
+-	s.saved.Store(true)
+-	s.savedMsgs = append([]model.Message(nil), msgs...)
+-	return s.saveErr
+-}
+-
+-func (s *recordingSession) Close(_ context.Context, runErr error) error {
+-	s.closed.Store(true)
+-	s.closedErr = runErr
+-	return nil
+-}
+-
+-type staticMemory struct {
+-	session *recordingSession
+-}
+-
+-func (m *staticMemory) Session(_ context.Context, _ string) (MemorySession, error) {
+-	return m.session, nil
+-}
+-
+-func newMemoryFactory(session *recordingSession) MemoryFactory {
+-	mem := &staticMemory{session: session}
+-	return func(_ context.Context, _ Agent) (Memory, error) { return mem, nil }
+-}
+-
+-type echoStrategy struct {
+-	answer string
+-}
+-
+-func (s echoStrategy) Kind() string                       { return "echo" }
+-func (s echoStrategy) Capabilities() StrategyCapabilities { return StrategyCapabilities{} }
+-func (s echoStrategy) Build(context.Context, *Dependencies) (Runnable, error) {
+-	return echoRunnable{answer: s.answer}, nil
+-}
+-
+-type echoRunnable struct{ answer string }
+-
+-func (r echoRunnable) Execute(_ context.Context, board *Board, _ *Request, _ ...RunOption) (*Board, error) {
+-	reply := r.answer
+-	if reply == "" {
+-		reply = "echo"
+-	}
+-	board.AppendChannelMessage(MainChannel, model.NewTextMessage(model.RoleAssistant, reply))
+-	board.SetVar(VarAnswer, reply)
+-	return board, nil
+-}
+-
+-type interruptStrategy struct{}
+-
+-func (interruptStrategy) Kind() string                       { return "interrupt" }
+-func (interruptStrategy) Capabilities() StrategyCapabilities { return StrategyCapabilities{} }
+-func (interruptStrategy) Build(context.Context, *Dependencies) (Runnable, error) {
+-	return interruptRunnable{}, nil
+-}
+-
+-type interruptRunnable struct{}
+-
+-func (interruptRunnable) Execute(_ context.Context, board *Board, _ *Request, _ ...RunOption) (*Board, error) {
+-	board.SetVar(VarInterruptedNode, "node_3")
+-	return board, errdefs.Interruptedf("paused at node_3")
+-}
+-
+-type failStrategy struct{ err error }
+-
+-func (s failStrategy) Kind() string                       { return "fail" }
+-func (s failStrategy) Capabilities() StrategyCapabilities { return StrategyCapabilities{} }
+-func (s failStrategy) Build(context.Context, *Dependencies) (Runnable, error) {
+-	return failRunnable{err: s.err}, nil
+-}
+-
+-type failRunnable struct{ err error }
+-
+-func (r failRunnable) Execute(context.Context, *Board, *Request, ...RunOption) (*Board, error) {
+-	return nil, r.err
+-}
+-
+-type cancelStrategy struct{}
+-
+-func (cancelStrategy) Kind() string                       { return "cancel" }
+-func (cancelStrategy) Capabilities() StrategyCapabilities { return StrategyCapabilities{} }
+-func (cancelStrategy) Build(context.Context, *Dependencies) (Runnable, error) {
+-	return cancelRunnable{}, nil
+-}
+-
+-type cancelRunnable struct{}
+-
+-func (cancelRunnable) Execute(ctx context.Context, board *Board, _ *Request, _ ...RunOption) (*Board, error) {
+-	return board, context.Canceled
+-}
+-
+-type ctxAwareStrategy struct{}
+-
+-func (ctxAwareStrategy) Kind() string                       { return "ctx-aware" }
+-func (ctxAwareStrategy) Capabilities() StrategyCapabilities { return StrategyCapabilities{} }
+-func (ctxAwareStrategy) Build(context.Context, *Dependencies) (Runnable, error) {
+-	return ctxAwareRunnable{}, nil
+-}
+-
+-type ctxAwareRunnable struct{}
+-
+-func (ctxAwareRunnable) Execute(ctx context.Context, board *Board, _ *Request, _ ...RunOption) (*Board, error) {
+-	if err := ctx.Err(); err != nil {
+-		return board, err
+-	}
+-	return board, nil
+-}
+-
+-func testAgent(s Strategy) Agent {
+-	return NewAgent("test-agent", s)
+-}
+-
+-// --- 2.8: full Memory path ---
+-
+-func TestRuntime_FullMemoryPath(t *testing.T) {
+-	hist := []model.Message{
+-		model.NewTextMessage(model.RoleUser, "hello"),
+-		model.NewTextMessage(model.RoleAssistant, "hi there"),
+-	}
+-	sess := &recordingSession{
+-		history: hist,
+-		vars:    map[string]any{VarSummaryIndex: 1},
+-	}
+-	rt := NewRuntime(
+-		WithMemoryFactory(newMemoryFactory(sess)),
+-	)
+-
+-	req := NewTextRequest("how are you?")
+-	req.ContextID = "conv-1"
+-
+-	res, err := rt.Run(context.Background(), testAgent(echoStrategy{answer: "fine"}), req)
+-	if err != nil {
+-		t.Fatalf("unexpected error: %v", err)
+-	}
+-
+-	// Load was called
+-	if !sess.loaded.Load() {
+-		t.Fatal("session.Load was not called")
+-	}
+-	// Save was called
+-	if !sess.saved.Load() {
+-		t.Fatal("session.Save was not called")
+-	}
+-	// Close was called with nil (success)
+-	if !sess.closed.Load() {
+-		t.Fatal("session.Close was not called")
+-	}
+-	if sess.closedErr != nil {
+-		t.Fatalf("session.Close got runErr=%v, want nil", sess.closedErr)
+-	}
+-
+-	// Result should be completed
+-	if res.Status != StatusCompleted {
+-		t.Fatalf("status=%s, want completed", res.Status)
+-	}
+-	if res.State["answer"] != "fine" {
+-		t.Fatalf("answer=%v, want 'fine'", res.State["answer"])
+-	}
+-
+-	// Messages should contain only the new messages (user input + assistant reply)
+-	if len(res.Messages) != 2 {
+-		t.Fatalf("len(Messages)=%d, want 2 (new user + assistant)", len(res.Messages))
+-	}
+-	if res.Messages[0].Content() != "how are you?" {
+-		t.Fatalf("Messages[0]=%q, want 'how are you?'", res.Messages[0].Content())
+-	}
+-	if res.Messages[1].Content() != "fine" {
+-		t.Fatalf("Messages[1]=%q, want 'fine'", res.Messages[1].Content())
+-	}
+-
+-	// Save should have received the full message list (history + new)
+-	if len(sess.savedMsgs) != 4 {
+-		t.Fatalf("saved %d messages, want 4 (2 history + 1 user + 1 assistant)", len(sess.savedMsgs))
+-	}
+-
+-	// Summary index should have been injected into the board
+-	if res.LastBoard == nil {
+-		t.Fatal("LastBoard is nil")
+-	}
+-	if v, ok := res.LastBoard.GetVar(VarSummaryIndex); !ok || v != 1 {
+-		t.Fatalf("summary_index=%v, want 1", v)
+-	}
+-}
+-
+-func TestRuntime_MemoryLoadError(t *testing.T) {
+-	sess := &recordingSession{
+-		loadErr: errors.New("db connection lost"),
+-	}
+-	rt := NewRuntime(WithMemoryFactory(newMemoryFactory(sess)))
+-	req := NewTextRequest("hi")
+-	req.ContextID = "conv-1"
+-
+-	_, err := rt.Run(context.Background(), testAgent(echoStrategy{}), req)
+-	if err == nil {
+-		t.Fatal("expected error from memory load")
+-	}
+-	if !sess.closed.Load() {
+-		t.Fatal("session.Close should still be called on load error")
+-	}
+-}
+-
+-// --- 2.9: stateless path with WithHistory ---
+-
+-func TestRuntime_StatelessWithHistory(t *testing.T) {
+-	hist := []model.Message{
+-		model.NewTextMessage(model.RoleUser, "first"),
+-		model.NewTextMessage(model.RoleAssistant, "response"),
+-	}
+-	rt := NewRuntime()
+-	req := NewTextRequest("second")
+-
+-	res, err := rt.Run(context.Background(), testAgent(echoStrategy{answer: "ok"}), req, WithHistory(hist))
+-	if err != nil {
+-		t.Fatalf("unexpected error: %v", err)
+-	}
+-	if res.Status != StatusCompleted {
+-		t.Fatalf("status=%s", res.Status)
+-	}
+-	// Messages should be only new ones (user + assistant)
+-	if len(res.Messages) != 2 {
+-		t.Fatalf("len(Messages)=%d, want 2", len(res.Messages))
+-	}
+-}
+-
+-func TestRuntime_StatelessNoHistory(t *testing.T) {
+-	rt := NewRuntime()
+-	req := NewTextRequest("hello")
+-
+-	res, err := rt.Run(context.Background(), testAgent(echoStrategy{answer: "world"}), req)
+-	if err != nil {
+-		t.Fatalf("unexpected error: %v", err)
+-	}
+-	if res.Status != StatusCompleted {
+-		t.Fatalf("status=%s", res.Status)
+-	}
+-	// All channel messages are new
+-	if len(res.Messages) != 2 {
+-		t.Fatalf("len(Messages)=%d, want 2", len(res.Messages))
+-	}
+-}
+-
+-func TestRuntime_MemoryWinsOverWithHistory(t *testing.T) {
+-	sess := &recordingSession{
+-		history: []model.Message{model.NewTextMessage(model.RoleAssistant, "from memory")},
+-	}
+-	rt := NewRuntime(WithMemoryFactory(newMemoryFactory(sess)))
+-	req := NewTextRequest("hi")
+-	req.ContextID = "c1"
+-
+-	externalHistory := []model.Message{model.NewTextMessage(model.RoleAssistant, "from caller")}
+-
+-	res, err := rt.Run(context.Background(), testAgent(echoStrategy{answer: "ok"}), req, WithHistory(externalHistory))
+-	if err != nil {
+-		t.Fatalf("unexpected error: %v", err)
+-	}
+-	// Should contain memory history, NOT WithHistory
+-	if len(sess.savedMsgs) < 2 {
+-		t.Fatalf("expected saved messages to start with memory history")
+-	}
+-	if sess.savedMsgs[0].Content() != "from memory" {
+-		t.Fatalf("first saved message=%q, want 'from memory' (memory wins over WithHistory)", sess.savedMsgs[0].Content())
+-	}
+-	if res.Status != StatusCompleted {
+-		t.Fatalf("status=%s", res.Status)
+-	}
+-}
+-
+-// --- 2.10: interrupt path ---
+-
+-func TestRuntime_Interrupt(t *testing.T) {
+-	sess := &recordingSession{}
+-	rt := NewRuntime(WithMemoryFactory(newMemoryFactory(sess)))
+-	req := NewTextRequest("go")
+-	req.ContextID = "c-int"
+-
+-	res, err := rt.Run(context.Background(), testAgent(interruptStrategy{}), req)
+-	if err != nil {
+-		t.Fatalf("unexpected error: %v", err)
+-	}
+-	if res.Status != StatusInterrupted {
+-		t.Fatalf("status=%s, want interrupted", res.Status)
+-	}
+-	if !errdefs.IsInterrupted(res.Err) {
+-		t.Fatalf("res.Err=%v, want interrupted error", res.Err)
+-	}
+-	if res.State["interrupted_node"] != "node_3" {
+-		t.Fatalf("interrupted_node=%v, want node_3", res.State["interrupted_node"])
+-	}
+-	if res.State["board"] == nil {
+-		t.Fatal("board snapshot missing from State on interrupt")
+-	}
+-	if sess.saved.Load() {
+-		t.Fatal("session.Save should NOT be called on interrupt")
+-	}
+-	if !sess.closed.Load() {
+-		t.Fatal("session.Close was not called")
+-	}
+-	if sess.closedErr == nil || !errdefs.IsInterrupted(sess.closedErr) {
+-		t.Fatalf("session.Close runErr=%v, want interrupted error", sess.closedErr)
+-	}
+-}
+-
+-// --- 2.11: cancel path ---
+-
+-func TestRuntime_ContextCanceled(t *testing.T) {
+-	sess := &recordingSession{}
+-	rt := NewRuntime(WithMemoryFactory(newMemoryFactory(sess)))
+-	req := NewTextRequest("go")
+-	req.ContextID = "c-cancel"
+-
+-	res, err := rt.Run(context.Background(), testAgent(cancelStrategy{}), req)
+-	if err != nil {
+-		t.Fatalf("unexpected infrastructure error: %v", err)
+-	}
+-	if res.Status != StatusCanceled {
+-		t.Fatalf("status=%s, want canceled", res.Status)
+-	}
+-	if !errors.Is(res.Err, context.Canceled) {
+-		t.Fatalf("res.Err=%v, want context.Canceled", res.Err)
+-	}
+-	if sess.saved.Load() {
+-		t.Fatal("session.Save should NOT be called on cancel")
+-	}
+-	if !sess.closed.Load() {
+-		t.Fatal("session.Close was not called")
+-	}
+-	if !errors.Is(sess.closedErr, context.Canceled) {
+-		t.Fatalf("session.Close runErr=%v, want context.Canceled", sess.closedErr)
+-	}
+-}
+-
+-func TestRuntime_ContextDeadlineExceeded(t *testing.T) {
+-	rt := NewRuntime()
+-	ctx, cancel := context.WithCancel(context.Background())
+-	cancel() // already canceled
+-
+-	agent := testAgent(ctxAwareStrategy{})
+-	req := NewTextRequest("hello")
+-
+-	res, err := rt.Run(ctx, agent, req)
+-	if err != nil {
+-		t.Fatalf("unexpected infrastructure error: %v", err)
+-	}
+-	if res.Status != StatusCanceled {
+-		t.Fatalf("status=%s, want canceled", res.Status)
+-	}
+-}
+-
+-// --- error path ---
+-
+-func TestRuntime_ExecutionFailure(t *testing.T) {
+-	sess := &recordingSession{}
+-	rt := NewRuntime(WithMemoryFactory(newMemoryFactory(sess)))
+-	req := NewTextRequest("go")
+-	req.ContextID = "c-fail"
+-	execErr := errors.New("something broke")
+-
+-	res, err := rt.Run(context.Background(), testAgent(failStrategy{err: execErr}), req)
+-	if err != nil {
+-		t.Fatalf("unexpected infrastructure error: %v", err)
+-	}
+-	if res.Status != StatusFailed {
+-		t.Fatalf("status=%s, want failed", res.Status)
+-	}
+-	if res.Err == nil || res.Err.Error() != "something broke" {
+-		t.Fatalf("res.Err=%v, want 'something broke'", res.Err)
+-	}
+-	if !sess.closed.Load() {
+-		t.Fatal("session.Close was not called")
+-	}
+-	if sess.closedErr == nil || sess.closedErr.Error() != "something broke" {
+-		t.Fatalf("session.Close runErr=%v, want 'something broke'", sess.closedErr)
+-	}
+-	if sess.saved.Load() {
+-		t.Fatal("session.Save should NOT be called on failure")
+-	}
+-}
+-
+-func TestRuntime_AbortedPath(t *testing.T) {
+-	rt := NewRuntime()
+-	req := NewTextRequest("go")
+-	abortErr := errdefs.Abortedf("user aborted")
+-
+-	res, err := rt.Run(context.Background(), testAgent(failStrategy{err: abortErr}), req)
+-	if err != nil {
+-		t.Fatalf("unexpected infrastructure error: %v", err)
+-	}
+-	if res.Status != StatusAborted {
+-		t.Fatalf("status=%s, want aborted", res.Status)
+-	}
+-	if !errdefs.IsAborted(res.Err) {
+-		t.Fatalf("res.Err=%v, want aborted error", res.Err)
+-	}
+-}
+-
+-// --- nil guards ---
+-
+-func TestRuntime_NilRequest(t *testing.T) {
+-	rt := NewRuntime()
+-	_, err := rt.Run(context.Background(), testAgent(echoStrategy{}), nil)
+-	if err == nil {
+-		t.Fatal("expected error for nil request")
+-	}
+-}
+-
+-func TestRuntime_NilAgent(t *testing.T) {
+-	rt := NewRuntime()
+-	_, err := rt.Run(context.Background(), nil, NewTextRequest("hi"))
+-	if err == nil {
+-		t.Fatal("expected error for nil agent")
+-	}
+-}
+-
+-func TestRuntime_NoMemoryFactory_NoContextID(t *testing.T) {
+-	sess := &recordingSession{}
+-	rt := NewRuntime(WithMemoryFactory(newMemoryFactory(sess)))
+-	req := NewTextRequest("hi")
+-	req.ContextID = "" // no context ID → skip memory
+-
+-	res, err := rt.Run(context.Background(), testAgent(echoStrategy{answer: "ok"}), req)
+-	if err != nil {
+-		t.Fatalf("unexpected error: %v", err)
+-	}
+-	if res.Status != StatusCompleted {
+-		t.Fatalf("status=%s", res.Status)
+-	}
+-	if sess.loaded.Load() {
+-		t.Fatal("session.Load should not be called when contextID is empty")
+-	}
+-}
+-
+-// --- stream callback passthrough ---
+-
+-func TestRuntime_StreamCallbackOption(t *testing.T) {
+-	var captured []StreamEvent
+-	cb := func(e StreamEvent) { captured = append(captured, e) }
+-
+-	rc := ApplyRunOpts([]RunOption{WithStreamCallback(cb)})
+-	if rc.StreamCallback == nil {
+-		t.Fatal("StreamCallback not set")
+-	}
+-	rc.StreamCallback(StreamEvent{Type: "token", NodeID: "n1", Payload: "hi"})
+-	if len(captured) != 1 || captured[0].Type != "token" {
+-		t.Fatalf("captured=%v", captured)
+-	}
+-}
+-
+-func TestRuntime_MaxIterationsOption(t *testing.T) {
+-	rc := ApplyRunOpts([]RunOption{WithMaxIterations(50)})
+-	if rc.MaxIterations != 50 {
+-		t.Fatalf("MaxIterations=%d, want 50", rc.MaxIterations)
+-	}
+-}
+-
+-// --- ContextAssembler / IncrementalSaver ---
+-
+-type assemblingSession struct {
+-	BaseSession
+-	history      []model.Message
+-	vars         map[string]any
+-	assembled    atomic.Bool
+-	assembledReq *Request
+-}
+-
+-func (s *assemblingSession) Assemble(_ context.Context, req *Request) ([]model.Message, error) {
+-	s.assembled.Store(true)
+-	s.assembledReq = req
+-	cp := make([]model.Message, len(s.history))
+-	copy(cp, s.history)
+-	return cp, nil
+-}
+-
+-func (s *assemblingSession) Vars(_ context.Context) (map[string]any, error) { return s.vars, nil }
+-func (s *assemblingSession) Close(_ context.Context, _ error) error         { return nil }
+-
+-type assemblingMemory struct{ session *assemblingSession }
+-
+-func (m *assemblingMemory) Session(_ context.Context, _ string) (MemorySession, error) {
+-	return m.session, nil
+-}
+-
+-func TestRuntime_ContextAssembler(t *testing.T) {
+-	sess := &assemblingSession{
+-		history: []model.Message{
+-			model.NewTextMessage(model.RoleUser, "summarized context"),
+-		},
+-		vars: map[string]any{VarSummaryIndex: 1},
+-	}
+-	factory := func(_ context.Context, _ Agent) (Memory, error) {
+-		return &assemblingMemory{session: sess}, nil
+-	}
+-	rt := NewRuntime(WithMemoryFactory(factory))
+-
+-	req := NewTextRequest("new question")
+-	req.ContextID = "conv-asm"
+-
+-	res, err := rt.Run(context.Background(), testAgent(echoStrategy{answer: "assembled"}), req)
+-	if err != nil {
+-		t.Fatalf("unexpected error: %v", err)
+-	}
+-	if !sess.assembled.Load() {
+-		t.Fatal("Assemble was not called")
+-	}
+-	if sess.assembledReq != req {
+-		t.Fatal("Assemble did not receive the original request")
+-	}
+-	if res.Status != StatusCompleted {
+-		t.Fatalf("status=%s, want completed", res.Status)
+-	}
+-	if len(res.Messages) != 2 {
+-		t.Fatalf("len(Messages)=%d, want 2 (user + assistant)", len(res.Messages))
+-	}
+-	if res.Messages[0].Content() != "new question" {
+-		t.Fatalf("Messages[0]=%q, want 'new question'", res.Messages[0].Content())
+-	}
+-}
+-
+-type incrementalSession struct {
+-	BaseSession
+-	history      []model.Message
+-	appended     atomic.Bool
+-	appendedMsgs []model.Message
+-}
+-
+-func (s *incrementalSession) Load(_ context.Context) ([]model.Message, error) {
+-	cp := make([]model.Message, len(s.history))
+-	copy(cp, s.history)
+-	return cp, nil
+-}
+-
+-func (s *incrementalSession) Append(_ context.Context, msgs []model.Message) error {
+-	s.appended.Store(true)
+-	s.appendedMsgs = append([]model.Message(nil), msgs...)
+-	return nil
+-}
+-
+-func (s *incrementalSession) Close(_ context.Context, _ error) error { return nil }
+-
+-type incrementalMemory struct{ session *incrementalSession }
+-
+-func (m *incrementalMemory) Session(_ context.Context, _ string) (MemorySession, error) {
+-	return m.session, nil
+-}
+-
+-func TestRuntime_IncrementalSaver(t *testing.T) {
+-	sess := &incrementalSession{
+-		history: []model.Message{
+-			model.NewTextMessage(model.RoleUser, "old"),
+-			model.NewTextMessage(model.RoleAssistant, "old reply"),
+-		},
+-	}
+-	factory := func(_ context.Context, _ Agent) (Memory, error) {
+-		return &incrementalMemory{session: sess}, nil
+-	}
+-	rt := NewRuntime(WithMemoryFactory(factory))
+-
+-	req := NewTextRequest("new")
+-	req.ContextID = "conv-inc"
+-
+-	res, err := rt.Run(context.Background(), testAgent(echoStrategy{answer: "new reply"}), req)
+-	if err != nil {
+-		t.Fatalf("unexpected error: %v", err)
+-	}
+-	if !sess.appended.Load() {
+-		t.Fatal("Append was not called")
+-	}
+-	if len(sess.appendedMsgs) != 2 {
+-		t.Fatalf("appended %d messages, want 2 (new user + assistant)", len(sess.appendedMsgs))
+-	}
+-	if sess.appendedMsgs[0].Content() != "new" {
+-		t.Fatalf("appendedMsgs[0]=%q, want 'new'", sess.appendedMsgs[0].Content())
+-	}
+-	if sess.appendedMsgs[1].Content() != "new reply" {
+-		t.Fatalf("appendedMsgs[1]=%q, want 'new reply'", sess.appendedMsgs[1].Content())
+-	}
+-	if res.Status != StatusCompleted {
+-		t.Fatalf("status=%s, want completed", res.Status)
+-	}
+-}
+-
+-type fullComboSession struct {
+-	BaseSession
+-	history      []model.Message
+-	vars         map[string]any
+-	assembled    atomic.Bool
+-	appended     atomic.Bool
+-	appendedMsgs []model.Message
+-}
+-
+-func (s *fullComboSession) Assemble(_ context.Context, _ *Request) ([]model.Message, error) {
+-	s.assembled.Store(true)
+-	cp := make([]model.Message, len(s.history))
+-	copy(cp, s.history)
+-	return cp, nil
+-}
+-
+-func (s *fullComboSession) Append(_ context.Context, msgs []model.Message) error {
+-	s.appended.Store(true)
+-	s.appendedMsgs = append([]model.Message(nil), msgs...)
+-	return nil
+-}
+-
+-func (s *fullComboSession) Vars(_ context.Context) (map[string]any, error) { return s.vars, nil }
+-func (s *fullComboSession) Close(_ context.Context, _ error) error         { return nil }
+-
+-type fullComboMemory struct{ session *fullComboSession }
+-
+-func (m *fullComboMemory) Session(_ context.Context, _ string) (MemorySession, error) {
+-	return m.session, nil
+-}
+-
+-func TestRuntime_ContextAssembler_And_IncrementalSaver(t *testing.T) {
+-	sess := &fullComboSession{
+-		history: []model.Message{
+-			model.NewTextMessage(model.RoleUser, "ctx"),
+-		},
+-	}
+-	factory := func(_ context.Context, _ Agent) (Memory, error) {
+-		return &fullComboMemory{session: sess}, nil
+-	}
+-	rt := NewRuntime(WithMemoryFactory(factory))
+-
+-	req := NewTextRequest("hello")
+-	req.ContextID = "conv-combo"
+-
+-	res, err := rt.Run(context.Background(), testAgent(echoStrategy{answer: "world"}), req)
+-	if err != nil {
+-		t.Fatalf("unexpected error: %v", err)
+-	}
+-	if !sess.assembled.Load() {
+-		t.Fatal("Assemble was not called")
+-	}
+-	if !sess.appended.Load() {
+-		t.Fatal("Append was not called")
+-	}
+-	if len(sess.appendedMsgs) != 2 {
+-		t.Fatalf("appended %d messages, want 2", len(sess.appendedMsgs))
+-	}
+-	if res.Status != StatusCompleted {
+-		t.Fatalf("status=%s", res.Status)
+-	}
+-}
+diff --git a/sdk/workflow/run_test.go b/sdk/workflow/run_test.go
+deleted file mode 100644
+index 019d0280..00000000
+--- a/sdk/workflow/run_test.go
++++ /dev/null
+@@ -1,417 +0,0 @@
+-package workflow
+-
+-import (
+-	"context"
+-	"errors"
+-	"testing"
+-
+-	"github.com/GizClaw/flowcraft/sdk/model"
+-)
+-
+-type noopStrategy struct{}
+-
+-func (noopStrategy) Kind() string { return "noop" }
+-func (noopStrategy) Capabilities() StrategyCapabilities {
+-	return StrategyCapabilities{}
+-}
+-func (noopStrategy) Build(context.Context, *Dependencies) (Runnable, error) {
+-	return noopRunnable{}, nil
+-}
+-
+-type noopRunnable struct{}
+-
+-func (noopRunnable) Execute(ctx context.Context, board *Board, _ *Request, _ ...RunOption) (*Board, error) {
+-	board.SetVar(VarAnswer, "ok")
+-	return board, nil
+-}
+-
+-type noopAgent struct {
+-	str Strategy
+-}
+-
+-func (a noopAgent) ID() string         { return "a1" }
+-func (a noopAgent) Card() AgentCard    { return AgentCard{Name: "a1"} }
+-func (a noopAgent) Strategy() Strategy { return a.str }
+-func (a noopAgent) Tools() []string    { return nil }
+-
+-func TestRuntime_Run_NoMemory_Completed(t *testing.T) {
+-	rt := NewRuntime()
+-	req := NewTextRequest("hello")
+-	req.ContextID = ""
+-	res, err := rt.Run(context.Background(), noopAgent{str: noopStrategy{}}, req)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if res.Status != StatusCompleted {
+-		t.Fatalf("status=%s", res.Status)
+-	}
+-	if res.State["answer"] != "ok" {
+-		t.Fatalf("answer=%v", res.State["answer"])
+-	}
+-}
+-
+-func TestNewTextRequest(t *testing.T) {
+-	r := NewTextRequest("hi")
+-	if MessageText(r.Message) != "hi" {
+-		t.Fatal("message text mismatch")
+-	}
+-	if r.Message.Role != model.RoleUser {
+-		t.Fatal("expected user role")
+-	}
+-}
+-
+-// --- Result.Text ---
+-
+-func TestResult_Text(t *testing.T) {
+-	r := &Result{
+-		Messages: []model.Message{
+-			model.NewTextMessage(model.RoleUser, "hello"),
+-			model.NewTextMessage(model.RoleAssistant, "world"),
+-		},
+-	}
+-	if r.Text() != "world" {
+-		t.Fatalf("expected 'world', got %q", r.Text())
+-	}
+-}
+-
+-func TestResult_Text_Nil(t *testing.T) {
+-	var r *Result
+-	if r.Text() != "" {
+-		t.Fatal("expected empty for nil result")
+-	}
+-}
+-
+-func TestResult_Text_NoAssistant(t *testing.T) {
+-	r := &Result{
+-		Messages: []model.Message{
+-			model.NewTextMessage(model.RoleUser, "hello"),
+-		},
+-	}
+-	if r.Text() != "" {
+-		t.Fatalf("expected empty when no assistant message, got %q", r.Text())
+-	}
+-}
+-
+-func TestResult_Text_EmptyMessages(t *testing.T) {
+-	r := &Result{}
+-	if r.Text() != "" {
+-		t.Fatal("expected empty for no messages")
+-	}
+-}
+-
+-// --- MessageText non-user ---
+-
+-func TestMessageText_NonUser(t *testing.T) {
+-	msg := model.NewTextMessage(model.RoleAssistant, "reply")
+-	if MessageText(msg) != "" {
+-		t.Fatal("expected empty for non-user role")
+-	}
+-}
+-
+-// --- Agent accessors ---
+-
+-func TestNewAgent_WithOptions(t *testing.T) {
+-	a := NewAgent("test", noopStrategy{},
+-		WithAgentDescription("desc"),
+-		WithAgentTools([]string{"tool1", "tool2"}),
+-	)
+-
+-	if a.ID() != "test" {
+-		t.Fatalf("ID=%q", a.ID())
+-	}
+-	if a.Card().Description != "desc" {
+-		t.Fatalf("Description=%q", a.Card().Description)
+-	}
+-	if len(a.Tools()) != 2 {
+-		t.Fatalf("Tools=%v", a.Tools())
+-	}
+-}
+-
+-// --- BaseSession ---
+-
+-func TestBaseSession(t *testing.T) {
+-	ctx := context.Background()
+-	s := BaseSession{}
+-
+-	msgs, err := s.Load(ctx)
+-	if err != nil || msgs != nil {
+-		t.Fatalf("Load: msgs=%v err=%v", msgs, err)
+-	}
+-
+-	vars, err := s.Vars(ctx)
+-	if err != nil || vars != nil {
+-		t.Fatalf("Vars: vars=%v err=%v", vars, err)
+-	}
+-
+-	if err := s.Save(ctx, nil); err != nil {
+-		t.Fatalf("Save: %v", err)
+-	}
+-	if err := s.Close(ctx, nil); err != nil {
+-		t.Fatalf("Close: %v", err)
+-	}
+-}
+-
+-// --- WithDependencies ---
+-
+-func TestRuntime_WithDependencies(t *testing.T) {
+-	deps := NewDependencies()
+-	SetDep(deps, "key", "val")
+-
+-	var captured *Dependencies
+-	strategy := &captureDepsStrategy{capture: &captured}
+-
+-	rt := NewRuntime(WithDependencies(deps))
+-	req := NewTextRequest("hi")
+-	_, err := rt.Run(context.Background(), NewAgent("a", strategy), req)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if captured == nil {
+-		t.Fatal("deps not captured")
+-	}
+-	v, err := GetDep[string](captured, "key")
+-	if err != nil || v != "val" {
+-		t.Fatalf("expected 'val', got %q err=%v", v, err)
+-	}
+-}
+-
+-type captureDepsStrategy struct {
+-	capture **Dependencies
+-}
+-
+-func (s *captureDepsStrategy) Kind() string                       { return "capture" }
+-func (s *captureDepsStrategy) Capabilities() StrategyCapabilities { return StrategyCapabilities{} }
+-func (s *captureDepsStrategy) Build(_ context.Context, deps *Dependencies) (Runnable, error) {
+-	*s.capture = deps
+-	return noopRunnable{}, nil
+-}
+-
+-// --- WithPrepareBoard ---
+-
+-func TestRuntime_WithPrepareBoard(t *testing.T) {
+-	called := false
+-	rt := NewRuntime(WithPrepareBoard(func(ctx context.Context, agent Agent, req *Request, session MemorySession, opts []RunOption) (*Board, error) {
+-		called = true
+-		b := NewBoard()
+-		b.AppendChannelMessage(MainChannel, req.Message)
+-		b.SetVar(VarPrevMessageCount, 0)
+-		b.SetVar(VarRunID, "custom-run")
+-		return b, nil
+-	}))
+-
+-	req := NewTextRequest("hi")
+-	_, err := rt.Run(context.Background(), NewAgent("a", noopStrategy{}), req)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if !called {
+-		t.Fatal("custom prepareBoardFn was not called")
+-	}
+-}
+-
+-// --- Memory save error ---
+-
+-func TestRuntime_MemorySaveError(t *testing.T) {
+-	sess := &savingErrorSession{saveErr: errors.New("disk full")}
+-	factory := func(_ context.Context, _ Agent) (Memory, error) {
+-		return &staticMem{session: sess}, nil
+-	}
+-	rt := NewRuntime(WithMemoryFactory(factory))
+-	req := NewTextRequest("hi")
+-	req.ContextID = "c1"
+-
+-	_, err := rt.Run(context.Background(), NewAgent("a", echoStrategy2{answer: "ok"}), req)
+-	if err == nil {
+-		t.Fatal("expected error from memory save")
+-	}
+-}
+-
+-type savingErrorSession struct {
+-	BaseSession
+-	saveErr error
+-}
+-
+-func (s *savingErrorSession) Load(_ context.Context) ([]model.Message, error) { return nil, nil }
+-func (s *savingErrorSession) Vars(_ context.Context) (map[string]any, error)  { return nil, nil }
+-func (s *savingErrorSession) Save(_ context.Context, _ []model.Message) error { return s.saveErr }
+-func (s *savingErrorSession) Close(_ context.Context, _ error) error          { return nil }
+-
+-type staticMem struct{ session MemorySession }
+-
+-func (m *staticMem) Session(_ context.Context, _ string) (MemorySession, error) {
+-	return m.session, nil
+-}
+-
+-type echoStrategy2 struct{ answer string }
+-
+-func (s echoStrategy2) Kind() string                       { return "echo" }
+-func (s echoStrategy2) Capabilities() StrategyCapabilities { return StrategyCapabilities{} }
+-func (s echoStrategy2) Build(context.Context, *Dependencies) (Runnable, error) {
+-	return echoRunnable2{answer: s.answer}, nil
+-}
+-
+-type echoRunnable2 struct{ answer string }
+-
+-func (r echoRunnable2) Execute(_ context.Context, board *Board, _ *Request, _ ...RunOption) (*Board, error) {
+-	board.AppendChannelMessage(MainChannel, model.NewTextMessage(model.RoleAssistant, r.answer))
+-	board.SetVar(VarAnswer, r.answer)
+-	return board, nil
+-}
+-
+-// --- Run with custom RunID and RuntimeID ---
+-
+-func TestRuntime_RequestRunIDAndRuntimeID(t *testing.T) {
+-	rt := NewRuntime()
+-	req := NewTextRequest("hi")
+-	req.RunID = "my-run-id"
+-	req.RuntimeID = "my-runtime"
+-
+-	res, err := rt.Run(context.Background(), NewAgent("a", noopStrategy{}), req)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if res.State["run_id"] != "my-run-id" {
+-		t.Fatalf("run_id=%v, want my-run-id", res.State["run_id"])
+-	}
+-}
+-
+-// --- Usage propagation ---
+-
+-func TestRuntime_UsagePropagation(t *testing.T) {
+-	rt := NewRuntime()
+-	strategy := usageStrategy{usage: model.TokenUsage{InputTokens: 10, OutputTokens: 20}}
+-	req := NewTextRequest("hi")
+-
+-	res, err := rt.Run(context.Background(), NewAgent("a", strategy), req)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if res.Usage.InputTokens != 10 || res.Usage.OutputTokens != 20 {
+-		t.Fatalf("usage=%+v", res.Usage)
+-	}
+-}
+-
+-type usageStrategy struct{ usage model.TokenUsage }
+-
+-func (s usageStrategy) Kind() string                       { return "usage" }
+-func (s usageStrategy) Capabilities() StrategyCapabilities { return StrategyCapabilities{} }
+-func (s usageStrategy) Build(context.Context, *Dependencies) (Runnable, error) {
+-	return usageRunnable{usage: s.usage}, nil
+-}
+-
+-type usageRunnable struct{ usage model.TokenUsage }
+-
+-func (r usageRunnable) Execute(_ context.Context, board *Board, _ *Request, _ ...RunOption) (*Board, error) {
+-	board.SetVar(VarInternalUsage, r.usage)
+-	board.SetVar(VarAnswer, "done")
+-	return board, nil
+-}
+-
+-// --- WithBoard (resume) ---
+-
+-func TestRuntime_WithBoard_SkipsPrepareBoard(t *testing.T) {
+-	board := NewBoard()
+-	board.SetVar(VarRunID, "resumed-run")
+-	board.SetVar(VarPrevMessageCount, 0)
+-	board.AppendChannelMessage(MainChannel, model.NewTextMessage(model.RoleUser, "original"))
+-
+-	rt := NewRuntime()
+-	req := NewTextRequest("resume-input")
+-	res, err := rt.Run(context.Background(), noopAgent{str: noopStrategy{}}, req, WithBoard(board))
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if res.Status != StatusCompleted {
+-		t.Fatalf("status=%s", res.Status)
+-	}
+-	if res.State["run_id"] != "resumed-run" {
+-		t.Fatalf("run_id=%v, want resumed-run", res.State["run_id"])
+-	}
+-}
+-
+-func TestRuntime_WithBoard_OverridesCustomPrepareBoard(t *testing.T) {
+-	prepareCalled := false
+-	rt := NewRuntime(WithPrepareBoard(func(_ context.Context, _ Agent, _ *Request, _ MemorySession, _ []RunOption) (*Board, error) {
+-		prepareCalled = true
+-		return NewBoard(), nil
+-	}))
+-
+-	board := NewBoard()
+-	board.SetVar(VarRunID, "injected")
+-	board.SetVar(VarPrevMessageCount, 0)
+-
+-	req := NewTextRequest("hi")
+-	res, err := rt.Run(context.Background(), noopAgent{str: noopStrategy{}}, req, WithBoard(board))
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if prepareCalled {
+-		t.Fatal("prepareBoardFn should be skipped when WithBoard is used")
+-	}
+-	if res.State["run_id"] != "injected" {
+-		t.Fatalf("run_id=%v, want injected", res.State["run_id"])
+-	}
+-}
+-
+-func TestRuntime_WithBoard_PreservesExistingChannelMessages(t *testing.T) {
+-	board := NewBoard()
+-	board.SetVar(VarRunID, "r1")
+-	board.SetVar(VarPrevMessageCount, 2)
+-	board.SetChannel(MainChannel, []model.Message{
+-		model.NewTextMessage(model.RoleUser, "turn1"),
+-		model.NewTextMessage(model.RoleAssistant, "reply1"),
+-	})
+-
+-	rt := NewRuntime()
+-	req := NewTextRequest("turn2")
+-	res, err := rt.Run(context.Background(), noopAgent{str: echoStrategy2{answer: "reply2"}}, req, WithBoard(board))
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if res.Status != StatusCompleted {
+-		t.Fatalf("status=%s", res.Status)
+-	}
+-	if len(res.Messages) != 1 {
+-		t.Fatalf("expected 1 new message, got %d", len(res.Messages))
+-	}
+-	if res.Messages[0].Content() != "reply2" {
+-		t.Fatalf("message=%q, want reply2", res.Messages[0].Content())
+-	}
+-}
+-
+-func TestRuntime_WithBoard_MemorySessionStillSaves(t *testing.T) {
+-	saved := false
+-	sess := &trackingSaveSession{onSave: func() { saved = true }}
+-	factory := func(_ context.Context, _ Agent) (Memory, error) {
+-		return &staticMem{session: sess}, nil
+-	}
+-	rt := NewRuntime(WithMemoryFactory(factory))
+-
+-	board := NewBoard()
+-	board.SetVar(VarRunID, "resume")
+-	board.SetVar(VarPrevMessageCount, 0)
+-	board.SetChannel(MainChannel, []model.Message{})
+-
+-	req := NewTextRequest("hi")
+-	req.ContextID = "c1"
+-	_, err := rt.Run(context.Background(), noopAgent{str: echoStrategy2{answer: "ok"}}, req, WithBoard(board))
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if !saved {
+-		t.Fatal("memory session should still save after WithBoard resume")
+-	}
+-}
+-
+-type trackingSaveSession struct {
+-	BaseSession
+-	onSave func()
+-}
+-
+-func (s *trackingSaveSession) Load(context.Context) ([]model.Message, error) { return nil, nil }
+-func (s *trackingSaveSession) Vars(context.Context) (map[string]any, error)  { return nil, nil }
+-func (s *trackingSaveSession) Save(_ context.Context, _ []model.Message) error {
+-	s.onSave()
+-	return nil
+-}
+-func (s *trackingSaveSession) Close(_ context.Context, _ error) error { return nil }
+diff --git a/sdk/workflow/strategy_test.go b/sdk/workflow/strategy_test.go
+deleted file mode 100644
+index f1cd02c0..00000000
+--- a/sdk/workflow/strategy_test.go
++++ /dev/null
+@@ -1,115 +0,0 @@
+-package workflow
+-
+-import "testing"
+-
+-// --- Dependencies ---
+-
+-func TestNewDependencies(t *testing.T) {
+-	d := NewDependencies()
+-	if d == nil || d.store == nil {
+-		t.Fatal("expected initialized container")
+-	}
+-}
+-
+-func TestDependencies_SetAndGetDep(t *testing.T) {
+-	d := NewDependencies()
+-	SetDep(d, "key", 42)
+-
+-	v, err := GetDep[int](d, "key")
+-	if err != nil {
+-		t.Fatalf("unexpected error: %v", err)
+-	}
+-	if v != 42 {
+-		t.Fatalf("expected 42, got %d", v)
+-	}
+-}
+-
+-func TestDependencies_Set(t *testing.T) {
+-	d := NewDependencies()
+-	d.Set("k", "v")
+-
+-	v, err := GetDep[string](d, "k")
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if v != "v" {
+-		t.Fatalf("expected 'v', got %q", v)
+-	}
+-}
+-
+-func TestDependencies_Set_NilStore(t *testing.T) {
+-	d := &Dependencies{}
+-	d.Set("k", "v")
+-
+-	v, err := GetDep[string](d, "k")
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if v != "v" {
+-		t.Fatalf("expected 'v', got %q", v)
+-	}
+-}
+-
+-func TestGetDep_Missing(t *testing.T) {
+-	d := NewDependencies()
+-	_, err := GetDep[int](d, "missing")
+-	if err == nil {
+-		t.Fatal("expected error for missing key")
+-	}
+-}
+-
+-func TestGetDep_TypeMismatch(t *testing.T) {
+-	d := NewDependencies()
+-	SetDep(d, "key", "a string")
+-
+-	_, err := GetDep[int](d, "key")
+-	if err == nil {
+-		t.Fatal("expected error for type mismatch")
+-	}
+-}
+-
+-func TestGetDep_NilDependencies(t *testing.T) {
+-	var d *Dependencies
+-	_, err := GetDep[int](d, "key")
+-	if err == nil {
+-		t.Fatal("expected error for nil Dependencies")
+-	}
+-}
+-
+-func TestGetDep_NilStore(t *testing.T) {
+-	d := &Dependencies{}
+-	_, err := GetDep[int](d, "key")
+-	if err == nil {
+-		t.Fatal("expected error for nil store")
+-	}
+-}
+-
+-func TestDependencies_Overwrite(t *testing.T) {
+-	d := NewDependencies()
+-	SetDep(d, "key", 1)
+-	SetDep(d, "key", 2)
+-
+-	v, err := GetDep[int](d, "key")
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if v != 2 {
+-		t.Fatalf("expected overwritten value 2, got %d", v)
+-	}
+-}
+-
+-// --- StrategyCapabilities ---
+-
+-func TestStrategyCapabilities_AnswerVar_Default(t *testing.T) {
+-	c := StrategyCapabilities{}
+-	if c.AnswerVar() != VarAnswer {
+-		t.Fatalf("expected %q, got %q", VarAnswer, c.AnswerVar())
+-	}
+-}
+-
+-func TestStrategyCapabilities_AnswerVar_Custom(t *testing.T) {
+-	c := StrategyCapabilities{AnswerKey: "custom_answer"}
+-	if c.AnswerVar() != "custom_answer" {
+-		t.Fatalf("expected 'custom_answer', got %q", c.AnswerVar())
+-	}
+-}
+diff --git a/sdkx/knowledge/watcher/watcher_test.go b/sdkx/knowledge/watcher/watcher_test.go
+deleted file mode 100644
+index 7102c20d..00000000
+--- a/sdkx/knowledge/watcher/watcher_test.go
++++ /dev/null
+@@ -1,94 +0,0 @@
+-//lint:file-ignore SA1019 watcher itself is Deprecated; the tests
+-// intentionally exercise the deprecated New / Notifier / NewReloader /
+-// FSStore surface to keep the v0.2.x compatibility window honest. A
+-// fresh test suite ships alongside the v0.3.0 EventNotifier rewrite.
+-
+-package watcher_test
+-
+-import (
+-	"context"
+-	"os"
+-	"path/filepath"
+-	"testing"
+-	"time"
+-
+-	"github.com/GizClaw/flowcraft/sdk/knowledge"
+-	"github.com/GizClaw/flowcraft/sdk/workspace"
+-	watcherpkg "github.com/GizClaw/flowcraft/sdkx/knowledge/watcher"
+-)
+-
+-func TestNew_LocalWorkspace(t *testing.T) {
+-	dir := t.TempDir()
+-	ws, err := workspace.NewLocalWorkspace(dir)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	store := knowledge.NewFSStore(ws)
+-	ctx := context.Background()
+-
+-	n, err := watcherpkg.New(ctx, store)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if n == nil {
+-		t.Fatal("expected notifier for local workspace")
+-	}
+-	defer n.Close()
+-
+-	knowledgeDir := filepath.Join(dir, "knowledge")
+-	if _, err := os.Stat(knowledgeDir); os.IsNotExist(err) {
+-		t.Fatal("expected knowledge directory to be created")
+-	}
+-}
+-
+-func TestNew_MemWorkspace(t *testing.T) {
+-	ws := workspace.NewMemWorkspace()
+-	store := knowledge.NewFSStore(ws)
+-
+-	n, err := watcherpkg.New(context.Background(), store)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if n != nil {
+-		t.Fatal("expected nil notifier for mem workspace")
+-	}
+-}
+-
+-func TestReloader_DetectsNewFile(t *testing.T) {
+-	dir := t.TempDir()
+-	ws, err := workspace.NewLocalWorkspace(dir)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	store := knowledge.NewFSStore(ws, knowledge.WithChunkConfig(knowledge.ChunkConfig{ChunkSize: 200, ChunkOverlap: 20}))
+-	ctx, cancel := context.WithCancel(context.Background())
+-	defer cancel()
+-
+-	n, err := watcherpkg.New(ctx, store)
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	r := knowledge.NewReloader(store, n, knowledge.ReloaderOptions{Debounce: 200 * time.Millisecond})
+-	go r.Run(ctx)
+-	defer r.Close()
+-
+-	dsDir := filepath.Join(dir, "knowledge", "testds")
+-	if err := os.MkdirAll(dsDir, 0o755); err != nil {
+-		t.Fatal(err)
+-	}
+-	time.Sleep(100 * time.Millisecond)
+-
+-	if err := os.WriteFile(filepath.Join(dsDir, "doc.md"), []byte("Go programming language"), 0o644); err != nil {
+-		t.Fatal(err)
+-	}
+-
+-	time.Sleep(1500 * time.Millisecond)
+-
+-	results, err := store.Search(ctx, "testds", "Go programming", knowledge.SearchOptions{TopK: 5})
+-	if err != nil {
+-		t.Fatal(err)
+-	}
+-	if len(results) == 0 {
+-		t.Fatal("expected search results after notifier triggered rebuild")
+-	}
+-}
+diff --git a/sdkx/tool/history/tools_test.go b/sdkx/tool/history/tools_test.go
+index 0c2942c5..98d4ba54 100644
+--- a/sdkx/tool/history/tools_test.go
++++ b/sdkx/tool/history/tools_test.go
+@@ -3,7 +3,6 @@ package history_test
+ import (
+ 	"testing"
+ 
+-	sdkhistory "github.com/GizClaw/flowcraft/sdk/history"
+ 	"github.com/GizClaw/flowcraft/sdk/tool"
+ 	historytool "github.com/GizClaw/flowcraft/sdkx/tool/history"
+ )
+@@ -18,18 +17,3 @@ func TestRegisterTools_RegistersBothNames(t *testing.T) {
+ 		}
+ 	}
+ }
+-
+-// TypeAliasInterop verifies the Go type alias contract: a value of
+-// the sdkx ToolDeps must be assignable to sdkhistory.ToolDeps without
+-// conversion (and vice-versa). This guards against an accidental
+-// future switch from `type Foo = sdkhistory.Foo` to `type Foo
+-// sdkhistory.Foo`, which would silently break user code.
+-func TestTypeAliasInterop(t *testing.T) {
+-	var sdkx historytool.ToolDeps
+-	var sdk sdkhistory.ToolDeps = sdkx
+-	_ = sdk
+-
+-	var sdk2 sdkhistory.ToolDeps
+-	var sdkx2 historytool.ToolDeps = sdk2
+-	_ = sdkx2
+-}
+diff --git a/sdkx/tool/kanban/tools_test.go b/sdkx/tool/kanban/tools_test.go
+index 12d6808c..1c433336 100644
+--- a/sdkx/tool/kanban/tools_test.go
++++ b/sdkx/tool/kanban/tools_test.go
+@@ -62,22 +62,15 @@ func TestSubmitTool_FromContext(t *testing.T) {
+ 	}
+ }
+ 
+-// Round-trip with sdk-side WithKanban: contexts installed via the
+-// deprecated sdk helper must be readable by the sdkx KanbanFrom and
+-// vice-versa during the v0.2.x → v0.3.0 transition.
+-func TestContextInterop(t *testing.T) {
++// Round-trip with the sdkx-side WithKanban: contexts installed via
++// [tool.WithKanban] must be readable by [tool.KanbanFrom] (the
++// canonical helpers post-v0.3.0).
++func TestContextRoundTrip(t *testing.T) {
+ 	k := newKanban(t)
+ 
+-	// sdk-installed → sdkx readable
+-	ctx := sdkkanban.WithKanban(context.Background(), k)
++	ctx := tool.WithKanban(context.Background(), k)
+ 	if got := tool.KanbanFrom(ctx); got != k {
+-		t.Errorf("sdk install / sdkx read: got %v want %v", got, k)
+-	}
+-
+-	// sdkx-installed → sdk readable
+-	ctx2 := tool.WithKanban(context.Background(), k)
+-	if got := sdkkanban.KanbanFrom(ctx2); got != k {
+-		t.Errorf("sdkx install / sdk read: got %v want %v", got, k)
++		t.Errorf("KanbanFrom round-trip: got %v want %v", got, k)
+ 	}
+ }
+ 

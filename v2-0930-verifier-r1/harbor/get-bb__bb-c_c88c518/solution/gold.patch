@@ -1,0 +1,1981 @@
+diff --git a/apps/app/src/components/AppToaster.tsx b/apps/app/src/components/AppToaster.tsx
+--- a/apps/app/src/components/AppToaster.tsx
++++ b/apps/app/src/components/AppToaster.tsx
+@@ -1,4 +1,4 @@
+-import { Toaster, type ToasterProps } from "@/components/ui";
++import { Toaster, type ToasterProps } from "@/components/ui/sonner.js";
+ import { usePreferredTheme } from "@/hooks/useTheme";
+ 
+ export function AppToaster(props: ToasterProps) {
+diff --git a/apps/app/src/components/dialogs/HireManagerDialog.tsx b/apps/app/src/components/dialogs/HireManagerDialog.tsx
+--- a/apps/app/src/components/dialogs/HireManagerDialog.tsx
++++ b/apps/app/src/components/dialogs/HireManagerDialog.tsx
+@@ -10,18 +10,11 @@ import type { AvailableModel, Host, ReasoningLevel, Thread } from "@bb/domain";
+ import type { ProjectResponse, SystemProviderInfo } from "@bb/server-contract";
+ import { findLocalPathProjectSourceForHost } from "@bb/domain";
+ import type { HireProjectManagerRequest } from "@/hooks/mutations/project-mutations";
+-import { DetailCard, DetailRow } from "@/components/ui";
+-import {
+-  Dialog,
+-  DialogContent,
+-  DialogDescription,
+-  DialogFooter,
+-  DialogHeader,
+-  DialogTitle,
+-} from "@/components/ui";
+-import { Button } from "@/components/ui";
+-import { FormError } from "@/components/ui";
+-import { Input } from "@/components/ui";
++import { DetailCard, DetailRow } from "@/components/ui/detail-card.js";
++import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
++import { Button } from "@/components/ui/button.js";
++import { FormError } from "@/components/ui/form-error.js";
++import { Input } from "@/components/ui/input.js";
+ import { useHireProjectManager } from "@/hooks/mutations/project-mutations";
+ import {
+   useAvailableModels,
+diff --git a/apps/app/src/components/dialogs/HostDeleteDialog.tsx b/apps/app/src/components/dialogs/HostDeleteDialog.tsx
+--- a/apps/app/src/components/dialogs/HostDeleteDialog.tsx
++++ b/apps/app/src/components/dialogs/HostDeleteDialog.tsx
+@@ -1,12 +1,5 @@
+-import { Button } from "@/components/ui";
+-import {
+-  Dialog,
+-  DialogContent,
+-  DialogDescription,
+-  DialogFooter,
+-  DialogHeader,
+-  DialogTitle,
+-} from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
+ 
+ export interface HostDeleteDialogTarget {
+   id: string;
+diff --git a/apps/app/src/components/dialogs/HostRenameDialog.tsx b/apps/app/src/components/dialogs/HostRenameDialog.tsx
+--- a/apps/app/src/components/dialogs/HostRenameDialog.tsx
++++ b/apps/app/src/components/dialogs/HostRenameDialog.tsx
+@@ -1,14 +1,7 @@
+ import { useId, useState, type FormEvent } from "react";
+-import { Button } from "@/components/ui";
+-import {
+-  Dialog,
+-  DialogContent,
+-  DialogDescription,
+-  DialogFooter,
+-  DialogHeader,
+-  DialogTitle,
+-} from "@/components/ui";
+-import { Input } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
++import { Input } from "@/components/ui/input.js";
+ 
+ export interface HostRenameDialogTarget {
+   id: string;
+diff --git a/apps/app/src/components/dialogs/ProjectConnectGithubDialog.tsx b/apps/app/src/components/dialogs/ProjectConnectGithubDialog.tsx
+--- a/apps/app/src/components/dialogs/ProjectConnectGithubDialog.tsx
++++ b/apps/app/src/components/dialogs/ProjectConnectGithubDialog.tsx
+@@ -1,6 +1,7 @@
+ import type { GithubRepoInfo } from "@bb/server-contract";
+-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Icon } from "@/components/ui";
+-import { Input } from "@/components/ui";
++import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
++import { Icon } from "@/components/ui/icon.js";
++import { Input } from "@/components/ui/input.js";
+ 
+ interface ProjectConnectGithubDialogProps {
+   open: boolean;
+diff --git a/apps/app/src/components/dialogs/ProjectDeleteDialog.tsx b/apps/app/src/components/dialogs/ProjectDeleteDialog.tsx
+--- a/apps/app/src/components/dialogs/ProjectDeleteDialog.tsx
++++ b/apps/app/src/components/dialogs/ProjectDeleteDialog.tsx
+@@ -1,12 +1,5 @@
+-import { Button } from "@/components/ui";
+-import {
+-  Dialog,
+-  DialogContent,
+-  DialogDescription,
+-  DialogFooter,
+-  DialogHeader,
+-  DialogTitle,
+-} from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
+ 
+ export interface ProjectDeleteDialogTarget {
+   id: string;
+diff --git a/apps/app/src/components/dialogs/ProjectPathDialog.tsx b/apps/app/src/components/dialogs/ProjectPathDialog.tsx
+--- a/apps/app/src/components/dialogs/ProjectPathDialog.tsx
++++ b/apps/app/src/components/dialogs/ProjectPathDialog.tsx
+@@ -5,16 +5,9 @@ import {
+   normalizeProjectPathInput,
+ } from "@bb/domain";
+ import type { HostPlatform } from "@bb/host-daemon-contract";
+-import { Button } from "@/components/ui";
+-import {
+-  Dialog,
+-  DialogContent,
+-  DialogDescription,
+-  DialogFooter,
+-  DialogHeader,
+-  DialogTitle,
+-} from "@/components/ui";
+-import { Input } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
++import { Input } from "@/components/ui/input.js";
+ 
+ export type ProjectPathDialogTarget =
+   | {
+diff --git a/apps/app/src/components/dialogs/ProjectRenameDialog.tsx b/apps/app/src/components/dialogs/ProjectRenameDialog.tsx
+--- a/apps/app/src/components/dialogs/ProjectRenameDialog.tsx
++++ b/apps/app/src/components/dialogs/ProjectRenameDialog.tsx
+@@ -1,14 +1,7 @@
+ import { useId, useState, type FormEvent } from "react";
+-import { Button } from "@/components/ui";
+-import {
+-  Dialog,
+-  DialogContent,
+-  DialogDescription,
+-  DialogFooter,
+-  DialogHeader,
+-  DialogTitle,
+-} from "@/components/ui";
+-import { Input } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
++import { Input } from "@/components/ui/input.js";
+ 
+ export interface ProjectRenameDialogTarget {
+   id: string;
+diff --git a/apps/app/src/components/dialogs/ProjectSourceDeleteDialog.tsx b/apps/app/src/components/dialogs/ProjectSourceDeleteDialog.tsx
+--- a/apps/app/src/components/dialogs/ProjectSourceDeleteDialog.tsx
++++ b/apps/app/src/components/dialogs/ProjectSourceDeleteDialog.tsx
+@@ -1,12 +1,5 @@
+-import { Button } from "@/components/ui";
+-import {
+-  Dialog,
+-  DialogContent,
+-  DialogDescription,
+-  DialogFooter,
+-  DialogHeader,
+-  DialogTitle,
+-} from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
+ 
+ export interface ProjectSourceDeleteDialogTarget {
+   id: string;
+diff --git a/apps/app/src/components/dialogs/ThreadArchiveDialog.tsx b/apps/app/src/components/dialogs/ThreadArchiveDialog.tsx
+--- a/apps/app/src/components/dialogs/ThreadArchiveDialog.tsx
++++ b/apps/app/src/components/dialogs/ThreadArchiveDialog.tsx
+@@ -1,13 +1,6 @@
+ import type { Thread } from "@bb/domain";
+-import { Button } from "@/components/ui";
+-import {
+-  Dialog,
+-  DialogContent,
+-  DialogDescription,
+-  DialogFooter,
+-  DialogHeader,
+-  DialogTitle,
+-} from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
+ import { threadTypeLabel } from "@/lib/thread-title";
+ 
+ export interface ThreadDirtyWorkspaceWarning {
+diff --git a/apps/app/src/components/dialogs/ThreadDeleteDialog.tsx b/apps/app/src/components/dialogs/ThreadDeleteDialog.tsx
+--- a/apps/app/src/components/dialogs/ThreadDeleteDialog.tsx
++++ b/apps/app/src/components/dialogs/ThreadDeleteDialog.tsx
+@@ -1,13 +1,6 @@
+ import type { Thread } from "@bb/domain";
+-import { Button } from "@/components/ui";
+-import {
+-  Dialog,
+-  DialogContent,
+-  DialogDescription,
+-  DialogFooter,
+-  DialogHeader,
+-  DialogTitle,
+-} from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
+ import { threadTypeLabel } from "@/lib/thread-title";
+ import type { ThreadDirtyWorkspaceWarning } from "./ThreadArchiveDialog";
+ 
+diff --git a/apps/app/src/components/dialogs/ThreadEnvironmentPromotionDialog.tsx b/apps/app/src/components/dialogs/ThreadEnvironmentPromotionDialog.tsx
+--- a/apps/app/src/components/dialogs/ThreadEnvironmentPromotionDialog.tsx
++++ b/apps/app/src/components/dialogs/ThreadEnvironmentPromotionDialog.tsx
+@@ -1,6 +1,10 @@
+ import { useState, type FormEvent } from "react";
+ import { assertNever } from "@bb/core-ui";
+-import { Button, DetailCard, DetailRow, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, FormError, Icon } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { DetailCard, DetailRow } from "@/components/ui/detail-card.js";
++import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
++import { FormError } from "@/components/ui/form-error.js";
++import { Icon } from "@/components/ui/icon.js";
+ import type { EnvironmentPromotionUnavailableReason } from "@bb/server-contract";
+ import { getMutationErrorMessage } from "@/lib/mutation-errors";
+ import { PROMOTION_UNAVAILABLE_COPY } from "@/lib/promotion-copy";
+diff --git a/apps/app/src/components/dialogs/ThreadGitActionDialog.tsx b/apps/app/src/components/dialogs/ThreadGitActionDialog.tsx
+--- a/apps/app/src/components/dialogs/ThreadGitActionDialog.tsx
++++ b/apps/app/src/components/dialogs/ThreadGitActionDialog.tsx
+@@ -1,19 +1,12 @@
+ import { useMemo, useState, type FormEvent } from "react";
+ import { assertNever } from "@bb/core-ui";
+ import type { ThreadType, WorkspaceStatus } from "@bb/domain";
+-import { DetailCard, DetailRow } from "@/components/ui";
++import { DetailCard, DetailRow } from "@/components/ui/detail-card.js";
+ import type { ThreadGitStatusDisplay } from "@/components/workspace/workspace-status";
+ import { WorkspaceChangesList } from "@/components/thread/WorkspaceChangesList";
+-import { FormError } from "@/components/ui";
+-import { Button } from "@/components/ui";
+-import {
+-  Dialog,
+-  DialogContent,
+-  DialogDescription,
+-  DialogFooter,
+-  DialogHeader,
+-  DialogTitle,
+-} from "@/components/ui";
++import { FormError } from "@/components/ui/form-error.js";
++import { Button } from "@/components/ui/button.js";
++import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
+ import {
+   getMergeBaseBranchCandidates,
+   BranchPicker,
+diff --git a/apps/app/src/components/dialogs/ThreadRenameDialog.tsx b/apps/app/src/components/dialogs/ThreadRenameDialog.tsx
+--- a/apps/app/src/components/dialogs/ThreadRenameDialog.tsx
++++ b/apps/app/src/components/dialogs/ThreadRenameDialog.tsx
+@@ -1,15 +1,8 @@
+ import type { ThreadType } from "@bb/domain";
+ import { useId, useState, type FormEvent } from "react";
+-import { Button } from "@/components/ui";
+-import {
+-  Dialog,
+-  DialogContent,
+-  DialogDescription,
+-  DialogFooter,
+-  DialogHeader,
+-  DialogTitle,
+-} from "@/components/ui";
+-import { Input } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog.js";
++import { Input } from "@/components/ui/input.js";
+ import { threadTypeLabel } from "@/lib/thread-title";
+ 
+ export interface ThreadRenameDialogTarget {
+diff --git a/apps/app/src/components/git-diff/GitDiffCard.tsx b/apps/app/src/components/git-diff/GitDiffCard.tsx
+--- a/apps/app/src/components/git-diff/GitDiffCard.tsx
++++ b/apps/app/src/components/git-diff/GitDiffCard.tsx
+@@ -9,7 +9,12 @@ import {
+ import type { FileContents } from "@pierre/diffs";
+ import { FileDiff as DiffView } from "@pierre/diffs/react";
+ import { useIntersectionObserver } from "usehooks-ts";
+-import { CopyButton, DiffStatsTally, FilePathLink, Icon, Skeleton, TruncateStart } from "@/components/ui";
++import { CopyButton } from "@/components/ui/copy-button.js";
++import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
++import { FilePathLink } from "@/components/ui/file-path-link.js";
++import { Icon } from "@/components/ui/icon.js";
++import { Skeleton } from "@/components/ui/skeleton.js";
++import { TruncateStart } from "@/components/ui/truncate-start.js";
+ import { cn } from "@/lib/utils";
+ import {
+   formatGitDiffFileLabel,
+diff --git a/apps/app/src/components/layout/AppLayout.tsx b/apps/app/src/components/layout/AppLayout.tsx
+--- a/apps/app/src/components/layout/AppLayout.tsx
++++ b/apps/app/src/components/layout/AppLayout.tsx
+@@ -6,7 +6,8 @@ import { atomWithStorage } from "jotai/utils";
+ import { Link, useLocation, useNavigate } from "react-router-dom";
+ import type { Thread } from "@bb/domain";
+ import type { ProjectResponse } from "@bb/server-contract";
+-import { Icon, SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
++import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar.js";
+ import { AppSidebar } from "@/components/sidebar/AppSidebar";
+ import { AppPageHeader, HEADER_ICON_BUTTON_CLASS } from "./AppPageHeader";
+ import { HIRE_PROJECT_MANAGER_MUTATION_KEY } from "@/hooks/mutations/project-mutations";
+diff --git a/apps/app/src/components/layout/AppPageHeader.tsx b/apps/app/src/components/layout/AppPageHeader.tsx
+--- a/apps/app/src/components/layout/AppPageHeader.tsx
++++ b/apps/app/src/components/layout/AppPageHeader.tsx
+@@ -1,6 +1,6 @@
+ import type { ReactNode } from "react";
+-import { SidebarTrigger } from "@/components/ui";
+-import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@/components/ui";
++import { SidebarTrigger } from "@/components/ui/sidebar.js";
++import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+ import { cn } from "@/lib/utils";
+ 
+ /**
+diff --git a/apps/app/src/components/pickers/BranchPicker.tsx b/apps/app/src/components/pickers/BranchPicker.tsx
+--- a/apps/app/src/components/pickers/BranchPicker.tsx
++++ b/apps/app/src/components/pickers/BranchPicker.tsx
+@@ -1,12 +1,9 @@
+ import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+-import { Button, Icon } from "@/components/ui";
+-import {
+-  COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+-  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+-  COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+-} from "@/components/ui";
+-import { Input } from "@/components/ui";
+-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Icon } from "@/components/ui/icon.js";
++import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS, COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS, COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
++import { Input } from "@/components/ui/input.js";
++import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover.js";
+ import {
+   OPTION_BASE_CLASS_NAME,
+   OPTION_CONTENT_CLASS_NAME,
+diff --git a/apps/app/src/components/pickers/EnvironmentPicker.tsx b/apps/app/src/components/pickers/EnvironmentPicker.tsx
+--- a/apps/app/src/components/pickers/EnvironmentPicker.tsx
++++ b/apps/app/src/components/pickers/EnvironmentPicker.tsx
+@@ -2,25 +2,15 @@ import { useAtomValue } from "jotai";
+ import { useMemo } from "react";
+ import { useNavigate } from "react-router-dom";
+ import type { Host, ProjectSource, SandboxBackendInfo } from "@bb/domain";
+-import { Icon, type IconName, LocalhostBadge } from "@/components/ui";
++import { Icon, type IconName } from "@/components/ui/icon.js";
++import { LocalhostBadge } from "@/components/ui/localhost-badge.js";
+ import {
+   findLocalPathProjectSourceForHost,
+   isGitHubRepoProjectSource,
+ } from "@bb/domain";
+-import { Button } from "@/components/ui";
+-import {
+-  DropdownMenu,
+-  DropdownMenuContent,
+-  DropdownMenuGroup,
+-  DropdownMenuItem,
+-  DropdownMenuLabel,
+-  DropdownMenuTrigger,
+-} from "@/components/ui";
+-import {
+-  COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+-  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+-  COARSE_POINTER_ICON_SIZE_CLASS,
+-} from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu.js";
++import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS, COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS, COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+ import { useHostDaemon } from "@/hooks/useHostDaemon";
+ import { useSandboxBackends } from "@/hooks/queries/system-queries";
+ import { useEffectiveHosts } from "@/hooks/queries/effective-hosts";
+diff --git a/apps/app/src/components/pickers/HostPicker.tsx b/apps/app/src/components/pickers/HostPicker.tsx
+--- a/apps/app/src/components/pickers/HostPicker.tsx
++++ b/apps/app/src/components/pickers/HostPicker.tsx
+@@ -1,13 +1,9 @@
+ import type { Host } from "@bb/domain";
+-import { Icon, LocalhostBadge } from "@/components/ui";
+-import { Button } from "@/components/ui";
+-import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@/components/ui";
+-import {
+-  DropdownMenu,
+-  DropdownMenuContent,
+-  DropdownMenuItem,
+-  DropdownMenuTrigger,
+-} from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
++import { LocalhostBadge } from "@/components/ui/localhost-badge.js";
++import { Button } from "@/components/ui/button.js";
++import { COARSE_POINTER_ICON_SIZE_SHRINK_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
++import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu.js";
+ import { HostStatusBadge } from "@/components/HostStatusIndicator";
+ import { getHostIconName } from "@/lib/host-display";
+ import { cn } from "@/lib/utils";
+diff --git a/apps/app/src/components/pickers/OptionPicker.tsx b/apps/app/src/components/pickers/OptionPicker.tsx
+--- a/apps/app/src/components/pickers/OptionPicker.tsx
++++ b/apps/app/src/components/pickers/OptionPicker.tsx
+@@ -1,13 +1,8 @@
+ import type { ComponentType, ReactNode } from "react";
+-import { Button, Icon } from "@/components/ui";
+-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui";
+-import {
+-  DropdownMenu,
+-  DropdownMenuContent,
+-  DropdownMenuItem,
+-  DropdownMenuLabel,
+-  DropdownMenuTrigger,
+-} from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Icon } from "@/components/ui/icon.js";
++import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
++import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu.js";
+ import { cn } from "@/lib/utils";
+ 
+ export const OPTION_BASE_CLASS_NAME =
+diff --git a/apps/app/src/components/pickers/ProviderModelPicker.tsx b/apps/app/src/components/pickers/ProviderModelPicker.tsx
+--- a/apps/app/src/components/pickers/ProviderModelPicker.tsx
++++ b/apps/app/src/components/pickers/ProviderModelPicker.tsx
+@@ -1,16 +1,12 @@
+ import { useCallback, useMemo, useState } from "react";
+-import { Button, Icon } from "@/components/ui";
+-import {
+-  COARSE_POINTER_ICON_SIZE_CLASS,
+-  COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+-  COARSE_POINTER_PROVIDER_TAB_SIZE_CLASS,
+-  COARSE_POINTER_TEXT_SM_CLASS,
+-} from "@/components/ui";
+-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui";
+-import { Switch } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Icon } from "@/components/ui/icon.js";
++import { COARSE_POINTER_ICON_SIZE_CLASS, COARSE_POINTER_ICON_SIZE_SHRINK_CLASS, COARSE_POINTER_PROVIDER_TAB_SIZE_CLASS, COARSE_POINTER_TEXT_SM_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
++import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover.js";
++import { Switch } from "@/components/ui/switch.js";
+ import { cn } from "@/lib/utils";
+ import { useAvailableModels } from "@/hooks/queries/system-queries";
+-import { useIsCompactViewport } from "@/components/ui";
++import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
+ import {
+   OPTION_BASE_CLASS_NAME,
+   OPTION_INTERACTIVE_CLASS_NAME,
+diff --git a/apps/app/src/components/project/ProjectActionsMenu.tsx b/apps/app/src/components/project/ProjectActionsMenu.tsx
+--- a/apps/app/src/components/project/ProjectActionsMenu.tsx
++++ b/apps/app/src/components/project/ProjectActionsMenu.tsx
+@@ -1,18 +1,11 @@
+ import { findLocalPathProjectSourceForHost } from "@bb/domain";
+ import type { ProjectResponse } from "@bb/server-contract";
+ import type { ReactNode } from "react";
+-import { Button, Icon } from "@/components/ui";
+-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui";
+-import {
+-  ContextMenu,
+-  ContextMenuContent,
+-  ContextMenuItem,
+-  ContextMenuTrigger,
+-  DropdownMenu,
+-  DropdownMenuContent,
+-  DropdownMenuItem,
+-  DropdownMenuTrigger,
+-} from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Icon } from "@/components/ui/icon.js";
++import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
++import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "@/components/ui/context-menu.js";
++import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu.js";
+ import { useHostDaemon } from "@/hooks/useHostDaemon";
+ import { cn } from "@/lib/utils";
+ import { useProjectActions } from "./ProjectActionsProvider";
+diff --git a/apps/app/src/components/promptbox/AttachmentPreview.tsx b/apps/app/src/components/promptbox/AttachmentPreview.tsx
+--- a/apps/app/src/components/promptbox/AttachmentPreview.tsx
++++ b/apps/app/src/components/promptbox/AttachmentPreview.tsx
+@@ -1,5 +1,6 @@
+ import { useEffect } from "react";
+-import { getWrappedImageIndex, Icon, ImageLightbox } from "@/components/ui";
++import { getWrappedImageIndex, ImageLightbox } from "@/components/ui/image-lightbox.js";
++import { Icon } from "@/components/ui/icon.js";
+ import type { PromptDraftAttachment } from "@/lib/prompt-draft";
+ import { toUserAttachmentImageSrc } from "@/lib/user-attachment-images";
+ 
+diff --git a/apps/app/src/components/promptbox/FollowUpPromptBox.tsx b/apps/app/src/components/promptbox/FollowUpPromptBox.tsx
+--- a/apps/app/src/components/promptbox/FollowUpPromptBox.tsx
++++ b/apps/app/src/components/promptbox/FollowUpPromptBox.tsx
+@@ -20,7 +20,7 @@ import {
+   type ExecutionControlsProps,
+   type ExecutionPermissionConfig,
+ } from "@/components/promptbox/ExecutionControls";
+-import { useBottomAnchoredScroll } from "@/components/ui";
++import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
+ import { ThreadTimelineScrollToBottomButton } from "@/views/thread-detail/ThreadTimelineScrollToBottomButton";
+ import { ThreadContextWindowIndicator } from "@/components/thread/timeline";
+ import { THREAD_PROMPT_CONTEXT_BANNER_ROW_HEIGHT } from "@/components/promptbox/banner/ThreadPromptContextBanner";
+diff --git a/apps/app/src/components/promptbox/PromptBoxInternal.tsx b/apps/app/src/components/promptbox/PromptBoxInternal.tsx
+--- a/apps/app/src/components/promptbox/PromptBoxInternal.tsx
++++ b/apps/app/src/components/promptbox/PromptBoxInternal.tsx
+@@ -18,13 +18,9 @@ import type {
+   MentionMenuState,
+   PromptMentionSuggestion,
+ } from "@/components/promptbox/mentions/types";
+-import { Button, Icon } from "@/components/ui";
+-import {
+-  COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+-  COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS,
+-  COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
+-  COARSE_POINTER_TEXT_BASE_CLASS,
+-} from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Icon } from "@/components/ui/icon.js";
++import { COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS, COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS, COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS, COARSE_POINTER_TEXT_BASE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+ import { useAutoGrow } from "@/hooks/useAutoGrow";
+ import { createJsonLocalStorage } from "@/lib/browser-storage";
+ import {
+diff --git a/apps/app/src/components/promptbox/ThreadEnvironmentSummary.tsx b/apps/app/src/components/promptbox/ThreadEnvironmentSummary.tsx
+--- a/apps/app/src/components/promptbox/ThreadEnvironmentSummary.tsx
++++ b/apps/app/src/components/promptbox/ThreadEnvironmentSummary.tsx
+@@ -1,7 +1,7 @@
+ import { HostStatusBadge } from "@/components/HostStatusIndicator";
+ import { OptionDisplay } from "@/components/pickers/OptionPicker";
+ import { copyToClipboardWithToast } from "@/lib/clipboard";
+-import { Icon, type IconName } from "@/components/ui";
++import { Icon, type IconName } from "@/components/ui/icon.js";
+ 
+ export interface ThreadEnvironmentSummaryProps {
+   /** Mode label (e.g. "Working locally" / "Worktree" / "E2B Sandbox"). Never truncates. */
+diff --git a/apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx b/apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx
+--- a/apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx
++++ b/apps/app/src/components/promptbox/banner/QueuedMessagesList.tsx
+@@ -1,5 +1,6 @@
+ import type { ThreadQueuedMessage } from "@bb/domain";
+-import { Button, Icon } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Icon } from "@/components/ui/icon.js";
+ import { PromptStackCard } from "@/components/promptbox/banner/PromptStackCard";
+ import {
+   countQueuedMessageAttachments,
+diff --git a/apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx b/apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx
+--- a/apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx
++++ b/apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx
+@@ -19,7 +19,7 @@ import {
+   type WorkspaceChangedFilesSection,
+ } from "@/components/workspace/workspace-change-summary";
+ import { cn } from "@/lib/utils";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ 
+ export interface ContextBannerMergeBaseConfig {
+   branch: string;
+diff --git a/apps/app/src/components/promptbox/mentions/MentionMenu.tsx b/apps/app/src/components/promptbox/mentions/MentionMenu.tsx
+--- a/apps/app/src/components/promptbox/mentions/MentionMenu.tsx
++++ b/apps/app/src/components/promptbox/mentions/MentionMenu.tsx
+@@ -1,5 +1,7 @@
+ import { useEffect, useMemo, useRef } from "react";
+-import { Icon, Pill, TruncateStart } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
++import { Pill } from "@/components/ui/pill.js";
++import { TruncateStart } from "@/components/ui/truncate-start.js";
+ import { cn } from "@/lib/utils";
+ import type {
+   MentionMenuState,
+diff --git a/apps/app/src/components/secondary-panel/FilePreview.tsx b/apps/app/src/components/secondary-panel/FilePreview.tsx
+--- a/apps/app/src/components/secondary-panel/FilePreview.tsx
++++ b/apps/app/src/components/secondary-panel/FilePreview.tsx
+@@ -1,7 +1,9 @@
+ import { type CSSProperties, useEffect, useMemo, useRef } from "react";
+ import { File as PierreFile } from "@pierre/diffs/react";
+ import type { SelectedLineRange, SupportedLanguages } from "@pierre/diffs";
+-import { Icon, MarkdownPreview, Skeleton } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
++import { MarkdownPreview } from "@/components/ui/markdown-preview.js";
++import { Skeleton } from "@/components/ui/skeleton.js";
+ import { usePreferredTheme } from "@/hooks/useTheme";
+ 
+ export interface FilePreviewFile {
+diff --git a/apps/app/src/components/secondary-panel/GitDiffCard.stories.tsx b/apps/app/src/components/secondary-panel/GitDiffCard.stories.tsx
+--- a/apps/app/src/components/secondary-panel/GitDiffCard.stories.tsx
++++ b/apps/app/src/components/secondary-panel/GitDiffCard.stories.tsx
+@@ -51,7 +51,8 @@ const PROJECT_ROW_TSX = `import {
+   memo,
+   useMemo,
+ } from "react";
+-import { Icon, Sidebar, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
++import { Sidebar, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton } from "@/components/ui/sidebar.js";
+ import { useThreadList } from "@/hooks/queries/thread-queries";
+ import type { Project } from "@bb/domain";
+ import { ThreadRow } from "./ThreadRow";
+@@ -147,12 +148,9 @@ ProjectRow.displayName = "ProjectRow";
+ `;
+ 
+ const THREAD_ROW_TSX = `import { memo, useMemo } from "react";
+-import {
+-  Pill,
+-  SidebarMenuButton,
+-  SidebarMenuItem,
+-  StatusPill,
+-} from "@/components/ui";
++import { Pill } from "@/components/ui/pill.js";
++import { SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar.js";
++import { StatusPill } from "@/components/ui/status-pill.js";
+ import { cn } from "@/lib/utils";
+ import { getEnvironmentWorkspaceDisplayIconName } from "@/lib/environment-workspace-display";
+ import type { ThreadListEntry } from "@bb/server-contract";
+diff --git a/apps/app/src/components/secondary-panel/GitDiffToolbar.tsx b/apps/app/src/components/secondary-panel/GitDiffToolbar.tsx
+--- a/apps/app/src/components/secondary-panel/GitDiffToolbar.tsx
++++ b/apps/app/src/components/secondary-panel/GitDiffToolbar.tsx
+@@ -1,4 +1,7 @@
+-import { Button, COARSE_POINTER_COMPACT_ICON_SIZE_CLASS, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Icon } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { COARSE_POINTER_COMPACT_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
++import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu.js";
++import { Icon } from "@/components/ui/icon.js";
+ import {
+   formatChangeSummary,
+   renderChangeSummary,
+diff --git a/apps/app/src/components/secondary-panel/ManagerThreadStorageBrowser.stories.tsx b/apps/app/src/components/secondary-panel/ManagerThreadStorageBrowser.stories.tsx
+--- a/apps/app/src/components/secondary-panel/ManagerThreadStorageBrowser.stories.tsx
++++ b/apps/app/src/components/secondary-panel/ManagerThreadStorageBrowser.stories.tsx
+@@ -1,6 +1,6 @@
+ import { useState, type ReactNode } from "react";
+ import type { WorkspaceFile } from "@bb/server-contract";
+-import { DetailCard } from "@/components/ui";
++import { DetailCard } from "@/components/ui/detail-card.js";
+ import { ManagerWorkspaceRow } from "./ThreadMetadataContent";
+ import { useManagerStorageBrowser } from "./useManagerStorageBrowser";
+ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+diff --git a/apps/app/src/components/secondary-panel/ManagerThreadStorageBrowser.tsx b/apps/app/src/components/secondary-panel/ManagerThreadStorageBrowser.tsx
+--- a/apps/app/src/components/secondary-panel/ManagerThreadStorageBrowser.tsx
++++ b/apps/app/src/components/secondary-panel/ManagerThreadStorageBrowser.tsx
+@@ -1,6 +1,9 @@
+ import { useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from "react";
+ import { FileTree } from "@pierre/trees/react";
+-import { Button, EmptyState, Icon, Input } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { EmptyState } from "@/components/ui/empty-state.js";
++import { Icon } from "@/components/ui/icon.js";
++import { Input } from "@/components/ui/input.js";
+ import { usePreferredTheme } from "@/hooks/useTheme";
+ import type { ManagerStorageBrowserController } from "./useManagerStorageBrowser";
+ 
+diff --git a/apps/app/src/components/secondary-panel/ThreadMetadataContent.tsx b/apps/app/src/components/secondary-panel/ThreadMetadataContent.tsx
+--- a/apps/app/src/components/secondary-panel/ThreadMetadataContent.tsx
++++ b/apps/app/src/components/secondary-panel/ThreadMetadataContent.tsx
+@@ -13,7 +13,12 @@ import type {
+ import { formatEnvironmentDisplay } from "@bb/core-ui";
+ import { cn } from "@/lib/utils";
+ import { HostStatusBadge } from "@/components/HostStatusIndicator";
+-import { Button, COARSE_POINTER_ICON_SIZE_CLASS, DetailCard, DetailRow, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger, Icon, LocalhostBadge } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
++import { DetailCard, DetailRow } from "@/components/ui/detail-card.js";
++import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu.js";
++import { Icon } from "@/components/ui/icon.js";
++import { LocalhostBadge } from "@/components/ui/localhost-badge.js";
+ import {
+   BranchPicker,
+   getMergeBaseBranchCandidates,
+diff --git a/apps/app/src/components/secondary-panel/ThreadSecondaryPanel.tsx b/apps/app/src/components/secondary-panel/ThreadSecondaryPanel.tsx
+--- a/apps/app/src/components/secondary-panel/ThreadSecondaryPanel.tsx
++++ b/apps/app/src/components/secondary-panel/ThreadSecondaryPanel.tsx
+@@ -1,8 +1,9 @@
+ import { type ReactNode, useMemo } from "react";
+ import { useAtomValue } from "jotai";
+-import { Icon, Skeleton } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
++import { Skeleton } from "@/components/ui/skeleton.js";
+ import { Panel, PanelResizeHandle } from "react-resizable-panels";
+-import { Button } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
+ import { cn } from "@/lib/utils";
+ import { type ThreadSecondaryPanel as ThreadSecondaryPanelTab } from "@/lib/thread-secondary-panel";
+ import {
+diff --git a/apps/app/src/components/settings/CloudAuthSettingsSection.tsx b/apps/app/src/components/settings/CloudAuthSettingsSection.tsx
+--- a/apps/app/src/components/settings/CloudAuthSettingsSection.tsx
++++ b/apps/app/src/components/settings/CloudAuthSettingsSection.tsx
+@@ -1,8 +1,8 @@
+ import type { CloudAuthProviderId } from "@bb/agent-providers";
+ import type { CloudAuthConnection } from "@bb/server-contract";
+-import { StatusPill, type StatusPillVariant } from "@/components/ui";
+-import { Button } from "@/components/ui";
+-import { SettingsCard, SettingsRowList } from "@/components/ui";
++import { StatusPill, type StatusPillVariant } from "@/components/ui/status-pill.js";
++import { Button } from "@/components/ui/button.js";
++import { SettingsCard, SettingsRowList } from "@/components/ui/settings-section.js";
+ import { CONNECTED_DOT_CLASS } from "@/components/settings/constants";
+ 
+ const CLOUD_AUTH_STATUS_DISPLAY: Record<
+diff --git a/apps/app/src/components/settings/SandboxEnvVarsSection.tsx b/apps/app/src/components/settings/SandboxEnvVarsSection.tsx
+--- a/apps/app/src/components/settings/SandboxEnvVarsSection.tsx
++++ b/apps/app/src/components/settings/SandboxEnvVarsSection.tsx
+@@ -1,9 +1,9 @@
+ import { useEffect, useMemo, useRef, useState } from "react";
+ import type { SandboxEnvVar } from "@bb/server-contract";
+ import { sandboxEnvVarNameSchema } from "@bb/server-contract";
+-import { Button } from "@/components/ui";
+-import { Input } from "@/components/ui";
+-import { SettingsCard } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Input } from "@/components/ui/input.js";
++import { SettingsCard } from "@/components/ui/settings-section.js";
+ import { looksLikeEnvContent, parseEnvContent } from "@/lib/parse-env";
+ 
+ export interface EnvVarEntry {
+diff --git a/apps/app/src/components/sidebar/AppSidebar.tsx b/apps/app/src/components/sidebar/AppSidebar.tsx
+--- a/apps/app/src/components/sidebar/AppSidebar.tsx
++++ b/apps/app/src/components/sidebar/AppSidebar.tsx
+@@ -1,17 +1,9 @@
+ import { useCallback, useRef } from "react";
+ import { cn } from "@/lib/utils";
+ import { Link, useNavigate } from "react-router-dom";
+-import {
+-  Icon,
+-  Sidebar,
+-  SidebarContent,
+-  SidebarFooter,
+-  SidebarMenu,
+-  SidebarMenuButton,
+-  SidebarMenuItem,
+-  useSidebar,
+-} from "@/components/ui";
+-import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
++import { Sidebar, SidebarContent, SidebarFooter, SidebarMenu, SidebarMenuButton, SidebarMenuItem, useSidebar } from "@/components/ui/sidebar.js";
++import { COARSE_POINTER_CHILD_ICON_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+ import { ProjectList } from "./ProjectList";
+ import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
+ 
+diff --git a/apps/app/src/components/sidebar/ProjectList.tsx b/apps/app/src/components/sidebar/ProjectList.tsx
+--- a/apps/app/src/components/sidebar/ProjectList.tsx
++++ b/apps/app/src/components/sidebar/ProjectList.tsx
+@@ -32,21 +32,11 @@ import { useServerConnectionState } from "@/hooks/useServerConnectionState";
+ import type { WebSocketConnectionState } from "@/lib/ws";
+ import * as api from "@/lib/api";
+ import { cn } from "@/lib/utils";
+-import { Button, EmptyState, Icon } from "@/components/ui";
+-import {
+-  SidebarGroupContent,
+-  SidebarMenu,
+-  SidebarMenuItem,
+-  SidebarMenuSkeleton,
+-  SidebarStickyStack,
+-  SidebarStickyTier,
+-} from "@/components/ui";
+-import {
+-  COARSE_POINTER_ADD_PROJECT_BUTTON_SIZE_CLASS,
+-  COARSE_POINTER_ICON_SIZE_CLASS,
+-  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+-  COARSE_POINTER_ROW_HEIGHT_CLASS,
+-} from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { EmptyState } from "@/components/ui/empty-state.js";
++import { Icon } from "@/components/ui/icon.js";
++import { SidebarGroupContent, SidebarMenu, SidebarMenuItem, SidebarMenuSkeleton, SidebarStickyStack, SidebarStickyTier } from "@/components/ui/sidebar.js";
++import { COARSE_POINTER_ADD_PROJECT_BUTTON_SIZE_CLASS, COARSE_POINTER_ICON_SIZE_CLASS, COARSE_POINTER_ROW_ACTION_SIZE_CLASS, COARSE_POINTER_ROW_HEIGHT_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+ import { ProjectRow } from "./ProjectRow";
+ import type { ProjectThreadListState } from "./ProjectRow";
+ import {
+diff --git a/apps/app/src/components/sidebar/ProjectRow.stories.tsx b/apps/app/src/components/sidebar/ProjectRow.stories.tsx
+--- a/apps/app/src/components/sidebar/ProjectRow.stories.tsx
++++ b/apps/app/src/components/sidebar/ProjectRow.stories.tsx
+@@ -8,10 +8,7 @@ import {
+   makeProject as makeSharedProject,
+   makeThreadListEntry,
+ } from "../../../.ladle/story-fixtures";
+-import {
+-  SidebarMenu,
+-  SidebarStickyStack,
+-} from "@/components/ui";
++import { SidebarMenu, SidebarStickyStack } from "@/components/ui/sidebar.js";
+ import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
+ import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
+ import { ProjectRow, type ProjectThreadListState } from "./ProjectRow";
+diff --git a/apps/app/src/components/sidebar/ProjectRow.tsx b/apps/app/src/components/sidebar/ProjectRow.tsx
+--- a/apps/app/src/components/sidebar/ProjectRow.tsx
++++ b/apps/app/src/components/sidebar/ProjectRow.tsx
+@@ -2,17 +2,15 @@ import { useMemo } from "react";
+ import type { ThreadListEntry } from "@bb/domain";
+ import type { ProjectResponse } from "@bb/server-contract";
+ import { NavLink } from "react-router-dom";
+-import { EmptyState, Icon, SidebarStickyTier } from "@/components/ui";
++import { EmptyState } from "@/components/ui/empty-state.js";
++import { Icon } from "@/components/ui/icon.js";
++import { SidebarStickyTier } from "@/components/ui/sidebar.js";
+ import {
+   ProjectActionsContextMenu,
+   ProjectActionsMenu,
+ } from "@/components/project/ProjectActionsMenu";
+-import { SidebarMenuItem, SidebarMenuSkeleton } from "@/components/ui";
+-import {
+-  COARSE_POINTER_ICON_SIZE_CLASS,
+-  COARSE_POINTER_PROJECT_ROW_ACTION_SIZE_CLASS,
+-  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+-} from "@/components/ui";
++import { SidebarMenuItem, SidebarMenuSkeleton } from "@/components/ui/sidebar.js";
++import { COARSE_POINTER_ICON_SIZE_CLASS, COARSE_POINTER_PROJECT_ROW_ACTION_SIZE_CLASS, COARSE_POINTER_ROW_ACTION_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+ import { cn } from "@/lib/utils";
+ import { ThreadRow } from "./ThreadRow";
+ import { buildProjectThreadGroups } from "./projectThreadGroups";
+diff --git a/apps/app/src/components/sidebar/ThreadRow.stories.tsx b/apps/app/src/components/sidebar/ThreadRow.stories.tsx
+--- a/apps/app/src/components/sidebar/ThreadRow.stories.tsx
++++ b/apps/app/src/components/sidebar/ThreadRow.stories.tsx
+@@ -1,7 +1,7 @@
+ import type { ReactNode } from "react";
+ import type { ThreadListEntry } from "@bb/domain";
+ import { makeThreadListEntry } from "../../../.ladle/story-fixtures";
+-import { SidebarMenu, SidebarMenuItem } from "@/components/ui";
++import { SidebarMenu, SidebarMenuItem } from "@/components/ui/sidebar.js";
+ import { ThreadActionsProvider } from "@/components/thread/ThreadActionsProvider";
+ import { ThreadRow, type ThreadRowOptions } from "./ThreadRow";
+ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+diff --git a/apps/app/src/components/sidebar/ThreadRow.tsx b/apps/app/src/components/sidebar/ThreadRow.tsx
+--- a/apps/app/src/components/sidebar/ThreadRow.tsx
++++ b/apps/app/src/components/sidebar/ThreadRow.tsx
+@@ -1,26 +1,15 @@
+ import { memo, useState } from "react";
+ import type { ThreadListEntry } from "@bb/domain";
+-import {
+-  Icon,
+-  type IconName,
+-  Pill,
+-  SidebarMenuBadge,
+-  SidebarStickyTier,
+-  StatusPill,
+-} from "@/components/ui";
++import { Icon, type IconName } from "@/components/ui/icon.js";
++import { Pill } from "@/components/ui/pill.js";
++import { SidebarMenuBadge, SidebarStickyTier } from "@/components/ui/sidebar.js";
++import { StatusPill } from "@/components/ui/status-pill.js";
+ import { NavLink } from "react-router-dom";
+ import {
+   ThreadActionsContextMenu,
+   ThreadActionsMenu,
+ } from "@/components/thread/ThreadActionsMenu";
+-import {
+-  COARSE_POINTER_DOT_SIZE_CLASS,
+-  COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+-  COARSE_POINTER_GLYPH_BOX_CLASS,
+-  COARSE_POINTER_ICON_SIZE_CLASS,
+-  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+-  COARSE_POINTER_ROW_HEIGHT_CLASS,
+-} from "@/components/ui";
++import { COARSE_POINTER_DOT_SIZE_CLASS, COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS, COARSE_POINTER_GLYPH_BOX_CLASS, COARSE_POINTER_ICON_SIZE_CLASS, COARSE_POINTER_ROW_ACTION_SIZE_CLASS, COARSE_POINTER_ROW_HEIGHT_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+ import {
+   getEnvironmentWorkspaceDisplayIconLabel,
+   getEnvironmentWorkspaceDisplayIconName,
+diff --git a/apps/app/src/components/thread/ThreadActionsMenu.tsx b/apps/app/src/components/thread/ThreadActionsMenu.tsx
+--- a/apps/app/src/components/thread/ThreadActionsMenu.tsx
++++ b/apps/app/src/components/thread/ThreadActionsMenu.tsx
+@@ -1,8 +1,10 @@
+ import type { Thread } from "@bb/domain";
+ import type { ReactNode } from "react";
+-import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Icon } from "@/components/ui";
+-import { Button } from "@/components/ui";
+-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui";
++import { ContextMenu, ContextMenuCheckboxItem, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu.js";
++import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu.js";
++import { Icon } from "@/components/ui/icon.js";
++import { Button } from "@/components/ui/button.js";
++import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
+ import { cn } from "@/lib/utils";
+ import { threadTypeLabel } from "@/lib/thread-title";
+ import { isThreadRead } from "@/lib/thread-read-state";
+diff --git a/apps/app/src/components/thread/ThreadUnarchiveButton.tsx b/apps/app/src/components/thread/ThreadUnarchiveButton.tsx
+--- a/apps/app/src/components/thread/ThreadUnarchiveButton.tsx
++++ b/apps/app/src/components/thread/ThreadUnarchiveButton.tsx
+@@ -1,5 +1,6 @@
+ import type { ThreadType } from "@bb/domain";
+-import { Button, Icon } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Icon } from "@/components/ui/icon.js";
+ import { threadTypeLabel } from "@/lib/thread-title";
+ import { cn } from "@/lib/utils";
+ 
+diff --git a/apps/app/src/components/thread/ThreadWorkspaceOpenButton.tsx b/apps/app/src/components/thread/ThreadWorkspaceOpenButton.tsx
+--- a/apps/app/src/components/thread/ThreadWorkspaceOpenButton.tsx
++++ b/apps/app/src/components/thread/ThreadWorkspaceOpenButton.tsx
+@@ -14,7 +14,7 @@ import terminalIcon from "@/assets/workspace-open-target-icons/terminal.png";
+ import iterm2Icon from "@/assets/workspace-open-target-icons/iterm2.png";
+ import ghosttyIcon from "@/assets/workspace-open-target-icons/ghostty.png";
+ import xcodeIcon from "@/assets/workspace-open-target-icons/xcode.png";
+-import { SplitButton, type SplitButtonAction } from "@/components/ui";
++import { SplitButton, type SplitButtonAction } from "@/components/ui/split-button.js";
+ 
+ const WORKSPACE_OPEN_TARGET_ICONS: Record<WorkspaceOpenTargetId, string> = {
+   vscode: vscodeIcon,
+diff --git a/apps/app/src/components/thread/WorkspaceChangesList.tsx b/apps/app/src/components/thread/WorkspaceChangesList.tsx
+--- a/apps/app/src/components/thread/WorkspaceChangesList.tsx
++++ b/apps/app/src/components/thread/WorkspaceChangesList.tsx
+@@ -1,5 +1,6 @@
+ import type { WorkspaceStatus } from "@bb/domain";
+-import { EmptyState, FilePathLink } from "@/components/ui";
++import { EmptyState } from "@/components/ui/empty-state.js";
++import { FilePathLink } from "@/components/ui/file-path-link.js";
+ import { cn } from "@/lib/utils";
+ import { formatWorkspaceFileStatus } from "@/components/workspace/workspace-change-summary";
+ 
+diff --git a/apps/app/src/components/thread/pending-interactions/ThreadPendingInteractionBanner.tsx b/apps/app/src/components/thread/pending-interactions/ThreadPendingInteractionBanner.tsx
+--- a/apps/app/src/components/thread/pending-interactions/ThreadPendingInteractionBanner.tsx
++++ b/apps/app/src/components/thread/pending-interactions/ThreadPendingInteractionBanner.tsx
+@@ -10,12 +10,10 @@ import {
+   type PendingInteractionApprovalDecision,
+   type PendingInteractionResolution,
+ } from "@bb/domain";
+-import {
+-  Button,
+-  ExpandableLine,
+-  StatusPill,
+-  getDetailScrollMaxHeightClass,
+-} from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { ExpandableLine } from "@/components/ui/expandable-line.js";
++import { StatusPill } from "@/components/ui/status-pill.js";
++import { getDetailScrollMaxHeightClass } from "@/components/ui/detail-scroll-size.js";
+ import { useResolveThreadPendingInteraction } from "@/hooks/mutations/thread-interaction-mutations";
+ import { getMutationErrorMessage } from "@/lib/mutation-errors";
+ import { cn } from "@/lib/utils";
+diff --git a/apps/app/src/components/thread/timeline/ConversationMessageContent.tsx b/apps/app/src/components/thread/timeline/ConversationMessageContent.tsx
+--- a/apps/app/src/components/thread/timeline/ConversationMessageContent.tsx
++++ b/apps/app/src/components/thread/timeline/ConversationMessageContent.tsx
+@@ -10,7 +10,7 @@ import { CopyButton } from "../../ui/copy-button.js";
+ import { cn } from "@/lib/utils";
+ import { buildProjectAttachmentContentUrl } from "@/lib/file-content-urls";
+ import { MarkdownPreview } from "../../ui/markdown-preview.js";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ import type {
+   ThreadTimelineLocalFileLinkHandler,
+   UserAttachmentImageSrcResolver,
+diff --git a/apps/app/src/components/thread/timeline/StreamingRows.stories.tsx b/apps/app/src/components/thread/timeline/StreamingRows.stories.tsx
+--- a/apps/app/src/components/thread/timeline/StreamingRows.stories.tsx
++++ b/apps/app/src/components/thread/timeline/StreamingRows.stories.tsx
+@@ -25,11 +25,9 @@ import {
+   ThreadTimelineRows,
+   TimelineWorkingIndicator,
+ } from "@/components/thread/timeline";
+-import {
+-  ConversationTimeline,
+-  HeightTransition,
+-  PageShell,
+-} from "@/components/ui";
++import { ConversationTimeline } from "@/components/ui/conversation.js";
++import { HeightTransition } from "@/components/ui/height-transition.js";
++import { PageShell } from "@/components/ui/page-shell.js";
+ import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
+ 
+ export default {
+diff --git a/apps/app/src/components/thread/timeline/ThreadTimelineRows.tsx b/apps/app/src/components/thread/timeline/ThreadTimelineRows.tsx
+--- a/apps/app/src/components/thread/timeline/ThreadTimelineRows.tsx
++++ b/apps/app/src/components/thread/timeline/ThreadTimelineRows.tsx
+@@ -49,7 +49,7 @@ import { WorkRowBody } from "./TimelineRowDetails.js";
+ import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
+ import { Button } from "../../ui/button.js";
+ import { AutoHeightContainer } from "../../ui/height-transition.js";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ import {
+   joinSignatureParts,
+   timelineRowRenderSignature,
+diff --git a/apps/app/src/components/thread/timeline/TimelineTitleView.tsx b/apps/app/src/components/thread/timeline/TimelineTitleView.tsx
+--- a/apps/app/src/components/thread/timeline/TimelineTitleView.tsx
++++ b/apps/app/src/components/thread/timeline/TimelineTitleView.tsx
+@@ -13,7 +13,7 @@ import {
+   type TimelineTitleTone,
+ } from "@bb/thread-view";
+ import { cn } from "@/lib/utils";
+-import { DiffStatsTally } from "@/components/ui";
++import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
+ 
+ /**
+  * Resolves a title's declared action to a click callback. Return `null` to
+diff --git a/apps/app/src/components/thread/timeline/types.ts b/apps/app/src/components/thread/timeline/types.ts
+--- a/apps/app/src/components/thread/timeline/types.ts
++++ b/apps/app/src/components/thread/timeline/types.ts
+@@ -1,7 +1,7 @@
+ import type {
+   MarkdownPreviewLocalFileLink,
+   MarkdownPreviewLocalFileLinkHandler,
+-} from "../../ui/markdown-preview.js";
++} from "../../ui/markdown-local-file-link.js";
+ 
+ export type ThreadTimelineTheme = "light" | "dark";
+ 
+diff --git a/apps/app/src/components/ui/button.stories.tsx b/apps/app/src/components/ui/button.stories.tsx
+--- a/apps/app/src/components/ui/button.stories.tsx
++++ b/apps/app/src/components/ui/button.stories.tsx
+@@ -1,6 +1,6 @@
+ import { Button, type ButtonProps } from "./button";
+ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ 
+ export default {
+   title: "ui/Button",
+diff --git a/apps/app/src/components/ui/context-menu.tsx b/apps/app/src/components/ui/context-menu.tsx
+--- a/apps/app/src/components/ui/context-menu.tsx
++++ b/apps/app/src/components/ui/context-menu.tsx
+@@ -4,7 +4,7 @@ import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
+ 
+ import { cn } from "@/lib/utils";
+ import { COARSE_POINTER_CHECK_SLOT_CLASS } from "./coarse-pointer-sizing.js";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ 
+ type ContextMenuSubTriggerElement = React.ComponentRef<
+   typeof ContextMenuPrimitive.SubTrigger
+diff --git a/apps/app/src/components/ui/copy-button.tsx b/apps/app/src/components/ui/copy-button.tsx
+--- a/apps/app/src/components/ui/copy-button.tsx
++++ b/apps/app/src/components/ui/copy-button.tsx
+@@ -1,6 +1,6 @@
+ import { useEffect, useState } from "react";
+ import { cn } from "@/lib/utils";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ 
+ interface CopyButtonProps {
+   text: string;
+diff --git a/apps/app/src/components/ui/detail-card.stories.tsx b/apps/app/src/components/ui/detail-card.stories.tsx
+--- a/apps/app/src/components/ui/detail-card.stories.tsx
++++ b/apps/app/src/components/ui/detail-card.stories.tsx
+@@ -12,7 +12,7 @@ import {
+   type WorkspaceChangedFile,
+ } from "../thread/WorkspaceChangesList";
+ import { StoryCard, StoryRow } from "../../../.ladle/story-card";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ 
+ export default {
+   title: "ui/Detail Card",
+diff --git a/apps/app/src/components/ui/dialog.tsx b/apps/app/src/components/ui/dialog.tsx
+--- a/apps/app/src/components/ui/dialog.tsx
++++ b/apps/app/src/components/ui/dialog.tsx
+@@ -16,7 +16,7 @@ import {
+   stripRadixContentProps,
+ } from "./responsive-overlay.js";
+ import { getOverlayTriggerClassName } from "./overlay-trigger.js";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ 
+ // ---------------------------------------------------------------------------
+ // Context — separate instance from DropdownMenu / Popover.
+diff --git a/apps/app/src/components/ui/dropdown-menu.tsx b/apps/app/src/components/ui/dropdown-menu.tsx
+--- a/apps/app/src/components/ui/dropdown-menu.tsx
++++ b/apps/app/src/components/ui/dropdown-menu.tsx
+@@ -12,7 +12,7 @@ import {
+   stripRadixContentProps,
+ } from "./responsive-overlay.js";
+ import { getOverlayTriggerClassName } from "./overlay-trigger.js";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ 
+ // ---------------------------------------------------------------------------
+ // Context — separate instance from Popover to avoid cross-contamination
+diff --git a/apps/app/src/components/ui/file-path-link.tsx b/apps/app/src/components/ui/file-path-link.tsx
+--- a/apps/app/src/components/ui/file-path-link.tsx
++++ b/apps/app/src/components/ui/file-path-link.tsx
+@@ -1,6 +1,6 @@
+ import { cn } from "@/lib/utils";
+ import { TruncateStart } from "./truncate-start.js";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ 
+ interface FilePathLinkProps {
+   path: string;
+diff --git a/apps/app/src/components/ui/image-lightbox.tsx b/apps/app/src/components/ui/image-lightbox.tsx
+--- a/apps/app/src/components/ui/image-lightbox.tsx
++++ b/apps/app/src/components/ui/image-lightbox.tsx
+@@ -1,7 +1,7 @@
+ import { useEffect } from "react";
+ import { Button } from "./button.js";
+ import { Dialog, DialogClose, DialogContent, DialogTitle } from "./dialog.js";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ 
+ export const imageLightboxKeyActionValues = [
+   "close",
+diff --git a/apps/app/src/components/ui/index.ts b/apps/app/src/components/ui/index.ts
+deleted file mode 100644
+--- a/apps/app/src/components/ui/index.ts
++++ /dev/null
+@@ -1,250 +0,0 @@
+-export { Button, buttonVariants, type ButtonProps } from "./button.js";
+-export { Icon, type IconName, type IconProps } from "./icon.js";
+-export { Input } from "./input.js";
+-export { Separator } from "./separator.js";
+-export { Skeleton } from "./skeleton.js";
+-export { CopyButton } from "./copy-button.js";
+-export { TruncateStart } from "./truncate-start.js";
+-export { Switch } from "./switch.js";
+-export {
+-  Tooltip,
+-  TooltipContent,
+-  TooltipProvider,
+-  TooltipTrigger,
+-} from "./tooltip.js";
+-export {
+-  Drawer,
+-  DrawerPortal,
+-  DrawerOverlay,
+-  DrawerTrigger,
+-  DrawerClose,
+-  DrawerContent,
+-  DrawerTitle,
+-  DrawerDescription,
+-} from "./drawer.js";
+-export {
+-  Dialog,
+-  DialogOverlay,
+-  DialogTrigger,
+-  DialogClose,
+-  DialogContent,
+-  DialogHeader,
+-  DialogFooter,
+-  DialogTitle,
+-  DialogDescription,
+-} from "./dialog.js";
+-export {
+-  DropdownMenu,
+-  DropdownMenuTrigger,
+-  DropdownMenuContent,
+-  DropdownMenuItem,
+-  DropdownMenuCheckboxItem,
+-  DropdownMenuRadioItem,
+-  DropdownMenuLabel,
+-  DropdownMenuSeparator,
+-  DropdownMenuShortcut,
+-  DropdownMenuGroup,
+-  DropdownMenuPortal,
+-  DropdownMenuSub,
+-  DropdownMenuSubContent,
+-  DropdownMenuSubTrigger,
+-  DropdownMenuRadioGroup,
+-} from "./dropdown-menu.js";
+-export {
+-  ContextMenu,
+-  ContextMenuTrigger,
+-  ContextMenuContent,
+-  ContextMenuItem,
+-  ContextMenuCheckboxItem,
+-  ContextMenuRadioItem,
+-  ContextMenuLabel,
+-  ContextMenuSeparator,
+-  ContextMenuShortcut,
+-  ContextMenuGroup,
+-  ContextMenuPortal,
+-  ContextMenuSub,
+-  ContextMenuSubContent,
+-  ContextMenuSubTrigger,
+-  ContextMenuRadioGroup,
+-} from "./context-menu.js";
+-export {
+-  Popover,
+-  PopoverTrigger,
+-  PopoverContent,
+-  PopoverAnchor,
+-} from "./popover.js";
+-export {
+-  MobileTrigger,
+-  ResponsiveDrawerShell,
+-  stripRadixContentProps,
+-  useResponsiveRoot,
+-  type ResponsiveOverlayContextValue,
+-} from "./responsive-overlay.js";
+-export {
+-  Sidebar,
+-  SidebarContent,
+-  SidebarFooter,
+-  SidebarGroup,
+-  SidebarGroupAction,
+-  SidebarGroupContent,
+-  SidebarGroupLabel,
+-  SidebarHeader,
+-  SidebarInput,
+-  SidebarInset,
+-  SidebarMenu,
+-  SidebarMenuAction,
+-  SidebarMenuBadge,
+-  SidebarMenuButton,
+-  SidebarMenuItem,
+-  SidebarMenuSkeleton,
+-  SidebarMenuSub,
+-  SidebarMenuSubButton,
+-  SidebarMenuSubItem,
+-  SidebarProvider,
+-  SidebarRail,
+-  SidebarSeparator,
+-  SidebarStickyStack,
+-  SidebarStickyTier,
+-  SidebarTrigger,
+-  type SidebarStickyTierKind,
+-  useSidebar,
+-} from "./sidebar.js";
+-export {
+-  SplitButton,
+-  type SplitButtonAction,
+-  type SplitButtonProps,
+-} from "./split-button.js";
+-export { Toaster, type ToasterProps } from "./sonner.js";
+-export {
+-  COARSE_POINTER_ADD_PROJECT_BUTTON_SIZE_CLASS,
+-  COARSE_POINTER_CHECK_SLOT_CLASS,
+-  COARSE_POINTER_CHILD_ICON_BUTTON_CLASS,
+-  COARSE_POINTER_COMPACT_ICON_SIZE_CLASS,
+-  COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+-  COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
+-  COARSE_POINTER_DOT_SIZE_CLASS,
+-  COARSE_POINTER_GLYPH_BOX_CLASS,
+-  COARSE_POINTER_HEADER_ICON_BUTTON_CLASS,
+-  COARSE_POINTER_ICON_SIZE_CLASS,
+-  COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+-  COARSE_POINTER_INPUT_HEIGHT_CLASS,
+-  COARSE_POINTER_PROJECT_ROW_ACTION_SIZE_CLASS,
+-  COARSE_POINTER_PROMPT_ACTION_BUTTON_CLASS,
+-  COARSE_POINTER_PROMPT_COMBO_BUTTON_CLASS,
+-  COARSE_POINTER_PROMPT_ICON_ACTION_BUTTON_CLASS,
+-  COARSE_POINTER_PROVIDER_TAB_SIZE_CLASS,
+-  COARSE_POINTER_ROW_ACTION_SIZE_CLASS,
+-  COARSE_POINTER_ROW_HEIGHT_CLASS,
+-  COARSE_POINTER_TEXT_BASE_CLASS,
+-  COARSE_POINTER_TEXT_SM_CLASS,
+-  COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS,
+-} from "./coarse-pointer-sizing.js";
+-export {
+-  useIsCompactViewport,
+-  COMPACT_VIEWPORT_QUERY,
+-} from "./hooks/use-compact-viewport.js";
+-export { useMediaQuery } from "./hooks/use-media-query.js";
+-export { FilePathLink } from "./file-path-link.js";
+-export {
+-  ThreePaneLayout,
+-  type ThreePaneLayoutProps,
+-} from "./three-pane-layout.js";
+-export {
+-  ConversationTimeline,
+-  ConversationEmptyState,
+-  type ConversationTimelineProps,
+-  type ConversationEmptyStateProps,
+-} from "./conversation.js";
+-export { LocalhostBadge } from "./localhost-badge.js";
+-export {
+-  DetailCard,
+-  DetailRow,
+-  DetailMessageRow,
+-  type DetailCardProps,
+-  type DetailRowProps,
+-  type DetailMessageRowProps,
+-} from "./detail-card.js";
+-export {
+-  DiffStatsTally,
+-  type DiffStatsTallyProps,
+-} from "./diff-stats-tally.js";
+-export { Pill, type PillProps, type PillVariant } from "./pill.js";
+-export {
+-  StatusPill,
+-  type StatusPillProps,
+-  type StatusPillVariant,
+-} from "./status-pill.js";
+-export { ExpandableLine, type ExpandableLineProps } from "./expandable-line.js";
+-export {
+-  CollapsibleHeader,
+-  ExpandablePanel,
+-  getCollapsibleHeaderToneClass,
+-  COLLAPSIBLE_HEADER_BUTTON_BASE_CLASS,
+-  COLLAPSIBLE_HEADER_COLLAPSED_TONE_CLASS,
+-  COLLAPSIBLE_HEADER_EXPANDED_TONE_CLASS,
+-  COLLAPSIBLE_HEADER_STATIC_TONE_CLASS,
+-  COLLAPSIBLE_HEADER_TEXT_CLASS,
+-  type CollapsibleHeaderProps,
+-  type ExpandablePanelProps,
+-} from "./disclosure.js";
+-export {
+-  DEFAULT_SCROLL_STICK_THRESHOLD_PX,
+-  getScrollAnimationBehavior,
+-} from "./scroll.js";
+-export {
+-  BottomAnchoredScrollBody,
+-  useBottomAnchoredScroll,
+-  type BottomAnchorContextValue,
+-  type BottomAnchoredScrollBodyProps,
+-} from "./bottom-anchored-scroll-body.js";
+-export {
+-  AutoHeightContainer,
+-  HeightTransition,
+-  type AutoHeightContainerProps,
+-  type HeightTransitionProps,
+-} from "./height-transition.js";
+-export { EmptyState, type EmptyStateProps } from "./empty-state.js";
+-export {
+-  EventCodeBlock,
+-  type EventCodeBlockProps,
+-} from "./event-code-block.js";
+-export { FormError, type FormErrorProps } from "./form-error.js";
+-export {
+-  ImageLightbox,
+-  getWrappedImageIndex,
+-  type ImageLightboxProps,
+-  type WrappedImageIndexInput,
+-} from "./image-lightbox.js";
+-export {
+-  MarkdownPreview,
+-  type MarkdownPreviewLocalFileLink,
+-  type MarkdownPreviewLocalFileLinkHandler,
+-  type MarkdownPreviewProps,
+-} from "./markdown-preview.js";
+-export { PageShell, type PageShellProps } from "./page-shell.js";
+-export {
+-  OverflowFade,
+-  type OverflowFadePlacement,
+-  type OverflowFadeProps,
+-  type OverflowFadeTone,
+-} from "./overflow-fade.js";
+-export {
+-  ScrollToBottomButton,
+-  type ScrollToBottomButtonProps,
+-} from "./scroll-to-bottom-button.js";
+-export {
+-  SettingsSection,
+-  SettingsCard,
+-  SettingsRow,
+-  SettingsRowList,
+-  SettingsWithControl,
+-  type SettingsSectionProps,
+-  type SettingsCardProps,
+-  type SettingsRowProps,
+-  type SettingsRowListProps,
+-  type SettingsWithControlProps,
+-} from "./settings-section.js";
+-export {
+-  getDetailScrollMaxHeightClass,
+-  type DetailScrollSize,
+-} from "./detail-scroll-size.js";
+diff --git a/apps/app/src/components/ui/markdown-local-file-link.ts b/apps/app/src/components/ui/markdown-local-file-link.ts
+new file mode 100644
+--- /dev/null
++++ b/apps/app/src/components/ui/markdown-local-file-link.ts
+@@ -0,0 +1,161 @@
++export interface MarkdownPreviewLocalFileLink {
++  lineNumber: number | null;
++  /**
++   * Absolute local path. Callers own workspace containment checks so
++   * MarkdownPreview can stay reusable.
++   */
++  path: string;
++}
++
++/**
++ * Return `true` when the link was handled and anchor navigation should be
++ * prevented. Return `false` to leave the link as a normal anchor.
++ */
++export type MarkdownPreviewLocalFileLinkHandler = (
++  link: MarkdownPreviewLocalFileLink,
++) => boolean;
++
++interface LocalFileHrefParts {
++  lineNumber: number | null;
++  path: string;
++}
++
++function safeDecodeURIComponent(value: string): string {
++  try {
++    return decodeURIComponent(value);
++  } catch {
++    return value;
++  }
++}
++
++function parsePositiveInteger(value: string): number | null {
++  if (!/^[0-9]+$/u.test(value)) {
++    return null;
++  }
++  const parsedValue = Number(value);
++  return Number.isSafeInteger(parsedValue) && parsedValue > 0
++    ? parsedValue
++    : null;
++}
++
++function parseLineSuffix(value: string): LocalFileHrefParts | null {
++  const hashLineMatch = value.match(/#L([0-9]+)$/u);
++  if (hashLineMatch) {
++    const lineNumber = parsePositiveInteger(hashLineMatch[1] ?? "");
++    if (lineNumber === null) {
++      return null;
++    }
++
++    return {
++      lineNumber,
++      path: value.slice(0, hashLineMatch.index),
++    };
++  }
++
++  if (value.includes("#")) {
++    return null;
++  }
++
++  const colonLineMatch = value.match(/:([0-9]+)$/u);
++  if (colonLineMatch) {
++    const lineNumber = parsePositiveInteger(colonLineMatch[1] ?? "");
++    if (lineNumber === null) {
++      return null;
++    }
++
++    return {
++      lineNumber,
++      path: value.slice(0, colonLineMatch.index),
++    };
++  }
++
++  return {
++    lineNumber: null,
++    path: value,
++  };
++}
++
++function hasLikelyFileBasename(path: string): boolean {
++  const segments = path.split("/");
++  const basename = segments[segments.length - 1] ?? "";
++  return basename.startsWith(".") || basename.includes(".");
++}
++
++function isValidAbsoluteLocalFilePath(path: string): boolean {
++  return (
++    path.startsWith("/") &&
++    !path.startsWith("//") &&
++    path !== "/" &&
++    !path.endsWith("/") &&
++    !path.includes("\n") &&
++    !path.includes("\r") &&
++    !path.includes("?") &&
++    !path.includes("#")
++  );
++}
++
++function parseAbsoluteLocalFileHref(
++  href: string,
++): MarkdownPreviewLocalFileLink | null {
++  if (
++    href.length === 0 ||
++    href.trim() !== href ||
++    !href.startsWith("/") ||
++    href.startsWith("//")
++  ) {
++    return null;
++  }
++
++  const parsed = parseLineSuffix(safeDecodeURIComponent(href));
++  if (!parsed || !isValidAbsoluteLocalFilePath(parsed.path)) {
++    return null;
++  }
++
++  return parsed;
++}
++
++export function parseLocalFileHref(
++  href: string | undefined,
++): MarkdownPreviewLocalFileLink | null {
++  if (!href) {
++    return null;
++  }
++
++  if (href.startsWith("file://")) {
++    try {
++      const url = new URL(href);
++      if (url.search.length > 0) {
++        return null;
++      }
++      return parseAbsoluteLocalFileHref(url.pathname + url.hash);
++    } catch {
++      return null;
++    }
++  }
++
++  return parseAbsoluteLocalFileHref(href);
++}
++
++function encodeFileUrlPath(path: string): string {
++  return path.split("/").map(encodeURIComponent).join("/");
++}
++
++function shouldRenderFileHref(link: MarkdownPreviewLocalFileLink): boolean {
++  return (
++    link.path.startsWith("/") &&
++    (link.lineNumber !== null || hasLikelyFileBasename(link.path))
++  );
++}
++
++export function buildLocalFileAnchorHref(
++  link: MarkdownPreviewLocalFileLink | null,
++  originalHref: string | undefined,
++): string | undefined {
++  if (!link || !shouldRenderFileHref(link)) {
++    return originalHref;
++  }
++
++  return `file://${encodeFileUrlPath(link.path)}${
++    link.lineNumber === null ? "" : `#L${link.lineNumber}`
++  }`;
++}
+diff --git a/apps/app/src/components/ui/markdown-preview.tsx b/apps/app/src/components/ui/markdown-preview.tsx
+--- a/apps/app/src/components/ui/markdown-preview.tsx
++++ b/apps/app/src/components/ui/markdown-preview.tsx
+@@ -14,25 +14,13 @@ import remarkGfm from "remark-gfm";
+ import { ImageLightbox, getWrappedImageIndex } from "./image-lightbox.js";
+ import { CopyButton } from "./copy-button.js";
+ import { Icon } from "./icon.js";
++import {
++  buildLocalFileAnchorHref,
++  parseLocalFileHref,
++  type MarkdownPreviewLocalFileLinkHandler,
++} from "./markdown-local-file-link.js";
+ import { cn } from "@/lib/utils";
+ 
+-export interface MarkdownPreviewLocalFileLink {
+-  lineNumber: number | null;
+-  /**
+-   * Absolute local path. Callers own workspace containment checks so
+-   * MarkdownPreview can stay reusable.
+-   */
+-  path: string;
+-}
+-
+-/**
+- * Return `true` when the link was handled and anchor navigation should be
+- * prevented. Return `false` to leave the link as a normal anchor.
+- */
+-export type MarkdownPreviewLocalFileLinkHandler = (
+-  link: MarkdownPreviewLocalFileLink,
+-) => boolean;
+-
+ export interface MarkdownPreviewProps {
+   className?: string;
+   content: string;
+@@ -59,11 +47,6 @@ interface MarkdownImageRendererArgs {
+   src: ComponentPropsWithoutRef<"img">["src"];
+ }
+ 
+-interface LocalFileHrefParts {
+-  lineNumber: number | null;
+-  path: string;
+-}
+-
+ type ExpandedImageIndexSetter = Dispatch<SetStateAction<number | null>>;
+ type MarkdownAnchorEvent = ReactMouseEvent<HTMLAnchorElement>;
+ type MarkdownBlockquoteProps = ComponentPropsWithoutRef<"blockquote"> &
+@@ -84,146 +67,6 @@ type MarkdownUnorderedListProps = ComponentPropsWithoutRef<"ul"> & ExtraProps;
+ 
+ const MARKDOWN_TABLE_BREAKOUT_WIDTH = "max(100%, min(1100px, 100cqw - 2rem))";
+ 
+-function safeDecodeURIComponent(value: string): string {
+-  try {
+-    return decodeURIComponent(value);
+-  } catch {
+-    return value;
+-  }
+-}
+-
+-function parsePositiveInteger(value: string): number | null {
+-  if (!/^[0-9]+$/u.test(value)) {
+-    return null;
+-  }
+-  const parsedValue = Number(value);
+-  return Number.isSafeInteger(parsedValue) && parsedValue > 0
+-    ? parsedValue
+-    : null;
+-}
+-
+-function parseLineSuffix(value: string): LocalFileHrefParts | null {
+-  const hashLineMatch = value.match(/#L([0-9]+)$/u);
+-  if (hashLineMatch) {
+-    const lineNumber = parsePositiveInteger(hashLineMatch[1] ?? "");
+-    if (lineNumber === null) {
+-      return null;
+-    }
+-
+-    return {
+-      lineNumber,
+-      path: value.slice(0, hashLineMatch.index),
+-    };
+-  }
+-
+-  if (value.includes("#")) {
+-    return null;
+-  }
+-
+-  const colonLineMatch = value.match(/:([0-9]+)$/u);
+-  if (colonLineMatch) {
+-    const lineNumber = parsePositiveInteger(colonLineMatch[1] ?? "");
+-    if (lineNumber === null) {
+-      return null;
+-    }
+-
+-    return {
+-      lineNumber,
+-      path: value.slice(0, colonLineMatch.index),
+-    };
+-  }
+-
+-  return {
+-    lineNumber: null,
+-    path: value,
+-  };
+-}
+-
+-function hasLikelyFileBasename(path: string): boolean {
+-  const segments = path.split("/");
+-  const basename = segments[segments.length - 1] ?? "";
+-  return basename.startsWith(".") || basename.includes(".");
+-}
+-
+-function isValidAbsoluteLocalFilePath(path: string): boolean {
+-  return (
+-    path.startsWith("/") &&
+-    !path.startsWith("//") &&
+-    path !== "/" &&
+-    !path.endsWith("/") &&
+-    !path.includes("\n") &&
+-    !path.includes("\r") &&
+-    !path.includes("?") &&
+-    !path.includes("#")
+-  );
+-}
+-
+-function parseAbsoluteLocalFileHref(
+-  href: string,
+-): MarkdownPreviewLocalFileLink | null {
+-  if (
+-    href.length === 0 ||
+-    href.trim() !== href ||
+-    !href.startsWith("/") ||
+-    href.startsWith("//")
+-  ) {
+-    return null;
+-  }
+-
+-  const parsed = parseLineSuffix(safeDecodeURIComponent(href));
+-  if (!parsed || !isValidAbsoluteLocalFilePath(parsed.path)) {
+-    return null;
+-  }
+-
+-  return parsed;
+-}
+-
+-function parseLocalFileHref(
+-  href: string | undefined,
+-): MarkdownPreviewLocalFileLink | null {
+-  if (!href) {
+-    return null;
+-  }
+-
+-  if (href.startsWith("file://")) {
+-    try {
+-      const url = new URL(href);
+-      if (url.search.length > 0) {
+-        return null;
+-      }
+-      return parseAbsoluteLocalFileHref(url.pathname + url.hash);
+-    } catch {
+-      return null;
+-    }
+-  }
+-
+-  return parseAbsoluteLocalFileHref(href);
+-}
+-
+-function encodeFileUrlPath(path: string): string {
+-  return path.split("/").map(encodeURIComponent).join("/");
+-}
+-
+-function shouldRenderFileHref(link: MarkdownPreviewLocalFileLink): boolean {
+-  return (
+-    link.path.startsWith("/") &&
+-    (link.lineNumber !== null || hasLikelyFileBasename(link.path))
+-  );
+-}
+-
+-function buildLocalFileAnchorHref(
+-  link: MarkdownPreviewLocalFileLink | null,
+-  originalHref: string | undefined,
+-): string | undefined {
+-  if (!link || !shouldRenderFileHref(link)) {
+-    return originalHref;
+-  }
+-
+-  return `file://${encodeFileUrlPath(link.path)}${
+-    link.lineNumber === null ? "" : `#L${link.lineNumber}`
+-  }`;
+-}
+-
+ const localFileAwareUrlTransform: UrlTransform = (value, key) => {
+   if (key === "href" && parseLocalFileHref(value)) {
+     return value;
+diff --git a/apps/app/src/components/ui/scroll-to-bottom-button.tsx b/apps/app/src/components/ui/scroll-to-bottom-button.tsx
+--- a/apps/app/src/components/ui/scroll-to-bottom-button.tsx
++++ b/apps/app/src/components/ui/scroll-to-bottom-button.tsx
+@@ -1,5 +1,5 @@
+ import { cn } from "@/lib/utils";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ 
+ export interface ScrollToBottomButtonProps {
+   visible: boolean;
+diff --git a/apps/app/src/components/ui/sidebar.tsx b/apps/app/src/components/ui/sidebar.tsx
+--- a/apps/app/src/components/ui/sidebar.tsx
++++ b/apps/app/src/components/ui/sidebar.tsx
+@@ -10,7 +10,7 @@ import { COARSE_POINTER_HEADER_ICON_BUTTON_CLASS } from "./coarse-pointer-sizing
+ import { Input } from "./input.js";
+ import { Separator } from "./separator.js";
+ import { Skeleton } from "./skeleton.js";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ import {
+   Tooltip,
+   TooltipContent,
+diff --git a/apps/app/src/components/ui/split-button.tsx b/apps/app/src/components/ui/split-button.tsx
+--- a/apps/app/src/components/ui/split-button.tsx
++++ b/apps/app/src/components/ui/split-button.tsx
+@@ -2,7 +2,7 @@ import { Fragment, type ReactNode } from "react";
+ import { cn } from "@/lib/utils";
+ import { buttonVariants } from "./button.js";
+ import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "./coarse-pointer-sizing.js";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ import {
+   DropdownMenu,
+   DropdownMenuContent,
+diff --git a/apps/app/src/components/workspace/workspace-change-summary.tsx b/apps/app/src/components/workspace/workspace-change-summary.tsx
+--- a/apps/app/src/components/workspace/workspace-change-summary.tsx
++++ b/apps/app/src/components/workspace/workspace-change-summary.tsx
+@@ -5,7 +5,7 @@ import type {
+   WorkspaceStatus,
+ } from "@bb/domain";
+ import { formatDiffStatsText } from "@bb/thread-view";
+-import { DiffStatsTally } from "@/components/ui";
++import { DiffStatsTally } from "@/components/ui/diff-stats-tally.js";
+ 
+ export interface ChangeTally {
+   filesCount: number;
+diff --git a/apps/app/src/lib/environment-workspace-display.ts b/apps/app/src/lib/environment-workspace-display.ts
+--- a/apps/app/src/lib/environment-workspace-display.ts
++++ b/apps/app/src/lib/environment-workspace-display.ts
+@@ -1,5 +1,5 @@
+ import type { EnvironmentWorkspaceDisplayKind } from "@bb/domain";
+-import type { IconName } from "@/components/ui";
++import type { IconName } from "@/components/ui/icon.js";
+ import { PersistentHostIconName } from "@/lib/host-display";
+ 
+ export function getEnvironmentWorkspaceDisplayIconName(
+diff --git a/apps/app/src/lib/host-display.ts b/apps/app/src/lib/host-display.ts
+--- a/apps/app/src/lib/host-display.ts
++++ b/apps/app/src/lib/host-display.ts
+@@ -1,5 +1,5 @@
+ import type { Host } from "@bb/domain";
+-import type { IconName } from "@/components/ui";
++import type { IconName } from "@/components/ui/icon.js";
+ 
+ /**
+  * Canonical icon for a known persistent host (the user's machine,
+diff --git a/apps/app/src/views/AppSettingsView.tsx b/apps/app/src/views/AppSettingsView.tsx
+--- a/apps/app/src/views/AppSettingsView.tsx
++++ b/apps/app/src/views/AppSettingsView.tsx
+@@ -3,23 +3,14 @@ import { useAtomValue } from "jotai";
+ import { useMutation, useQueryClient } from "@tanstack/react-query";
+ import { timeAgo } from "@bb/core-ui";
+ import type { CloudAuthProviderId } from "@bb/agent-providers";
+-import { Button, Icon } from "@/components/ui";
+-import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui";
+-import {
+-  DropdownMenu,
+-  DropdownMenuContent,
+-  DropdownMenuItem,
+-  DropdownMenuTrigger,
+-} from "@/components/ui";
+-import { PageShell } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { Icon } from "@/components/ui/icon.js";
++import { COARSE_POINTER_ICON_SIZE_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
++import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu.js";
++import { PageShell } from "@/components/ui/page-shell.js";
+ import { CloudAuthSettingsSection } from "@/components/settings/CloudAuthSettingsSection";
+ import { CONNECTED_DOT_CLASS } from "@/components/settings/constants";
+-import {
+-  SettingsRow,
+-  SettingsRowList,
+-  SettingsSection,
+-  SettingsWithControl,
+-} from "@/components/ui";
++import { SettingsRow, SettingsRowList, SettingsSection, SettingsWithControl } from "@/components/ui/settings-section.js";
+ import {
+   SandboxEnvVarsSection,
+   type EnvVarEntry,
+diff --git a/apps/app/src/views/AuthCallbackView.tsx b/apps/app/src/views/AuthCallbackView.tsx
+--- a/apps/app/src/views/AuthCallbackView.tsx
++++ b/apps/app/src/views/AuthCallbackView.tsx
+@@ -1,5 +1,5 @@
+ import { useSearchParams } from "react-router-dom";
+-import { Icon } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
+ 
+ const STATUS_CONTENT = {
+   success: {
+diff --git a/apps/app/src/views/InternalReplayListView.tsx b/apps/app/src/views/InternalReplayListView.tsx
+--- a/apps/app/src/views/InternalReplayListView.tsx
++++ b/apps/app/src/views/InternalReplayListView.tsx
+@@ -1,11 +1,13 @@
+ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+ import { useMemo, useState } from "react";
+ import { Link } from "react-router-dom";
+-import { DetailCard, DetailRow, Icon, Pill } from "@/components/ui";
++import { DetailCard, DetailRow } from "@/components/ui/detail-card.js";
++import { Icon } from "@/components/ui/icon.js";
++import { Pill } from "@/components/ui/pill.js";
+ import type { ReplayRunSpeed } from "@bb/server-contract";
+-import { PageShell } from "@/components/ui";
+-import { Button } from "@/components/ui";
+-import { SplitButton, type SplitButtonAction } from "@/components/ui";
++import { PageShell } from "@/components/ui/page-shell.js";
++import { Button } from "@/components/ui/button.js";
++import { SplitButton, type SplitButtonAction } from "@/components/ui/split-button.js";
+ import { invalidateReplayCaptures } from "@/hooks/cache-effects";
+ import { useEffectiveHosts } from "@/hooks/queries/effective-hosts";
+ import { replayCapturesQueryKey } from "@/hooks/queries/query-keys";
+diff --git a/apps/app/src/views/MainView.tsx b/apps/app/src/views/MainView.tsx
+--- a/apps/app/src/views/MainView.tsx
++++ b/apps/app/src/views/MainView.tsx
+@@ -5,8 +5,8 @@ import {
+   type ConnectionAwareQueryStatus,
+ } from "../hooks/queries/connection-aware-query-state";
+ import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
+-import { Button } from "@/components/ui";
+-import { PageShell } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { PageShell } from "@/components/ui/page-shell.js";
+ 
+ export interface MainViewBodyProps {
+   status: ConnectionAwareQueryStatus;
+diff --git a/apps/app/src/views/ProjectArchivedThreadsView.tsx b/apps/app/src/views/ProjectArchivedThreadsView.tsx
+--- a/apps/app/src/views/ProjectArchivedThreadsView.tsx
++++ b/apps/app/src/views/ProjectArchivedThreadsView.tsx
+@@ -1,7 +1,10 @@
+ import { useMemo, useState } from "react";
+ import { Link, useParams } from "react-router-dom";
+ import type { ThreadListEntry } from "@bb/domain";
+-import { Button, OverflowFade, PageShell, Pill } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { OverflowFade } from "@/components/ui/overflow-fade.js";
++import { PageShell } from "@/components/ui/page-shell.js";
++import { Pill } from "@/components/ui/pill.js";
+ import { ThreadUnarchiveButton } from "@/components/thread/ThreadUnarchiveButton";
+ import { useUnarchiveThread } from "@/hooks/mutations/thread-state-mutations";
+ import { useArchivedThreads } from "@/hooks/queries/thread-queries";
+diff --git a/apps/app/src/views/ProjectMainView.tsx b/apps/app/src/views/ProjectMainView.tsx
+--- a/apps/app/src/views/ProjectMainView.tsx
++++ b/apps/app/src/views/ProjectMainView.tsx
+@@ -4,7 +4,7 @@ import { isGitHubRepoProjectSource } from "@bb/domain";
+ import { NewThreadPromptBox } from "@/components/promptbox/NewThreadPromptBox";
+ import { parseEnvironmentValue } from "@/components/pickers/environment-picker-value";
+ import { OptionPicker } from "@/components/pickers/OptionPicker";
+-import { PageShell } from "@/components/ui";
++import { PageShell } from "@/components/ui/page-shell.js";
+ import { useUploadPromptAttachment } from "@/hooks/mutations/project-mutations";
+ import { useCreateThread } from "@/hooks/mutations/thread-runtime-mutations";
+ import {
+diff --git a/apps/app/src/views/ProjectSettingsView.tsx b/apps/app/src/views/ProjectSettingsView.tsx
+--- a/apps/app/src/views/ProjectSettingsView.tsx
++++ b/apps/app/src/views/ProjectSettingsView.tsx
+@@ -10,15 +10,15 @@ import {
+   type LocalPathProjectSource,
+   type ProjectSource,
+ } from "@bb/domain";
+-import { Button } from "@/components/ui";
+-import { PageShell } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { PageShell } from "@/components/ui/page-shell.js";
+ import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
+ import { ProjectConnectGithubDialog } from "@/components/dialogs/ProjectConnectGithubDialog";
+ import {
+   ProjectSourceDeleteDialog,
+   type ProjectSourceDeleteDialogTarget,
+ } from "@/components/dialogs/ProjectSourceDeleteDialog";
+-import { SettingsRowList, SettingsSection } from "@/components/ui";
++import { SettingsRowList, SettingsSection } from "@/components/ui/settings-section.js";
+ import { ProjectSourceRow } from "@/views/project-settings/ProjectSourceRow";
+ import {
+   useAddLocalProjectSource,
+diff --git a/apps/app/src/views/project-settings/ProjectSourceRow.tsx b/apps/app/src/views/project-settings/ProjectSourceRow.tsx
+--- a/apps/app/src/views/project-settings/ProjectSourceRow.tsx
++++ b/apps/app/src/views/project-settings/ProjectSourceRow.tsx
+@@ -3,16 +3,14 @@ import {
+   type LocalPathProjectSource,
+   type ProjectSource,
+ } from "@bb/domain";
+-import { Icon, LocalhostBadge, SettingsRow, StatusPill } from "@/components/ui";
++import { Icon } from "@/components/ui/icon.js";
++import { LocalhostBadge } from "@/components/ui/localhost-badge.js";
++import { SettingsRow } from "@/components/ui/settings-section.js";
++import { StatusPill } from "@/components/ui/status-pill.js";
+ import { GitHubIcon } from "@/components/icons/GitHubIcon";
+ import { PersistentHostIconName } from "@/lib/host-display";
+-import { Button } from "@/components/ui";
+-import {
+-  DropdownMenu,
+-  DropdownMenuContent,
+-  DropdownMenuItem,
+-  DropdownMenuTrigger,
+-} from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu.js";
+ 
+ interface ProjectSourceRowProps {
+   source: ProjectSource;
+diff --git a/apps/app/src/views/thread-detail/ThreadDetailHeader.tsx b/apps/app/src/views/thread-detail/ThreadDetailHeader.tsx
+--- a/apps/app/src/views/thread-detail/ThreadDetailHeader.tsx
++++ b/apps/app/src/views/thread-detail/ThreadDetailHeader.tsx
+@@ -1,6 +1,12 @@
+ import type { ReactNode } from "react";
+ import { useIsSecondaryPanelOpen } from "@/lib/thread-secondary-panel";
+-import { Button, COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS, Icon, SplitButton, StatusPill, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, useIsCompactViewport } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@/components/ui/coarse-pointer-sizing.js";
++import { Icon } from "@/components/ui/icon.js";
++import { SplitButton } from "@/components/ui/split-button.js";
++import { StatusPill } from "@/components/ui/status-pill.js";
++import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip.js";
++import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
+ import {
+   AppPageHeader,
+   HEADER_ICON_BUTTON_CLASS,
+diff --git a/apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx b/apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx
+--- a/apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx
++++ b/apps/app/src/views/thread-detail/ThreadDetailPromptArea.tsx
+@@ -1,5 +1,5 @@
+ import { useCallback, useMemo, useState } from "react";
+-import type { IconName } from "@/components/ui";
++import type { IconName } from "@/components/ui/icon.js";
+ import { assertNever } from "@bb/core-ui";
+ import type {
+   PendingInteraction,
+diff --git a/apps/app/src/views/thread-detail/ThreadDetailSecondaryContent.tsx b/apps/app/src/views/thread-detail/ThreadDetailSecondaryContent.tsx
+--- a/apps/app/src/views/thread-detail/ThreadDetailSecondaryContent.tsx
++++ b/apps/app/src/views/thread-detail/ThreadDetailSecondaryContent.tsx
+@@ -1,7 +1,7 @@
+ import { type ComponentProps, type ReactNode, useEffect, useRef } from "react";
+ import { Panel, PanelGroup } from "react-resizable-panels";
+-import { ResponsiveDrawerShell } from "@/components/ui";
+-import { useIsCompactViewport } from "@/components/ui";
++import { ResponsiveDrawerShell } from "@/components/ui/responsive-overlay.js";
++import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport.js";
+ import { useAtomValue } from "jotai";
+ import { useIsSecondaryPanelOpen } from "@/lib/thread-secondary-panel";
+ import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
+diff --git a/apps/app/src/views/thread-detail/ThreadDetailView.tsx b/apps/app/src/views/thread-detail/ThreadDetailView.tsx
+--- a/apps/app/src/views/thread-detail/ThreadDetailView.tsx
++++ b/apps/app/src/views/thread-detail/ThreadDetailView.tsx
+@@ -35,7 +35,7 @@ import {
+ } from "../../hooks/queries/thread-queries";
+ import { ThreadGitActionDialog } from "@/components/dialogs/ThreadGitActionDialog";
+ import { ThreadEnvironmentPromotionDialog } from "@/components/dialogs/ThreadEnvironmentPromotionDialog";
+-import { PageShell } from "@/components/ui";
++import { PageShell } from "@/components/ui/page-shell.js";
+ import { HEADER_ICON_BUTTON_CLASS } from "@/components/layout/AppPageHeader";
+ import { ThreadActionsMenu } from "@/components/thread/ThreadActionsMenu";
+ import { ThreadWorkspaceOpenButton } from "@/components/thread/ThreadWorkspaceOpenButton";
+diff --git a/apps/app/src/views/thread-detail/ThreadTimelinePane.tsx b/apps/app/src/views/thread-detail/ThreadTimelinePane.tsx
+--- a/apps/app/src/views/thread-detail/ThreadTimelinePane.tsx
++++ b/apps/app/src/views/thread-detail/ThreadTimelinePane.tsx
+@@ -1,7 +1,12 @@
+ import { useCallback, useEffect, useState, type ReactNode } from "react";
+ import type { ActiveThinking, ThreadRuntimeDisplayStatus } from "@bb/domain";
+ import type { TimelineRow, TimelineTurnRow } from "@bb/server-contract";
+-import { Button, ConversationTimeline, HeightTransition, Icon, PageShell, useBottomAnchoredScroll } from "@/components/ui";
++import { Button } from "@/components/ui/button.js";
++import { ConversationTimeline } from "@/components/ui/conversation.js";
++import { HeightTransition } from "@/components/ui/height-transition.js";
++import { Icon } from "@/components/ui/icon.js";
++import { PageShell } from "@/components/ui/page-shell.js";
++import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
+ import {
+   ThreadTimelineRows,
+   type ThreadTimelineLocalFileLinkHandler,
+diff --git a/apps/app/src/views/thread-detail/ThreadTimelineScrollToBottomButton.tsx b/apps/app/src/views/thread-detail/ThreadTimelineScrollToBottomButton.tsx
+--- a/apps/app/src/views/thread-detail/ThreadTimelineScrollToBottomButton.tsx
++++ b/apps/app/src/views/thread-detail/ThreadTimelineScrollToBottomButton.tsx
+@@ -1,5 +1,5 @@
+-import { useBottomAnchoredScroll } from "@/components/ui";
+-import { ScrollToBottomButton } from "@/components/ui";
++import { useBottomAnchoredScroll } from "@/components/ui/bottom-anchored-scroll-body.js";
++import { ScrollToBottomButton } from "@/components/ui/scroll-to-bottom-button.js";
+ 
+ export function ThreadTimelineScrollToBottomButton({
+   active,

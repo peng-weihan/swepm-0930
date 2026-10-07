@@ -1,0 +1,384 @@
+diff --git a/tests/generate_reference_files.sh b/tests/generate_reference_files.sh
+index 4a5d9aa..0679e92 100755
+--- a/tests/generate_reference_files.sh
++++ b/tests/generate_reference_files.sh
+@@ -36,7 +36,6 @@ echo "Generating spectral denoiser reference..."
+     --whitening 50.0 \
+     --smoothing 0.0 \
+     --masking-depth 0.5 \
+-    --masking-elasticity 0.1 \
+     tests/test_data/Speech.wav tests/test_data/Speech_denoised.wav
+ 
+ echo "Generating adaptive denoiser reference..."
+@@ -45,7 +44,6 @@ echo "Generating adaptive denoiser reference..."
+     --whitening 50.0 \
+     --smoothing 0.0 \
+     --masking-depth 0.5 \
+-    --masking-elasticity 0.1 \
+     --adaptive \
+     --frame-size 20.0 \
+     --learn-frames 0 \
+diff --git a/tests/test_adaptive_noise_estimator.c b/tests/test_adaptive_noise_estimator.c
+index c23a4df..695bc04 100644
+--- a/tests/test_adaptive_noise_estimator.c
++++ b/tests/test_adaptive_noise_estimator.c
+@@ -94,8 +94,7 @@ int main(void) {
+ 
+   // Noise Floor Manager
+   noise_floor_manager_free(NULL);
+-  NoiseFloorManager* nfm =
+-      noise_floor_manager_initialize(fft_size, sample_rate, hop);
++  NoiseFloorManager* nfm = noise_floor_manager_initialize(fft_size);
+   noise_floor_manager_free(nfm);
+ 
+   // Spectral Whitening
+diff --git a/tests/test_nlm_filter.c b/tests/test_nlm_filter.c
+index 8715a99..ffa0afc 100644
+--- a/tests/test_nlm_filter.c
++++ b/tests/test_nlm_filter.c
+@@ -7,7 +7,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
+-#include "shared/denoiser_logic/processing/nlm_filter.h"
++#include "shared/denoiser_logic/processing/nlm_filter_internal.h"
+ 
+ #define TEST_ASSERT(condition, message)                                        \
+   do {                                                                         \
+@@ -133,15 +133,29 @@ void test_nlm_filter_process_uniform(void) {
+     nlm_filter_push_frame(filter, frame);
+   }
+ 
+-  // Process
++  // Process generic
++  filter->process_fn = nlm_filter_process_generic;
+   TEST_ASSERT(nlm_filter_process(filter, output),
+-              "Process should succeed when buffer is full");
++              "Process should succeed when buffer is full (generic)");
+ 
+   // With uniform input, output should be close to input
+   for (int i = 0; i < 32; i++) {
+     TEST_FLOAT_CLOSE(output[i], 5.0f, 0.01f);
+   }
+ 
++#if defined(__x86_64__) || defined(__i386__)
++  if (__builtin_cpu_supports("avx")) {
++    float output_avx[32];
++    filter->process_fn = nlm_filter_process_avx;
++    TEST_ASSERT(nlm_filter_process(filter, output_avx),
++                "Process should succeed when buffer is full (AVX)");
++
++    for (int i = 0; i < 32; i++) {
++      TEST_FLOAT_CLOSE(output_avx[i], 5.0f, 0.01f);
++    }
++  }
++#endif
++
+   nlm_filter_free(filter);
+   printf("✓ NLM filter uniform process tests passed\n");
+ }
+@@ -180,14 +194,30 @@ void test_nlm_filter_process_noisy(void) {
+   }
+ 
+   float output[32];
++
++  // Process generic
++  filter->process_fn = nlm_filter_process_generic;
+   TEST_ASSERT(nlm_filter_process(filter, output),
+-              "Process should succeed when buffer is full");
++              "Process should succeed when buffer is full (generic)");
+ 
+   // Output should be non-negative (SNR values)
+   for (int i = 0; i < 32; i++) {
+-    TEST_ASSERT(output[i] >= 0.0f, "Output SNR should be non-negative");
++    TEST_ASSERT(output[i] >= 0.0f, "Output SNR (generic) should be >= 0");
+   }
+ 
++#if defined(__x86_64__) || defined(__i386__)
++  if (__builtin_cpu_supports("avx")) {
++    float output_avx[32];
++    filter->process_fn = nlm_filter_process_avx;
++    TEST_ASSERT(nlm_filter_process(filter, output_avx),
++                "Process should succeed when buffer is full (AVX)");
++
++    for (int i = 0; i < 32; i++) {
++      TEST_ASSERT(output_avx[i] >= 0.0f, "Output SNR (AVX) should be >= 0");
++    }
++  }
++#endif
++
+   nlm_filter_free(filter);
+   printf("✓ NLM filter noisy process tests passed\n");
+ }
+@@ -305,6 +335,57 @@ void test_nlm_filter_null_handling(void) {
+   printf("✓ NLM filter NULL handling tests passed\n");
+ }
+ 
++void test_nlm_filter_process_silent(void) {
++  printf("Testing NLM filter process with silent input...\n");
++
++  NlmFilterConfig config = {
++      .spectrum_size = 32,
++      .time_buffer_size = 5,
++      .patch_size = 4,
++      .paste_block_size = 2,
++      .search_range_freq = 2,
++      .search_range_time_past = 2,
++      .search_range_time_future = 2,
++      .h_parameter = 1.0f,
++  };
++
++  NlmFilter* filter = nlm_filter_initialize(config);
++  TEST_ASSERT(filter != NULL, "NLM filter initialization should succeed");
++
++  float frame[32] = {0.0f};
++  float output[32];
++
++  // Fill buffer
++  for (int f = 0; f < 5; f++) {
++    nlm_filter_push_frame(filter, frame);
++  }
++
++  // Process generic
++  filter->process_fn = nlm_filter_process_generic;
++  TEST_ASSERT(nlm_filter_process(filter, output),
++              "Process should succeed when buffer is full (generic)");
++
++  // With silent input, output should be zero
++  for (int i = 0; i < 32; i++) {
++    TEST_FLOAT_CLOSE(output[i], 0.0f, 1e-6f);
++  }
++
++#if defined(__x86_64__) || defined(__i386__)
++  if (__builtin_cpu_supports("avx")) {
++    float output_avx[32];
++    filter->process_fn = nlm_filter_process_avx;
++    TEST_ASSERT(nlm_filter_process(filter, output_avx),
++                "Process should succeed when buffer is full (AVX)");
++    for (int i = 0; i < 32; i++) {
++      TEST_FLOAT_CLOSE(output_avx[i], 0.0f, 1e-6f);
++    }
++  }
++#endif
++
++  nlm_filter_free(filter);
++  printf("✓ NLM filter silent process tests passed\n");
++}
++
+ void test_nlm_filter_process_patch8(void) {
+   printf("Testing NLM filter process with patch_size=8...\n");
+ 
+@@ -338,19 +419,81 @@ void test_nlm_filter_process_patch8(void) {
+     nlm_filter_push_frame(filter, frame);
+   }
+ 
++  // Process generic
++  filter->process_fn = nlm_filter_process_generic;
+   TEST_ASSERT(nlm_filter_process(filter, output),
+-              "Process should succeed with patch_size=8");
++              "Process should succeed with patch_size=8 (generic)");
+ 
+   // Verify output (should be smoothed but not zero)
+   for (int i = 0; i < 64; i++) {
+     TEST_ASSERT(output[i] > 0.0f, "Output should be positive");
+   }
+ 
++#if defined(__x86_64__) || defined(__i386__)
++  if (__builtin_cpu_supports("avx")) {
++    float output_avx[64];
++    filter->process_fn = nlm_filter_process_avx;
++    TEST_ASSERT(nlm_filter_process(filter, output_avx),
++                "Process should succeed with patch_size=8 (AVX)");
++
++    for (int i = 0; i < 64; i++) {
++      TEST_ASSERT(output_avx[i] > 0.0f, "Output AVX should be positive");
++    }
++  }
++#endif
++
+   free(alpha);
+   nlm_filter_free(filter);
+   printf("✓ NLM filter patch_size=8 process tests passed\n");
+ }
+ 
++void test_nlm_filter_snr_and_reconstruct(void) {
++  printf("Testing NLM filter SNR calculation and reconstruction...\n");
++
++  NlmFilterConfig config = {
++      .spectrum_size = 4,
++  };
++
++  NlmFilter* filter = nlm_filter_initialize(config);
++  TEST_ASSERT(filter != NULL, "NLM filter initialization should succeed");
++
++  float reference[4] = {10.0f, 20.0f, 0.0f, 40.0f};
++  float noise[4] = {2.0f, 10.0f, 0.0f, 0.0f}; // Test with zero noise bins
++  float snr[4] = {0.0f};
++
++  nlm_filter_calculate_snr(filter, reference, noise, snr);
++
++  TEST_FLOAT_CLOSE(snr[0], 5.0f, 1e-4f);
++  TEST_FLOAT_CLOSE(snr[1], 2.0f, 1e-4f);
++  TEST_ASSERT(snr[2] == 0.0f, "Zero reference with zero noise should be 0 SNR");
++  TEST_ASSERT(snr[3] > 1000.0f,
++              "High reference with zero noise should produce large SNR");
++
++  float reconstructed[4] = {0.0f};
++  float smoothed_snr[4] = {5.0f, 2.0f, 1.0f, 10.0f};
++
++  nlm_filter_reconstruct_magnitude(filter, smoothed_snr, noise, reconstructed);
++
++  TEST_FLOAT_CLOSE(reconstructed[0], 10.0f, 1e-4f); // 5 * 2
++  TEST_FLOAT_CLOSE(reconstructed[1], 20.0f, 1e-4f); // 2 * 10
++  TEST_FLOAT_CLOSE(reconstructed[2], 0.0f, 1e-4f);  // 1 * epsilon ~ 0
++  TEST_FLOAT_CLOSE(reconstructed[3], 0.0f, 1e-4f);  // 10 * epsilon ~ 0
++
++  // Null testing
++  nlm_filter_calculate_snr(NULL, reference, noise, snr);
++  nlm_filter_calculate_snr(filter, NULL, noise, snr);
++  nlm_filter_calculate_snr(filter, reference, NULL, snr);
++  nlm_filter_calculate_snr(filter, reference, noise, NULL);
++
++  nlm_filter_reconstruct_magnitude(NULL, smoothed_snr, noise, reconstructed);
++  nlm_filter_reconstruct_magnitude(filter, NULL, noise, reconstructed);
++  nlm_filter_reconstruct_magnitude(filter, smoothed_snr, NULL, reconstructed);
++  nlm_filter_reconstruct_magnitude(filter, smoothed_snr, noise, NULL);
++
++  nlm_filter_free(filter);
++  printf("✓ NLM filter SNR calculation and reconstruction tests passed\n");
++}
++
+ int main(void) {
+   printf("Running NLM filter tests...\n\n");
+ 
+@@ -358,11 +501,13 @@ int main(void) {
+   test_nlm_filter_push_frame();
+   test_nlm_filter_process_uniform();
+   test_nlm_filter_process_noisy();
++  test_nlm_filter_process_silent();
+   test_nlm_filter_process_patch8();
+   test_nlm_filter_reset();
+   test_nlm_filter_h_parameter();
+   test_nlm_filter_latency();
+   test_nlm_filter_null_handling();
++  test_nlm_filter_snr_and_reconstruct();
+ 
+   printf("\n✅ All NLM filter tests passed!\n");
+   return 0;
+diff --git a/tests/test_noise_floor_manager.c b/tests/test_noise_floor_manager.c
+index 8fea9b5..c3333f2 100644
+--- a/tests/test_noise_floor_manager.c
++++ b/tests/test_noise_floor_manager.c
+@@ -23,7 +23,7 @@
+ void test_noise_floor_manager_lifecycle(void) {
+   printf("Testing Noise Floor Manager lifecycle...\n");
+ 
+-  NoiseFloorManager* nfm = noise_floor_manager_initialize(1024, 44100, 256);
++  NoiseFloorManager* nfm = noise_floor_manager_initialize(1024);
+   TEST_ASSERT(nfm != NULL, "Initialization should succeed");
+ 
+   noise_floor_manager_free(NULL); // Coverage: free NULL
+@@ -36,7 +36,8 @@ void test_noise_floor_manager_apply(void) {
+ 
+   uint32_t fft_size = 1024;
+   uint32_t real_size = (fft_size / 2) + 1;
+-  NoiseFloorManager* nfm = noise_floor_manager_initialize(fft_size, 44100, 256);
++  NoiseFloorManager* nfm = noise_floor_manager_initialize(fft_size);
++  TEST_ASSERT(nfm != NULL, "Initialization should succeed");
+ 
+   float* gain_spectrum = (float*)calloc(fft_size, sizeof(float));
+   float* noise_profile = (float*)calloc(real_size, sizeof(float));
+@@ -56,6 +57,20 @@ void test_noise_floor_manager_apply(void) {
+   noise_floor_manager_apply(nfm, real_size, fft_size, gain_spectrum, NULL, 0.1f,
+                             0.1f, NULL, 0.5f);
+ 
++  // Coverage: Mismatched sizes
++  // Force 0.0 gain, apply 0.1 reduction, with wrong sizes given.
++  // It should still process using the correct internal sizes and output 0.1
++  for (uint32_t k = 0; k < fft_size; k++) {
++    gain_spectrum[k] = 0.0f;
++  }
++  noise_floor_manager_apply(nfm, 999, 999, gain_spectrum, noise_profile, 0.1f,
++                            0.1f, NULL, 0.0f);
++  noise_floor_manager_apply(nfm, real_size, 999, gain_spectrum, noise_profile,
++                            0.1f, 0.1f, NULL, 0.0f);
++  TEST_FLOAT_CLOSE(gain_spectrum[0], 0.1f, 0.001f);
++  TEST_FLOAT_CLOSE(gain_spectrum[fft_size - 1], 0.1f,
++                   0.001f); // symmetric copy checks out
++
+   // Test with 1.0 linear reduction (should result in 1.0 floor/gain)
+   for (uint32_t k = 0; k < fft_size; k++) {
+     gain_spectrum[k] = 0.5f;
+diff --git a/tests/test_shared_utils.c b/tests/test_shared_utils.c
+index ee61b18..8a3d673 100644
+--- a/tests/test_shared_utils.c
++++ b/tests/test_shared_utils.c
+@@ -10,6 +10,7 @@
+ #include "shared/utils/absolute_hearing_thresholds.h"
+ #include "shared/utils/critical_bands.h"
+ #include "shared/utils/masking_estimator.h"
++#include "shared/utils/simd_utils.h"
+ #include "shared/utils/spectral_smoother.h"
+ #include "shared/utils/transient_detector.h"
+ 
+@@ -202,6 +203,52 @@ void test_transient_detector(void) {
+   printf("✓ Transient Detector tests passed\n");
+ }
+ 
++void test_simd_utils(void) {
++  printf("Testing SIMD Utils...\n");
++
++  sb_simd_state_t state = sb_simd_enable_ftz_daz();
++
++  float buf[8] = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
++  float out[8] = {0.0f};
++
++  sb_vec8_t v1 = sb_load8(buf);
++  sb_vec8_t v2 = sb_set8(2.0f);
++
++  sb_vec8_t vadd = sb_add8(v1, v2);
++  sb_vec8_t vsub = sb_sub8(v1, v2);
++  sb_vec8_t vmul = sb_mul8(v1, v2);
++  sb_vec8_t vdiv = sb_div8(v1, v2);
++  sb_vec8_t vmax = sb_max8(v1, v2);
++
++  sb_store8(out, vadd);
++  TEST_FLOAT_CLOSE(out[0], 3.0f, 0.001f);
++
++  sb_vec4_t v4_1 = sb_load4(buf);
++  sb_vec4_t v4_2 = sb_set4(2.0f);
++  sb_vec4_t v4_add = sb_add4(v4_1, v4_2);
++  sb_vec4_t v4_sub = sb_sub4(v4_1, v4_2);
++  sb_vec4_t v4_mul = sb_mul4(v4_1, v4_2);
++
++  sb_store4(out, v4_add);
++  TEST_FLOAT_CLOSE(out[0], 3.0f, 0.001f);
++
++  float ssd4 = sb_vec4_ssd(v4_1, v4_2);
++  (void)ssd4;
++
++  sb_vec8_t mask = sb_gt8(v1, v2);
++  sb_vec8_t result = sb_sel8(mask, vsub, vmul);
++
++  sb_store8(out, result);
++
++  sb_acc8_t acc = sb_acc8_zero();
++  acc = sb_acc8_add_ssd(acc, v1, v2);
++  float hsum = sb_acc8_hsum(acc);
++  (void)hsum;
++
++  sb_simd_restore_state(state);
++  printf("✓ SIMD Utils tests passed\n");
++}
++
+ int main(void) {
+   printf("Running pre-estimation tests...\n");
+ 
+@@ -210,6 +257,7 @@ int main(void) {
+   test_masking_estimator();
+   test_spectral_smoother();
+   test_transient_detector();
++  test_simd_utils();
+ 
+   printf("✅ All pre-estimation tests passed!\n");
+   return 0;

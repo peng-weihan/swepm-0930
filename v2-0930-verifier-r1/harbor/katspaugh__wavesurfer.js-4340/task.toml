@@ -1,0 +1,33 @@
+schema_version = "1.0"
+
+[[artifacts]]
+source = "/logs/agent/solution.patch"
+destination = "solution.patch"
+
+[metadata]
+benchmark = "swepmv2"
+instance_id = "katspaugh__wavesurfer.js-4340"
+repository = "katspaugh/wavesurfer.js"
+language = "typescript"
+base_commit = "ae8d3cd32ebb27273051935c01fc6e4001cde3af"
+category = "debugging"
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 3600.0
+
+[[verifier.collect]]
+command = "bash -c 'set -eu; cd /testbed; mkdir -p /logs/agent; export GIT_INDEX_FILE=/logs/agent/capture.index; git read-tree ae8d3cd32ebb27273051935c01fc6e4001cde3af; git add -u; git ls-files --others --exclude-standard -z -- . '\"'\"':(exclude).venv'\"'\"' '\"'\"':(exclude)venv'\"'\"' '\"'\"':(exclude)node_modules'\"'\"' '\"'\"':(exclude)**/node_modules'\"'\"' '\"'\"':(exclude).pytest_cache'\"'\"' '\"'\"':(exclude)**/__pycache__'\"'\"' '\"'\"':(exclude)build'\"'\"' '\"'\"':(exclude)target'\"'\"' '\"'\"':(exclude).codex'\"'\"' > /logs/agent/new-files.nul; if [ -s /logs/agent/new-files.nul ]; then git --literal-pathspecs add --pathspec-from-file=/logs/agent/new-files.nul --pathspec-file-nul; fi; git diff --cached --binary ae8d3cd32ebb27273051935c01fc6e4001cde3af > /logs/agent/solution.patch'"
+timeout_sec = 180.0
+
+[agent]
+timeout_sec = 7200.0
+
+[environment]
+build_timeout_sec = 1800.0
+docker_image = "key4127/refactor-dockerhub:katspaugh__wavesurfer.js-4340"
+workdir = "/testbed"
+cpus = 4
+memory_mb = 32768
+storage_mb = 20480
+gpus = 0

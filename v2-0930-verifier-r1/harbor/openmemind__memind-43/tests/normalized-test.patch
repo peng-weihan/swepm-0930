@@ -1,0 +1,3392 @@
+diff --git a/memind-server/src/test/java/com/openmemind/ai/memory/server/MemindServerIntegrationTest.java b/memind-server/src/test/java/com/openmemind/ai/memory/server/MemindServerIntegrationTest.java
+index 508a6bb..5a2568c 100644
+--- a/memind-server/src/test/java/com/openmemind/ai/memory/server/MemindServerIntegrationTest.java
++++ b/memind-server/src/test/java/com/openmemind/ai/memory/server/MemindServerIntegrationTest.java
+@@ -170,8 +170,14 @@ class MemindServerIntegrationTest {
+                 .andExpect(jsonPath("$.code").value("success"))
+                 .andExpect(jsonPath("$.timestamp").isNotEmpty())
+                 .andExpect(jsonPath("$.data.version").value(1))
+-                .andExpect(jsonPath("$.data.config.extraction").isArray())
+-                .andExpect(jsonPath("$.data.config.retrieval").isArray());
++                .andExpect(jsonPath("$.data.config['extraction.common']").isArray())
++                .andExpect(jsonPath("$.data.config['extraction.itemGraph']").isArray())
++                .andExpect(jsonPath("$.data.config['retrieval.simple']").isArray())
++                .andExpect(jsonPath("$.data.config['retrieval.simpleGraphAssist']").isArray())
++                .andExpect(jsonPath("$.data.config['retrieval.rerank']").isArray())
++                .andExpect(jsonPath("$.data.config['memoryThread.lifecycle']").isArray())
++                .andExpect(jsonPath("$.data.config.extraction").doesNotExist())
++                .andExpect(jsonPath("$.data.config.retrieval").doesNotExist());
+     }
+ 
+     @Test
+diff --git a/memind-server/src/test/java/com/openmemind/ai/memory/server/configuration/MemindServerCorsConfigurationTest.java b/memind-server/src/test/java/com/openmemind/ai/memory/server/configuration/MemindServerCorsConfigurationTest.java
+new file mode 100644
+index 0000000..b60b8c9
+--- /dev/null
++++ b/memind-server/src/test/java/com/openmemind/ai/memory/server/configuration/MemindServerCorsConfigurationTest.java
+@@ -0,0 +1,58 @@
++/*
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ * http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package com.openmemind.ai.memory.server.configuration;
++
++import static org.assertj.core.api.Assertions.assertThat;
++import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
++import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
++
++import com.openmemind.ai.memory.server.controller.openapi.OpenHealthController;
++import org.junit.jupiter.api.Test;
++import org.springframework.http.HttpHeaders;
++import org.springframework.http.HttpMethod;
++import org.springframework.test.web.servlet.MockMvc;
++import org.springframework.test.web.servlet.setup.MockMvcBuilders;
++import org.springframework.web.cors.CorsConfiguration;
++
++class MemindServerCorsConfigurationTest {
++
++    @Test
++    void corsConfigurationIsOpenForAllOriginsMethodsAndHeaders() {
++        CorsConfiguration cors = MemindServerCorsConfiguration.openCorsConfiguration();
++
++        assertThat(cors.getAllowedOrigins()).containsExactly(CorsConfiguration.ALL);
++        assertThat(cors.getAllowedMethods()).containsExactly(CorsConfiguration.ALL);
++        assertThat(cors.getAllowedHeaders()).containsExactly(CorsConfiguration.ALL);
++        assertThat(cors.getAllowCredentials()).isFalse();
++    }
++
++    @Test
++    void preflightRequestsReceiveOpenCorsHeaders() throws Exception {
++        MockMvc mockMvc =
++                MockMvcBuilders.standaloneSetup(new OpenHealthController())
++                        .addFilters(new MemindServerCorsConfiguration().corsFilter())
++                        .build();
++
++        mockMvc.perform(
++                        options("/open/v1/health")
++                                .header(HttpHeaders.ORIGIN, "http://example.test")
++                                .header(
++                                        HttpHeaders.ACCESS_CONTROL_REQUEST_METHOD,
++                                        HttpMethod.GET.name()))
++                .andExpect(status().isOk())
++                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "*"))
++                .andExpect(header().string(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, "GET"));
++    }
++}
+diff --git a/memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java b/memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java
+index b2cb1b7..9d6711c 100644
+--- a/memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java
++++ b/memind-server/src/test/java/com/openmemind/ai/memory/server/controller/admin/memoryoption/MemoryOptionsControllerTest.java
+@@ -36,6 +36,10 @@ import tools.jackson.databind.ObjectMapper;
+ 
+ class MemoryOptionsControllerTest {
+ 
++    private static final String SEMANTIC_WINDOW_VALUE_JSON_PATH =
++            "$.data.config['extraction.itemGraph']"
++                    + "[?(@.key=='extraction.item.graph.semanticSourceWindowSize')].value";
++
+     private final StubMemoryOptionService configService = new StubMemoryOptionService();
+     private final ObjectMapper objectMapper = new ObjectMapper();
+ 
+@@ -60,7 +64,7 @@ class MemoryOptionsControllerTest {
+                 .andExpect(jsonPath("$.timestamp").isNotEmpty())
+                 .andExpect(jsonPath("$.data.version").value(3))
+                 .andExpect(
+-                        jsonPath("$.data.config.extraction[0].key")
++                        jsonPath("$.data.config['extraction.common'][0].key")
+                                 .value("extraction.common.timeout"));
+     }
+ 
+@@ -74,14 +78,14 @@ class MemoryOptionsControllerTest {
+                 .andExpect(jsonPath("$.code").value("success"))
+                 .andExpect(jsonPath("$.timestamp").isNotEmpty())
+                 .andExpect(jsonPath("$.data.version").value(4))
+-                .andExpect(jsonPath("$.data.config.extraction[0].value").value("PT45S"));
++                .andExpect(jsonPath("$.data.config['extraction.common'][0].value").value("PT45S"));
+ 
+         assertThat(configService.recordedExpectedVersion).isEqualTo(3L);
+         assertThat(configService.recordedConfig)
+-                .containsKey("extraction")
++                .containsKey("extraction.common")
+                 .satisfies(
+                         config ->
+-                                assertThat(config.get("extraction"))
++                                assertThat(config.get("extraction.common"))
+                                         .singleElement()
+                                         .extracting(MemoryOptionItemView::value)
+                                         .isEqualTo("PT45S"));
+@@ -91,10 +95,7 @@ class MemoryOptionsControllerTest {
+     void getAndPutExposeSemanticSourceWindowSize() throws Exception {
+         mockMvc.perform(get("/admin/v1/config/memory-options"))
+                 .andExpect(status().isOk())
+-                .andExpect(
+-                        jsonPath(
+-                                        "$.data.config.extraction[?(@.key=='extraction.item.graph.semanticSourceWindowSize')].value")
+-                                .value(128));
++                .andExpect(jsonPath(SEMANTIC_WINDOW_VALUE_JSON_PATH).value(128));
+ 
+         mockMvc.perform(
+                         put("/admin/v1/config/memory-options")
+@@ -103,12 +104,9 @@ class MemoryOptionsControllerTest {
+                                         objectMapper.writeValueAsBytes(
+                                                 semanticWindowUpdateRequestBody())))
+                 .andExpect(status().isOk())
+-                .andExpect(
+-                        jsonPath(
+-                                        "$.data.config.extraction[?(@.key=='extraction.item.graph.semanticSourceWindowSize')].value")
+-                                .value(64));
++                .andExpect(jsonPath(SEMANTIC_WINDOW_VALUE_JSON_PATH).value(64));
+ 
+-        assertThat(configService.recordedConfig.get("extraction"))
++        assertThat(configService.recordedConfig.get("extraction.itemGraph"))
+                 .singleElement()
+                 .extracting(MemoryOptionItemView::value)
+                 .isEqualTo(64);
+@@ -135,7 +133,7 @@ class MemoryOptionsControllerTest {
+                 3,
+                 "config",
+                 Map.of(
+-                        "extraction",
++                        "extraction.common",
+                         List.of(
+                                 Map.of(
+                                         "key",
+@@ -152,7 +150,7 @@ class MemoryOptionsControllerTest {
+                 3,
+                 "config",
+                 Map.of(
+-                        "extraction",
++                        "extraction.itemGraph",
+                         List.of(
+                                 Map.of(
+                                         "key",
+@@ -170,7 +168,7 @@ class MemoryOptionsControllerTest {
+                 new MemoryOptionsSnapshot(
+                         3L,
+                         Map.of(
+-                                "extraction",
++                                "extraction.common",
+                                 List.of(
+                                         new MemoryOptionItemView(
+                                                 "extraction.common.timeout",
+@@ -178,7 +176,9 @@ class MemoryOptionsControllerTest {
+                                                 "Maximum extraction timeout",
+                                                 "duration",
+                                                 "PT30S",
+-                                                Map.of("format", "iso-8601-duration")),
++                                                Map.of("format", "iso-8601-duration"))),
++                                "extraction.itemGraph",
++                                List.of(
+                                         new MemoryOptionItemView(
+                                                 "extraction.item.graph.semanticSourceWindowSize",
+                                                 128,
+diff --git a/memind-server/src/test/java/com/openmemind/ai/memory/server/service/config/MemoryOptionServiceTest.java b/memind-server/src/test/java/com/openmemind/ai/memory/server/service/config/MemoryOptionServiceTest.java
+index 7a555bc..3abbe67 100644
+--- a/memind-server/src/test/java/com/openmemind/ai/memory/server/service/config/MemoryOptionServiceTest.java
++++ b/memind-server/src/test/java/com/openmemind/ai/memory/server/service/config/MemoryOptionServiceTest.java
+@@ -58,7 +58,13 @@ class MemoryOptionServiceTest {
+         MemoryOptionsSnapshot snapshot = service.getCurrent();
+ 
+         assertThat(snapshot.version()).isEqualTo(1);
+-        assertThat(snapshot.config()).containsKeys("extraction", "retrieval");
++        assertThat(snapshot.config())
++                .containsKeys(
++                        "extraction.common",
++                        "extraction.itemGraph",
++                        "retrieval.simple",
++                        "retrieval.simpleGraphAssist",
++                        "memoryThread.lifecycle");
+         assertThat(repository.findActive(MemoryOptionService.CONFIG_KEY))
+                 .hasValueSatisfying(config -> assertThat(config.getConfigVersion()).isEqualTo(1));
+     }
+diff --git a/memind-server/src/test/java/com/openmemind/ai/memory/server/service/config/MemoryOptionsProjectionMapperTest.java b/memind-server/src/test/java/com/openmemind/ai/memory/server/service/config/MemoryOptionsProjectionMapperTest.java
+index 8c4f999..78c05ab 100644
+--- a/memind-server/src/test/java/com/openmemind/ai/memory/server/service/config/MemoryOptionsProjectionMapperTest.java
++++ b/memind-server/src/test/java/com/openmemind/ai/memory/server/service/config/MemoryOptionsProjectionMapperTest.java
+@@ -28,16 +28,122 @@ class MemoryOptionsProjectionMapperTest {
+     void mapsCanonicalOptionsToGroupedProjection() {
+         var projection = mapper.toProjection(MemoryBuildOptions.defaults());
+ 
+-        assertThat(projection).containsKeys("extraction", "retrieval");
+-        assertThat(projection.get("extraction"))
++        assertThat(projection)
++                .containsKeys(
++                        "extraction.common",
++                        "extraction.rawdata",
++                        "extraction.item",
++                        "extraction.itemGraph",
++                        "extraction.insight",
++                        "retrieval.common",
++                        "retrieval.simple",
++                        "retrieval.simpleGraphAssist",
++                        "retrieval.simpleThreadAssist",
++                        "retrieval.deep",
++                        "retrieval.deepGraphAssist",
++                        "retrieval.deepThreadAssist",
++                        "retrieval.rerank",
++                        "retrieval.scoring",
++                        "memoryThread.lifecycle",
++                        "memoryThread.enrichment")
++                .doesNotContainKeys("extraction", "retrieval", "memoryThread");
++        assertThat(projection.get("extraction.common"))
+                 .extracting(MemoryOptionItemView::key)
+-                .contains(
++                .containsExactly(
++                        "extraction.common.defaultScope",
+                         "extraction.common.timeout",
++                        "extraction.common.language");
++        assertThat(projection.get("extraction.rawdata"))
++                .extracting(MemoryOptionItemView::key)
++                .contains(
+                         "extraction.rawdata.conversation.messagesPerChunk",
+                         "extraction.rawdata.vectorBatchSize");
+-        assertThat(projection.get("retrieval"))
++        assertThat(projection.get("retrieval.simple"))
+                 .extracting(MemoryOptionItemView::key)
+-                .contains("retrieval.simple.timeout", "retrieval.advanced.rerank.mode");
++                .contains("retrieval.simple.timeout", "retrieval.simple.itemTopK");
++        assertThat(projection.get("retrieval.rerank"))
++                .extracting(MemoryOptionItemView::key)
++                .contains("retrieval.advanced.rerank.mode");
++    }
++
++    @Test
++    void projectsDirectlyEditableTypesForAdminEditors() {
++        var projection = mapper.toProjection(MemoryBuildOptions.defaults());
++
++        MemoryOptionItemView defaultScope = findItem(projection, "extraction.common.defaultScope");
++        assertThat(defaultScope.type()).isEqualTo("string");
++        assertThat(defaultScope.value()).isEqualTo("USER");
++        assertThat(defaultScope.defaultValue()).isEqualTo("USER");
++        assertThat(defaultScope.constraints())
++                .containsEntry("allowedValues", java.util.List.of("USER", "AGENT"));
++
++        MemoryOptionItemView timeout = findItem(projection, "extraction.common.timeout");
++        assertThat(timeout.type()).isEqualTo("string");
++        assertThat(timeout.value()).isInstanceOf(String.class);
++        assertThat(timeout.constraints()).containsEntry("format", "iso-8601-duration");
++
++        MemoryOptionItemView threshold =
++                findItem(projection, "retrieval.simple.graphAssist.graphChannelWeight");
++        assertThat(threshold.type()).isEqualTo("double");
++    }
++
++    @Test
++    void groupsRuntimeOptionsByAdminEditingDomain() {
++        var projection = mapper.toProjection(MemoryBuildOptions.defaults());
++
++        assertThat(projection.get("extraction.itemGraph"))
++                .extracting(MemoryOptionItemView::key)
++                .contains(
++                        "extraction.item.graph.enabled",
++                        "extraction.item.graph.maxEntitiesPerItem",
++                        "extraction.item.graph.supportedLanguagePacks",
++                        "extraction.item.graph.userAliasDictionary.enabled");
++        assertThat(projection.get("extraction.insight"))
++                .extracting(MemoryOptionItemView::key)
++                .contains(
++                        "extraction.insight.enabled",
++                        "extraction.insight.build.groupingThreshold",
++                        "extraction.insight.graphAssist.enabled");
++        assertThat(projection.get("retrieval.simpleGraphAssist"))
++                .extracting(MemoryOptionItemView::key)
++                .contains(
++                        "retrieval.simple.graphAssist.enabled",
++                        "retrieval.simple.graphAssist.maxSeedItems",
++                        "retrieval.simple.graphAssist.mode");
++        assertThat(projection.get("retrieval.deepGraphAssist"))
++                .extracting(MemoryOptionItemView::key)
++                .contains(
++                        "retrieval.deep.graphAssist.enabled",
++                        "retrieval.deep.graphAssist.maxSeedItems",
++                        "retrieval.deep.graphAssist.mode");
++        assertThat(projection.get("retrieval.simpleThreadAssist"))
++                .extracting(MemoryOptionItemView::key)
++                .contains(
++                        "retrieval.simple.memoryThreadAssist.enabled",
++                        "retrieval.simple.memoryThreadAssist.maxThreads");
++        assertThat(projection.get("retrieval.deepThreadAssist"))
++                .extracting(MemoryOptionItemView::key)
++                .contains(
++                        "retrieval.deep.memoryThreadAssist.enabled",
++                        "retrieval.deep.memoryThreadAssist.maxThreads");
++        assertThat(projection.get("retrieval.scoring"))
++                .extracting(MemoryOptionItemView::key)
++                .contains(
++                        "retrieval.advanced.scoring.fusion.k",
++                        "retrieval.advanced.scoring.timeDecay.rate",
++                        "retrieval.advanced.scoring.keywordSearch.probeTopK");
++        assertThat(projection.get("memoryThread.lifecycle"))
++                .extracting(MemoryOptionItemView::key)
++                .contains(
++                        "memoryThread.enabled",
++                        "memoryThread.derivation.enabled",
++                        "memoryThread.rule.matchThreshold",
++                        "memoryThread.lifecycle.dormantAfter");
++        assertThat(projection.get("memoryThread.enrichment"))
++                .extracting(MemoryOptionItemView::key)
++                .contains(
++                        "memoryThread.enrichment.enabled",
++                        "memoryThread.enrichment.minimumWallClockGapBetweenRuns");
+     }
+ 
+     @Test
+@@ -58,18 +164,21 @@ class MemoryOptionsProjectionMapperTest {
+     void projectionExposesInsightGraphAssistKeysAndRoundTripsValues() {
+         var projection = mapper.toProjection(MemoryBuildOptions.defaults());
+ 
+-        assertThat(projection.get("extraction"))
++        assertThat(projection.get("extraction.itemGraph"))
+                 .extracting(MemoryOptionItemView::key)
+                 .contains(
+                         "extraction.item.graph.enabled",
+                         "extraction.item.graph.semanticSearchHeadroom",
+                         "extraction.item.graph.semanticLinkConcurrency",
+-                        "extraction.item.graph.semanticSourceWindowSize",
++                        "extraction.item.graph.semanticSourceWindowSize");
++        assertThat(projection.get("extraction.insight"))
++                .extracting(MemoryOptionItemView::key)
++                .contains(
+                         "extraction.insight.graphAssist.enabled",
+                         "extraction.insight.graphAssist.maxContextChars");
+ 
+         assertThat(
+-                        projection.get("extraction").stream()
++                        projection.get("extraction.itemGraph").stream()
+                                 .filter(
+                                         item ->
+                                                 item.key()
+@@ -101,7 +210,7 @@ class MemoryOptionsProjectionMapperTest {
+     void projectionExposesRetrievalGraphAssistKeys() {
+         var projection = mapper.toProjection(MemoryBuildOptions.defaults());
+ 
+-        assertThat(projection.get("retrieval"))
++        assertThat(projection.get("retrieval.simpleGraphAssist"))
+                 .extracting(MemoryOptionItemView::key)
+                 .contains(
+                         "retrieval.simple.graphAssist.enabled",
+@@ -135,7 +244,7 @@ class MemoryOptionsProjectionMapperTest {
+     void projectionExposesDeepRetrievalGraphAssistKeysAndRoundTripsValues() {
+         var projection = mapper.toProjection(MemoryBuildOptions.defaults());
+ 
+-        assertThat(projection.get("retrieval"))
++        assertThat(projection.get("retrieval.deepGraphAssist"))
+                 .extracting(MemoryOptionItemView::key)
+                 .contains(
+                         "retrieval.deep.graphAssist.enabled",
+@@ -143,7 +252,7 @@ class MemoryOptionsProjectionMapperTest {
+                         "retrieval.deep.graphAssist.semanticEvidenceDecayFactor",
+                         "retrieval.deep.graphAssist.timeout");
+         assertThat(
+-                        projection.get("retrieval").stream()
++                        projection.get("retrieval.deepGraphAssist").stream()
+                                 .filter(
+                                         item ->
+                                                 item.key()
+@@ -175,8 +284,8 @@ class MemoryOptionsProjectionMapperTest {
+     void projectionExposesMemoryThreadKeysAndRoundTripsValues() {
+         var projection = mapper.toProjection(MemoryBuildOptions.defaults());
+ 
+-        assertThat(projection).containsKey("memoryThread");
+-        assertThat(projection.get("memoryThread"))
++        assertThat(projection).containsKey("memoryThread.lifecycle");
++        assertThat(projection.get("memoryThread.lifecycle"))
+                 .extracting(MemoryOptionItemView::key)
+                 .contains(
+                         "memoryThread.enabled",
+@@ -184,11 +293,12 @@ class MemoryOptionsProjectionMapperTest {
+                         "memoryThread.rule.maxCandidateThreads",
+                         "memoryThread.rule.maxRetrievalMembersPerThread",
+                         "memoryThread.lifecycle.dormantAfter");
+-        assertThat(projection.get("retrieval"))
++        assertThat(projection.get("retrieval.simpleThreadAssist"))
+                 .extracting(MemoryOptionItemView::key)
+-                .contains(
+-                        "retrieval.simple.memoryThreadAssist.enabled",
+-                        "retrieval.deep.memoryThreadAssist.enabled");
++                .contains("retrieval.simple.memoryThreadAssist.enabled");
++        assertThat(projection.get("retrieval.deepThreadAssist"))
++                .extracting(MemoryOptionItemView::key)
++                .contains("retrieval.deep.memoryThreadAssist.enabled");
+ 
+         updateValue(projection, "memoryThread.enabled", true);
+         updateValue(projection, "memoryThread.derivation.enabled", true);
+@@ -212,7 +322,7 @@ class MemoryOptionsProjectionMapperTest {
+     void projectionExposesMemoryThreadEnrichmentKeysAndRoundTripsValues() {
+         var projection = mapper.toProjection(MemoryBuildOptions.defaults());
+ 
+-        assertThat(projection.get("memoryThread"))
++        assertThat(projection.get("memoryThread.enrichment"))
+                 .extracting(MemoryOptionItemView::key)
+                 .contains(
+                         "memoryThread.enrichment.enabled",
+diff --git a/memind-ui/src/components/layout/data/sidebar-data.test.ts b/memind-ui/src/components/layout/data/sidebar-data.test.ts
+new file mode 100644
+index 0000000..d2fd41f
+--- /dev/null
++++ b/memind-ui/src/components/layout/data/sidebar-data.test.ts
+@@ -0,0 +1,36 @@
++import { describe, expect, it } from 'vitest'
++import { sidebarData } from './sidebar-data'
++
++describe('sidebarData', () => {
++  it('orders Memind navigation by the primary admin workflow', () => {
++    const items = sidebarData.navGroups[0]?.items ?? []
++
++    expect(items.map((item) => item.title)).toEqual([
++      'Dashboard',
++      'Buffers',
++      'Raw Data',
++      'Memory Items',
++      'Item Graph',
++      'Memory Threads',
++      'Insight Tree',
++      'Settings',
++    ])
++    expect(items.map((item) => item.url)).toEqual([
++      '/',
++      '/buffers',
++      '/raw-data',
++      '/items',
++      '/item-graph',
++      '/memory-threads',
++      '/insights',
++      '/config',
++    ])
++  })
++
++  it('does not expose Retrieve as a primary sidebar destination', () => {
++    const items = sidebarData.navGroups.flatMap((group) => group.items)
++
++    expect(items.some((item) => item.title === 'Retrieve')).toBe(false)
++    expect(items.some((item) => item.url === '/retrieve')).toBe(false)
++  })
++})
+diff --git a/memind-ui/src/features/buffers/buffers-page.test.tsx b/memind-ui/src/features/buffers/buffers-page.test.tsx
+new file mode 100644
+index 0000000..40cc086
+--- /dev/null
++++ b/memind-ui/src/features/buffers/buffers-page.test.tsx
+@@ -0,0 +1,192 @@
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { render } from 'vitest-browser-react'
++import { userEvent } from 'vitest/browser'
++import { SidebarProvider } from '@/components/ui/sidebar'
++import { BuffersPage } from './index'
++
++const conversation = {
++  id: 1,
++  sessionId: 'session-1',
++  userId: 'alice',
++  agentId: 'agent-a',
++  memoryId: 'alice:agent-a',
++  role: 'user',
++  content: 'Conversation preview',
++  userName: 'Alice',
++  sourceClient: 'sdk',
++  timestamp: '2026-04-30T00:00:00Z',
++  extracted: false,
++  createdAt: '2026-04-30T00:01:00Z',
++  updatedAt: '2026-04-30T00:02:00Z',
++}
++
++const insightBuffer = {
++  id: 11,
++  userId: 'alice',
++  agentId: 'agent-a',
++  memoryId: 'alice:agent-a',
++  insightTypeName: 'preference',
++  itemId: 101,
++  groupName: null,
++  built: false,
++  createdAt: '2026-04-30T00:03:00Z',
++  updatedAt: '2026-04-30T00:04:00Z',
++}
++
++const insightGroup = {
++  memoryId: 'alice:agent-a',
++  insightTypeName: 'preference',
++  groupName: 'group-a',
++  total: 3,
++  unbuilt: 2,
++  built: 1,
++}
++
++function api(data: unknown) {
++  return new Response(
++    JSON.stringify({ code: 'success', data, timestamp: '2026-04-30T00:00:00Z' }),
++    { headers: { 'content-type': 'application/json' } }
++  )
++}
++
++function renderPage() {
++  const queryClient = new QueryClient({
++    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
++  })
++  return render(
++    <QueryClientProvider client={queryClient}>
++      <SidebarProvider>
++        <BuffersPage />
++      </SidebarProvider>
++    </QueryClientProvider>
++  )
++}
++
++describe('BuffersPage', () => {
++  const fetchMock = vi.fn<typeof fetch>()
++
++  beforeEach(() => {
++    vi.stubGlobal('fetch', fetchMock)
++    window.localStorage.clear()
++    window.history.replaceState(null, '', '/buffers')
++  })
++
++  afterEach(() => {
++    vi.unstubAllGlobals()
++    vi.clearAllMocks()
++  })
++
++  it('default tab is conversations and conversation state defaults to pending', async () => {
++    fetchMock.mockResolvedValueOnce(api({ total: 1, current: 1, list: [conversation] }))
++
++    const { getByRole, getByText } = await renderPage()
++
++    await expect.element(getByRole('tab', { name: 'Conversations' })).toHaveAttribute('aria-selected', 'true')
++    await expect.element(getByText('session-1')).toBeInTheDocument()
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/buffers/conversations?pageNo=1&pageSize=10&state=pending',
++        expect.objectContaining({ method: 'GET' })
++      )
++    )
++  })
++
++  it('tab=insights opens insight buffers and insight state defaults to unbuilt', async () => {
++    window.history.replaceState(null, '', '/buffers?tab=insights')
++    fetchMock.mockResolvedValueOnce(api({ total: 1, current: 1, list: [insightBuffer] }))
++
++    const { getByLabelText, getByRole, getByText } = await renderPage()
++
++    await expect.element(getByRole('tab', { name: 'Insight Buffers' })).toHaveAttribute('aria-selected', 'true')
++    await expect.element(getByLabelText('Insight buffer state')).toHaveValue('unbuilt')
++    await expect.element(getByText('preference')).toBeInTheDocument()
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/buffers/insights?pageNo=1&pageSize=10&state=unbuilt',
++        expect.objectContaining({ method: 'GET' })
++      )
++    )
++  })
++
++  it('tab=groups opens insight groups', async () => {
++    window.history.replaceState(null, '', '/buffers?tab=groups')
++    fetchMock.mockResolvedValueOnce(api([insightGroup]))
++
++    const { getByRole, getByText } = await renderPage()
++
++    await expect.element(getByRole('tab', { name: 'Insight Buffer Groups' })).toHaveAttribute('aria-selected', 'true')
++    await expect.element(getByText('group-a')).toBeInTheDocument()
++  })
++
++  it('insight state options include ungrouped and grouped', async () => {
++    window.history.replaceState(null, '', '/buffers?tab=insights')
++    fetchMock.mockResolvedValueOnce(api({ total: 0, current: 1, list: [] }))
++
++    const { getByRole } = await renderPage()
++
++    await expect.element(getByRole('option', { name: 'ungrouped' })).toBeInTheDocument()
++    await expect.element(getByRole('option', { name: 'grouped', exact: true })).toBeInTheDocument()
++  })
++
++  it('mark extracted sends selected conversation ids', async () => {
++    fetchMock
++      .mockResolvedValueOnce(api({ total: 1, current: 1, list: [conversation] }))
++      .mockResolvedValueOnce(api({ updatedCount: 1, affectedMemoryIds: ['alice:agent-a'] }))
++      .mockResolvedValue(api({ total: 0, current: 1, list: [] }))
++
++    const { getByLabelText, getByRole } = await renderPage()
++    await userEvent.click(getByLabelText('Select conversation 1'))
++    await userEvent.click(getByRole('button', { name: 'Mark extracted' }))
++
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/buffers/conversations/extracted',
++        expect.objectContaining({
++          method: 'PATCH',
++          body: JSON.stringify({ ids: [1] }),
++        })
++      )
++    )
++  })
++
++  it('mark built sends selected insight buffer ids and built flag', async () => {
++    window.history.replaceState(null, '', '/buffers?tab=insights')
++    fetchMock
++      .mockResolvedValueOnce(api({ total: 1, current: 1, list: [insightBuffer] }))
++      .mockResolvedValueOnce(api({ updatedCount: 1, affectedMemoryIds: ['alice:agent-a'] }))
++      .mockResolvedValue(api({ total: 0, current: 1, list: [] }))
++
++    const { getByLabelText, getByRole } = await renderPage()
++    await userEvent.click(getByLabelText('Select insight buffer 11'))
++    await userEvent.click(getByRole('button', { name: 'Mark built' }))
++
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/buffers/insights/built',
++        expect.objectContaining({
++          method: 'PATCH',
++          body: JSON.stringify({ ids: [11], built: true }),
++        })
++      )
++    )
++  })
++
++  it('conversation row opens detail drawer with full content', async () => {
++    fetchMock
++      .mockResolvedValueOnce(api({ total: 1, current: 1, list: [conversation] }))
++      .mockResolvedValueOnce(api({ ...conversation, content: 'Full conversation content' }))
++
++    const { getByRole, getByText } = await renderPage()
++    await userEvent.click(getByRole('button', { name: 'View conversation 1' }))
++
++    await expect.element(getByText('Full conversation content')).toBeInTheDocument()
++    await expect.element(getByText('sessionId: session-1')).toBeInTheDocument()
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/buffers/conversations/1',
++        expect.objectContaining({ method: 'GET' })
++      )
++    )
++  })
++})
+diff --git a/memind-ui/src/features/components/confirm-result-dialog.test.tsx b/memind-ui/src/features/components/confirm-result-dialog.test.tsx
+new file mode 100644
+index 0000000..e83a930
+--- /dev/null
++++ b/memind-ui/src/features/components/confirm-result-dialog.test.tsx
+@@ -0,0 +1,85 @@
++import { describe, expect, it, vi } from 'vitest'
++import { render } from 'vitest-browser-react'
++import { userEvent } from 'vitest/browser'
++import { ConfirmResultDialog } from './confirm-result-dialog'
++
++describe('ConfirmResultDialog', () => {
++  it('describes selected-row deletion without filtered-result semantics', async () => {
++    const { getByText } = await render(
++      <ConfirmResultDialog
++        open
++        onOpenChange={vi.fn()}
++        title='Delete memory items'
++        selectedCount={3}
++        description='Deletes only the selected row ids.'
++        onConfirm={vi.fn()}
++      />
++    )
++
++    await expect.element(getByText('3 selected rows')).toBeInTheDocument()
++    await expect
++      .element(getByText('Deletes only the selected row ids.'))
++      .toBeInTheDocument()
++    expect(document.body.textContent).not.toMatch(/filtered results/i)
++  })
++
++  it('renders cascading delete warnings', async () => {
++    const { getByText } = await render(
++      <ConfirmResultDialog
++        open
++        onOpenChange={vi.fn()}
++        title='Delete raw data'
++        selectedCount={2}
++        description='Deletes selected raw data ids.'
++        cascadeWarning='Associated memory items will also be deleted.'
++        onConfirm={vi.fn()}
++      />
++    )
++
++    await expect
++      .element(getByText('Associated memory items will also be deleted.'))
++      .toBeInTheDocument()
++  })
++
++  it('renders result counts returned by the server', async () => {
++    const { getByText } = await render(
++      <ConfirmResultDialog
++        open
++        onOpenChange={vi.fn()}
++        title='Delete graph entities'
++        selectedCount={1}
++        description='Deletes selected entities.'
++        result={{
++          deletedCount: 1,
++          affectedMemoryIds: ['alice:agent-a'],
++          deletedAliases: 2,
++          deletedMentions: 3,
++        }}
++        onConfirm={vi.fn()}
++      />
++    )
++
++    await expect.element(getByText('deletedCount: 1')).toBeInTheDocument()
++    await expect.element(getByText('affectedMemoryIds: 1')).toBeInTheDocument()
++    await expect.element(getByText('deletedAliases: 2')).toBeInTheDocument()
++    await expect.element(getByText('deletedMentions: 3')).toBeInTheDocument()
++  })
++
++  it('calls onConfirm when the destructive action is clicked', async () => {
++    const onConfirm = vi.fn()
++    const { getByRole } = await render(
++      <ConfirmResultDialog
++        open
++        onOpenChange={vi.fn()}
++        title='Delete selected rows'
++        selectedCount={1}
++        description='Deletes one selected row.'
++        onConfirm={onConfirm}
++      />
++    )
++
++    await userEvent.click(getByRole('button', { name: 'Delete' }))
++
++    expect(onConfirm).toHaveBeenCalledOnce()
++  })
++})
+diff --git a/memind-ui/src/features/components/server-status.test.tsx b/memind-ui/src/features/components/server-status.test.tsx
+new file mode 100644
+index 0000000..bedff10
+--- /dev/null
++++ b/memind-ui/src/features/components/server-status.test.tsx
+@@ -0,0 +1,84 @@
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { render } from 'vitest-browser-react'
++import { ServerStatus } from './server-status'
++
++const jsonResponse = (body: unknown) =>
++  new Response(JSON.stringify(body), {
++    status: 200,
++    headers: { 'content-type': 'application/json' },
++  })
++
++function renderWithQueryClient(node: React.ReactNode) {
++  const queryClient = new QueryClient({
++    defaultOptions: {
++      queries: { retry: false },
++    },
++  })
++
++  return render(
++    <QueryClientProvider client={queryClient}>{node}</QueryClientProvider>
++  )
++}
++
++describe('ServerStatus', () => {
++  const fetchMock = vi.fn<typeof fetch>()
++
++  beforeEach(() => {
++    vi.stubGlobal('fetch', fetchMock)
++  })
++
++  afterEach(() => {
++    vi.unstubAllGlobals()
++    vi.clearAllMocks()
++    vi.useRealTimers()
++  })
++
++  it('shows connecting before the first health result', async () => {
++    fetchMock.mockReturnValueOnce(new Promise(() => {}))
++
++    const { getByText } = await renderWithQueryClient(<ServerStatus />)
++
++    await expect.element(getByText('connecting')).toBeInTheDocument()
++  })
++
++  it('shows connected after health returns success', async () => {
++    fetchMock.mockResolvedValueOnce(
++      jsonResponse({
++        code: 'success',
++        data: { status: 'UP', service: 'memind-server' },
++        timestamp: '2026-04-30T00:00:00Z',
++      })
++    )
++
++    const { getByText } = await renderWithQueryClient(<ServerStatus />)
++
++    await expect.element(getByText('connected')).toBeInTheDocument()
++  })
++
++  it('shows disconnected after a network error', async () => {
++    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
++
++    const { getByText } = await renderWithQueryClient(<ServerStatus />)
++
++    await expect.element(getByText('disconnected')).toBeInTheDocument()
++  })
++
++  it('polls with a 30 second interval', async () => {
++    vi.useFakeTimers()
++    fetchMock.mockResolvedValue(
++      jsonResponse({
++        code: 'success',
++        data: { status: 'UP', service: 'memind-server' },
++        timestamp: '2026-04-30T00:00:00Z',
++      })
++    )
++
++    await renderWithQueryClient(<ServerStatus />)
++    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
++
++    await vi.advanceTimersByTimeAsync(30_000)
++
++    expect(fetchMock).toHaveBeenCalledTimes(2)
++  })
++})
+diff --git a/memind-ui/src/features/config/config-page.test.tsx b/memind-ui/src/features/config/config-page.test.tsx
+new file mode 100644
+index 0000000..c176101
+--- /dev/null
++++ b/memind-ui/src/features/config/config-page.test.tsx
+@@ -0,0 +1,289 @@
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
++import '@/styles/index.css'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { render } from 'vitest-browser-react'
++import { userEvent } from 'vitest/browser'
++import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar'
++import { ConfigPage } from './index'
++
++const memoryOptions = {
++  version: 7,
++  config: {
++    'extraction.common': [
++      option('enabled', true, 'boolean'),
++      option('maxItems', 10, 'integer', { min: 1, max: 100 }),
++      option('scoreThreshold', 0.5, 'number', { min: 0, max: 1 }),
++      option('defaultScope', 'USER', 'enum', {
++        allowedValues: ['USER', 'SESSION', 'GLOBAL'],
++      }),
++      option('timeout', 'PT30S', 'duration', { format: 'iso-8601-duration' }),
++      option('modelName', 'small', 'string'),
++      option('strategy', 'simple', 'string', { enum: ['simple', 'deep'] }),
++    ],
++    'extraction.rawdata': [option('rawBatchSize', 32, 'integer')],
++    'retrieval.rerank': [option('rawJson', { mode: 'debug' }, 'object')],
++  },
++}
++
++const longOptionKey =
++  'retrieval.pipeline.memory.thread.projection.materialization.policy.version.with.a.very.long.unbroken.identifier'
++const longOptionValue =
++  'value-with-a-very-long-unbroken-token-that-should-not-force-the-config-page-to-overflow-horizontally-'.repeat(
++    4
++  )
++
++function option(
++  key: string,
++  value: unknown,
++  type: string,
++  constraints: Record<string, unknown> | null = null
++) {
++  return {
++    key,
++    value,
++    description: `${key} description`,
++    type,
++    defaultValue: value,
++    constraints,
++  }
++}
++
++function api(data: unknown, status = 200, code = 'success', message?: string) {
++  return new Response(
++    JSON.stringify({
++      code,
++      data,
++      message,
++      timestamp: '2026-04-30T00:00:00Z',
++    }),
++    {
++      status,
++      headers: { 'content-type': 'application/json' },
++      statusText: message,
++    }
++  )
++}
++
++function renderPage() {
++  const queryClient = new QueryClient({
++    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
++  })
++  return render(
++    <QueryClientProvider client={queryClient}>
++      <SidebarProvider>
++        <SidebarInset>
++          <ConfigPage />
++        </SidebarInset>
++      </SidebarProvider>
++    </QueryClientProvider>
++  )
++}
++
++describe('ConfigPage', () => {
++  const fetchMock = vi.fn<typeof fetch>()
++
++  beforeEach(() => {
++    vi.stubGlobal('fetch', fetchMock)
++    window.history.replaceState(null, '', '/config')
++  })
++
++  afterEach(() => {
++    vi.unstubAllGlobals()
++    vi.clearAllMocks()
++  })
++
++  it('renders config groups with a compact selector and typed editors in the active group', async () => {
++    fetchMock.mockResolvedValueOnce(api(memoryOptions))
++
++    const { getByLabelText, getByRole, getByText } = await renderPage()
++
++    await expect
++      .element(getByRole('heading', { name: 'Settings' }))
++      .toBeInTheDocument()
++    await expect
++      .element(getByRole('combobox', { name: 'Section' }))
++      .toBeInTheDocument()
++    await expect
++      .element(getByRole('option', { name: 'Extraction Common (7)' }))
++      .toBeInTheDocument()
++    await expect
++      .element(getByRole('option', { name: 'Extraction Raw Data (1)' }))
++      .toBeInTheDocument()
++    await expect
++      .element(getByRole('option', { name: 'Retrieval Rerank (1)' }))
++      .toBeInTheDocument()
++    await expect.element(getByRole('tablist')).not.toBeInTheDocument()
++    await expect
++      .element(getByRole('heading', { name: 'Extraction Common' }))
++      .toBeInTheDocument()
++    await expect
++      .element(getByText('extraction.common').last())
++      .toBeInTheDocument()
++    await expect
++      .element(getByRole('switch', { name: 'enabled' }))
++      .toBeInTheDocument()
++    await expect
++      .element(getByLabelText('maxItems'))
++      .toHaveAttribute('type', 'number')
++    await expect
++      .element(getByLabelText('scoreThreshold'))
++      .toHaveAttribute('type', 'number')
++    await expect
++      .element(getByRole('combobox', { name: 'defaultScope' }))
++      .toBeInTheDocument()
++    await expect
++      .element(getByRole('combobox', { name: 'defaultScope' }))
++      .toHaveValue('USER')
++    await expect.element(getByLabelText('timeout')).toHaveValue('PT30S')
++    await expect
++      .element(getByLabelText('timeout'))
++      .toHaveAttribute('type', 'text')
++    await expect
++      .element(getByLabelText('modelName'))
++      .toHaveAttribute('type', 'text')
++    await expect
++      .element(getByRole('combobox', { name: 'strategy' }))
++      .toBeInTheDocument()
++    await userEvent.selectOptions(
++      getByRole('combobox', { name: 'Section' }),
++      'retrieval.rerank'
++    )
++
++    await expect
++      .element(getByRole('heading', { name: 'Retrieval Rerank' }))
++      .toBeInTheDocument()
++    await expect
++      .element(getByText('retrieval.rerank').last())
++      .toBeInTheDocument()
++    await expect
++      .element(getByRole('button', { name: 'rawJson value' }))
++      .toBeInTheDocument()
++    await expect
++      .element(getByLabelText('rawJson JSON'))
++      .toHaveValue('{"mode":"debug"}')
++  })
++
++  it('keeps long option names and values inside the viewport', async () => {
++    fetchMock.mockResolvedValueOnce(
++      api({
++        version: 7,
++        config: {
++          longSectionNameWithAnUnbrokenIdentifier: [
++            option(longOptionKey, longOptionValue, 'string'),
++            option('longEnum', longOptionValue, 'string', {
++              enum: [longOptionValue, 'short'],
++            }),
++          ],
++        },
++      })
++    )
++
++    const { getByLabelText, getByRole } = await renderPage()
++
++    await expect
++      .element(
++        getByRole('option', {
++          name: 'Long Section Name With An Unbroken Identifier (2)',
++        })
++      )
++      .toBeInTheDocument()
++    await expect.element(getByLabelText(longOptionKey)).toBeInTheDocument()
++
++    expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(
++      document.documentElement.clientWidth
++    )
++  })
++
++  it('save button is disabled before edits and dirty state appears after an edit', async () => {
++    fetchMock.mockResolvedValueOnce(api(memoryOptions))
++
++    const { getByLabelText, getByRole, getByText } = await renderPage()
++
++    await expect
++      .element(getByRole('button', { name: 'Save changes' }))
++      .toBeDisabled()
++    await userEvent.fill(getByLabelText('modelName'), 'large')
++
++    await expect.element(getByText('1 unsaved change')).toBeInTheDocument()
++    await expect
++      .element(getByRole('button', { name: 'Save changes' }))
++      .not.toBeDisabled()
++  })
++
++  it('editing two fields sends one PUT with the complete config object', async () => {
++    fetchMock.mockResolvedValueOnce(api(memoryOptions)).mockResolvedValueOnce(
++      api({
++        version: 8,
++        config: {
++          ...memoryOptions.config,
++          'extraction.common': memoryOptions.config['extraction.common'].map(
++            (item) => {
++              if (item.key === 'maxItems') return { ...item, value: 25 }
++              if (item.key === 'modelName') return { ...item, value: 'large' }
++              return item
++            }
++          ),
++        },
++      })
++    )
++
++    const { getByLabelText, getByRole } = await renderPage()
++
++    await userEvent.fill(getByLabelText('maxItems'), '25')
++    await userEvent.fill(getByLabelText('modelName'), 'large')
++    await userEvent.click(getByRole('button', { name: 'Save changes' }))
++
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/config/memory-options',
++        expect.objectContaining({
++          method: 'PUT',
++          body: JSON.stringify({
++            expectedVersion: 7,
++            config: {
++              ...memoryOptions.config,
++              'extraction.common': memoryOptions.config[
++                'extraction.common'
++              ].map((item) => {
++                if (item.key === 'maxItems') return { ...item, value: 25 }
++                if (item.key === 'modelName') return { ...item, value: 'large' }
++                return item
++              }),
++            },
++          }),
++        })
++      )
++    )
++  })
++
++  it('conflict response shows refresh guidance', async () => {
++    fetchMock
++      .mockResolvedValueOnce(api(memoryOptions))
++      .mockResolvedValueOnce(
++        api({ reason: 'stale' }, 409, 'conflict', 'Version mismatch')
++      )
++
++    const { getByLabelText, getByRole, getByText } = await renderPage()
++
++    await userEvent.fill(getByLabelText('modelName'), 'large')
++    await userEvent.click(getByRole('button', { name: 'Save changes' }))
++
++    await expect
++      .element(
++        getByText('The server config changed. Refresh before saving again.')
++      )
++      .toBeInTheDocument()
++  })
++
++  it('leaving with unsaved edits prompts for confirmation', async () => {
++    fetchMock.mockResolvedValueOnce(api(memoryOptions))
++
++    const { getByLabelText } = await renderPage()
++
++    await userEvent.fill(getByLabelText('modelName'), 'large')
++    const event = new Event('beforeunload', { cancelable: true })
++
++    expect(window.dispatchEvent(event)).toBe(false)
++    expect(event.defaultPrevented).toBe(true)
++  })
++})
+diff --git a/memind-ui/src/features/dashboard/dashboard-page.test.tsx b/memind-ui/src/features/dashboard/dashboard-page.test.tsx
+new file mode 100644
+index 0000000..d839f4c
+--- /dev/null
++++ b/memind-ui/src/features/dashboard/dashboard-page.test.tsx
+@@ -0,0 +1,199 @@
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { render } from 'vitest-browser-react'
++import { userEvent } from 'vitest/browser'
++import { SidebarProvider } from '@/components/ui/sidebar'
++import { DashboardPage } from './index'
++
++const dashboard = {
++  totals: {
++    rawData: 10,
++    items: 20,
++    insights: 3,
++    memoryThreads: 4,
++    graphEntities: 5,
++    itemLinks: 6,
++  },
++  backlog: {
++    conversationPending: 12,
++    insightUnbuilt: 5,
++    insightUngrouped: 2,
++    threadOutboxPending: 1,
++    threadOutboxFailed: 1,
++    graphBatchRepairRequired: 7,
++  },
++  activity: {
++    days: 7,
++    rawDataCreated: [{ date: '2026-04-30', count: 2 }],
++    itemsCreated: [{ date: '2026-04-30', count: 4 }],
++    insightsCreated: [{ date: '2026-04-30', count: 1 }],
++  },
++  breakdown: {
++    sourceClients: [{ name: 'sdk', count: 10 }],
++    rawDataTypes: [],
++    itemTypes: [],
++    insightTypes: [],
++    graphLinkTypes: [],
++  },
++  healthSignals: {
++    graphEnabled: true,
++    retrievalGraphAssistEnabled: true,
++    threadProjectionStates: [{ state: 'ready', count: 1 }],
++  },
++}
++
++const zeroDashboard = {
++  totals: {
++    rawData: 0,
++    items: 0,
++    insights: 0,
++    memoryThreads: 0,
++    graphEntities: 0,
++    itemLinks: 0,
++  },
++  backlog: {
++    conversationPending: 0,
++    insightUnbuilt: 0,
++    insightUngrouped: 0,
++    threadOutboxPending: 0,
++    threadOutboxFailed: 0,
++    graphBatchRepairRequired: 0,
++  },
++  activity: {
++    days: 7,
++    rawDataCreated: [],
++    itemsCreated: [],
++    insightsCreated: [],
++  },
++  breakdown: {
++    sourceClients: [],
++    rawDataTypes: [],
++    itemTypes: [],
++    insightTypes: [],
++    graphLinkTypes: [],
++  },
++  healthSignals: {
++    graphEnabled: false,
++    retrievalGraphAssistEnabled: false,
++    threadProjectionStates: [],
++  },
++}
++
++const jsonResponse = (data: unknown) =>
++  new Response(
++    JSON.stringify({
++      code: 'success',
++      data,
++      timestamp: '2026-04-30T00:00:00Z',
++    }),
++    { headers: { 'content-type': 'application/json' } }
++  )
++
++function renderDashboard() {
++  const queryClient = new QueryClient({
++    defaultOptions: {
++      queries: { retry: false },
++    },
++  })
++
++  return render(
++    <QueryClientProvider client={queryClient}>
++      <SidebarProvider>
++        <DashboardPage />
++      </SidebarProvider>
++    </QueryClientProvider>
++  )
++}
++
++describe('DashboardPage', () => {
++  const fetchMock = vi.fn<typeof fetch>()
++
++  beforeEach(() => {
++    vi.stubGlobal('fetch', fetchMock)
++    window.history.replaceState(null, '', '/')
++  })
++
++  afterEach(() => {
++    vi.unstubAllGlobals()
++    vi.clearAllMocks()
++  })
++
++  it('renders total metric cards', async () => {
++    fetchMock.mockResolvedValueOnce(jsonResponse(dashboard))
++
++    const { getByLabelText } = await renderDashboard()
++
++    await expect.element(getByLabelText('Memory Items 20')).toBeInTheDocument()
++    await expect.element(getByLabelText('Graph Entities 5')).toBeInTheDocument()
++  })
++
++  it('renders zero-state copy when all counts are zero', async () => {
++    fetchMock.mockResolvedValueOnce(jsonResponse(zeroDashboard))
++
++    const { getByText } = await renderDashboard()
++
++    await expect
++      .element(getByText('No memory activity for this scope yet.'))
++      .toBeInTheDocument()
++  })
++
++  it('days selector defaults to 7', async () => {
++    fetchMock.mockResolvedValueOnce(jsonResponse(dashboard))
++
++    const { getByLabelText } = await renderDashboard()
++
++    await expect.element(getByLabelText('Activity days')).toHaveValue('7')
++  })
++
++  it('changing days to 30 refetches dashboard with days=30', async () => {
++    fetchMock
++      .mockResolvedValueOnce(jsonResponse(dashboard))
++      .mockResolvedValueOnce(jsonResponse({ ...dashboard, activity: { ...dashboard.activity, days: 30 } }))
++
++    const { getByLabelText } = await renderDashboard()
++    await userEvent.selectOptions(getByLabelText('Activity days'), '30')
++
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenLastCalledWith(
++        '/admin/v1/dashboard?days=30',
++        expect.objectContaining({ method: 'GET' })
++      )
++    )
++  })
++
++  it('renders backlog deep links and preserves memoryId', async () => {
++    window.history.replaceState(null, '', '/?memoryId=alice%3Aagent-a')
++    fetchMock.mockResolvedValueOnce(jsonResponse(dashboard))
++
++    const { getByRole } = await renderDashboard()
++
++    await expect
++      .element(
++        getByRole('link', {
++          name: 'pending conversations 12',
++        })
++      )
++      .toHaveAttribute(
++        'href',
++        '/buffers?tab=conversations&state=pending&memoryId=alice%3Aagent-a'
++      )
++    await expect
++      .element(getByRole('link', { name: 'unbuilt insights 5' }))
++      .toHaveAttribute(
++        'href',
++        '/buffers?tab=insights&state=unbuilt&memoryId=alice%3Aagent-a'
++      )
++    await expect
++      .element(getByRole('link', { name: 'ungrouped insights 2' }))
++      .toHaveAttribute(
++        'href',
++        '/buffers?tab=insights&state=ungrouped&memoryId=alice%3Aagent-a'
++      )
++    await expect
++      .element(getByRole('link', { name: 'graph batches needing repair 7' }))
++      .toHaveAttribute(
++        'href',
++        '/item-graph?tab=batches&state=REPAIR_REQUIRED&memoryId=alice%3Aagent-a'
++      )
++  })
++})
+diff --git a/memind-ui/src/features/insights/insights-page.test.tsx b/memind-ui/src/features/insights/insights-page.test.tsx
+new file mode 100644
+index 0000000..8746d43
+--- /dev/null
++++ b/memind-ui/src/features/insights/insights-page.test.tsx
+@@ -0,0 +1,118 @@
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { render } from 'vitest-browser-react'
++import { userEvent } from 'vitest/browser'
++import { SidebarProvider } from '@/components/ui/sidebar'
++import { InsightsPage } from './index'
++
++const insight = {
++  insightId: 201,
++  userId: 'alice',
++  agentId: 'agent-a',
++  memoryId: 'alice:agent-a',
++  type: 'preference',
++  scope: 'global',
++  name: 'Preference',
++  categories: ['profile'],
++  content: 'Full insight content',
++  points: [{ text: 'point one' }],
++  groupName: 'group-a',
++  lastReasonedAt: '2026-04-30T00:00:00Z',
++  summaryEmbedding: [0.1, 0.2],
++  tier: 'LONG_TERM',
++  parentInsightId: 100,
++  childInsightIds: [202],
++  version: 3,
++  createdAt: '2026-04-30T00:02:00Z',
++  updatedAt: '2026-04-30T00:03:00Z',
++}
++
++function api(data: unknown) {
++  return new Response(
++    JSON.stringify({ code: 'success', data, timestamp: '2026-04-30T00:00:00Z' }),
++    { headers: { 'content-type': 'application/json' } }
++  )
++}
++
++function renderPage() {
++  const queryClient = new QueryClient({
++    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
++  })
++  return render(
++    <QueryClientProvider client={queryClient}>
++      <SidebarProvider>
++        <InsightsPage />
++      </SidebarProvider>
++    </QueryClientProvider>
++  )
++}
++
++describe('InsightsPage', () => {
++  const fetchMock = vi.fn<typeof fetch>()
++
++  beforeEach(() => {
++    vi.stubGlobal('fetch', fetchMock)
++    window.history.replaceState(null, '', '/insights')
++  })
++
++  afterEach(() => {
++    vi.unstubAllGlobals()
++    vi.clearAllMocks()
++  })
++
++  it('uses the Insight Tree page title', async () => {
++    fetchMock.mockResolvedValueOnce(api({ total: 0, current: 1, list: [] }))
++
++    const { getByRole } = await renderPage()
++
++    await expect
++      .element(getByRole('heading', { level: 1, name: 'Insight Tree' }))
++      .toBeInTheDocument()
++  })
++
++  it('selecting two rows sends only the selected insight ids', async () => {
++    fetchMock
++      .mockResolvedValueOnce(api({ total: 2, current: 1, list: [insight, { ...insight, insightId: 202 }] }))
++      .mockResolvedValueOnce(api({ deletedCount: 2, affectedMemoryIds: ['alice:agent-a'] }))
++      .mockResolvedValue(api({ total: 0, current: 1, list: [] }))
++
++    const { getByLabelText, getByRole } = await renderPage()
++    await userEvent.click(getByLabelText('Select insight 201'))
++    await userEvent.click(getByLabelText('Select insight 202'))
++    await userEvent.click(getByRole('button', { name: 'Delete selected' }))
++    await userEvent.click(getByRole('button', { name: 'Delete' }))
++
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/insights',
++        expect.objectContaining({
++          method: 'DELETE',
++          body: JSON.stringify({ insightIds: [201, 202] }),
++        })
++      )
++    )
++  })
++
++  it('detail drawer shows content, points, categories, relations, embedding, version, and timestamps', async () => {
++    fetchMock
++      .mockResolvedValueOnce(api({ total: 1, current: 1, list: [insight] }))
++      .mockResolvedValueOnce(api(insight))
++
++    const { getByRole, getByText } = await renderPage()
++    await userEvent.click(getByRole('button', { name: 'View insight 201' }))
++
++    await expect.element(getByText('Full insight content')).toBeInTheDocument()
++    await expect.element(getByText('profile')).toBeInTheDocument()
++    await expect.element(getByText('point one')).toBeInTheDocument()
++    await expect.element(getByText('parentInsightId: 100')).toBeInTheDocument()
++    await expect.element(getByText('childInsightIds: 202')).toBeInTheDocument()
++    await expect.element(getByText('version: 3')).toBeInTheDocument()
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/insights/201',
++        expect.objectContaining({ method: 'GET' })
++      )
++    )
++    await expect.element(getByText('summaryEmbedding')).toBeInTheDocument()
++  })
++})
+diff --git a/memind-ui/src/features/item-graph/item-graph-page.test.tsx b/memind-ui/src/features/item-graph/item-graph-page.test.tsx
+new file mode 100644
+index 0000000..f709435
+--- /dev/null
++++ b/memind-ui/src/features/item-graph/item-graph-page.test.tsx
+@@ -0,0 +1,295 @@
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { render } from 'vitest-browser-react'
++import { userEvent } from 'vitest/browser'
++import { SidebarProvider } from '@/components/ui/sidebar'
++import { ItemGraphPage } from './index'
++
++const summary = {
++  entityCount: 10,
++  aliasCount: 8,
++  mentionCount: 7,
++  itemLinkCount: 6,
++  cooccurrenceCount: 5,
++  graphBatchCountByState: [{ name: 'PENDING', count: 1 }],
++  itemLinkCountByType: [{ name: 'RELATED', count: 2 }],
++  entityCountByType: [{ name: 'person', count: 3 }],
++}
++
++const entity = {
++  id: 1,
++  memoryId: 'alice:agent-a',
++  userId: 'alice',
++  agentId: 'agent-a',
++  entityKey: 'person:alice',
++  displayName: 'Alice',
++  entityType: 'person',
++  metadata: { source: 'test' },
++  createdAt: '2026-04-30T00:00:00Z',
++  updatedAt: '2026-04-30T00:01:00Z',
++}
++
++const alias = {
++  id: 2,
++  memoryId: 'alice:agent-a',
++  userId: 'alice',
++  agentId: 'agent-a',
++  entityKey: 'person:alice',
++  entityType: 'person',
++  normalizedAlias: 'alias-a',
++  evidenceCount: 4,
++  metadata: {},
++  createdAt: '2026-04-30T00:02:00Z',
++  updatedAt: '2026-04-30T00:03:00Z',
++}
++
++const mention = {
++  id: 3,
++  memoryId: 'alice:agent-a',
++  userId: 'alice',
++  agentId: 'agent-a',
++  itemId: 101,
++  entityKey: 'person:alice',
++  confidence: 0.9,
++  metadata: {},
++  createdAt: '2026-04-30T00:04:00Z',
++  updatedAt: '2026-04-30T00:05:00Z',
++}
++
++const itemLink = {
++  id: 4,
++  memoryId: 'alice:agent-a',
++  userId: 'alice',
++  agentId: 'agent-a',
++  sourceItemId: 101,
++  targetItemId: 102,
++  linkType: 'RELATED',
++  relationCode: 'rel',
++  evidenceSource: 'graph',
++  strength: 0.7,
++  metadata: {},
++  createdAt: '2026-04-30T00:06:00Z',
++  updatedAt: '2026-04-30T00:07:00Z',
++}
++
++const cooccurrence = {
++  id: 5,
++  memoryId: 'alice:agent-a',
++  userId: 'alice',
++  agentId: 'agent-a',
++  leftEntityKey: 'person:alice',
++  rightEntityKey: 'topic:memory',
++  cooccurrenceCount: 3,
++  metadata: {},
++  createdAt: '2026-04-30T00:08:00Z',
++  updatedAt: '2026-04-30T00:09:00Z',
++}
++
++const batch = {
++  id: 6,
++  memoryId: 'alice:agent-a',
++  userId: 'alice',
++  agentId: 'agent-a',
++  extractionBatchId: 'batch-1',
++  state: 'PENDING',
++  errorMessage: null,
++  retryPromotionSupported: true,
++  createdAt: '2026-04-30T00:10:00Z',
++  updatedAt: '2026-04-30T00:11:00Z',
++}
++
++function api(data: unknown) {
++  return new Response(
++    JSON.stringify({ code: 'success', data, timestamp: '2026-04-30T00:00:00Z' }),
++    { headers: { 'content-type': 'application/json' } }
++  )
++}
++
++function page(list: unknown[]) {
++  return { total: list.length, current: 1, list }
++}
++
++function renderPage() {
++  const queryClient = new QueryClient({
++    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
++  })
++  return render(
++    <QueryClientProvider client={queryClient}>
++      <SidebarProvider>
++        <ItemGraphPage />
++      </SidebarProvider>
++    </QueryClientProvider>
++  )
++}
++
++describe('ItemGraphPage', () => {
++  const fetchMock = vi.fn<typeof fetch>()
++
++  beforeEach(() => {
++    vi.stubGlobal('fetch', fetchMock)
++    window.localStorage.clear()
++    window.history.replaceState(null, '', '/item-graph')
++  })
++
++  afterEach(() => {
++    vi.unstubAllGlobals()
++    vi.clearAllMocks()
++  })
++
++  it('default tab is summary and renders graph counts', async () => {
++    fetchMock.mockResolvedValueOnce(api(summary))
++
++    const { getByRole, getByText } = await renderPage()
++
++    await expect.element(getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true')
++    await expect.element(getByText('entityCount: 10')).toBeInTheDocument()
++    await expect.element(getByText('aliasCount: 8')).toBeInTheDocument()
++    await expect.element(getByText('cooccurrenceCount: 5')).toBeInTheDocument()
++  })
++
++  it('tab=batches opens batches and default state omits state query param', async () => {
++    window.history.replaceState(null, '', '/item-graph?tab=batches')
++    fetchMock.mockResolvedValueOnce(api(page([batch])))
++
++    const { getByRole, getByText } = await renderPage()
++
++    await expect.element(getByRole('tab', { name: 'Batches' })).toHaveAttribute('aria-selected', 'true')
++    await expect.element(getByText('batch-1')).toBeInTheDocument()
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/item-graph/batches?pageNo=1&pageSize=10',
++        expect.objectContaining({ method: 'GET' })
++      )
++    )
++  })
++
++  it('entity delete is disabled without memoryId', async () => {
++    window.history.replaceState(null, '', '/item-graph?tab=entities')
++    fetchMock.mockResolvedValueOnce(api(page([entity])))
++
++    const { getByLabelText, getByRole } = await renderPage()
++    await userEvent.click(getByLabelText('Select entity person:alice'))
++
++    await expect.element(getByRole('button', { name: 'Delete selected entities' })).toBeDisabled()
++  })
++
++  it('entity delete sends memoryId and selected entity keys', async () => {
++    window.history.replaceState(null, '', '/item-graph?tab=entities&memoryId=alice%3Aagent-a')
++    fetchMock
++      .mockResolvedValueOnce(api(page([entity])))
++      .mockResolvedValueOnce(api({
++        deletedCount: 1,
++        affectedMemoryIds: ['alice:agent-a'],
++        deletedAliases: 1,
++        deletedMentions: 1,
++        deletedCooccurrences: 1,
++        possiblyStaleEntityOverlapLinks: 0,
++      }))
++      .mockResolvedValue(api(page([])))
++
++    const { getByLabelText, getByRole } = await renderPage()
++    await userEvent.click(getByLabelText('Select entity person:alice'))
++    await userEvent.click(getByRole('button', { name: 'Delete selected entities' }))
++    await userEvent.click(getByRole('button', { name: 'Delete' }))
++
++    await expectDelete('/admin/v1/item-graph/entities', {
++      memoryId: 'alice:agent-a',
++      entityKeys: ['person:alice'],
++    })
++  })
++
++  it('entity detail drawer renders aliases, mention count, top items, cooccurrences, and overlap count', async () => {
++    window.history.replaceState(null, '', '/item-graph?tab=entities&memoryId=alice%3Aagent-a')
++    fetchMock
++      .mockResolvedValueOnce(api(page([entity])))
++      .mockResolvedValueOnce(api({
++        entity,
++        aliases: [alias],
++        mentionCount: 7,
++        topMentionedItemIds: [101],
++        topCooccurrences: [cooccurrence],
++        entityOverlapItemLinkCount: 2,
++      }))
++
++    const { getByRole, getByText } = await renderPage()
++    await userEvent.click(getByRole('button', { name: 'View entity 1' }))
++
++    await expect.element(getByText('alias-a')).toBeInTheDocument()
++    await expect.element(getByText('mentionCount: 7')).toBeInTheDocument()
++    await expect.element(getByText('topMentionedItemIds: 101')).toBeInTheDocument()
++    await expect.element(getByText('topic:memory')).toBeInTheDocument()
++    await expect.element(getByText('entityOverlapItemLinkCount: 2')).toBeInTheDocument()
++  })
++
++  it('alias delete sends selected row ids', async () => {
++    window.history.replaceState(null, '', '/item-graph?tab=aliases&memoryId=alice%3Aagent-a')
++    fetchMock
++      .mockResolvedValueOnce(api(page([alias])))
++      .mockResolvedValueOnce(api({ deletedCount: 1, affectedMemoryIds: ['alice:agent-a'] }))
++      .mockResolvedValue(api(page([])))
++
++    const { getByLabelText, getByRole } = await renderPage()
++    await userEvent.click(getByLabelText('Select alias 2'))
++    await userEvent.click(getByRole('button', { name: 'Delete selected aliases' }))
++    await userEvent.click(getByRole('button', { name: 'Delete' }))
++
++    await expectDelete('/admin/v1/item-graph/aliases', { ids: [2] })
++  })
++
++  it('mention delete sends selected row ids', async () => {
++    window.history.replaceState(null, '', '/item-graph?tab=mentions&memoryId=alice%3Aagent-a')
++    fetchMock
++      .mockResolvedValueOnce(api(page([mention])))
++      .mockResolvedValueOnce(api({ deletedCount: 1, affectedMemoryIds: ['alice:agent-a'] }))
++      .mockResolvedValue(api(page([])))
++
++    const { getByLabelText, getByRole } = await renderPage()
++    await userEvent.click(getByLabelText('Select mention 3'))
++    await userEvent.click(getByRole('button', { name: 'Delete selected mentions' }))
++    await userEvent.click(getByRole('button', { name: 'Delete' }))
++
++    await expectDelete('/admin/v1/item-graph/mentions', { ids: [3] })
++  })
++
++  it('item link delete sends selected row ids', async () => {
++    window.history.replaceState(null, '', '/item-graph?tab=item-links&memoryId=alice%3Aagent-a')
++    fetchMock
++      .mockResolvedValueOnce(api(page([itemLink])))
++      .mockResolvedValueOnce(api({ deletedCount: 1, affectedMemoryIds: ['alice:agent-a'] }))
++      .mockResolvedValue(api(page([])))
++
++    const { getByLabelText, getByRole } = await renderPage()
++    await userEvent.click(getByLabelText('Select item link 4'))
++    await userEvent.click(getByRole('button', { name: 'Delete selected item links' }))
++    await userEvent.click(getByRole('button', { name: 'Delete' }))
++
++    await expectDelete('/admin/v1/item-graph/item-links', { ids: [4] })
++  })
++
++  it('cooccurrence delete sends selected row ids', async () => {
++    window.history.replaceState(null, '', '/item-graph?tab=cooccurrences&memoryId=alice%3Aagent-a')
++    fetchMock
++      .mockResolvedValueOnce(api(page([cooccurrence])))
++      .mockResolvedValueOnce(api({ deletedCount: 1, affectedMemoryIds: ['alice:agent-a'] }))
++      .mockResolvedValue(api(page([])))
++
++    const { getByLabelText, getByRole } = await renderPage()
++    await userEvent.click(getByLabelText('Select cooccurrence 5'))
++    await userEvent.click(getByRole('button', { name: 'Delete selected cooccurrences' }))
++    await userEvent.click(getByRole('button', { name: 'Delete' }))
++
++    await expectDelete('/admin/v1/item-graph/cooccurrences', { ids: [5] })
++  })
++
++  async function expectDelete(path: string, body: unknown) {
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        path,
++        expect.objectContaining({
++          method: 'DELETE',
++          body: JSON.stringify(body),
++        })
++      )
++    )
++  }
++})
+diff --git a/memind-ui/src/features/items/items-page.test.tsx b/memind-ui/src/features/items/items-page.test.tsx
+new file mode 100644
+index 0000000..444a234
+--- /dev/null
++++ b/memind-ui/src/features/items/items-page.test.tsx
+@@ -0,0 +1,132 @@
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { render } from 'vitest-browser-react'
++import { userEvent } from 'vitest/browser'
++import { SidebarProvider } from '@/components/ui/sidebar'
++import { ItemsPage } from './index'
++
++const item = {
++  itemId: 101,
++  userId: 'alice',
++  agentId: 'agent-a',
++  memoryId: 'alice:agent-a',
++  content: 'Full item content',
++  scope: 'conversation',
++  category: 'fact',
++  vectorId: 'vec-1',
++  rawDataId: 'raw-1',
++  contentHash: 'hash-1',
++  occurredAt: '2026-04-30T00:00:00Z',
++  observedAt: '2026-04-30T00:01:00Z',
++  metadata: { topic: 'test' },
++  type: 'note',
++  rawDataType: 'message',
++  sourceClient: 'sdk',
++  createdAt: '2026-04-30T00:02:00Z',
++  updatedAt: '2026-04-30T00:03:00Z',
++}
++
++function api(data: unknown) {
++  return new Response(
++    JSON.stringify({ code: 'success', data, timestamp: '2026-04-30T00:00:00Z' }),
++    { headers: { 'content-type': 'application/json' } }
++  )
++}
++
++function renderPage() {
++  const queryClient = new QueryClient({
++    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
++  })
++  return render(
++    <QueryClientProvider client={queryClient}>
++      <SidebarProvider>
++        <ItemsPage />
++      </SidebarProvider>
++    </QueryClientProvider>
++  )
++}
++
++describe('ItemsPage', () => {
++  const fetchMock = vi.fn<typeof fetch>()
++
++  beforeEach(() => {
++    vi.stubGlobal('fetch', fetchMock)
++    window.history.replaceState(null, '', '/items')
++  })
++
++  afterEach(() => {
++    vi.unstubAllGlobals()
++    vi.clearAllMocks()
++  })
++
++  it('selecting two rows sends only the selected item ids', async () => {
++    fetchMock
++      .mockResolvedValueOnce(api({ total: 2, current: 1, list: [item, { ...item, itemId: 102 }] }))
++      .mockResolvedValueOnce(api({ deletedCount: 2, affectedMemoryIds: ['alice:agent-a'] }))
++      .mockResolvedValue(api({ total: 0, current: 1, list: [] }))
++
++    const { getByLabelText, getByRole } = await renderPage()
++    await userEvent.click(getByLabelText('Select item 101'))
++    await userEvent.click(getByLabelText('Select item 102'))
++    await userEvent.click(getByRole('button', { name: 'Delete selected' }))
++    await userEvent.click(getByRole('button', { name: 'Delete' }))
++
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/items',
++        expect.objectContaining({
++          method: 'DELETE',
++          body: JSON.stringify({ itemIds: [101, 102] }),
++        })
++      )
++    )
++  })
++
++  it('empty state is visible for an empty list', async () => {
++    fetchMock.mockResolvedValueOnce(api({ total: 0, current: 1, list: [] }))
++
++    const { getByText } = await renderPage()
++
++    await expect.element(getByText('No memory items found.')).toBeInTheDocument()
++  })
++
++  it('detail drawer shows full content and scope prompt when userId is missing', async () => {
++    fetchMock
++      .mockResolvedValueOnce(api({ total: 1, current: 1, list: [item] }))
++      .mockResolvedValueOnce(api(item))
++
++    const { getByRole, getByText } = await renderPage()
++    await userEvent.click(getByRole('button', { name: 'View item 101' }))
++
++    await expect.element(getByText('Full item content')).toBeInTheDocument()
++    await expect.element(getByText('vectorId: vec-1')).toBeInTheDocument()
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/items/101',
++        expect.objectContaining({ method: 'GET' })
++      )
++    )
++    await expect
++      .element(getByText('Set memory scope with userId to load associated threads.'))
++      .toBeInTheDocument()
++  })
++
++  it('associated threads load when userId is present', async () => {
++    window.history.replaceState(null, '', '/items?memoryId=alice%3Aagent-a')
++    fetchMock
++      .mockResolvedValueOnce(api({ total: 1, current: 1, list: [item] }))
++      .mockResolvedValueOnce(api(item))
++      .mockResolvedValueOnce(api([{ threadKey: 'thread-1', role: 'PRIMARY' }]))
++
++    const { getByRole, getByText } = await renderPage()
++    await userEvent.click(getByRole('button', { name: 'View item 101' }))
++
++    await expect.element(getByText('thread-1')).toBeInTheDocument()
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/items/101/memory-threads?userId=alice&agentId=agent-a',
++        expect.objectContaining({ method: 'GET' })
++      )
++    )
++  })
++})
+diff --git a/memind-ui/src/features/memory-threads/memory-threads-page.test.tsx b/memind-ui/src/features/memory-threads/memory-threads-page.test.tsx
+new file mode 100644
+index 0000000..fa3c5dc
+--- /dev/null
++++ b/memind-ui/src/features/memory-threads/memory-threads-page.test.tsx
+@@ -0,0 +1,194 @@
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { render } from 'vitest-browser-react'
++import { userEvent } from 'vitest/browser'
++import { SidebarProvider } from '@/components/ui/sidebar'
++import { MemoryThreadsPage } from './index'
++
++const thread = {
++  userId: 'alice',
++  agentId: 'agent-a',
++  memoryId: 'alice:agent-a',
++  threadKey: 'thread-1',
++  threadType: 'topic',
++  anchorKind: 'item',
++  anchorKey: '101',
++  displayLabel: 'Thread label',
++  lifecycleStatus: 'ACTIVE',
++  objectState: 'OPEN',
++  headline: 'Thread headline',
++  snapshotJson: { summary: 'snapshot' },
++  snapshotVersion: 2,
++  openedAt: '2026-04-30T00:00:00Z',
++  lastEventAt: '2026-04-30T00:01:00Z',
++  lastMeaningfulUpdateAt: '2026-04-30T00:02:00Z',
++  closedAt: null,
++  eventCount: 4,
++  memberCount: 1,
++  createdAt: '2026-04-30T00:03:00Z',
++  updatedAt: '2026-04-30T00:04:00Z',
++}
++
++const membership = {
++  userId: 'alice',
++  agentId: 'agent-a',
++  memoryId: 'alice:agent-a',
++  threadKey: 'thread-1',
++  itemId: 101,
++  role: 'PRIMARY',
++  primary: true,
++  relevanceWeight: 0.8,
++  createdAt: '2026-04-30T00:05:00Z',
++  updatedAt: '2026-04-30T00:06:00Z',
++}
++
++const status = {
++  projectionState: 'READY',
++  pendingCount: 1,
++  failedCount: 0,
++  rebuildInProgress: false,
++  lastProcessedItemId: 100,
++  materializationPolicyVersion: 'v1',
++  updatedAt: '2026-04-30T00:07:00Z',
++  invalidationReason: null,
++}
++
++function api(data: unknown) {
++  return new Response(
++    JSON.stringify({ code: 'success', data, timestamp: '2026-04-30T00:00:00Z' }),
++    { headers: { 'content-type': 'application/json' } }
++  )
++}
++
++function renderPage() {
++  const queryClient = new QueryClient({
++    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
++  })
++  return render(
++    <QueryClientProvider client={queryClient}>
++      <SidebarProvider>
++        <MemoryThreadsPage />
++      </SidebarProvider>
++    </QueryClientProvider>
++  )
++}
++
++describe('MemoryThreadsPage', () => {
++  const fetchMock = vi.fn<typeof fetch>()
++
++  beforeEach(() => {
++    vi.stubGlobal('fetch', fetchMock)
++    window.localStorage.clear()
++    window.history.replaceState(null, '', '/memory-threads')
++  })
++
++  afterEach(() => {
++    vi.unstubAllGlobals()
++    vi.clearAllMocks()
++  })
++
++  it('status filter default omits status query param', async () => {
++    fetchMock.mockResolvedValueOnce(api({ total: 1, current: 1, list: [thread] }))
++
++    const { getByText } = await renderPage()
++
++    await expect.element(getByText('thread-1')).toBeInTheDocument()
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/memory-threads?pageNo=1&pageSize=10',
++        expect.objectContaining({ method: 'GET' })
++      )
++    )
++  })
++
++  it('status options include ACTIVE DORMANT CLOSED', async () => {
++    fetchMock.mockResolvedValueOnce(api({ total: 0, current: 1, list: [] }))
++
++    const { getByRole } = await renderPage()
++
++    await expect.element(getByRole('option', { name: 'ACTIVE' })).toBeInTheDocument()
++    await expect.element(getByRole('option', { name: 'DORMANT' })).toBeInTheDocument()
++    await expect.element(getByRole('option', { name: 'CLOSED' })).toBeInTheDocument()
++  })
++
++  it('detail drawer is blocked when userId is missing', async () => {
++    fetchMock.mockResolvedValueOnce(api({ total: 1, current: 1, list: [thread] }))
++
++    const { getByRole, getByText } = await renderPage()
++    await userEvent.click(getByRole('button', { name: 'View thread thread-1' }))
++
++    await expect.element(getByText('Set memory scope with userId to load thread details.')).toBeInTheDocument()
++    expect(fetchMock).not.toHaveBeenCalledWith(
++      '/admin/v1/memory-threads/thread-1?userId=alice&agentId=agent-a',
++      expect.anything()
++    )
++  })
++
++  it('detail drawer loads thread and memberships when userId is present', async () => {
++    window.history.replaceState(null, '', '/memory-threads?memoryId=alice%3Aagent-a')
++    fetchMock
++      .mockResolvedValueOnce(api(status))
++      .mockResolvedValueOnce(api({ total: 1, current: 1, list: [thread] }))
++      .mockResolvedValueOnce(api(thread))
++      .mockResolvedValueOnce(api([membership]))
++
++    const { getByRole, getByText } = await renderPage()
++    await userEvent.click(getByRole('button', { name: 'View thread thread-1' }))
++
++    await expect.element(getByText('Thread headline')).toBeInTheDocument()
++    await expect.element(getByRole('cell', { name: 'PRIMARY', exact: true })).toBeInTheDocument()
++    await expect.element(getByText('primary: yes')).toBeInTheDocument()
++    await expect.element(getByText('relevanceWeight: 0.8')).toBeInTheDocument()
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/memory-threads/thread-1/items?userId=alice&agentId=agent-a',
++        expect.objectContaining({ method: 'GET' })
++      )
++    )
++  })
++
++  it('focus=status opens the status panel', async () => {
++    window.history.replaceState(
++      null,
++      '',
++      '/memory-threads?memoryId=alice%3Aagent-a&focus=status'
++    )
++    fetchMock
++      .mockResolvedValueOnce(api(status))
++      .mockResolvedValueOnce(api({ total: 0, current: 1, list: [] }))
++
++    const { getByText } = await renderPage()
++
++    await expect.element(getByText('Thread Projection Status')).toBeInTheDocument()
++    await expect.element(getByText('projectionState: READY')).toBeInTheDocument()
++  })
++
++  it('rebuild is blocked when userId is missing', async () => {
++    fetchMock.mockResolvedValueOnce(api({ total: 0, current: 1, list: [] }))
++
++    const { getByRole, getByText } = await renderPage()
++
++    await expect.element(getByText('Set memory scope with userId to load thread status.')).toBeInTheDocument()
++    await expect.element(getByRole('button', { name: 'Rebuild projections' })).toBeDisabled()
++  })
++
++  it('rebuild confirmation refreshes status and list', async () => {
++    window.history.replaceState(null, '', '/memory-threads?memoryId=alice%3Aagent-a')
++    fetchMock
++      .mockResolvedValueOnce(api(status))
++      .mockResolvedValueOnce(api({ total: 1, current: 1, list: [thread] }))
++      .mockResolvedValueOnce(api(1))
++      .mockResolvedValue(api({ total: 1, current: 1, list: [thread] }))
++
++    const { getByRole } = await renderPage()
++    await userEvent.click(getByRole('button', { name: 'Rebuild projections' }))
++    await userEvent.click(getByRole('button', { name: 'Rebuild' }))
++
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/memory-threads/rebuild?userId=alice&agentId=agent-a',
++        expect.objectContaining({ method: 'POST' })
++      )
++    )
++  })
++})
+diff --git a/memind-ui/src/features/raw-data/raw-data-page.test.tsx b/memind-ui/src/features/raw-data/raw-data-page.test.tsx
+new file mode 100644
+index 0000000..1d544cf
+--- /dev/null
++++ b/memind-ui/src/features/raw-data/raw-data-page.test.tsx
+@@ -0,0 +1,104 @@
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { render } from 'vitest-browser-react'
++import { userEvent } from 'vitest/browser'
++import { SidebarProvider } from '@/components/ui/sidebar'
++import { RawDataPage } from './index'
++
++const rawData = {
++  rawDataId: 'raw-1',
++  userId: 'alice',
++  agentId: 'agent-a',
++  memoryId: 'alice:agent-a',
++  type: 'message',
++  sourceClient: 'sdk',
++  contentId: 'content-1',
++  segment: { text: 'segment' },
++  caption: 'Full raw caption',
++  captionVectorId: 'caption-vec-1',
++  metadata: { source: 'test' },
++  startTime: '2026-04-30T00:00:00Z',
++  endTime: '2026-04-30T00:01:00Z',
++  createdAt: '2026-04-30T00:02:00Z',
++  updatedAt: '2026-04-30T00:03:00Z',
++}
++
++function api(data: unknown) {
++  return new Response(
++    JSON.stringify({ code: 'success', data, timestamp: '2026-04-30T00:00:00Z' }),
++    { headers: { 'content-type': 'application/json' } }
++  )
++}
++
++function renderPage() {
++  const queryClient = new QueryClient({
++    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
++  })
++  return render(
++    <QueryClientProvider client={queryClient}>
++      <SidebarProvider>
++        <RawDataPage />
++      </SidebarProvider>
++    </QueryClientProvider>
++  )
++}
++
++describe('RawDataPage', () => {
++  const fetchMock = vi.fn<typeof fetch>()
++
++  beforeEach(() => {
++    vi.stubGlobal('fetch', fetchMock)
++    window.history.replaceState(null, '', '/raw-data')
++  })
++
++  afterEach(() => {
++    vi.unstubAllGlobals()
++    vi.clearAllMocks()
++  })
++
++  it('selecting two rows sends only the selected raw data ids', async () => {
++    fetchMock
++      .mockResolvedValueOnce(api({ total: 2, current: 1, list: [rawData, { ...rawData, rawDataId: 'raw-2' }] }))
++      .mockResolvedValueOnce(api({ deletedRawDataCount: 2, deletedItemCount: 3, affectedMemoryIds: ['alice:agent-a'], insightCleanupRequired: true }))
++      .mockResolvedValue(api({ total: 0, current: 1, list: [] }))
++
++    const { getByLabelText, getByRole, getByText } = await renderPage()
++    await userEvent.click(getByLabelText('Select raw data raw-1'))
++    await userEvent.click(getByLabelText('Select raw data raw-2'))
++    await userEvent.click(getByRole('button', { name: 'Delete selected' }))
++    await expect
++      .element(getByText('Associated memory items will also be deleted.'))
++      .toBeInTheDocument()
++    await userEvent.click(getByRole('button', { name: 'Delete' }))
++
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/raw-data',
++        expect.objectContaining({
++          method: 'DELETE',
++          body: JSON.stringify({ rawDataIds: ['raw-1', 'raw-2'] }),
++        })
++      )
++    )
++  })
++
++  it('detail drawer shows caption, JSON fields, content id, vector id, and timestamps', async () => {
++    fetchMock
++      .mockResolvedValueOnce(api({ total: 1, current: 1, list: [rawData] }))
++      .mockResolvedValueOnce(api(rawData))
++
++    const { getByRole, getByText } = await renderPage()
++    await userEvent.click(getByRole('button', { name: 'View raw data raw-1' }))
++
++    await expect.element(getByText('Full raw caption')).toBeInTheDocument()
++    await expect.element(getByText('contentId: content-1')).toBeInTheDocument()
++    await expect.element(getByText('captionVectorId: caption-vec-1')).toBeInTheDocument()
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/admin/v1/raw-data/raw-1',
++        expect.objectContaining({ method: 'GET' })
++      )
++    )
++    await expect.element(getByText('segment')).toBeInTheDocument()
++  })
++})
+diff --git a/memind-ui/src/features/retrieve/retrieve-page.test.tsx b/memind-ui/src/features/retrieve/retrieve-page.test.tsx
+new file mode 100644
+index 0000000..730fa1f
+--- /dev/null
++++ b/memind-ui/src/features/retrieve/retrieve-page.test.tsx
+@@ -0,0 +1,243 @@
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { render } from 'vitest-browser-react'
++import { userEvent } from 'vitest/browser'
++import { SidebarProvider } from '@/components/ui/sidebar'
++import { RetrievePage } from './index'
++
++const retrieveResponse = {
++  items: [
++    {
++      id: '101',
++      text: 'Alice likes durable memory systems',
++      vectorScore: 0.91,
++      finalScore: 0.87,
++      occurredAt: null,
++    },
++  ],
++  insights: [{ id: '201', text: 'Alice prefers explicit trace views', tier: 'hot' }],
++  rawData: [
++    {
++      rawDataId: 'raw-1',
++      caption: 'Conversation about retrieval tracing',
++      maxScore: 0.77,
++      itemIds: ['101'],
++    },
++  ],
++  evidences: ['Evidence sentence one'],
++  strategy: 'DEEP',
++  query: 'memory trace',
++  trace: {
++    traceId: 'trace-1',
++    startedAt: null,
++    completedAt: null,
++    truncated: false,
++    stages: [
++      {
++        stage: 'candidate-search',
++        tier: 'items',
++        method: 'vector',
++        status: 'OK',
++        inputCount: 2,
++        candidateCount: 3,
++        resultCount: 1,
++        degraded: true,
++        skipped: false,
++        startedAt: null,
++        durationMillis: 12,
++        attributes: { source: 'items' },
++        candidates: [{ id: '101', score: 0.91 }],
++      },
++    ],
++    merge: {
++      inputCount: 3,
++      outputCount: 2,
++      deduplicatedCount: 1,
++      sourceCount: 2,
++      status: 'OK',
++    },
++    finalResults: {
++      strategy: 'DEEP',
++      status: 'OK',
++      itemCount: 1,
++      insightCount: 1,
++      rawDataCount: 1,
++      evidenceCount: 1,
++    },
++  },
++}
++
++function api(data: unknown) {
++  return new Response(
++    JSON.stringify({ code: 'success', data, timestamp: '2026-04-30T00:00:00Z' }),
++    { headers: { 'content-type': 'application/json' } }
++  )
++}
++
++function renderPage() {
++  const queryClient = new QueryClient({
++    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
++  })
++  return render(
++    <QueryClientProvider client={queryClient}>
++      <SidebarProvider>
++        <RetrievePage />
++      </SidebarProvider>
++    </QueryClientProvider>
++  )
++}
++
++describe('RetrievePage', () => {
++  const fetchMock = vi.fn<typeof fetch>()
++
++  beforeEach(() => {
++    vi.stubGlobal('fetch', fetchMock)
++    window.localStorage.clear()
++    window.history.replaceState(null, '', '/retrieve')
++  })
++
++  afterEach(() => {
++    vi.unstubAllGlobals()
++    vi.clearAllMocks()
++  })
++
++  it('prefills userId and agentId from global memory scope', async () => {
++    window.history.replaceState(null, '', '/retrieve?memoryId=alice%3Aagent-a')
++
++    const { getByLabelText } = await renderPage()
++
++    await expect.element(getByLabelText('userId')).toHaveValue('alice')
++    await expect.element(getByLabelText('agentId')).toHaveValue('agent-a')
++  })
++
++  it('allows local userId and agentId override without changing global scope', async () => {
++    window.history.replaceState(null, '', '/retrieve?memoryId=alice%3Aagent-a')
++    fetchMock.mockResolvedValueOnce(api(retrieveResponse))
++
++    const { getByLabelText, getByRole } = await renderPage()
++
++    await userEvent.fill(getByLabelText('userId'), 'bob')
++    await userEvent.fill(getByLabelText('agentId'), 'agent-b')
++    await userEvent.fill(getByLabelText('Query'), 'memory trace')
++    await userEvent.click(getByRole('button', { name: 'Retrieve' }))
++
++    await expectRetrieve({
++      userId: 'bob',
++      agentId: 'agent-b',
++      query: 'memory trace',
++      strategy: 'SIMPLE',
++      trace: false,
++    })
++    expect(new URLSearchParams(window.location.search).get('memoryId')).toBe(
++      'alice:agent-a'
++    )
++  })
++
++  it('blocks submit when userId is empty', async () => {
++    const { getByLabelText, getByRole, getByText } = await renderPage()
++
++    await userEvent.fill(getByLabelText('agentId'), 'agent-a')
++    await userEvent.fill(getByLabelText('Query'), 'memory trace')
++    await userEvent.click(getByRole('button', { name: 'Retrieve' }))
++
++    await expect.element(getByText('userId is required.')).toBeInTheDocument()
++    expect(fetchMock).not.toHaveBeenCalled()
++  })
++
++  it('blocks submit when agentId is empty', async () => {
++    const { getByLabelText, getByRole, getByText } = await renderPage()
++
++    await userEvent.fill(getByLabelText('userId'), 'alice')
++    await userEvent.fill(getByLabelText('Query'), 'memory trace')
++    await userEvent.click(getByRole('button', { name: 'Retrieve' }))
++
++    await expect.element(getByText('agentId is required.')).toBeInTheDocument()
++    expect(fetchMock).not.toHaveBeenCalled()
++  })
++
++  it('renders retrieved items insights raw data and evidences', async () => {
++    window.history.replaceState(null, '', '/retrieve?memoryId=alice%3Aagent-a')
++    fetchMock.mockResolvedValueOnce(api(retrieveResponse))
++
++    const { getByLabelText, getByRole, getByText } = await renderPage()
++
++    await userEvent.fill(getByLabelText('Query'), 'memory trace')
++    await userEvent.click(getByRole('button', { name: 'Retrieve' }))
++
++    await expect.element(getByText('Alice likes durable memory systems')).toBeInTheDocument()
++    await expect.element(getByText('Alice prefers explicit trace views')).toBeInTheDocument()
++    await expect.element(getByText('Conversation about retrieval tracing')).toBeInTheDocument()
++    await expect.element(getByText('Evidence sentence one')).toBeInTheDocument()
++  })
++
++  it('trace section is collapsed by default', async () => {
++    window.history.replaceState(null, '', '/retrieve?memoryId=alice%3Aagent-a')
++    fetchMock.mockResolvedValueOnce(api(retrieveResponse))
++
++    const { getByLabelText, getByRole } = await renderPage()
++
++    await userEvent.fill(getByLabelText('Query'), 'memory trace')
++    await userEvent.click(getByLabelText('Trace'))
++    await userEvent.click(getByRole('button', { name: 'Retrieve' }))
++
++    await expectRetrieve({
++      userId: 'alice',
++      agentId: 'agent-a',
++      query: 'memory trace',
++      strategy: 'SIMPLE',
++      trace: true,
++    })
++    await expect
++      .element(getByRole('button', { name: 'Trace details' }))
++      .toHaveAttribute('aria-expanded', 'false')
++  })
++
++  it('expanded trace shows stage method status duration and counts', async () => {
++    window.history.replaceState(null, '', '/retrieve?memoryId=alice%3Aagent-a')
++    fetchMock.mockResolvedValueOnce(api(retrieveResponse))
++
++    const { getByLabelText, getByRole, getByText } = await renderPage()
++
++    await userEvent.fill(getByLabelText('Query'), 'memory trace')
++    await userEvent.click(getByLabelText('Trace'))
++    await userEvent.click(getByRole('button', { name: 'Retrieve' }))
++    await userEvent.click(getByRole('button', { name: 'Trace details' }))
++
++    await expect.element(getByText('candidate-search')).toBeInTheDocument()
++    await expect.element(getByText('method: vector')).toBeInTheDocument()
++    await expect.element(getByText('status: OK')).toBeInTheDocument()
++    await expect.element(getByText('duration: 12ms')).toBeInTheDocument()
++    await expect.element(getByText('inputCount: 2 -> resultCount: 1')).toBeInTheDocument()
++  })
++
++  it('attributes and candidates render inside collapsed JSON viewers', async () => {
++    window.history.replaceState(null, '', '/retrieve?memoryId=alice%3Aagent-a')
++    fetchMock.mockResolvedValueOnce(api(retrieveResponse))
++
++    const { getByLabelText, getByRole } = await renderPage()
++
++    await userEvent.fill(getByLabelText('Query'), 'memory trace')
++    await userEvent.click(getByLabelText('Trace'))
++    await userEvent.click(getByRole('button', { name: 'Retrieve' }))
++    await userEvent.click(getByRole('button', { name: 'Trace details' }))
++
++    await expect
++      .element(getByRole('button', { name: 'attributes' }))
++      .toHaveAttribute('aria-expanded', 'false')
++    await expect
++      .element(getByRole('button', { name: 'candidates' }))
++      .toHaveAttribute('aria-expanded', 'false')
++  })
++
++  async function expectRetrieve(body: unknown) {
++    await vi.waitFor(() =>
++      expect(fetchMock).toHaveBeenCalledWith(
++        '/open/v1/memory/retrieve',
++        expect.objectContaining({
++          method: 'POST',
++          body: JSON.stringify(body),
++        })
++      )
++    )
++  }
++})
+diff --git a/memind-ui/src/hooks/use-table-url-state.test.ts b/memind-ui/src/hooks/use-table-url-state.test.ts
+new file mode 100644
+index 0000000..58d003d
+--- /dev/null
++++ b/memind-ui/src/hooks/use-table-url-state.test.ts
+@@ -0,0 +1,399 @@
++import { type Mock, describe, expect, it, vi } from 'vitest'
++import { renderHook } from 'vitest-browser-react'
++import { type NavigateFn, useTableUrlState } from '@/hooks/use-table-url-state'
++
++function lastNavigateOpts(navigate: Mock<NavigateFn>) {
++  const calls = navigate.mock.calls
++  return calls[calls.length - 1]?.[0]
++}
++
++function applyLastSearchFn(
++  navigate: Mock<NavigateFn>,
++  prev: Record<string, unknown>
++) {
++  const opts = lastNavigateOpts(navigate)
++  if (!opts) return undefined
++  const s = opts.search
++  if (typeof s === 'function') {
++    return s(prev) as Record<string, unknown>
++  }
++  return s as Record<string, unknown>
++}
++
++describe('useTableUrlState', () => {
++  it('derives pagination from search with defaults', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const { result } = await renderHook(() =>
++      useTableUrlState({
++        search: { pageNo: 3, pageSize: 25 },
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++      })
++    )
++
++    expect(result.current.pagination).toEqual({
++      pageIndex: 2,
++      pageSize: 25,
++    })
++  })
++
++  it('uses default pageNo and pageSize when search omits them', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const { result } = await renderHook(() =>
++      useTableUrlState({
++        search: {},
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++      })
++    )
++
++    expect(result.current.pagination).toEqual({
++      pageIndex: 0,
++      pageSize: 10,
++    })
++  })
++
++  it('clamps negative effective pageNo via pageIndex', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const { result } = await renderHook(() =>
++      useTableUrlState({
++        search: { pageNo: 0 },
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++      })
++    )
++
++    expect(result.current.pagination.pageIndex).toBe(0)
++  })
++
++  it('onPaginationChange omits pageNo and pageSize from search when they match defaults', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const prev = { pageNo: 2, pageSize: 20, filter: 'q' }
++    const { result, act } = await renderHook(() =>
++      useTableUrlState({
++        search: prev,
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++      })
++    )
++
++    await act(() => {
++      result.current.onPaginationChange({
++        pageIndex: 0,
++        pageSize: 10,
++      })
++    })
++
++    expect(applyLastSearchFn(navigate, prev)).toMatchObject({
++      pageNo: undefined,
++      pageSize: undefined,
++      filter: 'q',
++    })
++  })
++
++  it('onPaginationChange writes non-default pageNo and pageSize', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const prev = { filter: 'x' }
++    const { result, act } = await renderHook(() =>
++      useTableUrlState({
++        search: { ...prev, pageNo: 1, pageSize: 10 },
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++      })
++    )
++
++    await act(() => {
++      result.current.onPaginationChange({
++        pageIndex: 2,
++        pageSize: 25,
++      })
++    })
++
++    expect(applyLastSearchFn(navigate, prev)).toMatchObject({
++      pageNo: 3,
++      pageSize: 25,
++      filter: 'x',
++    })
++  })
++
++  it('supports custom pagination search keys', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const { result } = await renderHook(() =>
++      useTableUrlState({
++        search: { p: 2, ps: 5 },
++        navigate,
++        pagination: {
++          pageKey: 'p',
++          pageSizeKey: 'ps',
++          defaultPage: 1,
++          defaultPageSize: 10,
++        },
++      })
++    )
++
++    expect(result.current.pagination).toEqual({
++      pageIndex: 1,
++      pageSize: 5,
++    })
++  })
++
++  it('reads globalFilter from search and onGlobalFilterChange updates URL and clears pageNo', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const { result, act } = await renderHook(() =>
++      useTableUrlState({
++        search: { pageNo: 2, filter: 'hello' },
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++        globalFilter: { enabled: true, key: 'filter' },
++      })
++    )
++
++    expect(result.current.globalFilter).toBe('hello')
++
++    await act(() => {
++      result.current.onGlobalFilterChange?.('  next  ')
++    })
++
++    expect(applyLastSearchFn(navigate, { pageNo: 2, filter: 'hello' })).toEqual({
++      pageNo: undefined,
++      filter: 'next',
++    })
++  })
++
++  it('clears filter key in URL when global filter becomes empty after trim', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const { result, act } = await renderHook(() =>
++      useTableUrlState({
++        search: { filter: 'x' },
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++        globalFilter: { enabled: true, key: 'filter' },
++      })
++    )
++
++    await act(() => {
++      result.current.onGlobalFilterChange?.('   ')
++    })
++
++    expect(applyLastSearchFn(navigate, { filter: 'x' })).toMatchObject({
++      filter: undefined,
++    })
++  })
++
++  it('does not trim global filter when trim is false', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const { result, act } = await renderHook(() =>
++      useTableUrlState({
++        search: {},
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++        globalFilter: { enabled: true, key: 'filter', trim: false },
++      })
++    )
++
++    await act(() => {
++      result.current.onGlobalFilterChange?.('  spaced  ')
++    })
++
++    expect(applyLastSearchFn(navigate, {})).toMatchObject({
++      filter: '  spaced  ',
++    })
++  })
++
++  it('omits globalFilter and onGlobalFilterChange when global filter is disabled', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const { result } = await renderHook(() =>
++      useTableUrlState({
++        search: { filter: 'ignored' },
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++        globalFilter: { enabled: false },
++      })
++    )
++
++    expect(result.current.globalFilter).toBeUndefined()
++    expect(result.current.onGlobalFilterChange).toBeUndefined()
++  })
++
++  it('builds array column filters from search', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const { result } = await renderHook(() =>
++      useTableUrlState({
++        search: { status: ['todo', 'done'], priority: ['high'] },
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++        columnFilters: [
++          { columnId: 'status', searchKey: 'status', type: 'array' },
++          { columnId: 'priority', searchKey: 'priority', type: 'array' },
++        ],
++      })
++    )
++
++    expect(result.current.columnFilters).toEqual([
++      { id: 'status', value: ['todo', 'done'] },
++      { id: 'priority', value: ['high'] },
++    ])
++  })
++
++  it('builds string column filters from search', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const { result } = await renderHook(() =>
++      useTableUrlState({
++        search: { q: '  find me  ' },
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++        columnFilters: [{ columnId: 'title', searchKey: 'q', type: 'string' }],
++      })
++    )
++
++    expect(result.current.columnFilters).toEqual([
++      { id: 'title', value: '  find me  ' },
++    ])
++  })
++
++  it('onColumnFiltersChange merges serialized filters into search and clears pageNo', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const prev = { pageNo: 3, status: ['old'], other: 1 }
++    const { result, act } = await renderHook(() =>
++      useTableUrlState({
++        search: prev,
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++        columnFilters: [
++          { columnId: 'status', searchKey: 'status', type: 'array' },
++          { columnId: 'priority', searchKey: 'priority', type: 'array' },
++        ],
++      })
++    )
++
++    await act(() => {
++      result.current.onColumnFiltersChange([
++        { id: 'status', value: ['todo'] },
++        { id: 'priority', value: [] },
++      ])
++    })
++
++    expect(applyLastSearchFn(navigate, prev)).toEqual({
++      pageNo: undefined,
++      status: ['todo'],
++      priority: undefined,
++      other: 1,
++    })
++  })
++
++  it('preserves tab search param when table filters change', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const prev = { tab: 'entities', pageNo: 4, q: 'old' }
++    const { result, act } = await renderHook(() =>
++      useTableUrlState({
++        search: prev,
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 20 },
++        columnFilters: [{ columnId: 'entityKey', searchKey: 'q', type: 'string' }],
++      })
++    )
++
++    await act(() => {
++      result.current.onColumnFiltersChange([{ id: 'entityKey', value: 'alice' }])
++    })
++
++    expect(applyLastSearchFn(navigate, prev)).toEqual({
++      tab: 'entities',
++      pageNo: undefined,
++      q: 'alice',
++    })
++  })
++
++  it('ensurePageInRange navigates with replace when current pageNo exceeds pageCount', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const { result, act } = await renderHook(() =>
++      useTableUrlState({
++        search: { pageNo: 5 },
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++      })
++    )
++
++    await act(() => {
++      result.current.ensurePageInRange(2)
++    })
++
++    expect(navigate).toHaveBeenCalledTimes(1)
++    expect(lastNavigateOpts(navigate)?.replace).toBe(true)
++    expect(applyLastSearchFn(navigate, { pageNo: 5, filter: 'x' })).toMatchObject(
++      {
++        pageNo: undefined,
++        filter: 'x',
++      }
++    )
++  })
++
++  it('ensurePageInRange resets to last pageNo when resetTo is last', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const { result, act } = await renderHook(() =>
++      useTableUrlState({
++        search: { pageNo: 9 },
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++      })
++    )
++
++    await act(() => {
++      result.current.ensurePageInRange(3, { resetTo: 'last' })
++    })
++
++    expect(lastNavigateOpts(navigate)?.replace).toBe(true)
++    expect(applyLastSearchFn(navigate, { pageNo: 9 })).toMatchObject({
++      pageNo: 3,
++    })
++  })
++
++  it('ensurePageInRange does not navigate when pageNo is in range', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const { result, act } = await renderHook(() =>
++      useTableUrlState({
++        search: { pageNo: 2 },
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++      })
++    )
++
++    await act(() => {
++      result.current.ensurePageInRange(5)
++    })
++
++    expect(navigate).not.toHaveBeenCalled()
++  })
++
++  it('uses custom serialize and deserialize for column filters', async () => {
++    const navigate = vi.fn() as Mock<NavigateFn>
++    const { result, act } = await renderHook(() =>
++      useTableUrlState({
++        search: { tag: 'a|b' },
++        navigate,
++        pagination: { defaultPage: 1, defaultPageSize: 10 },
++        columnFilters: [
++          {
++            columnId: 'tag',
++            searchKey: 'tag',
++            type: 'array',
++            deserialize: (v) => (typeof v === 'string' ? v.split('|') : []),
++            serialize: (v) => (Array.isArray(v) ? v.join('|') : v),
++          },
++        ],
++      })
++    )
++
++    expect(result.current.columnFilters).toEqual([
++      { id: 'tag', value: ['a', 'b'] },
++    ])
++
++    await act(() => {
++      result.current.onColumnFiltersChange([{ id: 'tag', value: ['x', 'y'] }])
++    })
++
++    expect(applyLastSearchFn(navigate, { tag: 'a|b' })).toMatchObject({
++      tag: 'x|y',
++    })
++  })
++})
+diff --git a/memind-ui/src/lib/api-client.test.ts b/memind-ui/src/lib/api-client.test.ts
+new file mode 100644
+index 0000000..769afdc
+--- /dev/null
++++ b/memind-ui/src/lib/api-client.test.ts
+@@ -0,0 +1,137 @@
++import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
++import { apiGet, apiPost } from './api-client'
++
++const jsonResponse = (body: unknown, init: ResponseInit = {}) =>
++  new Response(JSON.stringify(body), {
++    status: init.status ?? 200,
++    headers: { 'content-type': 'application/json', ...init.headers },
++    ...init,
++  })
++
++describe('api-client', () => {
++  const fetchMock = vi.fn<typeof fetch>()
++
++  beforeEach(() => {
++    vi.stubGlobal('fetch', fetchMock)
++  })
++
++  afterEach(() => {
++    vi.unstubAllGlobals()
++    vi.unstubAllEnvs()
++    vi.clearAllMocks()
++  })
++
++  it('unwraps success ApiResult data', async () => {
++    fetchMock.mockResolvedValueOnce(
++      jsonResponse({
++        code: 'success',
++        data: { status: 'UP' },
++        timestamp: '2026-04-30T00:00:00Z',
++      })
++    )
++
++    await expect(
++      apiGet<{ status: string }>('/open/v1/health')
++    ).resolves.toEqual({
++      status: 'UP',
++    })
++  })
++
++  it('allows async success code 200 without data', async () => {
++    fetchMock.mockResolvedValueOnce(
++      jsonResponse({
++        code: '200',
++        timestamp: '2026-04-30T00:00:00Z',
++      })
++    )
++
++    await expect(
++      apiPost<void>('/open/v1/memory/extract')
++    ).resolves.toBeUndefined()
++  })
++
++  it('throws ApiError with traceId for server errors', async () => {
++    fetchMock.mockResolvedValueOnce(
++      jsonResponse(
++        {
++          code: 'validation_failed',
++          message: 'userId is required',
++          data: { field: 'userId' },
++          timestamp: '2026-04-30T00:00:00Z',
++          traceId: 'trace-1',
++        },
++        { status: 400 }
++      )
++    )
++
++    await expect(apiGet('/admin/v1/items')).rejects.toMatchObject({
++      status: 400,
++      code: 'validation_failed',
++      message: 'userId is required',
++      traceId: 'trace-1',
++      details: { field: 'userId' },
++    })
++  })
++
++  it('throws ApiError for network failures', async () => {
++    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'))
++
++    await expect(apiGet('/admin/v1/items')).rejects.toMatchObject({
++      message: 'Failed to fetch',
++    })
++  })
++
++  it('serializes query params without undefined values', async () => {
++    fetchMock.mockResolvedValueOnce(
++      jsonResponse({
++        code: 'success',
++        data: [],
++        timestamp: '2026-04-30T00:00:00Z',
++      })
++    )
++
++    await apiGet('/admin/v1/items', {
++      pageNo: 2,
++      pageSize: 20,
++      userId: 'alice',
++      agentId: '',
++      category: null,
++      type: undefined,
++      include: ['item', 'raw'],
++    })
++
++    expect(fetchMock).toHaveBeenCalledWith(
++      '/admin/v1/items?pageNo=2&pageSize=20&userId=alice&include=item&include=raw',
++      expect.objectContaining({ method: 'GET' })
++    )
++  })
++
++  it('uses local mock data instead of fetch when mock api mode is enabled', async () => {
++    vi.stubEnv('VITE_MEMIND_MOCK_API', 'true')
++
++    await expect(apiGet('/admin/v1/dashboard')).resolves.toMatchObject({
++      totals: expect.objectContaining({
++        rawData: expect.any(Number),
++        items: expect.any(Number),
++        insights: expect.any(Number),
++      }),
++      backlog: expect.objectContaining({
++        conversationPending: expect.any(Number),
++      }),
++    })
++    expect(fetchMock).not.toHaveBeenCalled()
++  })
++
++  it('preserves user scope requirements in mock api mode', async () => {
++    vi.stubEnv('VITE_MEMIND_MOCK_API', 'true')
++
++    await expect(
++      apiGet('/admin/v1/items/1001/memory-threads')
++    ).rejects.toMatchObject({
++      status: 400,
++      code: 'validation_failed',
++      message: 'userId is required',
++    })
++    expect(fetchMock).not.toHaveBeenCalled()
++  })
++})
+diff --git a/memind-ui/src/lib/cookies.test.ts b/memind-ui/src/lib/cookies.test.ts
+new file mode 100644
+index 0000000..d72d264
+--- /dev/null
++++ b/memind-ui/src/lib/cookies.test.ts
+@@ -0,0 +1,34 @@
++import { clearCookies } from '@/test-utils/cookies'
++import { beforeEach, describe, expect, it } from 'vitest'
++import { getCookie, removeCookie, setCookie } from './cookies'
++
++const COOKIE_PREFIX = 'test_cookie_'
++
++describe('cookies', () => {
++  const uniqueName = () =>
++    `${COOKIE_PREFIX}${Math.random().toString(36).slice(2)}`
++
++  beforeEach(() => {
++    clearCookies(COOKIE_PREFIX)
++  })
++
++  it('stores a value that can be read back', () => {
++    const name = uniqueName()
++    const value = 'hello-world'
++
++    setCookie(name, value)
++
++    expect(getCookie(name)).toBe(value)
++  })
++
++  it('clears a value so it is no longer readable', () => {
++    const name = uniqueName()
++
++    setCookie(name, 'x')
++    expect(getCookie(name)).toBe('x')
++
++    removeCookie(name)
++
++    expect(getCookie(name)).toBeUndefined()
++  })
++})
+diff --git a/memind-ui/src/lib/format.test.ts b/memind-ui/src/lib/format.test.ts
+new file mode 100644
+index 0000000..dfb226f
+--- /dev/null
++++ b/memind-ui/src/lib/format.test.ts
+@@ -0,0 +1,40 @@
++import { describe, expect, it } from 'vitest'
++import { compactJson, formatDateTime, formatNumber, truncateText } from './format'
++
++describe('format helpers', () => {
++  it('formats missing dates as dash', () => {
++    expect(formatDateTime(null)).toBe('-')
++    expect(formatDateTime(undefined)).toBe('-')
++  })
++
++  it('formats valid dates with local date and time', () => {
++    expect(formatDateTime('2026-04-30T12:34:56Z')).toContain('2026')
++  })
++
++  it('formats missing numbers as dash', () => {
++    expect(formatNumber(null)).toBe('-')
++    expect(formatNumber(undefined)).toBe('-')
++  })
++
++  it('formats numbers using locale separators', () => {
++    expect(formatNumber(12345)).toBe('12,345')
++  })
++
++  it('serializes JSON values compactly', () => {
++    expect(compactJson({ a: 1, b: true })).toBe('{"a":1,"b":true}')
++    expect(compactJson('text')).toBe('"text"')
++  })
++
++  it('falls back to string conversion for unknown values', () => {
++    const circular: Record<string, unknown> = {}
++    circular.self = circular
++
++    expect(compactJson(circular)).toBe('[object Object]')
++  })
++
++  it('truncates long text and handles missing values', () => {
++    expect(truncateText(null, 10)).toBe('-')
++    expect(truncateText('short', 10)).toBe('short')
++    expect(truncateText('this is a long sentence', 10)).toBe('this is...')
++  })
++})
+diff --git a/memind-ui/src/lib/handle-server-error.test.ts b/memind-ui/src/lib/handle-server-error.test.ts
+new file mode 100644
+index 0000000..e193e98
+--- /dev/null
++++ b/memind-ui/src/lib/handle-server-error.test.ts
+@@ -0,0 +1,90 @@
++import { AxiosError } from 'axios'
++import { beforeEach, describe, expect, it, vi } from 'vitest'
++import { handleServerError } from './handle-server-error'
++
++const toastError = vi.hoisted(() => vi.fn())
++
++vi.mock('sonner', () => ({
++  toast: {
++    error: toastError,
++  },
++}))
++
++beforeEach(() => {
++  vi.mocked(toastError).mockClear()
++})
++
++describe('handleServerError', () => {
++  it('shows a generic message when the error is not recognised', () => {
++    handleServerError(new Error('network'))
++
++    expect(toastError).toHaveBeenCalledWith('Something went wrong!')
++  })
++
++  it('maps a plain object with status 204 to the no-content message', () => {
++    handleServerError({ status: 204 })
++
++    expect(toastError).toHaveBeenCalledWith('No content.')
++  })
++
++  it('prefers the API title when the error is an Axios error with response data', () => {
++    const error = new AxiosError('Bad request')
++    error.response = {
++      status: 422,
++      data: { title: 'Validation failed' },
++    } as AxiosError['response']
++
++    handleServerError(error)
++
++    expect(toastError).toHaveBeenCalledWith('Validation failed')
++  })
++
++  it('falls back to the generic message when Axios response has no data.title', () => {
++    const error = new AxiosError('Request failed')
++    error.response = {
++      status: 500,
++      data: {},
++    } as AxiosError['response']
++
++    handleServerError(error)
++
++    expect(toastError).toHaveBeenCalledWith('Something went wrong!')
++  })
++
++  it('falls back to the generic message when Axios data.title is an empty string', () => {
++    const error = new AxiosError('Bad request')
++    error.response = {
++      status: 400,
++      data: { title: '' },
++    } as AxiosError['response']
++
++    handleServerError(error)
++
++    expect(toastError).toHaveBeenCalledWith('Something went wrong!')
++  })
++
++  it('logs the error to the console in development', () => {
++    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
++    const err = new Error('logged')
++
++    handleServerError(err)
++
++    expect(log).toHaveBeenCalledTimes(1)
++    expect(log).toHaveBeenCalledWith(err)
++
++    log.mockRestore()
++  })
++
++  it('does not log the error to the console in production', () => {
++    vi.stubEnv('DEV', false)
++
++    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
++    const err = new Error('not logged')
++
++    handleServerError(err)
++
++    expect(log).not.toHaveBeenCalled()
++
++    log.mockRestore()
++  })
++})
+diff --git a/memind-ui/src/lib/memory-scope.test.ts b/memind-ui/src/lib/memory-scope.test.ts
+new file mode 100644
+index 0000000..1af8f73
+--- /dev/null
++++ b/memind-ui/src/lib/memory-scope.test.ts
+@@ -0,0 +1,113 @@
++import { describe, expect, it } from 'vitest'
++import {
++  parseMemoryScope,
++  requireRetrieveScope,
++  requireUserScope,
++  toMemoryIdQuery,
++  toUserAgentQuery,
++} from './memory-scope'
++
++describe('memory scope helpers', () => {
++  it('parses user and agent from a memoryId', () => {
++    expect(parseMemoryScope('alice:agent-a')).toEqual({
++      memoryId: 'alice:agent-a',
++      userId: 'alice',
++      agentId: 'agent-a',
++      hasUserId: true,
++      hasAgentId: true,
++    })
++  })
++
++  it('parses a user-only memoryId', () => {
++    expect(parseMemoryScope('alice')).toEqual({
++      memoryId: 'alice',
++      userId: 'alice',
++      agentId: '',
++      hasUserId: true,
++      hasAgentId: false,
++    })
++  })
++
++  it('keeps empty scope valid but marks both parts absent', () => {
++    expect(parseMemoryScope('')).toEqual({
++      memoryId: '',
++      userId: '',
++      agentId: '',
++      hasUserId: false,
++      hasAgentId: false,
++    })
++  })
++
++  it('does not treat an empty userId as valid', () => {
++    expect(parseMemoryScope(':agent-a')).toEqual({
++      memoryId: ':agent-a',
++      userId: '',
++      agentId: 'agent-a',
++      hasUserId: false,
++      hasAgentId: true,
++    })
++  })
++
++  it('does not treat an empty agentId as valid', () => {
++    expect(parseMemoryScope('alice:')).toEqual({
++      memoryId: 'alice:',
++      userId: 'alice',
++      agentId: '',
++      hasUserId: true,
++      hasAgentId: false,
++    })
++  })
++
++  it('splits only on the first colon', () => {
++    expect(parseMemoryScope('alice:agent:extra')).toEqual({
++      memoryId: 'alice:agent:extra',
++      userId: 'alice',
++      agentId: 'agent:extra',
++      hasUserId: true,
++      hasAgentId: true,
++    })
++  })
++
++  it('serializes memoryId query only when the scope is non-empty', () => {
++    expect(toMemoryIdQuery(' alice:agent-a ')).toEqual({
++      memoryId: 'alice:agent-a',
++    })
++    expect(toMemoryIdQuery('   ')).toEqual({})
++  })
++
++  it('serializes user and optional agent query params', () => {
++    expect(toUserAgentQuery('alice')).toEqual({ userId: 'alice' })
++    expect(toUserAgentQuery('alice:agent-a')).toEqual({
++      userId: 'alice',
++      agentId: 'agent-a',
++    })
++    expect(toUserAgentQuery(':agent-a')).toEqual({})
++    expect(toUserAgentQuery('alice:')).toEqual({ userId: 'alice' })
++  })
++
++  it('requires user scope for detail endpoints', () => {
++    expect(() => requireUserScope(':agent-a')).toThrow(
++      'Memory scope must include userId'
++    )
++    expect(requireUserScope('alice:')).toMatchObject({
++      userId: 'alice',
++      hasUserId: true,
++      hasAgentId: false,
++    })
++  })
++
++  it('requires both userId and agentId for retrieve', () => {
++    expect(() => requireRetrieveScope('alice')).toThrow(
++      'Memory scope must include userId and agentId'
++    )
++    expect(() => requireRetrieveScope('alice:')).toThrow(
++      'Memory scope must include userId and agentId'
++    )
++    expect(requireRetrieveScope('alice:agent-a')).toMatchObject({
++      userId: 'alice',
++      agentId: 'agent-a',
++      hasUserId: true,
++      hasAgentId: true,
++    })
++  })
++})
+diff --git a/memind-ui/src/lib/utils.test.ts b/memind-ui/src/lib/utils.test.ts
+new file mode 100644
+index 0000000..6d6d6e2
+--- /dev/null
++++ b/memind-ui/src/lib/utils.test.ts
+@@ -0,0 +1,28 @@
++import { describe, expect, it } from 'vitest'
++import { getPageNumbers } from './utils'
++
++describe('getPageNumbers', () => {
++  it('returns all pages when total is at most 5', () => {
++    expect(getPageNumbers(1, 3)).toEqual([1, 2, 3])
++    expect(getPageNumbers(3, 5)).toEqual([1, 2, 3, 4, 5])
++  })
++
++  it('shows ellipsis near the beginning', () => {
++    expect(getPageNumbers(1, 10)).toEqual([1, 2, 3, 4, '...', 10])
++    expect(getPageNumbers(3, 10)).toEqual([1, 2, 3, 4, '...', 10])
++  })
++
++  it('shows ellipsis near the end', () => {
++    expect(getPageNumbers(10, 10)).toEqual([1, '...', 7, 8, 9, 10])
++    expect(getPageNumbers(9, 10)).toEqual([1, '...', 7, 8, 9, 10])
++  })
++
++  it('shows ellipsis on both side in the middle', () => {
++    expect(getPageNumbers(5, 10)).toEqual([1, '...', 4, 5, 6, '...', 10])
++  })
++
++  it('handles current page greater than total pages', () => {
++    expect(getPageNumbers(6, 5)).toEqual([1, 2, 3, 4, 5])
++    expect(getPageNumbers(11, 10)).toEqual([1, '...', 7, 8, 9, 10])
++  })
++})
+diff --git a/memind-ui/src/test-utils/cookies.ts b/memind-ui/src/test-utils/cookies.ts
+new file mode 100644
+index 0000000..234efb5
+--- /dev/null
++++ b/memind-ui/src/test-utils/cookies.ts
+@@ -0,0 +1,28 @@
++import { removeCookie } from '@/lib/cookies'
++
++/**
++ * Remove cookies visible on `document.cookie` for test isolation.
++ *
++ * - No `filter`: remove every cookie.
++ * - `string`: remove only names that **start with** that string (prefix).
++ * - `RegExp`: remove only names where `filter.test(name)` is true.
++ */
++export function clearCookies(filter?: string | RegExp): void {
++  if (typeof document === 'undefined') return
++
++  for (const part of document.cookie.split(';')) {
++    const name = part.split('=')[0]?.trim()
++    if (!name) continue
++
++    const shouldRemove =
++      filter === undefined
++        ? true
++        : typeof filter === 'string'
++          ? name.startsWith(filter)
++          : filter.test(name)
++
++    if (shouldRemove) {
++      removeCookie(name)
++    }
++  }
++}

@@ -1,0 +1,32 @@
+diff --git a/src/main/data/migration/v2/migrators/PromptMigrator.ts b/src/main/data/migration/v2/migrators/PromptMigrator.ts
+--- a/src/main/data/migration/v2/migrators/PromptMigrator.ts
++++ b/src/main/data/migration/v2/migrators/PromptMigrator.ts
+@@ -13,7 +13,7 @@
+ import { promptTable } from '@data/db/schemas/prompt'
+ import { loggerService } from '@logger'
+ import type { ExecuteResult, PrepareResult, ValidateResult, ValidationError } from '@shared/data/migration/v2/types'
+-import { PROMPT_CONTENT_MAX } from '@shared/data/types/prompt'
++import { PROMPT_CONTENT_MAX, PROMPT_TITLE_MAX, PromptIdSchema } from '@shared/data/types/prompt'
+ import { sql } from 'drizzle-orm'
+ 
+ import type { MigrationContext } from '../core/MigrationContext'
+@@ -65,6 +65,10 @@
+       const phrases = await ctx.sources.dexieExport.readTable<LegacyQuickPhrase>('quick_phrases')
+       this.preparedPhrases = phrases.filter(
+         (p) =>
++          PromptIdSchema.safeParse(p.id).success &&
++          typeof p.title === 'string' &&
++          p.title.trim().length > 0 &&
++          p.title.trim().length <= PROMPT_TITLE_MAX &&
+           typeof p.content === 'string' &&
+           p.content.length > 0 &&
+           p.content.length <= PROMPT_CONTENT_MAX &&
+@@ -205,7 +209,7 @@
+ }
+ 
+ function normalizeTitle(title: LegacyQuickPhrase['title']): string {
+-  return typeof title === 'string' && title.length > 0 ? title : 'Untitled'
++  return typeof title === 'string' && title.length > 0 ? title.trim() : 'Untitled'
+ }
+ 
+ function wrapExecuteError(

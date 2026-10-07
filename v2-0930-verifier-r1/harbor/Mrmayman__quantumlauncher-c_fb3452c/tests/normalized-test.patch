@@ -1,0 +1,63 @@
+diff --git a/tests/src/launch.rs b/tests/src/launch.rs
+index 65863f0..18489b2 100644
+--- a/tests/src/launch.rs
++++ b/tests/src/launch.rs
+@@ -1,4 +1,5 @@
+ use std::process::ExitStatus;
++use std::sync::Arc;
+ use std::{io::Write, time::Duration};
+ 
+ use ql_core::read_log::Diagnostic;
+@@ -6,12 +7,12 @@ use ql_core::{IntoStringError, err};
+ 
+ use crate::{Cli, attempt, search::search_for_window, set_terminal};
+ 
+-pub async fn launch(name: String, timeout: f32, cli: &Cli) -> bool {
++pub async fn launch(name: &str, timeout: f32, cli: &Cli) -> bool {
+     print!("Testing {name} ");
+     _ = std::io::stdout().flush();
+     let child = attempt(
+         ql_instances::launch(
+-            name.clone(),
++            Arc::from(name),
+             "test".to_owned(),
+             None,
+             None,
+@@ -63,10 +64,7 @@ pub async fn launch(name: String, timeout: f32, cli: &Cli) -> bool {
+ }
+ 
+ type ProcessExitResult = Option<
+-    Result<
+-        (ExitStatus, ql_core::InstanceSelection, Option<Diagnostic>),
+-        ql_core::read_log::ReadError,
+-    >,
++    Result<(ExitStatus, ql_core::Instance, Option<Diagnostic>), ql_core::read_log::ReadError>,
+ >;
+ 
+ async fn handle_process_exit(handle: tokio::task::JoinHandle<ProcessExitResult>) -> bool {
+diff --git a/tests/src/main.rs b/tests/src/main.rs
+index 9ccc075..bef1292 100644
+--- a/tests/src/main.rs
++++ b/tests/src/main.rs
+@@ -116,10 +116,10 @@ async fn try_version<'a>(
+     fails: &mut Vec<(&'a str, Option<Loader>)>,
+     cli: &Cli,
+ ) {
+-    let instance = ql_core::InstanceSelection::new(name, false);
++    let instance = ql_core::Instance::client(name);
+     attempt(ql_mod_manager::loaders::uninstall_loader(instance.clone()).await);
+     set_terminal(cli.verbose);
+-    if !launch::launch(name.to_owned(), cli.timeout.unwrap_or(60.0), cli).await {
++    if !launch::launch(name, cli.timeout.unwrap_or(60.0), cli).await {
+         fails.push((name, None));
+     }
+     for loader in loaders {
+@@ -134,7 +134,7 @@ async fn try_version<'a>(
+         }
+ 
+         println!("Done");
+-        if !launch::launch((*name).to_owned(), cli.timeout.unwrap_or(60.0), cli).await {
++        if !launch::launch(name, cli.timeout.unwrap_or(60.0), cli).await {
+             fails.push((name, Some(*loader)));
+         }
+         set_terminal(cli.verbose);

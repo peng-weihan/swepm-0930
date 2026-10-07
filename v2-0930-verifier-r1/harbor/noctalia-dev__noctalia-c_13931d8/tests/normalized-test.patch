@@ -1,0 +1,189 @@
+diff --git a/tests/config_schema_roundtrip_test.cpp b/tests/config_schema_roundtrip_test.cpp
+index 0b5cef0ea..9465a9ccb 100644
+--- a/tests/config_schema_roundtrip_test.cpp
++++ b/tests/config_schema_roundtrip_test.cpp
+@@ -392,9 +392,9 @@ location = "https://example.invalid/bad"
+     c.shell.shadow.direction = ShadowDirection::UpLeft;
+     c.shell.panel.transparencyMode = PanelTransparencyMode::Glass;
+     c.shell.panel.launcherPlacement = PanelPlacement::Floating;
+-    c.shell.panel.launcherCompact = true;
+-    c.shell.panel.launcherSessionSearch = true;
+-    c.shell.panel.launcherSortByUsage = false;
++    c.shell.launcher.compact = true;
++    c.shell.launcher.sessionSearch = true;
++    c.shell.launcher.sortByUsage = false;
+     c.shell.screenCorners.enabled = true;
+     c.shell.screenCorners.size = 24;
+     c.shell.mpris.blacklist = {"firefox"};
+@@ -443,6 +443,163 @@ location = "https://example.invalid/bad"
+     return c;
+   }
+ 
++  // Exercise only the documented TOML and pre-existing schema/export entrypoints.
++  // Do not inspect new DmenuEntryConfig fields or require a particular container.
++  void checkLauncherDmenuPublicConfig() {
++    const char* const launcherKeys[] = {
++        "categories", "show_icons", "compact", "app_grid", "session_search", "sort_by_usage"
++    };
++    const char* const entryIds[] = {"docs_probe", "hosts_probe"};
++    const char* const stringKeys[] = {"command", "exec", "prefix", "label", "glyph"};
++    const char* const values[2][5] = {
++        {"printf 'Guide\\tDocumentation\\n'", "printf '%s' '{selection}'", "/docs", "Manual search", "book"},
++        {"printf 'Server\\tRemote host\\n'", "printf 'host:%s' '{selection}'", "/hosts", "Remote hosts", "server"}
++    };
++    bool stringValueEmitted[2][2][5] = {};
++    bool launcherValueEmitted[2][6] = {};
++    bool globalValueEmitted[2][2] = {};
++    bool panelNearClickEmitted[2] = {};
++    bool panelPlacementEmitted[2] = {};
++    bool panelPositionEmitted[2] = {};
++
++    // Both true and false are supplied for every boolean. An exporter may omit
++    // one default-valued input, but it must distinguish the opposite input.
++    // No default value is inferred from the reference implementation here.
++    for (int profile = 0; profile != 2; ++profile) {
++      const bool enabled = profile == 0;
++      const char* placementValue = enabled ? "attached" : "floating";
++      const char* positionValue = enabled ? "top_right" : "bottom_left";
++      std::ostringstream document;
++      document << "[shell.panel]\n"
++               << "launcher_placement = '" << placementValue << "'\n"
++               << "launcher_position = '" << positionValue << "'\n"
++               << "open_near_click_launcher = " << (enabled ? "true" : "false") << "\n"
++               << "[shell.launcher]\n";
++      for (const auto* key : launcherKeys) {
++        document << key << " = " << (enabled ? "true" : "false") << "\n";
++      }
++      for (int entry = 0; entry != 2; ++entry) {
++        document << "[shell.launcher.dmenu.entry." << entryIds[entry] << "]\n";
++        for (int field = 0; field != 5; ++field) {
++          // TOML multi-line literal string retains shell quotes/backslashes.
++          document << stringKeys[field] << " = '''" << values[(entry + profile) % 2][field] << "'''\n";
++        }
++        const bool global = entry == 0 ? enabled : !enabled;
++        document << "global = " << (global ? "true" : "false") << "\n";
++      }
++      const toml::table input = toml::parse(document.str());
++      Config current{};
++      Diagnostics inputDiagnostics;
++      readInto(*input["shell"].as_table(), current.shell, shellSchema(), "shell", inputDiagnostics);
++
++      // Check a complete parse -> export -> text parse twice. Inspect public
++      // values and compare the parsed ShellConfig with its roundtrip, so default
++      // omission is accepted only when the actual parser reconstructs semantics.
++      for (int pass = 0; pass != 2; ++pass) {
++        const toml::table output = toml::parse(formatToml(config_export::serialize(current)));
++        const std::string where = "launcher config profile=" + std::to_string(profile)
++            + " pass=" + std::to_string(pass) + ": ";
++        const auto* shell = output["shell"].as_table();
++        if (shell == nullptr) {
++          fail(where + "missing shell table");
++          continue;
++        }
++        for (int field = 0; field != 6; ++field) {
++          const auto node = (*shell)["launcher"][launcherKeys[field]];
++          if (node) {
++            const auto actual = node.value<bool>();
++            if (!actual || *actual != enabled) {
++              fail(where + "launcher." + launcherKeys[field] + " changed its configured boolean");
++            }
++            launcherValueEmitted[pass][field] = true;
++          }
++        }
++        for (int entry = 0; entry != 2; ++entry) {
++          const auto table = (*shell)["launcher"]["dmenu"]["entry"][entryIds[entry]];
++          for (int field = 0; field != 5; ++field) {
++            const auto node = table[stringKeys[field]];
++            if (node) {
++              const auto actual = node.value<std::string>();
++              if (!actual || *actual != values[(entry + profile) % 2][field]) {
++                fail(where + "launcher.dmenu.entry." + entryIds[entry] + "." + stringKeys[field]
++                     + " changed its configured string");
++              }
++              stringValueEmitted[pass][entry][field] = true;
++            }
++          }
++          const auto node = table["global"];
++          if (node) {
++            const auto actual = node.value<bool>();
++            const bool expected = entry == 0 ? enabled : !enabled;
++            if (!actual || *actual != expected) {
++              fail(where + "launcher.dmenu.entry." + entryIds[entry] + ".global changed its configured boolean");
++            }
++            globalValueEmitted[pass][entry] = true;
++          }
++        }
++        const auto placement = (*shell)["panel"]["launcher_placement"];
++        if (placement) {
++          const auto actual = placement.value<std::string>();
++          if (!actual || *actual != placementValue) {
++            fail(where + "panel.launcher_placement changed its configured placement");
++          }
++          panelPlacementEmitted[pass] = true;
++        }
++        const auto position = (*shell)["panel"]["launcher_position"];
++        if (position) {
++          const auto actual = position.value<std::string>();
++          if (!actual || *actual != positionValue) {
++            fail(where + "panel.launcher_position changed its configured position");
++          }
++          panelPositionEmitted[pass] = true;
++        }
++        const auto nearClick = (*shell)["panel"]["open_near_click_launcher"];
++        if (nearClick) {
++          const auto actual = nearClick.value<bool>();
++          if (!actual || *actual != enabled) {
++            fail(where + "panel.open_near_click_launcher changed its configured boolean");
++          }
++          panelNearClickEmitted[pass] = true;
++        }
++        Config roundtrip{};
++        Diagnostics roundtripDiagnostics;
++        readInto(*shell, roundtrip.shell, shellSchema(), "shell", roundtripDiagnostics);
++        if (!(roundtrip.shell == current.shell)) {
++          fail(where + "shell public TOML parse/export/parse did not preserve config semantics");
++        }
++        current = roundtrip;
++      }
++    }
++    for (int pass = 0; pass != 2; ++pass) {
++      for (int field = 0; field != 6; ++field) {
++        if (!launcherValueEmitted[pass][field]) {
++          fail(std::string("launcher.") + launcherKeys[field] + " was omitted for both true/false inputs");
++        }
++      }
++      for (int entry = 0; entry != 2; ++entry) {
++        for (int field = 0; field != 5; ++field) {
++          if (!stringValueEmitted[pass][entry][field]) {
++            fail(std::string("launcher.dmenu.entry.") + entryIds[entry] + "." + stringKeys[field]
++                 + " was omitted for both distinct inputs");
++          }
++        }
++        if (!globalValueEmitted[pass][entry]) {
++          fail(std::string("launcher.dmenu.entry.") + entryIds[entry]
++               + ".global was omitted for both true/false inputs");
++        }
++      }
++      if (!panelPlacementEmitted[pass]) {
++        fail("panel.launcher_placement was omitted for both distinct inputs");
++      }
++      if (!panelPositionEmitted[pass]) {
++        fail("panel.launcher_position was omitted for both distinct inputs");
++      }
++      if (!panelNearClickEmitted[pass]) {
++        fail("panel.open_near_click_launcher was omitted for both true/false inputs");
++      }
++    }
++  }
++
+   void checkClamps() {
+     // sound_volume above the max clamps to 1.0.
+     {
+@@ -679,6 +836,7 @@ widget_spacing = 8
+   checkPluginIdValidation();
+   checkPluginSourceNameValidation();
+   checkClamps();
++  checkLauncherDmenuPublicConfig();
+ 
+   if (g_failures == 0) {
+     std::puts("config_schema_roundtrip: all checks passed");

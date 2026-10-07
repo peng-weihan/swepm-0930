@@ -1,0 +1,545 @@
+diff --git a/cmd/meta_test.go b/cmd/meta_test.go
+index c21cefa..5e725dc 100644
+--- a/cmd/meta_test.go
++++ b/cmd/meta_test.go
+@@ -6,8 +6,8 @@ import (
+ 	"os"
+ 	"testing"
+ 
+-	"github.com/babarot/afx/pkg/config"
+-	"github.com/babarot/afx/pkg/state"
++	afxpkg "github.com/babarot/afx/internal/pkg"
++	"github.com/babarot/afx/internal/state"
+ )
+ 
+ func init() {
+@@ -16,9 +16,9 @@ func init() {
+ 
+ func TestGetPackage_found(t *testing.T) {
+ 	m := metaCmd{
+-		packages: []config.Package{
+-			&config.GitHub{Name: "tool-a", Owner: "owner", Repo: "tool-a"},
+-			&config.GitHub{Name: "tool-b", Owner: "owner", Repo: "tool-b"},
++		packages: []afxpkg.Package{
++			&afxpkg.GitHub{Name: "tool-a", Owner: "owner", Repo: "tool-a"},
++			&afxpkg.GitHub{Name: "tool-b", Owner: "owner", Repo: "tool-b"},
+ 		},
+ 	}
+ 
+@@ -35,8 +35,8 @@ func TestGetPackage_found(t *testing.T) {
+ 
+ func TestGetPackage_notFound(t *testing.T) {
+ 	m := metaCmd{
+-		packages: []config.Package{
+-			&config.GitHub{Name: "tool-a", Owner: "owner", Repo: "tool-a"},
++		packages: []afxpkg.Package{
++			&afxpkg.GitHub{Name: "tool-a", Owner: "owner", Repo: "tool-a"},
+ 		},
+ 	}
+ 
+@@ -50,10 +50,10 @@ func TestGetPackage_notFound(t *testing.T) {
+ 
+ func TestGetPackages(t *testing.T) {
+ 	m := metaCmd{
+-		packages: []config.Package{
+-			&config.GitHub{Name: "tool-a", Owner: "owner", Repo: "tool-a"},
+-			&config.GitHub{Name: "tool-b", Owner: "owner", Repo: "tool-b"},
+-			&config.GitHub{Name: "tool-c", Owner: "owner", Repo: "tool-c"},
++		packages: []afxpkg.Package{
++			&afxpkg.GitHub{Name: "tool-a", Owner: "owner", Repo: "tool-a"},
++			&afxpkg.GitHub{Name: "tool-b", Owner: "owner", Repo: "tool-b"},
++			&afxpkg.GitHub{Name: "tool-c", Owner: "owner", Repo: "tool-c"},
+ 		},
+ 	}
+ 
+@@ -75,25 +75,25 @@ func TestGetPackages(t *testing.T) {
+ }
+ 
+ func TestGetConfig_mergesAll(t *testing.T) {
+-	main := &config.Main{Shell: "zsh"}
++	main := &afxpkg.Main{Shell: "zsh"}
+ 
+ 	m := metaCmd{
+-		configs: map[string]config.Config{
++		configs: map[string]afxpkg.Config{
+ 			"file1.yaml": {
+ 				Main: main,
+-				GitHub: []*config.GitHub{
++				GitHub: []*afxpkg.GitHub{
+ 					{Name: "gh1", Owner: "o", Repo: "r1"},
+ 					{Name: "gh2", Owner: "o", Repo: "r2"},
+ 				},
+-				Gist: []*config.Gist{
++				Gist: []*afxpkg.Gist{
+ 					{Name: "gist1", Owner: "o", ID: "id1"},
+ 				},
+ 			},
+ 			"file2.yaml": {
+-				GitHub: []*config.GitHub{
++				GitHub: []*afxpkg.GitHub{
+ 					{Name: "gh3", Owner: "o", Repo: "r3"},
+ 				},
+-				Gist: []*config.Gist{
++				Gist: []*afxpkg.Gist{
+ 					{Name: "gist2", Owner: "o", ID: "id2"},
+ 				},
+ 			},
+@@ -121,9 +121,9 @@ func TestGetConfig_mergesAll(t *testing.T) {
+ 
+ func TestGetConfig_noMain(t *testing.T) {
+ 	m := metaCmd{
+-		configs: map[string]config.Config{
++		configs: map[string]afxpkg.Config{
+ 			"file1.yaml": {
+-				GitHub: []*config.GitHub{
++				GitHub: []*afxpkg.GitHub{
+ 					{Name: "gh1", Owner: "o", Repo: "r1"},
+ 				},
+ 			},
+diff --git a/pkg/data/data_test.go b/internal/data/data_test.go
+similarity index 100%
+rename from pkg/data/data_test.go
+rename to internal/data/data_test.go
+diff --git a/pkg/dependency/dependency_test.go b/internal/dependency/dependency_test.go
+similarity index 100%
+rename from pkg/dependency/dependency_test.go
+rename to internal/dependency/dependency_test.go
+diff --git a/pkg/env/config_test.go b/internal/env/config_test.go
+similarity index 100%
+rename from pkg/env/config_test.go
+rename to internal/env/config_test.go
+diff --git a/pkg/errors/errors_test.go b/internal/errors/errors_test.go
+similarity index 100%
+rename from pkg/errors/errors_test.go
+rename to internal/errors/errors_test.go
+diff --git a/pkg/github/client_test.go b/internal/github/client_test.go
+similarity index 100%
+rename from pkg/github/client_test.go
+rename to internal/github/client_test.go
+diff --git a/pkg/github/github_test.go b/internal/github/github_test.go
+similarity index 100%
+rename from pkg/github/github_test.go
+rename to internal/github/github_test.go
+diff --git a/internal/helpers/path/path_test.go b/internal/helpers/path/path_test.go
+new file mode 100644
+index 0000000..579d6da
+--- /dev/null
++++ b/internal/helpers/path/path_test.go
+@@ -0,0 +1,54 @@
++package path
++
++import (
++	"runtime"
++	"testing"
++)
++
++func TestExpandTilda(t *testing.T) {
++	if runtime.GOOS == "windows" {
++		t.Skip("ExpandTilda uses HOME on Unix; skipping on Windows")
++	}
++
++	tests := map[string]struct {
++		input string
++		home  string
++		want  string
++	}{
++		"with tilde": {
++			input: "~/foo",
++			home:  "/home/user",
++			want:  "/home/user/foo",
++		},
++		"absolute path": {
++			input: "/absolute/path",
++			home:  "/home/user",
++			want:  "/absolute/path",
++		},
++		"tilde only": {
++			input: "~",
++			home:  "/home/user",
++			want:  "/home/user",
++		},
++		"empty": {
++			input: "",
++			home:  "/home/user",
++			want:  "",
++		},
++		"empty home": {
++			input: "~/foo",
++			home:  "",
++			want:  "~/foo",
++		},
++	}
++
++	for name, tt := range tests {
++		t.Run(name, func(t *testing.T) {
++			t.Setenv("HOME", tt.home)
++			got := ExpandTilda(tt.input)
++			if got != tt.want {
++				t.Errorf("ExpandTilda(%q) = %q, want %q", tt.input, got, tt.want)
++			}
++		})
++	}
++}
+diff --git a/pkg/helpers/shell/shell_test.go b/internal/helpers/shell/shell_test.go
+similarity index 100%
+rename from pkg/helpers/shell/shell_test.go
+rename to internal/helpers/shell/shell_test.go
+diff --git a/pkg/helpers/spin/spin_test.go b/internal/helpers/spin/spin_test.go
+similarity index 100%
+rename from pkg/helpers/spin/spin_test.go
+rename to internal/helpers/spin/spin_test.go
+diff --git a/pkg/helpers/templates/normalizer_test.go b/internal/helpers/templates/normalizer_test.go
+similarity index 100%
+rename from pkg/helpers/templates/normalizer_test.go
+rename to internal/helpers/templates/normalizer_test.go
+diff --git a/pkg/logging/logging_additional_test.go b/internal/logging/logging_additional_test.go
+similarity index 100%
+rename from pkg/logging/logging_additional_test.go
+rename to internal/logging/logging_additional_test.go
+diff --git a/pkg/logging/logging_test.go b/internal/logging/logging_test.go
+similarity index 100%
+rename from pkg/logging/logging_test.go
+rename to internal/logging/logging_test.go
+diff --git a/internal/pkg/command_test.go b/internal/pkg/command_test.go
+new file mode 100644
+index 0000000..2334b28
+--- /dev/null
++++ b/internal/pkg/command_test.go
+@@ -0,0 +1,32 @@
++package pkg
++
++import "testing"
++
++func TestCommand_buildRequired(t *testing.T) {
++	tests := map[string]struct {
++		cmd  Command
++		want bool
++	}{
++		"nil build": {
++			cmd:  Command{Build: nil},
++			want: false,
++		},
++		"empty steps": {
++			cmd:  Command{Build: &Build{Steps: []string{}}},
++			want: false,
++		},
++		"has steps": {
++			cmd:  Command{Build: &Build{Steps: []string{"make"}}},
++			want: true,
++		},
++	}
++
++	for name, tt := range tests {
++		t.Run(name, func(t *testing.T) {
++			got := tt.cmd.buildRequired()
++			if got != tt.want {
++				t.Errorf("buildRequired() = %v, want %v", got, tt.want)
++			}
++		})
++	}
++}
+diff --git a/pkg/config/config_test.go b/internal/pkg/config_test.go
+similarity index 80%
+rename from pkg/config/config_test.go
+rename to internal/pkg/config_test.go
+index fc0ad10..61458d4 100644
+--- a/pkg/config/config_test.go
++++ b/internal/pkg/config_test.go
+@@ -1,4 +1,4 @@
+-package config
++package pkg
+ 
+ import (
+ 	"io"
+@@ -150,86 +150,6 @@ func TestConfig_Contains(t *testing.T) {
+ 	}
+ }
+ 
+-func TestCountRemaining(t *testing.T) {
+-	tests := map[string]struct {
+-		status    map[string]Status
+-		wantCount int
+-		wantNames int // number of remaining names
+-	}{
+-		"all done": {
+-			status: map[string]Status{
+-				"a": {Name: "a", Done: true},
+-				"b": {Name: "b", Done: true},
+-			},
+-			wantCount: 2,
+-			wantNames: 0,
+-		},
+-		"none done": {
+-			status: map[string]Status{
+-				"a": {Name: "a", Done: false},
+-				"b": {Name: "b", Done: false},
+-			},
+-			wantCount: 0,
+-			wantNames: 2,
+-		},
+-		"mixed": {
+-			status: map[string]Status{
+-				"a": {Name: "a", Done: true},
+-				"b": {Name: "b", Done: false},
+-				"c": {Name: "c", Done: false},
+-			},
+-			wantCount: 1,
+-			wantNames: 2,
+-		},
+-		"empty": {
+-			status:    map[string]Status{},
+-			wantCount: 0,
+-			wantNames: 0,
+-		},
+-	}
+-
+-	for name, tt := range tests {
+-		t.Run(name, func(t *testing.T) {
+-			count, repos := countRemaining(tt.status)
+-			if count != tt.wantCount {
+-				t.Errorf("countRemaining() count = %d, want %d", count, tt.wantCount)
+-			}
+-			if len(repos) != tt.wantNames {
+-				t.Errorf("countRemaining() repos len = %d, want %d", len(repos), tt.wantNames)
+-			}
+-		})
+-	}
+-}
+-
+-func TestCommand_buildRequired(t *testing.T) {
+-	tests := map[string]struct {
+-		cmd  Command
+-		want bool
+-	}{
+-		"nil build": {
+-			cmd:  Command{Build: nil},
+-			want: false,
+-		},
+-		"empty steps": {
+-			cmd:  Command{Build: &Build{Steps: []string{}}},
+-			want: false,
+-		},
+-		"has steps": {
+-			cmd:  Command{Build: &Build{Steps: []string{"make"}}},
+-			want: true,
+-		},
+-	}
+-
+-	for name, tt := range tests {
+-		t.Run(name, func(t *testing.T) {
+-			got := tt.cmd.buildRequired()
+-			if got != tt.want {
+-				t.Errorf("buildRequired() = %v, want %v", got, tt.want)
+-			}
+-		})
+-	}
+-}
+-
+ func TestVisitYAML(t *testing.T) {
+ 	dir, err := os.MkdirTemp("", "visitYAML")
+ 	if err != nil {
+@@ -397,27 +317,6 @@ func TestValidate_errorMessage(t *testing.T) {
+ 	}
+ }
+ 
+-func TestNewProgress(t *testing.T) {
+-	pkgs := []Package{
+-		&GitHub{Name: "a", Owner: "o", Repo: "r"},
+-		&Local{Name: "b", Directory: "/tmp"},
+-	}
+-	p := NewProgress(pkgs)
+-	if len(p.Status) != 2 {
+-		t.Errorf("NewProgress() status len = %d, want 2", len(p.Status))
+-	}
+-	for _, name := range []string{"a", "b"} {
+-		s, ok := p.Status[name]
+-		if !ok {
+-			t.Errorf("missing status for %q", name)
+-			continue
+-		}
+-		if s.Done || s.Err {
+-			t.Errorf("initial status for %q should be not done/err", name)
+-		}
+-	}
+-}
+-
+ func TestHasGitHubReleaseBlock(t *testing.T) {
+ 	tests := map[string]struct {
+ 		pkgs []Package
+diff --git a/pkg/config/installed_test.go b/internal/pkg/installed_test.go
+similarity index 98%
+rename from pkg/config/installed_test.go
+rename to internal/pkg/installed_test.go
+index 43c9478..9b5d164 100644
+--- a/pkg/config/installed_test.go
++++ b/internal/pkg/installed_test.go
+@@ -1,4 +1,4 @@
+-package config
++package pkg
+ 
+ import (
+ 	"os"
+@@ -64,14 +64,15 @@ func TestLocal_GetHome_absolute(t *testing.T) {
+ }
+ 
+ func TestHTTP_GetHome(t *testing.T) {
++	if runtime.GOOS == "windows" {
++		t.Skip("skipping on Windows due to HOME path handling")
++	}
+ 	t.Setenv("HOME", "/test/home")
+ 	h := HTTP{URL: "https://example.com/releases/tool.tar.gz"}
+ 	got := h.GetHome()
+-	// Should be based on URL host + path dir
+ 	if got == "" {
+ 		t.Error("GetHome() should not be empty")
+ 	}
+-	// Should contain the host
+ 	if !filepath.IsAbs(got) {
+ 		t.Errorf("GetHome() = %q, should be absolute path", got)
+ 	}
+diff --git a/pkg/config/read_test.go b/internal/pkg/read_test.go
+similarity index 99%
+rename from pkg/config/read_test.go
+rename to internal/pkg/read_test.go
+index a3bc0b6..7d43d91 100644
+--- a/pkg/config/read_test.go
++++ b/internal/pkg/read_test.go
+@@ -1,4 +1,4 @@
+-package config
++package pkg
+ 
+ import (
+ 	"os"
+diff --git a/pkg/config/resource_test.go b/internal/pkg/resource_test.go
+similarity index 99%
+rename from pkg/config/resource_test.go
+rename to internal/pkg/resource_test.go
+index 5a5fcf2..de6fb1e 100644
+--- a/pkg/config/resource_test.go
++++ b/internal/pkg/resource_test.go
+@@ -1,4 +1,4 @@
+-package config
++package pkg
+ 
+ import (
+ 	"testing"
+diff --git a/pkg/config/util_test.go b/internal/pkg/util_test.go
+similarity index 68%
+rename from pkg/config/util_test.go
+rename to internal/pkg/util_test.go
+index 3306679..78cb084 100644
+--- a/pkg/config/util_test.go
++++ b/internal/pkg/util_test.go
+@@ -1,8 +1,7 @@
+-package config
++package pkg
+ 
+ import (
+ 	"fmt"
+-	"runtime"
+ 	"strings"
+ 	"testing"
+ )
+@@ -44,54 +43,6 @@ func TestAllTrue(t *testing.T) {
+ 	}
+ }
+ 
+-func TestExpandTilda(t *testing.T) {
+-	if runtime.GOOS == "windows" {
+-		t.Skip("expandTilda uses HOME on Unix; skipping on Windows")
+-	}
+-
+-	tests := map[string]struct {
+-		input string
+-		home  string
+-		want  string
+-	}{
+-		"with tilde": {
+-			input: "~/foo",
+-			home:  "/home/user",
+-			want:  "/home/user/foo",
+-		},
+-		"absolute path": {
+-			input: "/absolute/path",
+-			home:  "/home/user",
+-			want:  "/absolute/path",
+-		},
+-		"tilde only": {
+-			input: "~",
+-			home:  "/home/user",
+-			want:  "/home/user",
+-		},
+-		"empty": {
+-			input: "",
+-			home:  "/home/user",
+-			want:  "",
+-		},
+-		"empty home": {
+-			input: "~/foo",
+-			home:  "",
+-			want:  "~/foo",
+-		},
+-	}
+-
+-	for name, tt := range tests {
+-		t.Run(name, func(t *testing.T) {
+-			t.Setenv("HOME", tt.home)
+-			got := expandTilda(tt.input)
+-			if got != tt.want {
+-				t.Errorf("expandTilda(%q) = %q, want %q", tt.input, got, tt.want)
+-			}
+-		})
+-	}
+-}
+-
+ func TestWrapAuthError(t *testing.T) {
+ 	tests := map[string]struct {
+ 		err      error
+diff --git a/pkg/printers/printers_test.go b/internal/printers/printers_test.go
+similarity index 100%
+rename from pkg/printers/printers_test.go
+rename to internal/printers/printers_test.go
+diff --git a/pkg/state/state_additional_test.go b/internal/state/state_additional_test.go
+similarity index 100%
+rename from pkg/state/state_additional_test.go
+rename to internal/state/state_additional_test.go
+diff --git a/pkg/state/state_test.go b/internal/state/state_test.go
+similarity index 100%
+rename from pkg/state/state_test.go
+rename to internal/state/state_test.go
+diff --git a/pkg/state/testing.go b/internal/state/testing.go
+similarity index 100%
+rename from pkg/state/testing.go
+rename to internal/state/testing.go
+diff --git a/pkg/templates/templates_test.go b/internal/templates/templates_test.go
+similarity index 99%
+rename from pkg/templates/templates_test.go
+rename to internal/templates/templates_test.go
+index c865d99..0142dcc 100644
+--- a/pkg/templates/templates_test.go
++++ b/internal/templates/templates_test.go
+@@ -5,7 +5,7 @@ import (
+ 	"strings"
+ 	"testing"
+ 
+-	"github.com/babarot/afx/pkg/data"
++	"github.com/babarot/afx/internal/data"
+ )
+ 
+ func testData() *data.Data {
+diff --git a/pkg/update/update_test.go b/internal/update/update_test.go
+similarity index 98%
+rename from pkg/update/update_test.go
+rename to internal/update/update_test.go
+index 6469719..1da7dcc 100644
+--- a/pkg/update/update_test.go
++++ b/internal/update/update_test.go
+@@ -10,7 +10,7 @@ import (
+ 
+ 	"github.com/cli/cli/v2/pkg/httpmock"
+ 
+-	"github.com/babarot/afx/pkg/github"
++	"github.com/babarot/afx/internal/github"
+ )
+ 
+ func TestCheckForUpdate(t *testing.T) {

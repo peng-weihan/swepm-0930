@@ -1,0 +1,70 @@
+diff --git a/src/config/tests.rs b/src/config/tests.rs
+index b22ad32..76940c2 100644
+--- a/src/config/tests.rs
++++ b/src/config/tests.rs
+@@ -192,7 +192,10 @@ fn test_yaml_fail_on_modifier_missing_sidedness() {
+     .unwrap_err()
+     .to_string();
+ 
+-    assert_eq!(&errmsg, "modmap[0].remap: unknown key 'WIN' at line 3 column 7");
++    assert_eq!(
++        &errmsg,
++        "modmap[0].remap: Modifiers must have left/right specified when used as key: 'WIN' at line 3 column 7"
++    );
+ }
+ 
+ #[test]
+@@ -219,7 +222,7 @@ fn test_yaml_invalid_virtual_modifiers_1() {
+     .unwrap_err()
+     .to_string();
+ 
+-    assert_eq!(&errmsg, "unknown key 'WIN'");
++    assert_eq!(&errmsg, "Modifiers must have left/right specified when used as key: 'WIN'");
+ }
+ 
+ #[test]
+diff --git a/src/tests.rs b/src/tests.rs
+index b2e45f4..9724b88 100644
+--- a/src/tests.rs
++++ b/src/tests.rs
+@@ -948,6 +948,7 @@ pub fn assert_actions_with_current_application(
+ pub struct EventHandlerForTest {
+     event_handler: EventHandler,
+     config: Config,
++    wmclient: WMClient,
+ }
+ 
+ impl EventHandlerForTest {
+@@ -960,20 +961,24 @@ impl EventHandlerForTest {
+         let mut config: Config = serde_yaml::from_str(config_yaml).unwrap();
+         config.keymap_table = build_keymap_table(&config.keymap);
+         validate_config_file(&config).unwrap();
+-        let event_handler = EventHandler::new(
+-            timer,
+-            &config.default_mode,
+-            Duration::from_micros(0),
+-            WMClient::new("static", Box::new(StaticClient { current_application }), false),
+-        );
++        let event_handler = EventHandler::new(timer, &config.default_mode, Duration::from_micros(0));
+ 
+-        Self { event_handler, config }
++        Self {
++            event_handler,
++            config,
++            wmclient: WMClient::new("static", Box::new(StaticClient { current_application }), false),
++        }
+     }
+ 
+     pub fn assert(&mut self, events: Vec<Event>, actions: Vec<Action>) {
+         assert_eq!(
+             format!("{actions:?}"),
+-            format!("{:?}", self.event_handler.on_events(&events, &self.config).unwrap())
++            format!(
++                "{:?}",
++                self.event_handler
++                    .on_events(&events, &self.config, &mut self.wmclient)
++                    .unwrap()
++            )
+         );
+     }
+ }

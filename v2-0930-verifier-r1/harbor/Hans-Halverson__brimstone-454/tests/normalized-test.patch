@@ -1,0 +1,275 @@
+diff --git a/src/js/runtime/swepm_common_shapes_internal_tests.rs b/src/js/runtime/swepm_common_shapes_internal_tests.rs
+new file mode 100644
+index 0000000..aac50ca
+--- /dev/null
++++ b/src/js/runtime/swepm_common_shapes_internal_tests.rs
+@@ -0,0 +1,66 @@
++//! Test-only module included by a single #[cfg(test)] module declaration.
++//! It does not replace any production code or add a crate dependency.
++
++use std::rc::Rc;
++
++use crate::{
++    common::options::OptionsBuilder,
++    runtime::{
++        ContextBuilder, Realm,
++        abstract_operations::ordinary_has_instance,
++        array_object::{ArrayCreateShape, array_create_in_realm},
++        eval_result::EvalError,
++        get,
++        intrinsics::intrinsics::Intrinsic,
++    },
++};
++
++#[test]
++fn explicit_default_array_mode_uses_each_realms_array_prototype() {
++    // The core crate can construct its own initial heap. Importing the
++    // serialized-heap crate here would introduce an unnecessary dependency
++    // cycle, because that crate itself depends on brimstone_core.
++    let options = OptionsBuilder::new().serialized_heap(None).build().unwrap();
++    let cx = ContextBuilder::new().set_options(Rc::new(options)).build().unwrap();
++    cx.execute_then_drop(|mut cx| {
++        // RangeError construction below consults cx.current_realm(). The raw
++        // object API must therefore run with a real VM initial realm frame,
++        // just like Context::run_script establishes for host script execution.
++        let initial_realm = cx.initial_realm_ptr();
++        cx.with_initial_realm_stack_frame(initial_realm, |cx| {
++            crate::handle_scope!(cx, {
++                let first_realm = cx.initial_realm();
++                let second_realm = Realm::new(cx).unwrap();
++                let first = array_create_in_realm(cx, first_realm, 3, ArrayCreateShape::Default)
++                    .ok().expect("default array creation");
++                let second = array_create_in_realm(cx, second_realm, 7, ArrayCreateShape::Default)
++                    .ok().expect("array creation in a different realm");
++                assert_eq!(first.as_object().array_properties_length(), 3);
++                assert_eq!(second.as_object().array_properties_length(), 7);
++                assert!(first.as_object().prototype().expect("first prototype").ptr_eq(&*first_realm.get_intrinsic(Intrinsic::ArrayPrototype)));
++                assert!(second.as_object().prototype().expect("second prototype").ptr_eq(&*second_realm.get_intrinsic(Intrinsic::ArrayPrototype)));
++                assert!(!first.as_object().prototype().unwrap().ptr_eq(&second.as_object().prototype().unwrap()));
++                // The specified exact message belongs to ArrayCreate's u64
++                // length guard. JS `new Array(number)` has its own, unchanged
++                // numeric validation and a different existing error message.
++                let length_error = match array_create_in_realm(
++                    cx, first_realm, 1_u64 << 32, ArrayCreateShape::Default,
++                ) {
++                    Err(EvalError::Value(error)) => error,
++                    #[cfg(feature = "alloc_error")]
++                    Err(EvalError::Alloc(_)) => panic!("out-of-range length must be a RangeError, not an allocation error"),
++                    Ok(_) => panic!("ArrayCreate must reject a length of 2^32"),
++                };
++                assert!(length_error.is_object(), "ArrayCreate must throw an error object");
++                let error_object = length_error.as_object();
++                assert!(ordinary_has_instance(
++                    cx, first_realm.get_intrinsic(Intrinsic::RangeErrorConstructor).into(), length_error,
++                )?, "ArrayCreate must throw the realm's RangeError");
++                let message = get(cx, error_object, cx.names.message())?;
++                assert!(message.is_string(), "RangeError.message must be a string");
++                assert_eq!(message.as_string().format()?, "array length out of range");
++                Ok(())
++            })
++        }).ok().expect("default array contract with an active realm");
++    });
++}
+diff --git a/src/tests/swepm_common_shapes.rs b/src/tests/swepm_common_shapes.rs
+new file mode 100644
+index 0000000..b121ff8
+--- /dev/null
++++ b/src/tests/swepm_common_shapes.rs
+@@ -0,0 +1,197 @@
++//! Runtime acceptance checks. No implementation source is supplied by tests.
++//! The explicit internal array API is checked by a separate core unit test.
++
++use std::rc::Rc;
++
++use brimstone_core::{
++    common::{error::FormatOptions, options::OptionsBuilder, wtf_8::Wtf8String},
++    parser::source::Source,
++    runtime::{
++        Context, ContextBuilder, PropertyKey, get,
++    },
++};
++
++fn with_runtime(test: impl FnOnce(Context)) {
++    brimstone_serialized_heap::init();
++    let options = OptionsBuilder::new().expose_test_shell_compat(true).build().unwrap();
++    let cx = ContextBuilder::new().set_options(Rc::new(options)).build().unwrap();
++    cx.execute_then_drop(|cx| {
++        // Keep host-created handles rooted for the whole test. Each Context is
++        // fresh; serialized-heap initialization above is explicitly repeat-safe.
++        brimstone_core::handle_scope!(cx, {
++            cx.initial_realm().install_optional_globals(cx).unwrap();
++            test(cx);
++        });
++    });
++}
++
++// Use the host entrypoint, which establishes the initial VM realm frame.
++// On failure retain the actual JS error instead of hiding every sub-assertion
++// behind is_ok(); formatting also runs with a valid initial realm frame.
++fn run_script(mut cx: Context, path: &str, javascript: &str) {
++    let source = Source::new_for_string(path, Wtf8String::from_string(javascript.to_owned())).unwrap();
++    if let Err(error) = cx.evaluate_script(Rc::new(source)) {
++        let realm = cx.initial_realm_ptr();
++        let detail = cx.with_initial_realm_stack_frame(realm, |cx| {
++            Ok(error.format(cx, &FormatOptions::default()))
++        }).ok().expect("format script error with an active realm");
++        panic!("{path}: {detail}");
++    }
++}
++
++#[test]
++fn fixed_iterator_result_layout_is_reused_for_different_values() {
++    with_runtime(|mut cx| {
++        // Script programs return undefined in this runtime, regardless of the
++        // final expression. Store the actual objects on the rooted global and
++        // retrieve them through the public property API before inspecting shape.
++        run_script(cx, "swepm-iterator-layout.js", r#"
++globalThis.swepmFirstIterator = [1][Symbol.iterator]().next();
++globalThis.swepmSecondIterator = [][Symbol.iterator]().next();
++"#);
++        let realm = cx.initial_realm_ptr();
++        let result = cx.with_initial_realm_stack_frame(realm, |mut cx| {
++            let global = cx.initial_realm().global_object().as_object();
++            let first_name = cx.alloc_static_string("swepmFirstIterator")?;
++            let first_key = PropertyKey::string_handle(cx, first_name)?;
++            let first = get(cx, global, first_key)?;
++            let second_name = cx.alloc_static_string("swepmSecondIterator")?;
++            let second_key = PropertyKey::string_handle(cx, second_name)?;
++            let second = get(cx, global, second_key)?;
++            assert!(first.is_object(), "first stored iterator result must be an object");
++            assert!(second.is_object(), "second stored iterator result must be an object");
++            assert!(first.as_object().shape_ptr().ptr_eq(&second.as_object().shape_ptr()),
++                "fixed iterator-result layouts should be reused within a realm");
++            Ok(())
++        });
++        assert!(result.is_ok(), "retrieve real iterator results with an active realm");
++    });
++}
++
++#[test]
++fn realm_cached_layouts_remain_usable_after_garbage_collection() {
++    with_runtime(|cx| {
++        let javascript = r#"
++function check(value, message) { if (!value) throw new Error(message); }
++// Keep the new realm alive, but do not keep any instances of its common
++// layouts alive across collection. The realm must retain its cache itself.
++const other = runString(`
++  globalThis.make = function () {
++    const getter = function () { return 23; };
++    return {
++      iterator: [19][Symbol.iterator]().next(),
++      text: new String('abc'),
++      data: Object.getOwnPropertyDescriptor({value: 17}, 'value'),
++      accessor: Object.getOwnPropertyDescriptor({get value() { return 23; }}, 'value'),
++      args: (function (x) { return arguments; })(29),
++      strictArgs: (function (x) { 'use strict'; return arguments; })(31),
++      error: new TypeError('kept message'),
++      closure: function createdAfterCollection(x) { return x + 1; }
++    };
++  };
++`);
++for (let round = 0; round < 12; round++) {
++  gc();
++  // This binding is block-scoped so previous products are not the only roots
++  // that could accidentally retain the shapes during the next collection.
++  {
++    const value = other.make();
++    check(value.iterator.value === 19 && value.iterator.done === false, 'iterator after gc');
++    check(value.text.length === 3 && String(value.text) === 'abc', 'string after gc');
++    check(value.data.value === 17 && value.data.writable, 'data descriptor after gc');
++    check(value.accessor.get() === 23 && value.accessor.enumerable, 'accessor after gc');
++    check(value.args[0] === 29 && value.args.length === 1, 'mapped arguments after gc');
++    let threw = false;
++    try { value.strictArgs.callee; } catch (error) { threw = error instanceof other.TypeError; }
++    check(threw, 'unmapped thrower after gc');
++    check(value.error.message === 'kept message', 'native error after gc');
++    check(value.closure(4) === 5 && value.closure.length === 1, 'closure after gc');
++    check(Object.getPrototypeOf(value.text) === other.String.prototype, 'foreign string prototype after gc');
++    check(Object.getPrototypeOf(value.iterator) === other.Object.prototype, 'foreign iterator prototype after gc');
++  }
++}
++"#;
++        run_script(cx, "swepm-cache-gc.js", javascript);
++    });
++}
++
++#[test]
++fn builtin_objects_keep_the_required_javascript_semantics() {
++    with_runtime(|cx| {
++        let javascript = r#"
++function check(value, message) { if (!value) throw new Error(message); }
++function keys(value) { return Reflect.ownKeys(value).map(String).join(','); }
++
++// Both kinds of arguments object retain the required descriptors/exotic map.
++function mapped(x) {
++  const length = Object.getOwnPropertyDescriptor(arguments, 'length');
++  check(length.value === 1 && !length.enumerable && length.writable, 'mapped length');
++  check(!Object.getOwnPropertyDescriptor(arguments, Symbol.iterator).enumerable, 'mapped iterator');
++  check(Object.getOwnPropertyDescriptor(arguments, 'callee').value === mapped, 'mapped callee');
++  Object.defineProperty(arguments, '0', { value: 91 });
++  check(x === 91, 'mapped DefineOwnProperty must update the parameter');
++}
++mapped(12);
++function unmapped(x) {
++  'use strict';
++  const callee = Object.getOwnPropertyDescriptor(arguments, 'callee');
++  check(typeof callee.get === 'function' && callee.get === callee.set, 'thrower accessor');
++  check(!callee.enumerable && !callee.configurable, 'unmapped callee flags');
++  let threw = false;
++  try { arguments.callee; } catch (error) { threw = error instanceof TypeError; }
++  check(threw, 'unmapped callee must throw TypeError');
++  Object.defineProperty(arguments, '0', { value: 92 });
++  check(x === 13, 'unmapped arguments must not update the parameter');
++}
++unmapped(13);
++
++const iterator = [11][Symbol.iterator]();
++const item = iterator.next();
++const end = iterator.next();
++check(keys(item) === 'value,done', 'iterator result property order');
++check(item.value === 11 && item.done === false && end.done === true, 'iterator result values');
++for (const key of ['value', 'done']) {
++  const descriptor = Object.getOwnPropertyDescriptor(item, key);
++  check(descriptor.enumerable && descriptor.writable && descriptor.configurable, 'iterator result flags');
++}
++
++const object = {};
++Object.defineProperty(object, 'data', {value: 7, writable: true, enumerable: false, configurable: true});
++const data = Object.getOwnPropertyDescriptor(object, 'data');
++check(keys(data) === 'value,writable,enumerable,configurable', 'data descriptor order');
++check(data.value === 7 && data.writable && !data.enumerable && data.configurable, 'data descriptor values');
++const getter = function () { return 8; };
++const setter = function (value) {};
++Object.defineProperty(object, 'accessor', {get: getter, set: setter, enumerable: true, configurable: false});
++const accessor = Object.getOwnPropertyDescriptor(object, 'accessor');
++check(keys(accessor) === 'get,set,enumerable,configurable', 'accessor descriptor order');
++check(accessor.get === getter && accessor.set === setter && accessor.enumerable && !accessor.configurable, 'accessor descriptor values');
++
++const text = new String('abc');
++const length = Object.getOwnPropertyDescriptor(text, 'length');
++check(length.value === 3 && !length.writable && !length.enumerable && !length.configurable, 'string length descriptor');
++let lengthError = false;
++try { new Array(4294967296); } catch (error) {
++  // The Array constructor performs its own numeric-length validation. The
++  // required exact ArrayCreate message is checked on that core API separately.
++  lengthError = error instanceof RangeError;
++}
++check(lengthError, 'array range error');
++
++const other = runString('globalThis.created = [3];');
++check(Object.getPrototypeOf(other.created) === other.Array.prototype, 'other realm array prototype');
++check(Object.getPrototypeOf(other.created) !== Array.prototype, 'realm prototype separation');
++check(Array.isArray(arguments), 'test-shell arguments must still be an array');
++// The test-shell helper reports the error object as its result in the
++// existing API. The issue requires its type/message, not a new throw contract.
++let fileError;
++try { fileError = read('/swepm-guaranteed-missing-dir/not-a-file.txt'); } catch (error) {
++  fileError = error;
++}
++check(fileError instanceof SyntaxError &&
++      fileError.message === 'failed to read /swepm-guaranteed-missing-dir/not-a-file.txt',
++      'test-shell missing-file error contract');
++"#;
++        run_script(cx, "swepm-common-shapes.js", javascript);
++    });
++}

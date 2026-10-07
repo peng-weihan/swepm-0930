@@ -1,0 +1,510 @@
+diff --git a/tests/test_auxiliaryfunctions.py b/tests/test_auxiliaryfunctions.py
+index 30e33485..ff16dc1c 100644
+--- a/tests/test_auxiliaryfunctions.py
++++ b/tests/test_auxiliaryfunctions.py
+@@ -48,6 +48,8 @@ def test_find_analyzed_data(tmpdir_factory):
+             auxiliaryfunctions.find_analyzed_data(fake_folder, "video" + str(ind), SCORER, filtered=True)
+ 
+ 
++@pytest.mark.deprecated
++@pytest.mark.filterwarnings("ignore::DeprecationWarning")
+ def test_get_list_of_videos(tmpdir_factory):
+     fake_folder = tmpdir_factory.mktemp("videos")
+     n_ext = len(SUPPORTED_VIDEOS)
+diff --git a/tests/utils/test_collect_video_paths.py b/tests/utils/test_collect_video_paths.py
+new file mode 100644
+index 00000000..ee272957
+--- /dev/null
++++ b/tests/utils/test_collect_video_paths.py
+@@ -0,0 +1,211 @@
++#
++# DeepLabCut Toolbox (deeplabcut.org)
++# © A. & M.W. Mathis Labs
++# https://github.com/DeepLabCut/DeepLabCut
++#
++# Please see AUTHORS for contributors.
++# https://github.com/DeepLabCut/DeepLabCut/blob/main/AUTHORS
++#
++# Licensed under GNU Lesser General Public License v3.0
++#
++"""Tests for ``collect_video_paths``.
++
++These tests pin down the rule:
++
++* When ``video_type`` is not set, directory enumeration filters by
++  ``SUPPORTED_VIDEOS`` but explicitly-supplied files are trusted (returned
++  as-is, even if they have no suffix).
++* When ``video_type`` is set, it is honoured everywhere — both for files
++  pulled from directories and for files supplied by the caller.
++"""
++
++from __future__ import annotations
++
++from pathlib import Path
++
++import pytest
++
++from deeplabcut.utils.auxfun_videos import SUPPORTED_VIDEOS, collect_video_paths
++from deeplabcut.utils.deprecation import DLCDeprecationWarning
++
++
++def _touch(path: Path) -> Path:
++    path.parent.mkdir(parents=True, exist_ok=True)
++    path.write_bytes(b"")
++    return path
++
++
++def test_keeps_suffixless_files_when_explicitly_listed(tmp_path):
++    """Regression test: a caller-supplied file without an extension (e.g.
++    a content-addressed cache entry) must not be silently dropped."""
++    suffixed = _touch(tmp_path / "video.mp4")
++    hashed = _touch(tmp_path / "abcd1234")
++
++    result = collect_video_paths([suffixed, hashed], extensions=None)
++
++    assert {p.name for p in result} == {"video.mp4", "abcd1234"}
++
++
++def test_accepts_path_objects_and_strings(tmp_path):
++    suffixed = _touch(tmp_path / "video.mp4")
++    hashed = _touch(tmp_path / "abcd1234")
++
++    result = collect_video_paths([str(suffixed), hashed], extensions=None)
++
++    assert {p.name for p in result} == {"video.mp4", "abcd1234"}
++
++
++def test_accepts_single_path_argument(tmp_path):
++    """A single path (not wrapped in a list) is also valid input."""
++    hashed = _touch(tmp_path / "abcd1234")
++
++    result = collect_video_paths(hashed, extensions=None)
++
++    assert [p.name for p in result] == ["abcd1234"]
++
++
++def test_explicit_video_type_filters_listed_files(tmp_path):
++    """When ``extensions`` is set, it filters explicitly-supplied files too."""
++    mp4 = _touch(tmp_path / "video.mp4")
++    avi = _touch(tmp_path / "video.avi")
++
++    result = collect_video_paths([mp4, avi], extensions="mp4")
++
++    assert {p.name for p in result} == {"video.mp4"}
++
++
++def test_explicit_video_type_accepts_leading_dot(tmp_path):
++    mp4 = _touch(tmp_path / "video.mp4")
++    avi = _touch(tmp_path / "video.avi")
++
++    result = collect_video_paths([mp4, avi], extensions=".mp4")
++
++    assert {p.name for p in result} == {"video.mp4"}
++
++
++def test_explicit_video_type_case_insensitive(tmp_path):
++    """Extension matching must be case-insensitive."""
++    mp4 = _touch(tmp_path / "video.mp4")
++    avi = _touch(tmp_path / "video.avi")
++
++    result = collect_video_paths([mp4, avi], extensions="MP4")
++
++    assert {p.name for p in result} == {"video.mp4"}
++
++
++def test_multiple_extensions_filter_directory(tmp_path):
++    """A sequence of extensions filters directory contents to only matching files."""
++    mp4 = _touch(tmp_path / "video.mp4")
++    avi = _touch(tmp_path / "video.avi")
++    _touch(tmp_path / "video.mkv")
++
++    result = collect_video_paths(tmp_path, extensions=["mp4", "avi"])
++
++    assert {p.name for p in result} == {mp4.name, avi.name}
++
++
++def test_directory_enumeration_filters_by_supported_videos(tmp_path):
++    """Directory scans must continue to discriminate videos from non-videos."""
++    mp4 = _touch(tmp_path / "video.mp4")
++    _touch(tmp_path / "notes.txt")
++    _touch(tmp_path / "results.h5")
++    _touch(tmp_path / "abcd1234")  # suffix-less file in a directory: not a video
++
++    result = collect_video_paths(tmp_path, extensions=None)
++
++    assert [p.name for p in result] == [mp4.name]
++
++
++def test_directory_enumeration_skips_dlc_artifacts(tmp_path):
++    """``*_labeled.*`` and ``*_full.*`` are DLC outputs, not inputs."""
++    mp4 = _touch(tmp_path / "video.mp4")
++    _touch(tmp_path / "video_labeled.mp4")
++    _touch(tmp_path / "video_full.mp4")
++
++    result = collect_video_paths(tmp_path, extensions=None)
++
++    assert {p.name for p in result} == {mp4.name}
++
++
++def test_disable_exclude_patterns_includes_dlc_artifacts(tmp_path):
++    """Setting ``exclude_patterns=[]`` disables all pattern exclusion."""
++    mp4 = _touch(tmp_path / "video.mp4")
++    labeled = _touch(tmp_path / "video_labeled.mp4")
++    full = _touch(tmp_path / "video_full.mp4")
++
++    result = collect_video_paths(tmp_path, extensions=None, exclude_patterns=[])
++
++    assert {p.name for p in result} == {mp4.name, labeled.name, full.name}
++
++
++def test_mixed_files_and_directories(tmp_path):
++    """The function handles a mix of explicit files and directories."""
++    folder = tmp_path / "folder"
++    in_folder = _touch(folder / "from_dir.mp4")
++    _touch(folder / "ignored.txt")
++
++    explicit_mp4 = _touch(tmp_path / "explicit.mp4")
++    explicit_hashed = _touch(tmp_path / "abcd1234")
++
++    result = collect_video_paths(
++        [folder, explicit_mp4, explicit_hashed],
++        extensions=None,
++    )
++
++    assert {p.name for p in result} == {
++        in_folder.name,
++        explicit_mp4.name,
++        explicit_hashed.name,
++    }
++
++
++def test_duplicates_are_removed(tmp_path):
++    mp4 = _touch(tmp_path / "video.mp4")
++
++    result = collect_video_paths([mp4, mp4, str(mp4)], extensions=None)
++
++    assert len(result) == 1
++    assert result[0].name == "video.mp4"
++
++
++def test_missing_path_raises(tmp_path):
++    with pytest.raises(FileNotFoundError):
++        collect_video_paths([tmp_path / "does_not_exist.mp4"], extensions=None)
++
++
++@pytest.mark.parametrize("ext", SUPPORTED_VIDEOS)
++def test_each_supported_extension_picked_up_in_directory(tmp_path, ext):
++    expected = _touch(tmp_path / f"clip.{ext}")
++
++    result = collect_video_paths(tmp_path, extensions=None)
++
++    assert [p.name for p in result] == [expected.name]
++
++
++def test_sorted_by_default_when_not_shuffled(tmp_path):
++    a = _touch(tmp_path / "a.mp4")
++    b = _touch(tmp_path / "b.mp4")
++    c = _touch(tmp_path / "c.mp4")
++
++    result = collect_video_paths([c, a, b], extensions=None, shuffle=False)
++
++    assert [p.name for p in result] == ["a.mp4", "b.mp4", "c.mp4"]
++
++
++@pytest.mark.parametrize("extensions", ["", None])
++def test_empty_string_extensions_use_default_semantics(tmp_path, extensions):
++    """Both documented default values trust files and filter directory scans."""
++    video = _touch(tmp_path / "video.mp4")
++    text = _touch(tmp_path / "notes.txt")
++    suffixless = _touch(tmp_path / "suffixless")
++
++    scanned = collect_video_paths(tmp_path, extensions=extensions, shuffle=False)
++    assert [p.name for p in scanned] == ["video.mp4"]
++    explicit = collect_video_paths([video, text, suffixless], extensions=extensions, shuffle=False)
++    assert set(explicit) == {video.resolve(), text.resolve(), suffixless.resolve()}
++
++
++def test_empty_sequence_raises(tmp_path):
++    """An empty sequence is not a valid filter; callers must pass None instead."""
++    with pytest.raises(ValueError):
++        collect_video_paths(tmp_path, extensions=[])
+diff --git a/tests/utils/test_deprecation.py b/tests/utils/test_deprecation.py
+new file mode 100644
+index 00000000..788f0eb3
+--- /dev/null
++++ b/tests/utils/test_deprecation.py
+@@ -0,0 +1,274 @@
++#
++# DeepLabCut Toolbox (deeplabcut.org)
++# © A. & M.W. Mathis Labs
++# https://github.com/DeepLabCut/DeepLabCut
++#
++# Please see AUTHORS for contributors.
++# https://github.com/DeepLabCut/DeepLabCut/blob/main/AUTHORS
++#
++# Licensed under GNU Lesser General Public License v3.0
++#
++import re
++import warnings
++from collections.abc import Mapping
++from dataclasses import fields, is_dataclass
++
++import pytest
++from packaging.version import Version
++
++from deeplabcut.utils.deprecation import (
++    DLCDeprecationWarning,
++    deprecated,
++    renamed_parameter,
++)
++
++def _metadata_values(metadata):
++    """Read required metadata content without prescribing its storage schema.
++
++    The issue names metadata attributes and their information, not a dataclass,
++    a ``kind`` discriminator, field spellings, or whether a record is a mapping.
++    This helper reads existing values only; it does not fabricate missing data.
++    """
++    def structured(value):
++        return (
++            isinstance(value, (Mapping, list, tuple))
++            or (is_dataclass(value) and not isinstance(value, type))
++            or (not callable(value) and hasattr(value, "__dict__"))
++        )
++
++    assert structured(metadata), "metadata must be structured, not an opaque string"
++    values = []
++    visited = set()
++
++    def visit(value):
++        if isinstance(value, (str, Version)) or callable(value) or value is None:
++            values.append(value)
++            return
++        if id(value) in visited:
++            return
++        visited.add(id(value))
++        if isinstance(value, Mapping):
++            for key, item in value.items():
++                # A mapping keyed by the deprecated name is also structured
++                # metadata: the key carries the old-name information.
++                visit(key)
++                visit(item)
++        elif isinstance(value, (list, tuple)):
++            for item in value:
++                visit(item)
++        elif is_dataclass(value):
++            for field in fields(value):
++                visit(getattr(value, field.name))
++        elif hasattr(value, "__dict__"):
++            for item in vars(value).values():
++                visit(item)
++        else:
++            values.append(value)
++
++    visit(metadata)
++    return values
++
++
++def _contains_target(values, target):
++    for value in values:
++        if callable(value) and getattr(value, "__qualname__", None) == target.__qualname__:
++            return True
++        if isinstance(value, str) and (
++            value == target.__name__ or value == target.__qualname__
++            or value.endswith("." + target.__qualname__)
++        ):
++            return True
++    return False
++
++
++# ---------------------------------------------------------------------------
++# @deprecated
++# ---------------------------------------------------------------------------
++
++
++def test_deprecated_emits_deprecation_warning():
++    @deprecated()
++    def old_fn():
++        return 42
++
++    with pytest.warns(DLCDeprecationWarning):
++        result = old_fn()
++
++    assert result == 42
++
++
++def test_deprecated_warning_contains_function_name():
++    @deprecated()
++    def my_old_function():
++        pass
++
++    with pytest.warns(DLCDeprecationWarning, match="my_old_function"):
++        my_old_function()
++
++
++def test_deprecated_warning_contains_replacement():
++    @deprecated(replacement="new_module.new_fn")
++    def old_fn():
++        pass
++
++    with pytest.warns(DLCDeprecationWarning, match="new_module.new_fn"):
++        old_fn()
++
++
++def test_deprecated_warning_contains_since_and_removed_in():
++    @deprecated(since="3.1", removed_in="4.0")
++    def old_fn():
++        pass
++
++    with pytest.warns(DLCDeprecationWarning, match="3.1") as record:
++        old_fn()
++
++    assert "4.0" in str(record[0].message)
++
++
++def test_deprecated_preserves_return_value_and_args():
++    @deprecated()
++    def add(a, b):
++        return a + b
++
++    with pytest.warns(DLCDeprecationWarning):
++        assert add(2, 3) == 5
++
++
++def test_deprecated_preserves_name_and_docstring():
++    @deprecated(replacement="new_fn")
++    def documented_fn():
++        """Original docstring."""
++
++    assert documented_fn.__name__ == "documented_fn"
++    assert "Original docstring." in documented_fn.__doc__
++
++
++def test_deprecated_attaches_metadata():
++    @deprecated(replacement="new_fn", since="3.1", removed_in="4.0")
++    def old_fn():
++        pass
++
++    values = _metadata_values(old_fn.__deprecated_info__)
++    assert _contains_target(values, old_fn)
++    assert "new_fn" in values
++    assert any(isinstance(value, Version) and value == Version("3.1") for value in values)
++    assert any(isinstance(value, Version) and value == Version("4.0") for value in values)
++
++
++def test_deprecated_invalid_since_raises():
++    with pytest.raises(ValueError):
++
++        @deprecated(since="not-a-version")
++        def old_fn():
++            pass
++
++
++def test_deprecated_invalid_removed_in_raises():
++    with pytest.raises(ValueError):
++
++        @deprecated(removed_in="definitely-not-a-version")
++        def old_fn():
++            pass
++
++
++@pytest.mark.parametrize("removed_in", ["4.0", "3.9"])
++def test_deprecated_removed_in_must_be_greater_than_since(removed_in):
++    with pytest.raises(ValueError):
++
++        @deprecated(since="4.0", removed_in=removed_in)
++        def old_fn():
++            pass
++
++
++# ---------------------------------------------------------------------------
++# @renamed_parameter
++# ---------------------------------------------------------------------------
++
++
++def test_renamed_parameter_old_name_emits_warning():
++    @renamed_parameter(old="in_random_order", new="shuffle")
++    def fn(shuffle=False):
++        return shuffle
++
++    with pytest.warns(DLCDeprecationWarning):
++        fn(in_random_order=True)
++
++
++def test_renamed_parameter_old_name_is_forwarded():
++    @renamed_parameter(old="in_random_order", new="shuffle")
++    def fn(shuffle=False):
++        return shuffle
++
++    with pytest.warns(DLCDeprecationWarning):
++        result = fn(in_random_order=True)
++
++    assert result is True
++
++
++def test_renamed_parameter_new_name_no_warning():
++    @renamed_parameter(old="in_random_order", new="shuffle")
++    def fn(shuffle=False):
++        return shuffle
++
++    # No warning should be emitted when using the current name.
++    with warnings.catch_warnings():
++        warnings.simplefilter("error", DLCDeprecationWarning)
++        result = fn(shuffle=True)
++
++    assert result is True
++
++
++def test_renamed_parameter_warning_contains_names():
++    @renamed_parameter(old="videotype", new="extensions", since="3.2")
++    def fn(extensions=None):
++        return extensions
++
++    with pytest.warns(DLCDeprecationWarning, match="videotype") as record:
++        fn(videotype="mp4")
++
++    message = str(record[0].message)
++    assert "extensions" in message
++    assert "3.2" in message
++
++
++def test_renamed_parameter_preserves_name():
++    @renamed_parameter(old="foo", new="bar")
++    def my_fn(bar=None):
++        """Docstring."""
++
++    assert my_fn.__name__ == "my_fn"
++
++
++def test_renamed_parameter_old_and_new_together_raise():
++    @renamed_parameter(old="videotype", new="extensions")
++    def fn(extensions=None):
++        return extensions
++
++    with pytest.raises(TypeError) as caught:
++        fn(videotype="mp4", extensions="avi")
++
++    message = str(caught.value).lower()
++    assert "videotype" in message and "extensions" in message
++    assert re.search(r"\b(both|together|simultaneously|conflict(?:ing)?|mutually exclusive)\b", message)
++    assert re.search(r"(?:only|use|prefer|instead).*extensions|extensions.*(?:only|instead)", message)
++
++
++def test_renamed_parameter_attaches_metadata():
++    @renamed_parameter(old="videotype", new="extensions", since="3.2")
++    def fn(extensions=None):
++        return extensions
++
++    values = _metadata_values(fn.__deprecated_params__)
++    assert "videotype" in values
++    assert "extensions" in values
++    assert _contains_target(values, fn)
++    assert any(isinstance(value, Version) and value == Version("3.2") for value in values)
++
++
++def test_renamed_parameter_invalid_since_raises():
++    with pytest.raises(ValueError):
++
++        @renamed_parameter(old="videotype", new="extensions", since="invalid-version")
++        def fn(extensions=None):
++            return extensions

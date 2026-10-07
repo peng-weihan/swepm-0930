@@ -1,0 +1,3675 @@
+diff --git a/scripts/check-test-coverage.cjs b/scripts/check-test-coverage.cjs
+index 318b2bd5..e8a71090 100644
+--- a/scripts/check-test-coverage.cjs
++++ b/scripts/check-test-coverage.cjs
+@@ -73,9 +73,9 @@ const ciDirs = [
+   "src/cli",
+   "src/cron",
+   "src/experiments",
+-  "src/extensions",
+   "src/hooks",
+   "src/lsp",
++  "src/mods",
+   "src/permissions",
+   "src/providers",
+   "src/queue",
+diff --git a/scripts/run-unit-tests.cjs b/scripts/run-unit-tests.cjs
+index c5135452..dace1047 100644
+--- a/scripts/run-unit-tests.cjs
++++ b/scripts/run-unit-tests.cjs
+@@ -13,9 +13,9 @@ const dirs = [
+   "src/cli",
+   "src/cron",
+   "src/experiments",
+-  "src/extensions",
+   "src/hooks",
+   "src/lsp",
++  "src/mods",
+   "src/permissions",
+   "src/providers",
+   "src/queue",
+diff --git a/src/backend/local-backend.test.ts b/src/backend/local-backend.test.ts
+index 9da63b61..39759423 100644
+--- a/src/backend/local-backend.test.ts
++++ b/src/backend/local-backend.test.ts
+@@ -27,7 +27,7 @@ import type { HeadlessTurnExecutor } from "@/backend/dev/headless-turn-executor"
+ import {
+   clearRegisteredPiProviders,
+   registerPiProvider,
+-} from "@/backend/dev/pi-provider-extension-registry";
++} from "@/backend/dev/pi-provider-mod-registry";
+ import type { PiStreamFunction } from "@/backend/dev/pi-stream-adapter";
+ import { createOrUpdateLocalProvider } from "@/backend/local";
+ import { LocalBackend } from "@/backend/local/local-backend";
+@@ -805,7 +805,7 @@ describe("local backend pi transcript", () => {
+     expect(handles).not.toContain("ollama/llama2");
+   });
+ 
+-  test("lists extension-registered local provider models with context windows", async () => {
++  test("lists mod-registered local provider models with context windows", async () => {
+     registerPiProvider("lmstudio", {
+       baseUrl: "http://localhost:8000/v1",
+       apiKey: "not-needed",
+@@ -855,7 +855,7 @@ describe("local backend pi transcript", () => {
+     );
+   });
+ 
+-  test("uses extension-registered context windows for local agent state", async () => {
++  test("uses mod-registered context windows for local agent state", async () => {
+     registerPiProvider("lmstudio", {
+       baseUrl: "http://localhost:8000/v1",
+       apiKey: "not-needed",
+diff --git a/src/backend/pi-model-factory.test.ts b/src/backend/pi-model-factory.test.ts
+index d02cd9cd..84204073 100644
+--- a/src/backend/pi-model-factory.test.ts
++++ b/src/backend/pi-model-factory.test.ts
+@@ -14,7 +14,7 @@ import {
+   subscribePiProviderRegistry,
+   unregisterPiProvider,
+   unregisterPiProvidersForOwner,
+-} from "@/backend/dev/pi-provider-extension-registry";
++} from "@/backend/dev/pi-provider-mod-registry";
+ import {
+   createOrUpdateLocalProvider,
+   localOAuthAuthFromCredentials,
+@@ -42,7 +42,7 @@ describe("pi model factory", () => {
+     clearRegisteredPiProviders();
+   });
+ 
+-  test("notifies subscribers when extension provider registry changes", () => {
++  test("notifies subscribers when mod provider registry changes", () => {
+     const changes: string[] = [];
+     const unsubscribe = subscribePiProviderRegistry(() => {
+       changes.push("changed");
+@@ -321,7 +321,7 @@ describe("pi model factory", () => {
+     );
+   });
+ 
+-  test("uses extension-registered provider capabilities for local OpenAI-compatible models", async () => {
++  test("uses mod-registered provider capabilities for local OpenAI-compatible models", async () => {
+     registerPiProvider("lmstudio", {
+       baseUrl: "http://localhost:8000/v1",
+       apiKey: "not-needed",
+@@ -356,7 +356,7 @@ describe("pi model factory", () => {
+     });
+   });
+ 
+-  test("uses dynamic extension provider models at turn time", async () => {
++  test("uses dynamic mod provider models at turn time", async () => {
+     const storageDir = await mkdtemp(join(tmpdir(), "pi-kilo-dynamic-"));
+     try {
+       const connections: unknown[] = [];
+@@ -422,7 +422,7 @@ describe("pi model factory", () => {
+     }
+   });
+ 
+-  test("uses extension OAuth credentials at turn time", async () => {
++  test("uses mod OAuth credentials at turn time", async () => {
+     const storageDir = await mkdtemp(join(tmpdir(), "pi-kilo-oauth-"));
+     try {
+       const refreshes: unknown[] = [];
+@@ -501,10 +501,8 @@ describe("pi model factory", () => {
+     );
+   });
+ 
+-  test("local provider connection base URL overrides extension default", async () => {
+-    const storageDir = await mkdtemp(
+-      join(tmpdir(), "pi-lmstudio-extension-url-"),
+-    );
++  test("local provider connection base URL overrides mod default", async () => {
++    const storageDir = await mkdtemp(join(tmpdir(), "pi-lmstudio-mod-url-"));
+     try {
+       registerPiProvider("lmstudio", {
+         baseUrl: "http://localhost:8000/v1",
+diff --git a/src/cli/app/command-routing.test.ts b/src/cli/app/command-routing.test.ts
+index 1edc975c..062bdd66 100644
+--- a/src/cli/app/command-routing.test.ts
++++ b/src/cli/app/command-routing.test.ts
+@@ -7,20 +7,20 @@ describe("command routing", () => {
+ 
+     expect(
+       shouldSlashCommandBypassQueue("/reload", {
+-        extensionCommand: { runWhenBusy: false },
++        modCommand: { runWhenBusy: false },
+       }),
+     ).toBe(false);
+ 
+     expect(
+       shouldSlashCommandBypassQueue("/review", {
+-        extensionCommand: { runWhenBusy: true },
++        modCommand: { runWhenBusy: true },
+       }),
+     ).toBe(true);
+ 
+     expect(
+       shouldSlashCommandBypassQueue("/review", {
+         hasCustomCommand: true,
+-        extensionCommand: { runWhenBusy: true },
++        modCommand: { runWhenBusy: true },
+       }),
+     ).toBe(false);
+   });
+diff --git a/src/cli/approval-classification.test.ts b/src/cli/approval-classification.test.ts
+index 400acc2e..2a352970 100644
+--- a/src/cli/approval-classification.test.ts
++++ b/src/cli/approval-classification.test.ts
+@@ -1,9 +1,9 @@
+ import { afterEach, describe, expect, test } from "bun:test";
+ import { classifyApprovals } from "@/cli/helpers/approval-classification";
+ import {
+-  clearExtensionPermissions,
+-  registerExtensionPermission,
+-} from "@/extensions/permission-registry";
++  clearModPermissions,
++  registerModPermission,
++} from "@/mods/permission-registry";
+ import { permissionMode } from "@/permissions/mode";
+ import { loadTools } from "@/tools/manager";
+ 
+@@ -11,7 +11,7 @@ describe("classifyApprovals", () => {
+   const originalMemoryDir = process.env.MEMORY_DIR;
+ 
+   afterEach(() => {
+-    clearExtensionPermissions();
++    clearModPermissions();
+     permissionMode.reset();
+     if (originalMemoryDir === undefined) {
+       delete process.env.MEMORY_DIR;
+@@ -53,9 +53,9 @@ describe("classifyApprovals", () => {
+     expect(denied?.permission.reason).toBe(denied?.denyReason);
+   });
+ 
+-  test("extension permission overlays deny before unrestricted auto-allow", async () => {
++  test("mod permission overlays deny before unrestricted auto-allow", async () => {
+     permissionMode.setMode("unrestricted");
+-    registerExtensionPermission({
++    registerModPermission({
+       id: "block-dangerous-shell",
+       description: "Block dangerous shell commands",
+       path: "/tmp/block-dangerous-shell.ts",
+@@ -98,13 +98,13 @@ describe("classifyApprovals", () => {
+     expect(result.autoDenied).toHaveLength(1);
+     expect(result.autoDenied[0]?.permission).toMatchObject({
+       decision: "deny",
+-      matchedRule: "extension permission:block-dangerous-shell",
++      matchedRule: "mod permission:block-dangerous-shell",
+       reason: "rm is blocked",
+     });
+   });
+ 
+-  test("extension permission overlays allow scoped tools before default ask", async () => {
+-    registerExtensionPermission({
++  test("mod permission overlays allow scoped tools before default ask", async () => {
++    registerModPermission({
+       id: "allow-plan-file",
+       description: "Allow writes to the active plan file",
+       path: "/tmp/allow-plan-file.ts",
+@@ -149,7 +149,7 @@ describe("classifyApprovals", () => {
+     expect(result.autoAllowed).toHaveLength(1);
+     expect(result.autoAllowed[0]?.permission).toMatchObject({
+       decision: "allow",
+-      matchedRule: "extension permission:allow-plan-file",
++      matchedRule: "mod permission:allow-plan-file",
+       reason: "active plan file",
+     });
+   });
+diff --git a/src/cli/args.test.ts b/src/cli/args.test.ts
+index b4297ff6..29caabc8 100644
+--- a/src/cli/args.test.ts
++++ b/src/cli/args.test.ts
+@@ -49,16 +49,16 @@ describe("shared CLI arg schema", () => {
+     expect(interactiveFlags).not.toContain("memfs-startup");
+     expect(headlessFlags).toContain("agent");
+     expect(interactiveFlags).toContain("agent");
+-    expect(headlessFlags).toContain("no-extensions");
+-    expect(interactiveFlags).toContain("no-extensions");
++    expect(headlessFlags).toContain("no-mods");
++    expect(interactiveFlags).toContain("no-mods");
+   });
+ 
+   test("rendered OPTIONS help is generated from catalog metadata", () => {
+     const help = renderCliOptionsHelp();
+     expect(help).toContain("-h, --help");
+     expect(help).toContain("--backend <mode>");
+-    expect(help).toContain("--no-extensions");
+-    expect(help).toContain("LETTA_DISABLE_EXTENSIONS=1 letta");
++    expect(help).toContain("--no-mods");
++    expect(help).toContain("LETTA_DISABLE_MODS=1 letta");
+     expect(help).toContain("--memfs-startup <m>");
+     expect(help).toContain("Default: text");
+     expect(help).not.toContain("--run");
+@@ -137,12 +137,20 @@ describe("shared CLI arg schema", () => {
+     expect(parsed.values["disable-memory-guard"]).toBe(true);
+   });
+ 
+-  test("recognizes no-extensions as a boolean recovery flag", () => {
++  test("recognizes no-mods as a boolean recovery flag", () => {
++    const parsed = parseCliArgs(
++      preprocessCliArgs(["node", "script", "--no-mods", "-p", "hi"]),
++      true,
++    );
++    expect(parsed.values["no-mods"]).toBe(true);
++  });
++
++  test("normalizes legacy no-extensions flag to no-mods", () => {
+     const parsed = parseCliArgs(
+       preprocessCliArgs(["node", "script", "--no-extensions", "-p", "hi"]),
+       true,
+     );
+-    expect(parsed.values["no-extensions"]).toBe(true);
++    expect(parsed.values["no-mods"]).toBe(true);
+   });
+ 
+   test("validates backend mode values", () => {
+diff --git a/src/cli/extensions/command-runtime.test.ts b/src/cli/extensions/command-runtime.test.ts
+deleted file mode 100644
+index b877b2b1..00000000
+--- a/src/cli/extensions/command-runtime.test.ts
++++ /dev/null
+@@ -1,49 +0,0 @@
+-import { describe, expect, test } from "bun:test";
+-import {
+-  buildExtensionCommandPrompt,
+-  normalizeExtensionCommandResult,
+-  parseExtensionCommandArgv,
+-  parseExtensionSlashCommand,
+-} from "@/cli/extensions/command-runtime";
+-import { SYSTEM_REMINDER_CLOSE, SYSTEM_REMINDER_OPEN } from "@/constants";
+-
+-describe("extension command runtime", () => {
+-  test("parses slash command input", () => {
+-    expect(parseExtensionSlashCommand("/review current diff")).toEqual({
+-      command: "review",
+-      args: "current diff",
+-    });
+-    expect(parseExtensionSlashCommand("review current diff")).toBeNull();
+-    expect(parseExtensionSlashCommand("/")).toBeNull();
+-    expect(parseExtensionSlashCommand("//bad")).toBeNull();
+-  });
+-
+-  test("splits extension command argv", () => {
+-    expect(parseExtensionCommandArgv('one "two words" three\\ four')).toEqual([
+-      "one",
+-      "two words",
+-      "three four",
+-    ]);
+-  });
+-
+-  test("normalizes declarative command results", () => {
+-    expect(
+-      normalizeExtensionCommandResult({ type: "output", output: "done" }),
+-    ).toEqual({ type: "output", output: "done" });
+-    expect(() => normalizeExtensionCommandResult({ type: "prompt" })).toThrow(
+-      "prompt result requires content",
+-    );
+-  });
+-
+-  test("wraps prompt results as system reminders by default", () => {
+-    expect(buildExtensionCommandPrompt({ content: "Review this" })).toBe(
+-      `${SYSTEM_REMINDER_OPEN}\nReview this\n${SYSTEM_REMINDER_CLOSE}`,
+-    );
+-    expect(
+-      buildExtensionCommandPrompt({
+-        content: "Review this",
+-        systemReminder: false,
+-      }),
+-    ).toBe("Review this");
+-  });
+-});
+diff --git a/src/cli/mods/command-runtime.test.ts b/src/cli/mods/command-runtime.test.ts
+new file mode 100644
+index 00000000..3d70444e
+--- /dev/null
++++ b/src/cli/mods/command-runtime.test.ts
+@@ -0,0 +1,49 @@
++import { describe, expect, test } from "bun:test";
++import {
++  buildModCommandPrompt,
++  normalizeModCommandResult,
++  parseModCommandArgv,
++  parseModSlashCommand,
++} from "@/cli/mods/command-runtime";
++import { SYSTEM_REMINDER_CLOSE, SYSTEM_REMINDER_OPEN } from "@/constants";
++
++describe("mod command runtime", () => {
++  test("parses slash command input", () => {
++    expect(parseModSlashCommand("/review current diff")).toEqual({
++      command: "review",
++      args: "current diff",
++    });
++    expect(parseModSlashCommand("review current diff")).toBeNull();
++    expect(parseModSlashCommand("/")).toBeNull();
++    expect(parseModSlashCommand("//bad")).toBeNull();
++  });
++
++  test("splits mod command argv", () => {
++    expect(parseModCommandArgv('one "two words" three\\ four')).toEqual([
++      "one",
++      "two words",
++      "three four",
++    ]);
++  });
++
++  test("normalizes declarative command results", () => {
++    expect(
++      normalizeModCommandResult({ type: "output", output: "done" }),
++    ).toEqual({ type: "output", output: "done" });
++    expect(() => normalizeModCommandResult({ type: "prompt" })).toThrow(
++      "prompt result requires content",
++    );
++  });
++
++  test("wraps prompt results as system reminders by default", () => {
++    expect(buildModCommandPrompt({ content: "Review this" })).toBe(
++      `${SYSTEM_REMINDER_OPEN}\nReview this\n${SYSTEM_REMINDER_CLOSE}`,
++    );
++    expect(
++      buildModCommandPrompt({
++        content: "Review this",
++        systemReminder: false,
++      }),
++    ).toBe("Review this");
++  });
++});
+diff --git a/src/cli/extensions/local-extension-loader.test.ts b/src/cli/mods/local-mod-loader.test.ts
+similarity index 63%
+rename from src/cli/extensions/local-extension-loader.test.ts
+rename to src/cli/mods/local-mod-loader.test.ts
+index c85e4dfd..24a23d3d 100644
+--- a/src/cli/extensions/local-extension-loader.test.ts
++++ b/src/cli/mods/local-mod-loader.test.ts
+@@ -11,18 +11,18 @@ import path from "node:path";
+ import type Letta from "@letta-ai/letta-client";
+ import { buildStatuslineRenderContext } from "@/cli/display/statusline/context";
+ import type { StatuslineRenderContext } from "@/cli/display/statusline/types";
+-import {
+-  disposeLocalExtensions,
+-  evaluateLocalExtensionStatuses,
+-  loadLocalExtensions,
+-  resolveLocalExtensionSources,
+-} from "@/cli/extensions/local-extension-loader";
+ import { buildStatusLinePayload } from "@/cli/helpers/status-line-payload";
+-import { getExtensionErrorDiagnostics } from "@/extensions/extension-diagnostics";
+-import { clearExtensionTools } from "@/extensions/tool-registry";
++import {
++  disposeLocalMods,
++  evaluateLocalModStatuses,
++  loadLocalMods,
++  resolveLocalModSources,
++} from "@/cli/mods/local-mod-loader";
++import { getModErrorDiagnostics } from "@/mods/mod-diagnostics";
++import { clearModTools } from "@/mods/tool-registry";
+ 
+ function createTempDir(): string {
+-  return mkdtempSync(path.join(tmpdir(), "letta-extensions-"));
++  return mkdtempSync(path.join(tmpdir(), "letta-mods-"));
+ }
+ 
+ function createStatuslineContext(): StatuslineRenderContext {
+@@ -49,45 +49,38 @@ function createStatuslineContext(): StatuslineRenderContext {
+ 
+ function createLoadOptions(root: string) {
+   return {
+-    cacheDirectory: path.join(root, "extension-cache"),
++    cacheDirectory: path.join(root, "mod-cache"),
+     getClient: async () =>
+       ({ getMarker: () => "test-client" }) as unknown as Letta,
+     getContext: createStatuslineContext,
+-    globalExtensionsDirectory: path.join(root, "global-extensions"),
++    globalModsDirectory: path.join(root, "global-mods"),
+   };
+ }
+ 
+-describe("local extension loader", () => {
++describe("local mod loader", () => {
+   afterEach(() => {
+-    clearExtensionTools();
++    clearModTools();
+   });
+ 
+-  test("discovers global extension source", () => {
++  test("discovers global mod source", () => {
+     const root = createTempDir();
+     try {
+-      const { globalExtensionsDirectory: globalExtensions } =
+-        createLoadOptions(root);
+-      mkdirSync(globalExtensions, { recursive: true });
+-      writeFileSync(
+-        path.join(globalExtensions, "a.ts"),
+-        "export default () => {};",
+-      );
+-      writeFileSync(
+-        path.join(globalExtensions, "b.tsx"),
+-        "export default () => {};",
+-      );
++      const { globalModsDirectory: globalMods } = createLoadOptions(root);
++      mkdirSync(globalMods, { recursive: true });
++      writeFileSync(path.join(globalMods, "a.ts"), "export default () => {};");
++      writeFileSync(path.join(globalMods, "b.tsx"), "export default () => {};");
+ 
+       expect(
+-        resolveLocalExtensionSources({
+-          globalExtensionsDirectory: globalExtensions,
++        resolveLocalModSources({
++          globalModsDirectory: globalMods,
+         }),
+       ).toEqual([
+         {
+           files: [
+-            path.join(globalExtensions, "a.ts"),
+-            path.join(globalExtensions, "b.tsx"),
++            path.join(globalMods, "a.ts"),
++            path.join(globalMods, "b.tsx"),
+           ],
+-          root: globalExtensions,
++          root: globalMods,
+           scope: "global",
+           trusted: true,
+         },
+@@ -97,26 +90,26 @@ describe("local extension loader", () => {
+     }
+   });
+ 
+-  test("does not initialize SDK client when no extension files exist", async () => {
++  test("does not initialize SDK client when no mod files exist", async () => {
+     const root = createTempDir();
+     try {
+       const options = {
+         ...createLoadOptions(root),
+         getClient: async () => {
+-          throw new Error("client should not initialize without extensions");
++          throw new Error("client should not initialize without mods");
+         },
+       };
+ 
+-      const registry = await loadLocalExtensions(options);
++      const registry = await loadLocalMods(options);
+ 
+       expect(registry.loadedPaths).toEqual([]);
+-      expect(getExtensionErrorDiagnostics(registry.diagnostics)).toEqual([]);
++      expect(getModErrorDiagnostics(registry.diagnostics)).toEqual([]);
+     } finally {
+       rmSync(root, { force: true, recursive: true });
+     }
+   });
+ 
+-  test("does not initialize SDK client until an extension uses it", async () => {
++  test("does not initialize SDK client until a mod uses it", async () => {
+     const root = createTempDir();
+     try {
+       const options = {
+@@ -125,35 +118,35 @@ describe("local extension loader", () => {
+           throw new Error("client should be lazy");
+         },
+       };
+-      const extensionDir = options.globalExtensionsDirectory;
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = options.globalModsDirectory;
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "status.ts"),
++        path.join(modDir, "status.ts"),
+         `export default function(letta) {
+           letta.ui.setStatus("mode", "fast");
+         }`,
+       );
+ 
+-      const registry = await loadLocalExtensions(options);
++      const registry = await loadLocalMods(options);
+ 
+-      expect(getExtensionErrorDiagnostics(registry.diagnostics)).toEqual([]);
++      expect(getModErrorDiagnostics(registry.diagnostics)).toEqual([]);
+       expect(
+-        evaluateLocalExtensionStatuses(registry, createStatuslineContext()),
++        evaluateLocalModStatuses(registry, createStatuslineContext()),
+       ).toEqual({ mode: "fast" });
+     } finally {
+       rmSync(root, { force: true, recursive: true });
+     }
+   });
+ 
+-  test("loads extensions that register statuses and statusline renderers", async () => {
++  test("loads mods that register statuses and statusline renderers", async () => {
+     const root = createTempDir();
+     try {
+       const options = createLoadOptions(root);
+-      const extensionDir = options.globalExtensionsDirectory;
+-      const extensionPath = path.join(extensionDir, "statusline.ts");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = options.globalModsDirectory;
++      const modPath = path.join(modDir, "statusline.ts");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function(letta) {
+           letta.ui.setStatus("mode", "fast");
+           letta.ui.setStatus("agent", (ctx) => ctx.agent.name);
+@@ -161,21 +154,16 @@ describe("local extension loader", () => {
+         }`,
+       );
+ 
+-      const firstRegistry = await loadLocalExtensions(options);
+-      expect(getExtensionErrorDiagnostics(firstRegistry.diagnostics)).toEqual(
+-        [],
+-      );
+-      expect(firstRegistry.loadedPaths).toEqual([extensionPath]);
++      const firstRegistry = await loadLocalMods(options);
++      expect(getModErrorDiagnostics(firstRegistry.diagnostics)).toEqual([]);
++      expect(firstRegistry.loadedPaths).toEqual([modPath]);
+       expect(
+-        evaluateLocalExtensionStatuses(
+-          firstRegistry,
+-          createStatuslineContext(),
+-        ),
++        evaluateLocalModStatuses(firstRegistry, createStatuslineContext()),
+       ).toEqual({ agent: "Letta Code", mode: "fast" });
+       expect(
+         firstRegistry.ui.statuslineRenderer?.render({
+           ...createStatuslineContext(),
+-          statuses: evaluateLocalExtensionStatuses(
++          statuses: evaluateLocalModStatuses(
+             firstRegistry,
+             createStatuslineContext(),
+           ),
+@@ -183,27 +171,22 @@ describe("local extension loader", () => {
+       ).toBe("first:fast");
+ 
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function(letta) {
+           letta.ui.setStatus("mode", "slow");
+           letta.ui.setStatuslineRenderer((ctx) => "second:" + ctx.statuses.mode);
+         }`,
+       );
+ 
+-      const secondRegistry = await loadLocalExtensions(options);
+-      expect(getExtensionErrorDiagnostics(secondRegistry.diagnostics)).toEqual(
+-        [],
+-      );
++      const secondRegistry = await loadLocalMods(options);
++      expect(getModErrorDiagnostics(secondRegistry.diagnostics)).toEqual([]);
+       expect(
+-        evaluateLocalExtensionStatuses(
+-          secondRegistry,
+-          createStatuslineContext(),
+-        ),
++        evaluateLocalModStatuses(secondRegistry, createStatuslineContext()),
+       ).toEqual({ mode: "slow" });
+       expect(
+         secondRegistry.ui.statuslineRenderer?.render({
+           ...createStatuslineContext(),
+-          statuses: evaluateLocalExtensionStatuses(
++          statuses: evaluateLocalModStatuses(
+             secondRegistry,
+             createStatuslineContext(),
+           ),
+@@ -214,27 +197,27 @@ describe("local extension loader", () => {
+     }
+   });
+ 
+-  test("transpiles TypeScript and TSX extensions to importable mjs cache files", async () => {
++  test("transpiles TypeScript and TSX mods to importable mjs cache files", async () => {
+     const root = createTempDir();
+     try {
+       const options = createLoadOptions(root);
+-      const extensionDir = options.globalExtensionsDirectory;
+-      const extensionPath = path.join(extensionDir, "statusline.tsx");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = options.globalModsDirectory;
++      const modPath = path.join(modDir, "statusline.tsx");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function(letta: any) {
+           const Label = letta.getContext().components.Text;
+           letta.ui.setStatuslineRenderer((ctx: any) => <Label>{ctx.agent.name}</Label>);
+         }`,
+       );
+ 
+-      const registry = await loadLocalExtensions(options);
++      const registry = await loadLocalMods(options);
+ 
+-      expect(getExtensionErrorDiagnostics(registry.diagnostics)).toEqual([]);
+-      expect(registry.loadedPaths).toEqual([extensionPath]);
++      expect(getModErrorDiagnostics(registry.diagnostics)).toEqual([]);
++      expect(registry.loadedPaths).toEqual([modPath]);
+       const cacheFiles = readdirSync(options.cacheDirectory).filter((entry) =>
+-        entry.startsWith(".letta-extension-statusline-"),
++        entry.startsWith(".letta-mod-statusline-"),
+       );
+       expect(cacheFiles).toHaveLength(1);
+       expect(cacheFiles[0]?.endsWith(".mjs")).toBe(true);
+@@ -247,55 +230,46 @@ describe("local extension loader", () => {
+     }
+   });
+ 
+-  test("captures extension load errors without blocking other extensions", async () => {
++  test("captures mod load errors without blocking other mods", async () => {
+     const root = createTempDir();
+     try {
+       const options = createLoadOptions(root);
+-      const extensionDir = options.globalExtensionsDirectory;
+-      mkdirSync(extensionDir, { recursive: true });
+-      writeFileSync(
+-        path.join(extensionDir, "broken.ts"),
+-        "export const nope = 1;",
+-      );
++      const modDir = options.globalModsDirectory;
++      mkdirSync(modDir, { recursive: true });
++      writeFileSync(path.join(modDir, "broken.ts"), "export const nope = 1;");
+       writeFileSync(
+-        path.join(extensionDir, "working.ts"),
++        path.join(modDir, "working.ts"),
+         `export default function(letta) {
+           letta.ui.setStatus("ok", "true");
+         }`,
+       );
+ 
+-      const registry = await loadLocalExtensions(options);
++      const registry = await loadLocalMods(options);
+ 
+-      expect(registry.loadedPaths).toEqual([
+-        path.join(extensionDir, "working.ts"),
+-      ]);
++      expect(registry.loadedPaths).toEqual([path.join(modDir, "working.ts")]);
+       expect(
+-        evaluateLocalExtensionStatuses(registry, createStatuslineContext()),
++        evaluateLocalModStatuses(registry, createStatuslineContext()),
+       ).toEqual({ ok: "true" });
+-      const errorDiagnostics = getExtensionErrorDiagnostics(
+-        registry.diagnostics,
+-      );
++      const errorDiagnostics = getModErrorDiagnostics(registry.diagnostics);
+       expect(errorDiagnostics).toHaveLength(1);
+       const [errorDiagnostic] = errorDiagnostics;
+-      if (!errorDiagnostic) throw new Error("Expected extension diagnostic");
+-      expect(errorDiagnostic.owner.path).toBe(
+-        path.join(extensionDir, "broken.ts"),
+-      );
+-      expect(errorDiagnostic.error.message).toContain("Extension must export");
++      if (!errorDiagnostic) throw new Error("Expected mod diagnostic");
++      expect(errorDiagnostic.owner.path).toBe(path.join(modDir, "broken.ts"));
++      expect(errorDiagnostic.error.message).toContain("Mod must export");
+     } finally {
+       rmSync(root, { force: true, recursive: true });
+     }
+   });
+ 
+-  test("loads extension-provided slash commands", async () => {
++  test("loads mod-provided slash commands", async () => {
+     const root = createTempDir();
+     try {
+       const options = createLoadOptions(root);
+-      const extensionDir = options.globalExtensionsDirectory;
+-      const extensionPath = path.join(extensionDir, "commands.ts");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = options.globalModsDirectory;
++      const modPath = path.join(modDir, "commands.ts");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function(letta) {
+           return letta.commands.register({
+             id: "review-pr",
+@@ -311,9 +285,9 @@ describe("local extension loader", () => {
+         }`,
+       );
+ 
+-      const registry = await loadLocalExtensions(options);
++      const registry = await loadLocalMods(options);
+ 
+-      expect(getExtensionErrorDiagnostics(registry.diagnostics)).toEqual([]);
++      expect(getModErrorDiagnostics(registry.diagnostics)).toEqual([]);
+       expect(registry.commands["review-pr"]?.description).toBe(
+         "Review a GitHub PR",
+       );
+@@ -345,21 +319,21 @@ describe("local extension loader", () => {
+         ),
+       ).resolves.toEqual({ type: "prompt", content: "Review this PR: 123" });
+ 
+-      disposeLocalExtensions(registry);
++      disposeLocalMods(registry);
+       expect(registry.commands).toEqual({});
+     } finally {
+       rmSync(root, { force: true, recursive: true });
+     }
+   });
+ 
+-  test("passes the configured SDK client to extensions", async () => {
++  test("passes the configured SDK client to mods", async () => {
+     const root = createTempDir();
+     try {
+       const options = createLoadOptions(root);
+-      const extensionDir = options.globalExtensionsDirectory;
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = options.globalModsDirectory;
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "client.ts"),
++        path.join(modDir, "client.ts"),
+         `export default function(letta) {
+           letta.commands.register({
+             id: "client-check",
+@@ -371,9 +345,9 @@ describe("local extension loader", () => {
+         }`,
+       );
+ 
+-      const registry = await loadLocalExtensions(options);
++      const registry = await loadLocalMods(options);
+ 
+-      expect(getExtensionErrorDiagnostics(registry.diagnostics)).toEqual([]);
++      expect(getModErrorDiagnostics(registry.diagnostics)).toEqual([]);
+       await expect(
+         Promise.resolve(
+           registry.commands["client-check"]?.run({
+@@ -402,14 +376,14 @@ describe("local extension loader", () => {
+     }
+   });
+ 
+-  test("lets extensions manage UI panels", async () => {
++  test("lets mods manage UI panels", async () => {
+     const root = createTempDir();
+     try {
+       const options = createLoadOptions(root);
+-      const extensionDir = options.globalExtensionsDirectory;
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = options.globalModsDirectory;
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "panel.ts"),
++        path.join(modDir, "panel.ts"),
+         `export default function(letta) {
+           const panel = letta.ui.openPanel({
+             id: "btw",
+@@ -420,43 +394,43 @@ describe("local extension loader", () => {
+         }`,
+       );
+ 
+-      const registry = await loadLocalExtensions(options);
++      const registry = await loadLocalMods(options);
+ 
+-      expect(getExtensionErrorDiagnostics(registry.diagnostics)).toEqual([]);
++      expect(getModErrorDiagnostics(registry.diagnostics)).toEqual([]);
+       expect(Object.values(registry.ui.panels)[0]).toMatchObject({
+         content: ["answer"],
+         id: "btw",
+       });
+ 
+-      disposeLocalExtensions(registry);
++      disposeLocalMods(registry);
+       expect(registry.ui.panels).toEqual({});
+     } finally {
+       rmSync(root, { force: true, recursive: true });
+     }
+   });
+ 
+-  test("scopes panel ids by extension path", async () => {
++  test("scopes panel ids by mod path", async () => {
+     const root = createTempDir();
+     try {
+       const options = createLoadOptions(root);
+-      const extensionDir = options.globalExtensionsDirectory;
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = options.globalModsDirectory;
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "a.ts"),
++        path.join(modDir, "a.ts"),
+         `export default function(letta) {
+           letta.ui.openPanel({ id: "status", content: "from a" });
+         }`,
+       );
+       writeFileSync(
+-        path.join(extensionDir, "b.ts"),
++        path.join(modDir, "b.ts"),
+         `export default function(letta) {
+           letta.ui.openPanel({ id: "status", content: "from b" });
+         }`,
+       );
+ 
+-      const registry = await loadLocalExtensions(options);
++      const registry = await loadLocalMods(options);
+ 
+-      expect(getExtensionErrorDiagnostics(registry.diagnostics)).toEqual([]);
++      expect(getModErrorDiagnostics(registry.diagnostics)).toEqual([]);
+       expect(
+         Object.values(registry.ui.panels).map((panel) => panel.content),
+       ).toEqual([["from a"], ["from b"]]);
+@@ -465,14 +439,14 @@ describe("local extension loader", () => {
+     }
+   });
+ 
+-  test("rejects extension command id collisions and diagnoses built-in overrides", async () => {
++  test("rejects mod command id collisions and diagnoses built-in overrides", async () => {
+     const root = createTempDir();
+     try {
+       const options = createLoadOptions(root);
+-      const extensionDir = options.globalExtensionsDirectory;
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = options.globalModsDirectory;
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "a.ts"),
++        path.join(modDir, "a.ts"),
+         `export default function(letta) {
+           letta.commands.register({
+             id: "dupe",
+@@ -482,7 +456,7 @@ describe("local extension loader", () => {
+         }`,
+       );
+       writeFileSync(
+-        path.join(extensionDir, "b.ts"),
++        path.join(modDir, "b.ts"),
+         `export default function(letta) {
+           letta.commands.register({
+             id: "dupe",
+@@ -492,7 +466,7 @@ describe("local extension loader", () => {
+         }`,
+       );
+       writeFileSync(
+-        path.join(extensionDir, "c.ts"),
++        path.join(modDir, "c.ts"),
+         `export default function(letta) {
+           letta.commands.register({
+             id: "reload",
+@@ -502,7 +476,7 @@ describe("local extension loader", () => {
+         }`,
+       );
+       writeFileSync(
+-        path.join(extensionDir, "d.ts"),
++        path.join(modDir, "d.ts"),
+         `export default function(letta) {
+           letta.commands.register({
+             id: "/bad",
+@@ -512,16 +486,14 @@ describe("local extension loader", () => {
+         }`,
+       );
+ 
+-      const registry = await loadLocalExtensions(options);
++      const registry = await loadLocalMods(options);
+ 
+       expect(Object.keys(registry.commands)).toEqual(["dupe", "reload"]);
+       expect(registry.commands.reload?.description).toBe("Built-in conflict");
+-      const errorDiagnostics = getExtensionErrorDiagnostics(
+-        registry.diagnostics,
+-      );
++      const errorDiagnostics = getModErrorDiagnostics(registry.diagnostics);
+       expect(errorDiagnostics.map((entry) => entry.owner.path).sort()).toEqual([
+-        path.join(extensionDir, "b.ts"),
+-        path.join(extensionDir, "d.ts"),
++        path.join(modDir, "b.ts"),
++        path.join(modDir, "d.ts"),
+       ]);
+       expect(errorDiagnostics.map((entry) => entry.error.message)).toEqual([
+         expect.stringContaining("already registered"),
+@@ -535,7 +507,7 @@ describe("local extension loader", () => {
+               message: expect.stringContaining("overrides a built-in command"),
+             }),
+             owner: expect.objectContaining({
+-              path: path.join(extensionDir, "c.ts"),
++              path: path.join(modDir, "c.ts"),
+             }),
+             phase: "command_override",
+           }),
+@@ -546,14 +518,14 @@ describe("local extension loader", () => {
+     }
+   });
+ 
+-  test("rejects extension tool names that collide with built-in tools", async () => {
++  test("rejects mod tool names that collide with built-in tools", async () => {
+     const root = createTempDir();
+     try {
+       const options = createLoadOptions(root);
+-      const extensionDir = options.globalExtensionsDirectory;
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = options.globalModsDirectory;
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "tool.ts"),
++        path.join(modDir, "tool.ts"),
+         `export default function(letta) {
+           letta.tools.register({
+             name: "Read",
+@@ -563,12 +535,10 @@ describe("local extension loader", () => {
+         }`,
+       );
+ 
+-      const registry = await loadLocalExtensions(options);
++      const registry = await loadLocalMods(options);
+ 
+       expect(registry.tools).toEqual({});
+-      const errorDiagnostics = getExtensionErrorDiagnostics(
+-        registry.diagnostics,
+-      );
++      const errorDiagnostics = getModErrorDiagnostics(registry.diagnostics);
+       expect(errorDiagnostics).toHaveLength(1);
+       expect(errorDiagnostics[0]?.error.message).toContain("built-in tool");
+     } finally {
+@@ -576,14 +546,14 @@ describe("local extension loader", () => {
+     }
+   });
+ 
+-  test("runs extension disposers", async () => {
++  test("runs mod disposers", async () => {
+     const root = createTempDir();
+     try {
+       const options = createLoadOptions(root);
+-      const extensionDir = options.globalExtensionsDirectory;
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = options.globalModsDirectory;
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "status.ts"),
++        path.join(modDir, "status.ts"),
+         `export default function(letta) {
+           letta.ui.setStatus("mode", "fast");
+           letta.ui.setStatuslineRenderer(() => "statusline");
+@@ -591,18 +561,18 @@ describe("local extension loader", () => {
+         }`,
+       );
+ 
+-      const registry = await loadLocalExtensions(options);
++      const registry = await loadLocalMods(options);
+       expect(registry.disposers).toHaveLength(1);
+       expect(
+-        evaluateLocalExtensionStatuses(registry, createStatuslineContext()),
++        evaluateLocalModStatuses(registry, createStatuslineContext()),
+       ).toEqual({ mode: "fast" });
+       expect(registry.ui.statuslineRenderer).not.toBeNull();
+ 
+-      disposeLocalExtensions(registry);
++      disposeLocalMods(registry);
+ 
+       expect(registry.disposers).toEqual([]);
+       expect(
+-        evaluateLocalExtensionStatuses(registry, createStatuslineContext()),
++        evaluateLocalModStatuses(registry, createStatuslineContext()),
+       ).toEqual({});
+       expect(registry.ui.statuslineRenderer).toBeNull();
+     } finally {
+diff --git a/src/cli/reload-command.test.ts b/src/cli/reload-command.test.ts
+index e85e61a9..e9436b82 100644
+--- a/src/cli/reload-command.test.ts
++++ b/src/cli/reload-command.test.ts
+@@ -10,7 +10,7 @@ describe("/reload command", () => {
+     const source = readFileSync(registryPath, "utf-8");
+ 
+     expect(source).toContain('"/reload"');
+-    expect(source).toContain("Reload settings and local extensions");
++    expect(source).toContain("Reload settings and local mods");
+   });
+ 
+   test("AppCoordinator owns the in-place reload callback", () => {
+@@ -27,12 +27,10 @@ describe("/reload command", () => {
+     );
+     expect(source).toContain("refreshCustomCommands()");
+     expect(source).toContain(
+-      'void extensionAdapter.events.emit("conversation_close"',
+-    );
+-    expect(source).toContain("await extensionAdapter.reload()");
+-    expect(source).toContain(
+-      'void extensionAdapter.events.emit("conversation_open"',
++      'void modAdapter.events.emit("conversation_close"',
+     );
++    expect(source).toContain("await modAdapter.reload()");
++    expect(source).toContain('void modAdapter.events.emit("conversation_open"');
+     expect(source).toContain('reason: "reload"');
+   });
+ 
+@@ -44,7 +42,7 @@ describe("/reload command", () => {
+ 
+     expect(source).toContain('trimmed === "/reload"');
+     expect(source).toContain("await onReload()");
+-    expect(source).toContain("Reloaded settings and local extensions");
++    expect(source).toContain("Reloaded settings and local mods");
+   });
+ 
+   test("/reload has a busy guard", () => {
+diff --git a/src/extensions/disable.test.ts b/src/extensions/disable.test.ts
+deleted file mode 100644
+index 95044166..00000000
+--- a/src/extensions/disable.test.ts
++++ /dev/null
+@@ -1,25 +0,0 @@
+-import { describe, expect, test } from "bun:test";
+-import {
+-  areExtensionsDisabled,
+-  LETTA_DISABLE_EXTENSIONS_ENV,
+-  shouldDisableExtensions,
+-} from "@/extensions/disable";
+-
+-describe("extension disable switch", () => {
+-  test("recognizes CLI flag and common truthy env values", () => {
+-    expect(shouldDisableExtensions({ cliFlag: true, env: {} })).toBe(true);
+-    expect(shouldDisableExtensions({ cliFlag: false, env: {} })).toBe(false);
+-
+-    for (const value of ["1", "true", "TRUE", "yes", "on"] as const) {
+-      expect(
+-        areExtensionsDisabled({ [LETTA_DISABLE_EXTENSIONS_ENV]: value }),
+-      ).toBe(true);
+-    }
+-
+-    for (const value of ["", "0", "false", "off", "no"] as const) {
+-      expect(
+-        areExtensionsDisabled({ [LETTA_DISABLE_EXTENSIONS_ENV]: value }),
+-      ).toBe(false);
+-    }
+-  });
+-});
+diff --git a/src/headless-extension-lifecycle.test.ts b/src/headless-mod-lifecycle.test.ts
+similarity index 76%
+rename from src/headless-extension-lifecycle.test.ts
+rename to src/headless-mod-lifecycle.test.ts
+index 88dade51..5cda8ce8 100644
+--- a/src/headless-extension-lifecycle.test.ts
++++ b/src/headless-mod-lifecycle.test.ts
+@@ -11,17 +11,14 @@ import path from "node:path";
+ import { fileURLToPath } from "node:url";
+ import type { AgentState } from "@letta-ai/letta-client/resources/agents/agents";
+ import type { Backend } from "@/backend";
+-import { LETTA_DISABLE_EXTENSIONS_ENV } from "@/extensions/disable";
+-import {
+-  clearExtensionTools,
+-  getExtensionToolDefinition,
+-} from "@/extensions/tool-registry";
+ import { __headlessTestUtils } from "@/headless";
+ import {
+-  createHeadlessExtensionAdapter,
+-  createHeadlessExtensionContext,
+-  HEADLESS_EXTENSION_CAPABILITIES,
+-} from "@/headless-extension-adapter";
++  createHeadlessModAdapter,
++  createHeadlessModContext,
++  HEADLESS_MOD_CAPABILITIES,
++} from "@/headless-mod-adapter";
++import { LETTA_DISABLE_MODS_ENV } from "@/mods/disable";
++import { clearModTools, getModToolDefinition } from "@/mods/tool-registry";
+ import { executeTool } from "@/tools/manager";
+ 
+ function readHeadlessSource(): string {
+@@ -31,13 +28,13 @@ function readHeadlessSource(): string {
+   );
+ }
+ 
+-describe("headless extension adapter", () => {
++describe("headless mod adapter", () => {
+   afterEach(() => {
+-    clearExtensionTools();
++    clearModTools();
+   });
+ 
+-  test("uses headless extension capabilities", () => {
+-    expect(HEADLESS_EXTENSION_CAPABILITIES).toEqual({
++  test("uses headless mod capabilities", () => {
++    expect(HEADLESS_MOD_CAPABILITIES).toEqual({
+       tools: true,
+       commands: false,
+       events: {
+@@ -55,8 +52,8 @@ describe("headless extension adapter", () => {
+     });
+   });
+ 
+-  test("builds extension context for headless lifecycle events", () => {
+-    const context = createHeadlessExtensionContext({
++  test("builds mod context for headless lifecycle events", () => {
++    const context = createHeadlessModContext({
+       agent: {
+         id: "agent-1",
+         name: "Amelia",
+@@ -84,7 +81,7 @@ describe("headless extension adapter", () => {
+     const source = readHeadlessSource();
+ 
+     const adapterIndex = source.indexOf(
+-      "const headlessExtensionAdapter = createHeadlessExtensionAdapter",
++      "const headlessModAdapter = createHeadlessModAdapter",
+     );
+     const initialToolContextIndex = source.indexOf("const initialToolContext");
+     const bidirectionalIndex = source.indexOf(
+@@ -94,15 +91,15 @@ describe("headless extension adapter", () => {
+     expect(initialToolContextIndex).toBeGreaterThan(adapterIndex);
+     expect(bidirectionalIndex).toBeGreaterThan(adapterIndex);
+ 
+-    expect(source).toContain("await headlessExtensionAdapter.reload()");
++    expect(source).toContain("await headlessModAdapter.reload()");
+     expect(source).toContain("await emitHeadlessConversationOpen({");
+     expect(source).toContain("await emitHeadlessConversationClose({");
+-    expect(source).toContain("headlessExtensionAdapter.dispose()");
++    expect(source).toContain("headlessModAdapter.dispose()");
+   });
+ 
+-  test("registers extension tools for headless tool snapshots and disables commands/UI", async () => {
++  test("registers mod tools for headless tool snapshots and disables commands/UI", async () => {
+     const root = mkdtempSync(path.join(tmpdir(), "letta-headless-ext-tools-"));
+-    const extensionDir = path.join(root, "global-extensions");
++    const modDir = path.join(root, "global-mods");
+     const toolName = "headless_echo_tool";
+     const agent = {
+       id: "agent-1",
+@@ -115,9 +112,9 @@ describe("headless extension adapter", () => {
+     } as unknown as Backend;
+ 
+     try {
+-      mkdirSync(extensionDir, { recursive: true });
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "headless-tool.ts"),
++        path.join(modDir, "headless-tool.ts"),
+         `export default function activate(letta) {
+           letta.commands.register({
+             id: "hidden_headless_command",
+@@ -137,7 +134,7 @@ describe("headless extension adapter", () => {
+           });
+           letta.tools.register({
+             name: "${toolName}",
+-            description: "Echo from headless extension",
++            description: "Echo from headless mod",
+             parameters: {
+               type: "object",
+               properties: { message: { type: "string" } },
+@@ -152,12 +149,12 @@ describe("headless extension adapter", () => {
+         }`,
+       );
+ 
+-      const adapter = createHeadlessExtensionAdapter({
++      const adapter = createHeadlessModAdapter({
+         agent,
+         backend,
+-        cacheDirectory: path.join(root, "extension-cache"),
++        cacheDirectory: path.join(root, "mod-cache"),
+         conversationId: "default",
+-        globalExtensionsDirectory: extensionDir,
++        globalModsDirectory: modDir,
+       });
+ 
+       await adapter.reload();
+@@ -167,14 +164,14 @@ describe("headless extension adapter", () => {
+       expect(snapshot.commands).toEqual({});
+       expect(snapshot.ui.panels).toEqual({});
+       expect(snapshot.ui.statusValues).toEqual({});
+-      expect(getExtensionToolDefinition(toolName)).toBeDefined();
++      expect(getModToolDefinition(toolName)).toBeDefined();
+ 
+       const prepared =
+         await __headlessTestUtils.prepareHeadlessToolExecutionContext({
+           agentId: agent.id,
+           cachedAgent: agent,
+           conversationId: "default",
+-          extensionEvents: adapter.events,
++          modEvents: adapter.events,
+         });
+       const clientToolNames =
+         prepared.preparedToolContext.preparedToolContext.clientTools.map(
+@@ -197,18 +194,18 @@ describe("headless extension adapter", () => {
+       expect(result.toolReturn).toBe("headless:ok:tool_start:agent-1:default");
+ 
+       adapter.dispose();
+-      expect(getExtensionToolDefinition(toolName)).toBeUndefined();
++      expect(getModToolDefinition(toolName)).toBeUndefined();
+     } finally {
+       rmSync(root, { force: true, recursive: true });
+     }
+   });
+ 
+-  test("disabled headless adapter skips extension loading", async () => {
++  test("disabled headless adapter skips mod loading", async () => {
+     const root = mkdtempSync(
+       path.join(tmpdir(), "letta-headless-ext-disabled-"),
+     );
+-    const originalDisableEnv = process.env[LETTA_DISABLE_EXTENSIONS_ENV];
+-    const extensionDir = path.join(root, "global-extensions");
++    const originalDisableEnv = process.env[LETTA_DISABLE_MODS_ENV];
++    const modDir = path.join(root, "global-mods");
+     const toolName = "disabled_headless_tool";
+     const agent = {
+       id: "agent-1",
+@@ -221,9 +218,9 @@ describe("headless extension adapter", () => {
+     } as unknown as Backend;
+ 
+     try {
+-      mkdirSync(extensionDir, { recursive: true });
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "headless-tool.ts"),
++        path.join(modDir, "headless-tool.ts"),
+         `export default function activate(letta) {
+           letta.tools.register({
+             name: "${toolName}",
+@@ -240,32 +237,32 @@ describe("headless extension adapter", () => {
+         }`,
+       );
+ 
+-      const adapter = createHeadlessExtensionAdapter({
++      const adapter = createHeadlessModAdapter({
+         agent,
+         backend,
+-        cacheDirectory: path.join(root, "extension-cache"),
++        cacheDirectory: path.join(root, "mod-cache"),
+         conversationId: "default",
+         disabled: true,
+-        globalExtensionsDirectory: extensionDir,
++        globalModsDirectory: modDir,
+       });
+ 
+       await adapter.reload();
+       const snapshot = adapter.getSnapshot();
+ 
+-      expect(snapshot.hasExtensionSources).toBe(false);
++      expect(snapshot.hasModSources).toBe(false);
+       expect(snapshot.registry.loadedPaths).toEqual([]);
+       expect(snapshot.registry.commands).toEqual({});
+       expect(snapshot.registry.tools).toEqual({});
+       expect(snapshot.registry.ui.statuslineRenderer).toBeNull();
+-      expect(getExtensionToolDefinition(toolName)).toBeUndefined();
+-      expect(process.env[LETTA_DISABLE_EXTENSIONS_ENV]).toBe("1");
++      expect(getModToolDefinition(toolName)).toBeUndefined();
++      expect(process.env[LETTA_DISABLE_MODS_ENV]).toBe("1");
+ 
+       adapter.dispose();
+     } finally {
+       if (originalDisableEnv === undefined) {
+-        delete process.env[LETTA_DISABLE_EXTENSIONS_ENV];
++        delete process.env[LETTA_DISABLE_MODS_ENV];
+       } else {
+-        process.env[LETTA_DISABLE_EXTENSIONS_ENV] = originalDisableEnv;
++        process.env[LETTA_DISABLE_MODS_ENV] = originalDisableEnv;
+       }
+       rmSync(root, { force: true, recursive: true });
+     }
+@@ -273,7 +270,7 @@ describe("headless extension adapter", () => {
+ 
+   test("emits tool_start before built-in tool execution", async () => {
+     const root = mkdtempSync(path.join(tmpdir(), "letta-headless-tool-start-"));
+-    const extensionDir = path.join(root, "global-extensions");
++    const modDir = path.join(root, "global-mods");
+     const originalPath = path.join(root, "original.txt");
+     const replacementPath = path.join(root, "replacement.txt");
+     const agent = {
+@@ -287,11 +284,11 @@ describe("headless extension adapter", () => {
+     } as unknown as Backend;
+ 
+     try {
+-      mkdirSync(extensionDir, { recursive: true });
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(originalPath, "original content");
+       writeFileSync(replacementPath, "replacement content");
+       writeFileSync(
+-        path.join(extensionDir, "tool-start.ts"),
++        path.join(modDir, "tool-start.ts"),
+         `export default function activate(letta) {
+           letta.events.on("tool_start", (event) => {
+             if (event.toolName !== "Read") return;
+@@ -300,12 +297,12 @@ describe("headless extension adapter", () => {
+         }`,
+       );
+ 
+-      const adapter = createHeadlessExtensionAdapter({
++      const adapter = createHeadlessModAdapter({
+         agent,
+         backend,
+-        cacheDirectory: path.join(root, "extension-cache"),
++        cacheDirectory: path.join(root, "mod-cache"),
+         conversationId: "default",
+-        globalExtensionsDirectory: extensionDir,
++        globalModsDirectory: modDir,
+       });
+ 
+       await adapter.reload();
+@@ -314,7 +311,7 @@ describe("headless extension adapter", () => {
+           agentId: agent.id,
+           cachedAgent: agent,
+           conversationId: "default",
+-          extensionEvents: adapter.events,
++          modEvents: adapter.events,
+         });
+ 
+       const result = await executeTool(
+@@ -340,8 +337,8 @@ describe("headless extension adapter", () => {
+     const root = mkdtempSync(
+       path.join(tmpdir(), "letta-headless-tool-start-captured-"),
+     );
+-    const firstExtensionDir = path.join(root, "first-extensions");
+-    const secondExtensionDir = path.join(root, "second-extensions");
++    const firstModDir = path.join(root, "first-mods");
++    const secondModDir = path.join(root, "second-mods");
+     const originalPath = path.join(root, "original.txt");
+     const firstPath = path.join(root, "first.txt");
+     const secondPath = path.join(root, "second.txt");
+@@ -354,20 +351,18 @@ describe("headless extension adapter", () => {
+       forkConversation: async () => ({ id: "forked" }),
+       sendMessageStream: async () => (async function* () {})(),
+     } as unknown as Backend;
+-    let firstAdapter: ReturnType<typeof createHeadlessExtensionAdapter> | null =
++    let firstAdapter: ReturnType<typeof createHeadlessModAdapter> | null = null;
++    let secondAdapter: ReturnType<typeof createHeadlessModAdapter> | null =
+       null;
+-    let secondAdapter: ReturnType<
+-      typeof createHeadlessExtensionAdapter
+-    > | null = null;
+ 
+     try {
+-      mkdirSync(firstExtensionDir, { recursive: true });
+-      mkdirSync(secondExtensionDir, { recursive: true });
++      mkdirSync(firstModDir, { recursive: true });
++      mkdirSync(secondModDir, { recursive: true });
+       writeFileSync(originalPath, "original content");
+       writeFileSync(firstPath, "first adapter content");
+       writeFileSync(secondPath, "second adapter content");
+       writeFileSync(
+-        path.join(firstExtensionDir, "tool-start.ts"),
++        path.join(firstModDir, "tool-start.ts"),
+         `export default function activate(letta) {
+           letta.events.on("tool_start", (event) => {
+             if (event.toolName !== "Read") return;
+@@ -376,7 +371,7 @@ describe("headless extension adapter", () => {
+         }`,
+       );
+       writeFileSync(
+-        path.join(secondExtensionDir, "tool-start.ts"),
++        path.join(secondModDir, "tool-start.ts"),
+         `export default function activate(letta) {
+           letta.events.on("tool_start", (event) => {
+             if (event.toolName !== "Read") return;
+@@ -385,12 +380,12 @@ describe("headless extension adapter", () => {
+         }`,
+       );
+ 
+-      firstAdapter = createHeadlessExtensionAdapter({
++      firstAdapter = createHeadlessModAdapter({
+         agent,
+         backend,
+         cacheDirectory: path.join(root, "first-cache"),
+         conversationId: "default",
+-        globalExtensionsDirectory: firstExtensionDir,
++        globalModsDirectory: firstModDir,
+       });
+       await firstAdapter.reload();
+       const prepared =
+@@ -398,15 +393,15 @@ describe("headless extension adapter", () => {
+           agentId: agent.id,
+           cachedAgent: agent,
+           conversationId: "default",
+-          extensionEvents: firstAdapter.events,
++          modEvents: firstAdapter.events,
+         });
+ 
+-      secondAdapter = createHeadlessExtensionAdapter({
++      secondAdapter = createHeadlessModAdapter({
+         agent,
+         backend,
+         cacheDirectory: path.join(root, "second-cache"),
+         conversationId: "default",
+-        globalExtensionsDirectory: secondExtensionDir,
++        globalModsDirectory: secondModDir,
+       });
+       await secondAdapter.reload();
+ 
+diff --git a/src/extensions/conversation-handle.test.ts b/src/mods/conversation-handle.test.ts
+similarity index 86%
+rename from src/extensions/conversation-handle.test.ts
+rename to src/mods/conversation-handle.test.ts
+index 90e7b085..6620c2eb 100644
+--- a/src/extensions/conversation-handle.test.ts
++++ b/src/mods/conversation-handle.test.ts
+@@ -1,11 +1,11 @@
+ import { describe, expect, test } from "bun:test";
+ import type { Message } from "@letta-ai/letta-client/resources/agents/messages";
+ import type { Backend, ConversationMessageListBody } from "@/backend";
+-import { createExtensionConversationHandle } from "@/extensions/conversation-handle";
++import { createModConversationHandle } from "@/mods/conversation-handle";
+ 
+ const sendMessageStream = async () => (async function* () {})();
+ 
+-describe("extension conversation handle", () => {
++describe("mod conversation handle", () => {
+   test("uses the internal backend directly for scoped fork and history", async () => {
+     const calls: string[] = [];
+     const newestFirstMessages = [
+@@ -34,7 +34,7 @@ describe("extension conversation handle", () => {
+       },
+     } as unknown as Backend;
+ 
+-    const handle = createExtensionConversationHandle({
++    const handle = createModConversationHandle({
+       agentId: "agent-1",
+       backend,
+       conversationId: null,
+@@ -57,13 +57,13 @@ describe("extension conversation handle", () => {
+   });
+ 
+   test("throws a scoped error when no backend is available", () => {
+-    const handle = createExtensionConversationHandle({
++    const handle = createModConversationHandle({
+       conversationId: "conversation-1",
+       sendMessageStream,
+     });
+ 
+     expect(() => handle.getHistory()).toThrow(
+-      "Extension conversation backend is not available",
++      "Mod conversation backend is not available",
+     );
+   });
+ });
+diff --git a/src/mods/disable.test.ts b/src/mods/disable.test.ts
+new file mode 100644
+index 00000000..3b09e660
+--- /dev/null
++++ b/src/mods/disable.test.ts
+@@ -0,0 +1,28 @@
++import { describe, expect, test } from "bun:test";
++import {
++  areModsDisabled,
++  LEGACY_LETTA_DISABLE_EXTENSIONS_ENV,
++  LETTA_DISABLE_MODS_ENV,
++  shouldDisableMods,
++} from "@/mods/disable";
++
++describe("mod disable switch", () => {
++  test("recognizes CLI flag and common truthy env values", () => {
++    expect(shouldDisableMods({ cliFlag: true, env: {} })).toBe(true);
++    expect(shouldDisableMods({ cliFlag: false, env: {} })).toBe(false);
++
++    for (const value of ["1", "true", "TRUE", "yes", "on"] as const) {
++      expect(areModsDisabled({ [LETTA_DISABLE_MODS_ENV]: value })).toBe(true);
++    }
++
++    for (const value of ["", "0", "false", "off", "no"] as const) {
++      expect(areModsDisabled({ [LETTA_DISABLE_MODS_ENV]: value })).toBe(false);
++    }
++  });
++
++  test("recognizes legacy extension disable env", () => {
++    expect(
++      areModsDisabled({ [LEGACY_LETTA_DISABLE_EXTENSIONS_ENV]: "1" }),
++    ).toBe(true);
++  });
++});
+diff --git a/src/extensions/disabled-extension-adapter.test.ts b/src/mods/disabled-mod-adapter.test.ts
+similarity index 58%
+rename from src/extensions/disabled-extension-adapter.test.ts
+rename to src/mods/disabled-mod-adapter.test.ts
+index 5a6d0faa..4e6cdc3d 100644
+--- a/src/extensions/disabled-extension-adapter.test.ts
++++ b/src/mods/disabled-mod-adapter.test.ts
+@@ -3,35 +3,35 @@ import {
+   clearRegisteredPiProviders,
+   listRegisteredPiProviders,
+   registerPiProvider,
+-} from "@/backend/dev/pi-provider-extension-registry";
+-import { DISABLED_EXTENSION_CAPABILITIES } from "@/extensions/capabilities";
+-import { LETTA_DISABLE_EXTENSIONS_ENV } from "@/extensions/disable";
+-import { createDisabledExtensionAdapter } from "@/extensions/disabled-extension-adapter";
++} from "@/backend/dev/pi-provider-mod-registry";
++import { DISABLED_MOD_CAPABILITIES } from "@/mods/capabilities";
++import { LETTA_DISABLE_MODS_ENV } from "@/mods/disable";
++import { createDisabledModAdapter } from "@/mods/disabled-mod-adapter";
+ import {
+-  clearExtensionPermissions,
+-  getExtensionPermissionDefinition,
+-  registerExtensionPermission,
+-} from "@/extensions/permission-registry";
++  clearModPermissions,
++  getModPermissionDefinition,
++  registerModPermission,
++} from "@/mods/permission-registry";
+ import {
+-  clearExtensionTools,
+-  getExtensionToolDefinition,
+-  registerExtensionTool,
+-} from "@/extensions/tool-registry";
+-import type { ExtensionContext } from "@/extensions/types";
++  clearModTools,
++  getModToolDefinition,
++  registerModTool,
++} from "@/mods/tool-registry";
++import type { ModContext } from "@/mods/types";
+ 
+-function createExtensionContext(agentName = "Amelia"): ExtensionContext {
++function createModContext(agentName = "Amelia"): ModContext {
+   return {
+     agent: { id: "agent-1", name: agentName },
+     cwd: "/tmp/project",
+     sessionId: "conversation-1",
+-  } as ExtensionContext;
++  } as ModContext;
+ }
+ 
+-function registerTestExtensionTool(name: string): void {
+-  registerExtensionTool({
++function registerTestModTool(name: string): void {
++  registerModTool({
+     activationSignal: new AbortController().signal,
+     description: "Test tool",
+-    getContext: () => createExtensionContext(),
++    getContext: () => createModContext(),
+     isAvailable: () => true,
+     name,
+     owner: {
+@@ -48,11 +48,11 @@ function registerTestExtensionTool(name: string): void {
+   });
+ }
+ 
+-function registerTestExtensionPermission(id: string): void {
+-  registerExtensionPermission({
++function registerTestModPermission(id: string): void {
++  registerModPermission({
+     activationSignal: new AbortController().signal,
+     check: () => undefined,
+-    getContext: () => createExtensionContext(),
++    getContext: () => createModContext(),
+     id,
+     isAvailable: () => true,
+     owner: {
+@@ -84,33 +84,31 @@ function registerTestPiProvider(name: string): void {
+   });
+ }
+ 
+-describe("disabled extension adapter", () => {
+-  test("clears extension registries and exposes no-op adapter surfaces", async () => {
+-    const originalDisableEnv = process.env[LETTA_DISABLE_EXTENSIONS_ENV];
++describe("disabled mod adapter", () => {
++  test("clears mod registries and exposes no-op adapter surfaces", async () => {
++    const originalDisableEnv = process.env[LETTA_DISABLE_MODS_ENV];
+ 
+     try {
+-      delete process.env[LETTA_DISABLE_EXTENSIONS_ENV];
+-      registerTestExtensionPermission("stale-permission");
+-      registerTestExtensionTool("stale_extension_tool");
++      delete process.env[LETTA_DISABLE_MODS_ENV];
++      registerTestModPermission("stale-permission");
++      registerTestModTool("stale_mod_tool");
+       registerTestPiProvider("stale-provider");
+ 
+-      expect(
+-        getExtensionPermissionDefinition("stale-permission"),
+-      ).toBeDefined();
+-      expect(getExtensionToolDefinition("stale_extension_tool")).toBeDefined();
++      expect(getModPermissionDefinition("stale-permission")).toBeDefined();
++      expect(getModToolDefinition("stale_mod_tool")).toBeDefined();
+       expect(listRegisteredPiProviders()).toHaveLength(1);
+ 
+-      const adapter = createDisabledExtensionAdapter({
+-        initialContext: createExtensionContext(),
++      const adapter = createDisabledModAdapter({
++        initialContext: createModContext(),
+       });
+ 
+       expect(adapter.getSnapshot()).toMatchObject({
+         hadStatuslineRenderer: false,
+-        hasExtensionSources: false,
++        hasModSources: false,
+         isLoading: false,
+       });
+       expect(adapter.getSnapshot().registry.capabilities).toEqual(
+-        DISABLED_EXTENSION_CAPABILITIES,
++        DISABLED_MOD_CAPABILITIES,
+       );
+       expect(adapter.getSnapshot().registry.sources).toEqual([]);
+       expect(adapter.getSnapshot().registry.loadedPaths).toEqual([]);
+@@ -120,12 +118,8 @@ describe("disabled extension adapter", () => {
+       expect(adapter.getSnapshot().registry.ui.panels).toEqual({});
+       expect(adapter.getSnapshot().registry.ui.statuslineRenderer).toBeNull();
+       expect(adapter.getBackend()).toBeUndefined();
+-      expect(
+-        getExtensionPermissionDefinition("stale-permission"),
+-      ).toBeUndefined();
+-      expect(
+-        getExtensionToolDefinition("stale_extension_tool"),
+-      ).toBeUndefined();
++      expect(getModPermissionDefinition("stale-permission")).toBeUndefined();
++      expect(getModToolDefinition("stale_mod_tool")).toBeUndefined();
+       expect(listRegisteredPiProviders()).toEqual([]);
+ 
+       let notifications = 0;
+@@ -145,18 +139,18 @@ describe("disabled extension adapter", () => {
+       expect(result.handlerCount).toBe(0);
+       expect(result.results).toEqual([]);
+ 
+-      adapter.updateContext(createExtensionContext("Updated Agent"));
++      adapter.updateContext(createModContext("Updated Agent"));
+       expect(adapter.getContext().agent.name).toBe("Updated Agent");
+ 
+       adapter.dispose();
+     } finally {
+-      clearExtensionPermissions();
+-      clearExtensionTools();
++      clearModPermissions();
++      clearModTools();
+       clearRegisteredPiProviders();
+       if (originalDisableEnv === undefined) {
+-        delete process.env[LETTA_DISABLE_EXTENSIONS_ENV];
++        delete process.env[LETTA_DISABLE_MODS_ENV];
+       } else {
+-        process.env[LETTA_DISABLE_EXTENSIONS_ENV] = originalDisableEnv;
++        process.env[LETTA_DISABLE_MODS_ENV] = originalDisableEnv;
+       }
+     }
+   });
+diff --git a/src/extensions/extension-adapter.test.ts b/src/mods/mod-adapter.test.ts
+similarity index 68%
+rename from src/extensions/extension-adapter.test.ts
+rename to src/mods/mod-adapter.test.ts
+index 4aeeb773..2d2f5d31 100644
+--- a/src/extensions/extension-adapter.test.ts
++++ b/src/mods/mod-adapter.test.ts
+@@ -11,21 +11,21 @@ import { tmpdir } from "node:os";
+ import path from "node:path";
+ import type Letta from "@letta-ai/letta-client";
+ import type { Backend } from "@/backend";
+-import { DISABLED_EXTENSION_CAPABILITIES } from "@/extensions/capabilities";
+-import { LETTA_DISABLE_EXTENSIONS_ENV } from "@/extensions/disable";
+-import { createExtensionAdapter } from "@/extensions/extension-adapter";
+-import { getExtensionDiagnosticsLatestFilePath } from "@/extensions/extension-diagnostics-file";
+-import type { ExtensionContext } from "@/extensions/types";
++import { DISABLED_MOD_CAPABILITIES } from "@/mods/capabilities";
++import { LETTA_DISABLE_MODS_ENV } from "@/mods/disable";
++import { createModAdapter } from "@/mods/mod-adapter";
++import { getModDiagnosticsLatestFilePath } from "@/mods/mod-diagnostics-file";
++import type { ModContext } from "@/mods/types";
+ 
+-type ExtensionAdapterTestGlobal = typeof globalThis & {
++type ModAdapterTestGlobal = typeof globalThis & {
+   __lettaAdapterEvents?: string[];
+ };
+ 
+ function createTempDir(): string {
+-  return mkdtempSync(path.join(tmpdir(), "letta-extension-adapter-"));
++  return mkdtempSync(path.join(tmpdir(), "letta-mod-adapter-"));
+ }
+ 
+-function createExtensionContext(agentName = "Amelia"): ExtensionContext {
++function createModContext(agentName = "Amelia"): ModContext {
+   return {
+     app: { version: "test" },
+     backgroundAgents: [],
+@@ -77,51 +77,51 @@ function sleep(ms: number): Promise<void> {
+   return new Promise((resolve) => setTimeout(resolve, ms));
+ }
+ 
+-describe("extension adapter", () => {
+-  test("LETTA_DISABLE_EXTENSIONS disables the adapter", () => {
+-    const original = process.env[LETTA_DISABLE_EXTENSIONS_ENV];
++describe("mod adapter", () => {
++  test("LETTA_DISABLE_MODS disables the adapter", () => {
++    const original = process.env[LETTA_DISABLE_MODS_ENV];
+     try {
+-      process.env[LETTA_DISABLE_EXTENSIONS_ENV] = "1";
+-      const adapter = createExtensionAdapter({
++      process.env[LETTA_DISABLE_MODS_ENV] = "1";
++      const adapter = createModAdapter({
+         getClient: async () => ({}) as unknown as Letta,
+-        initialContext: createExtensionContext(),
++        initialContext: createModContext(),
+       });
+ 
+       expect(adapter.getSnapshot()).toMatchObject({
+-        hasExtensionSources: false,
++        hasModSources: false,
+         isLoading: false,
+       });
+       expect(adapter.getSnapshot().registry.capabilities).toEqual(
+-        DISABLED_EXTENSION_CAPABILITIES,
++        DISABLED_MOD_CAPABILITIES,
+       );
+     } finally {
+       if (original === undefined) {
+-        delete process.env[LETTA_DISABLE_EXTENSIONS_ENV];
++        delete process.env[LETTA_DISABLE_MODS_ENV];
+       } else {
+-        process.env[LETTA_DISABLE_EXTENSIONS_ENV] = original;
++        process.env[LETTA_DISABLE_MODS_ENV] = original;
+       }
+     }
+   });
+ 
+-  test("disabled option disables extensions for the process", () => {
+-    const original = process.env[LETTA_DISABLE_EXTENSIONS_ENV];
++  test("disabled option disables mods for the process", () => {
++    const original = process.env[LETTA_DISABLE_MODS_ENV];
+     try {
+-      delete process.env[LETTA_DISABLE_EXTENSIONS_ENV];
+-      const adapter = createExtensionAdapter({
++      delete process.env[LETTA_DISABLE_MODS_ENV];
++      const adapter = createModAdapter({
+         disabled: true,
+         getClient: async () => ({}) as unknown as Letta,
+-        initialContext: createExtensionContext(),
++        initialContext: createModContext(),
+       });
+ 
+-      expect(process.env[LETTA_DISABLE_EXTENSIONS_ENV]).toBe("1");
++      expect(process.env[LETTA_DISABLE_MODS_ENV]).toBe("1");
+       expect(adapter.getSnapshot().registry.capabilities).toEqual(
+-        DISABLED_EXTENSION_CAPABILITIES,
++        DISABLED_MOD_CAPABILITIES,
+       );
+     } finally {
+       if (original === undefined) {
+-        delete process.env[LETTA_DISABLE_EXTENSIONS_ENV];
++        delete process.env[LETTA_DISABLE_MODS_ENV];
+       } else {
+-        process.env[LETTA_DISABLE_EXTENSIONS_ENV] = original;
++        process.env[LETTA_DISABLE_MODS_ENV] = original;
+       }
+     }
+   });
+@@ -130,34 +130,33 @@ describe("extension adapter", () => {
+     const root = createTempDir();
+ 
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
++      const modDir = path.join(root, "global-mods");
+       const diagnosticsRoot = path.join(root, "diagnostics");
+-      const extensionPath = path.join(extensionDir, "diagnostic.ts");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modPath = path.join(modDir, "diagnostic.ts");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function() {
+           throw new Error("activation failed");
+         }`,
+       );
+ 
+-      const adapter = createExtensionAdapter({
+-        cacheDirectory: path.join(root, "extension-cache"),
++      const adapter = createModAdapter({
++        cacheDirectory: path.join(root, "mod-cache"),
+         diagnosticsRootDirectory: diagnosticsRoot,
+         getClient: async () => ({}) as unknown as Letta,
+-        globalExtensionsDirectory: extensionDir,
+-        initialContext: createExtensionContext(),
++        globalModsDirectory: modDir,
++        initialContext: createModContext(),
+       });
+ 
+       await adapter.reload();
+ 
+-      const diagnosticsPath =
+-        getExtensionDiagnosticsLatestFilePath(diagnosticsRoot);
++      const diagnosticsPath = getModDiagnosticsLatestFilePath(diagnosticsRoot);
+       expect(readJsonFile(diagnosticsPath)).toMatchObject({
+         report: {
+           diagnostics: [
+             {
+-              extension: expect.objectContaining({ path: extensionPath }),
++              mod: expect.objectContaining({ path: modPath }),
+               message: "activation failed",
+               phase: "activate",
+               severity: "error",
+@@ -168,7 +167,7 @@ describe("extension adapter", () => {
+         },
+       });
+ 
+-      writeFileSync(extensionPath, "export default function() {}");
++      writeFileSync(modPath, "export default function() {}");
+       await adapter.reload();
+ 
+       expect(readJsonFile(diagnosticsPath)).toMatchObject({
+@@ -181,25 +180,25 @@ describe("extension adapter", () => {
+     }
+   });
+ 
+-  test("reload does not create diagnostics files when no extensions exist", async () => {
++  test("reload does not create diagnostics files when no mods exist", async () => {
+     const root = createTempDir();
+ 
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
++      const modDir = path.join(root, "global-mods");
+       const diagnosticsRoot = path.join(root, "diagnostics");
+-      const adapter = createExtensionAdapter({
+-        cacheDirectory: path.join(root, "extension-cache"),
++      const adapter = createModAdapter({
++        cacheDirectory: path.join(root, "mod-cache"),
+         diagnosticsRootDirectory: diagnosticsRoot,
+         getClient: async () => ({}) as unknown as Letta,
+-        globalExtensionsDirectory: extensionDir,
+-        initialContext: createExtensionContext(),
++        globalModsDirectory: modDir,
++        initialContext: createModContext(),
+       });
+ 
+       await adapter.reload();
+ 
+-      expect(
+-        existsSync(getExtensionDiagnosticsLatestFilePath(diagnosticsRoot)),
+-      ).toBe(false);
++      expect(existsSync(getModDiagnosticsLatestFilePath(diagnosticsRoot))).toBe(
++        false,
++      );
+ 
+       adapter.dispose();
+     } finally {
+@@ -211,11 +210,11 @@ describe("extension adapter", () => {
+     const root = createTempDir();
+ 
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
++      const modDir = path.join(root, "global-mods");
+       const diagnosticsRoot = path.join(root, "diagnostics");
+-      mkdirSync(extensionDir, { recursive: true });
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "events.ts"),
++        path.join(modDir, "events.ts"),
+         `export default function(letta) {
+           letta.events.on("conversation_open", () => {
+             throw new Error("runtime failed");
+@@ -223,18 +222,17 @@ describe("extension adapter", () => {
+         }`,
+       );
+ 
+-      const adapter = createExtensionAdapter({
+-        cacheDirectory: path.join(root, "extension-cache"),
++      const adapter = createModAdapter({
++        cacheDirectory: path.join(root, "mod-cache"),
+         diagnosticsRootDirectory: diagnosticsRoot,
+         diagnosticsWriteDelayMs: 5,
+         getClient: async () => ({}) as unknown as Letta,
+-        globalExtensionsDirectory: extensionDir,
+-        initialContext: createExtensionContext(),
++        globalModsDirectory: modDir,
++        initialContext: createModContext(),
+       });
+ 
+       await adapter.reload();
+-      const diagnosticsPath =
+-        getExtensionDiagnosticsLatestFilePath(diagnosticsRoot);
++      const diagnosticsPath = getModDiagnosticsLatestFilePath(diagnosticsRoot);
+       expect(readJsonFile(diagnosticsPath)).toMatchObject({
+         report: { diagnostics: [], errorCount: 0, warningCount: 0 },
+       });
+@@ -279,11 +277,11 @@ describe("extension adapter", () => {
+     const root = createTempDir();
+ 
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
++      const modDir = path.join(root, "global-mods");
+       const diagnosticsRoot = path.join(root, "diagnostics");
+-      mkdirSync(extensionDir, { recursive: true });
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "events.ts"),
++        path.join(modDir, "events.ts"),
+         `export default function(letta) {
+           letta.events.on("conversation_open", (event) => {
+             throw new Error("runtime failed " + event.reason);
+@@ -291,18 +289,17 @@ describe("extension adapter", () => {
+         }`,
+       );
+ 
+-      const adapter = createExtensionAdapter({
+-        cacheDirectory: path.join(root, "extension-cache"),
++      const adapter = createModAdapter({
++        cacheDirectory: path.join(root, "mod-cache"),
+         diagnosticsRootDirectory: diagnosticsRoot,
+         diagnosticsWriteDelayMs: 20,
+         getClient: async () => ({}) as unknown as Letta,
+-        globalExtensionsDirectory: extensionDir,
+-        initialContext: createExtensionContext(),
++        globalModsDirectory: modDir,
++        initialContext: createModContext(),
+       });
+ 
+       await adapter.reload();
+-      const diagnosticsPath =
+-        getExtensionDiagnosticsLatestFilePath(diagnosticsRoot);
++      const diagnosticsPath = getModDiagnosticsLatestFilePath(diagnosticsRoot);
+ 
+       await adapter.events.emit("conversation_open", {
+         agentId: "agent-1",
+@@ -349,11 +346,11 @@ describe("extension adapter", () => {
+     const root = createTempDir();
+ 
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
++      const modDir = path.join(root, "global-mods");
+       const diagnosticsRoot = path.join(root, "diagnostics");
+-      mkdirSync(extensionDir, { recursive: true });
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "events.ts"),
++        path.join(modDir, "events.ts"),
+         `export default function(letta) {
+           letta.events.on("conversation_open", () => {
+             throw new Error("runtime failed");
+@@ -361,13 +358,13 @@ describe("extension adapter", () => {
+         }`,
+       );
+ 
+-      const adapter = createExtensionAdapter({
+-        cacheDirectory: path.join(root, "extension-cache"),
++      const adapter = createModAdapter({
++        cacheDirectory: path.join(root, "mod-cache"),
+         diagnosticsRootDirectory: diagnosticsRoot,
+         diagnosticsWriteDelayMs: 30_000,
+         getClient: async () => ({}) as unknown as Letta,
+-        globalExtensionsDirectory: extensionDir,
+-        initialContext: createExtensionContext(),
++        globalModsDirectory: modDir,
++        initialContext: createModContext(),
+       });
+ 
+       await adapter.reload();
+@@ -378,8 +375,7 @@ describe("extension adapter", () => {
+         reason: "startup",
+       });
+ 
+-      const diagnosticsPath =
+-        getExtensionDiagnosticsLatestFilePath(diagnosticsRoot);
++      const diagnosticsPath = getModDiagnosticsLatestFilePath(diagnosticsRoot);
+       expect(readJsonFile(diagnosticsPath)).toMatchObject({
+         report: { diagnostics: [], errorCount: 0, warningCount: 0 },
+       });
+@@ -404,11 +400,11 @@ describe("extension adapter", () => {
+     const root = createTempDir();
+ 
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
++      const modDir = path.join(root, "global-mods");
+       const diagnosticsRoot = path.join(root, "diagnostics");
+-      mkdirSync(extensionDir, { recursive: true });
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "events.ts"),
++        path.join(modDir, "events.ts"),
+         `export default function(letta) {
+           letta.events.on("conversation_open", () => {
+             letta.diagnostics.report({ message: "missing optional env" });
+@@ -416,13 +412,13 @@ describe("extension adapter", () => {
+         }`,
+       );
+ 
+-      const adapter = createExtensionAdapter({
+-        cacheDirectory: path.join(root, "extension-cache"),
++      const adapter = createModAdapter({
++        cacheDirectory: path.join(root, "mod-cache"),
+         diagnosticsRootDirectory: diagnosticsRoot,
+         diagnosticsWriteDelayMs: 5,
+         getClient: async () => ({}) as unknown as Letta,
+-        globalExtensionsDirectory: extensionDir,
+-        initialContext: createExtensionContext(),
++        globalModsDirectory: modDir,
++        initialContext: createModContext(),
+       });
+ 
+       await adapter.reload();
+@@ -435,12 +431,12 @@ describe("extension adapter", () => {
+       await sleep(20);
+ 
+       expect(
+-        readJsonFile(getExtensionDiagnosticsLatestFilePath(diagnosticsRoot)),
++        readJsonFile(getModDiagnosticsLatestFilePath(diagnosticsRoot)),
+       ).toMatchObject({
+         report: {
+           diagnostics: [
+             {
+-              errorName: "ExtensionDiagnosticReport",
++              errorName: "ModDiagnosticReport",
+               message: "missing optional env",
+               phase: "report",
+               severity: "error",
+@@ -457,16 +453,16 @@ describe("extension adapter", () => {
+     }
+   });
+ 
+-  test("loads extensions and dispatches events with fresh context and backend", async () => {
++  test("loads mods and dispatches events with fresh context and backend", async () => {
+     const root = createTempDir();
+-    const testGlobal = globalThis as ExtensionAdapterTestGlobal;
++    const testGlobal = globalThis as ModAdapterTestGlobal;
+     testGlobal.__lettaAdapterEvents = [];
+ 
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "events.ts"),
++        path.join(modDir, "events.ts"),
+         `export default function(letta) {
+           letta.events.on("conversation_open", async (event, ctx) => {
+             const fork = await ctx.conversation.fork({ hidden: true });
+@@ -480,16 +476,16 @@ describe("extension adapter", () => {
+       const backend = {
+         forkConversation: async () => ({ id: "forked-conversation" }),
+       } as unknown as Backend;
+-      const adapter = createExtensionAdapter({
+-        cacheDirectory: path.join(root, "extension-cache"),
++      const adapter = createModAdapter({
++        cacheDirectory: path.join(root, "mod-cache"),
+         getBackend: () => backend,
+         getClient: async () => ({}) as unknown as Letta,
+-        globalExtensionsDirectory: extensionDir,
+-        initialContext: createExtensionContext(),
++        globalModsDirectory: modDir,
++        initialContext: createModContext(),
+       });
+ 
+       expect(adapter.getSnapshot()).toMatchObject({
+-        hasExtensionSources: true,
++        hasModSources: true,
+         isLoading: true,
+       });
+       expect(adapter.getSnapshot()).toBe(adapter.getSnapshot());
+@@ -504,10 +500,10 @@ describe("extension adapter", () => {
+       expect(testGlobal.__lettaAdapterEvents).toEqual([]);
+ 
+       await adapter.reload();
+-      adapter.updateContext(createExtensionContext("Updated Agent"));
++      adapter.updateContext(createModContext("Updated Agent"));
+ 
+       expect(adapter.getSnapshot()).toMatchObject({
+-        hasExtensionSources: true,
++        hasModSources: true,
+         isLoading: false,
+       });
+       expect(adapter.getSnapshot().registry.loadedPaths).toHaveLength(1);
+diff --git a/src/extensions/extension-diagnostics-file.test.ts b/src/mods/mod-diagnostics-file.test.ts
+similarity index 51%
+rename from src/extensions/extension-diagnostics-file.test.ts
+rename to src/mods/mod-diagnostics-file.test.ts
+index f606c43e..09fed572 100644
+--- a/src/extensions/extension-diagnostics-file.test.ts
++++ b/src/mods/mod-diagnostics-file.test.ts
+@@ -1,19 +1,19 @@
+ import { describe, expect, test } from "bun:test";
+-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
++import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+ import { tmpdir } from "node:os";
+ import path from "node:path";
+ import {
+-  getDefaultExtensionDiagnosticsRoot,
+-  getExtensionDiagnosticsLatestFilePath,
+-  writeExtensionDiagnosticsLatestFile,
+-} from "@/extensions/extension-diagnostics-file";
+-import type { ExtensionDiagnostic, ExtensionOwner } from "@/extensions/types";
++  getDefaultModDiagnosticsRoot,
++  getModDiagnosticsLatestFilePath,
++  writeModDiagnosticsLatestFile,
++} from "@/mods/mod-diagnostics-file";
++import type { ModDiagnostic, ModOwner } from "@/mods/types";
+ 
+ function createTempDir(): string {
+-  return mkdtempSync(path.join(tmpdir(), "letta-extension-diagnostics-"));
++  return mkdtempSync(path.join(tmpdir(), "letta-mod-diagnostics-"));
+ }
+ 
+-function createOwner(): ExtensionOwner {
++function createOwner(): ModOwner {
+   return {
+     generation: 1,
+     id: "global:/tmp/example.ts",
+@@ -22,9 +22,9 @@ function createOwner(): ExtensionOwner {
+   };
+ }
+ 
+-function createDiagnostic(): ExtensionDiagnostic {
++function createDiagnostic(): ModDiagnostic {
+   const error = new Error("activation failed");
+-  error.stack = "Error: activation failed\n    at extension.ts:1:1";
++  error.stack = "Error: activation failed\n    at mod.ts:1:1";
+   return {
+     error,
+     owner: createOwner(),
+@@ -33,16 +33,30 @@ function createDiagnostic(): ExtensionDiagnostic {
+   };
+ }
+ 
+-describe("extension diagnostics file", () => {
+-  test("resolves diagnostics under the extensions directory", () => {
+-    expect(getDefaultExtensionDiagnosticsRoot("/home/test")).toBe(
+-      path.join("/home/test", ".letta", "extensions", "diagnostics"),
++describe("mod diagnostics file", () => {
++  test("resolves diagnostics under the mods directory", () => {
++    expect(getDefaultModDiagnosticsRoot("/home/test")).toBe(
++      path.join("/home/test", ".letta", "mods", "diagnostics"),
+     );
+-    expect(getExtensionDiagnosticsLatestFilePath("/tmp/root")).toBe(
++    expect(getModDiagnosticsLatestFilePath("/tmp/root")).toBe(
+       path.join("/tmp/root", "latest.json"),
+     );
+   });
+ 
++  test("resolves diagnostics under legacy extensions directory for legacy-only users", () => {
++    const root = createTempDir();
++    try {
++      const legacyDirectory = path.join(root, ".letta", "extensions");
++      mkdirSync(legacyDirectory, { recursive: true });
++
++      expect(getDefaultModDiagnosticsRoot(root)).toBe(
++        path.join(legacyDirectory, "diagnostics"),
++      );
++    } finally {
++      rmSync(root, { force: true, recursive: true });
++    }
++  });
++
+   test("writes latest diagnostics files and overwrites stale results", () => {
+     const rootDirectory = createTempDir();
+     try {
+@@ -51,18 +65,18 @@ describe("extension diagnostics file", () => {
+         rootDirectory,
+       };
+ 
+-      const firstWritten = writeExtensionDiagnosticsLatestFile(
++      const firstWritten = writeModDiagnosticsLatestFile(
+         [createDiagnostic()],
+         options,
+       );
+-      const filePath = getExtensionDiagnosticsLatestFilePath(rootDirectory);
++      const filePath = getModDiagnosticsLatestFilePath(rootDirectory);
+ 
+       expect(firstWritten).toMatchObject({
+         generatedAt: 200,
+         report: {
+           diagnostics: [
+             {
+-              extension: createOwner(),
++              mod: createOwner(),
+               message: "activation failed",
+               phase: "activate",
+               severity: "error",
+@@ -76,7 +90,7 @@ describe("extension diagnostics file", () => {
+         `${JSON.stringify(firstWritten, null, 2)}\n`,
+       );
+ 
+-      const emptyWritten = writeExtensionDiagnosticsLatestFile([], options);
++      const emptyWritten = writeModDiagnosticsLatestFile([], options);
+ 
+       expect(emptyWritten).toEqual({
+         generatedAt: 200,
+diff --git a/src/extensions/extension-diagnostics.test.ts b/src/mods/mod-diagnostics.test.ts
+similarity index 57%
+rename from src/extensions/extension-diagnostics.test.ts
+rename to src/mods/mod-diagnostics.test.ts
+index 9a682fdb..77c32693 100644
+--- a/src/extensions/extension-diagnostics.test.ts
++++ b/src/mods/mod-diagnostics.test.ts
+@@ -1,17 +1,17 @@
+ import { describe, expect, test } from "bun:test";
+ import {
+-  appendExtensionDiagnostic,
+-  createExtensionDiagnosticsReport,
+-  EXTENSION_DIAGNOSTICS_MAX_COUNT,
+-  EXTENSION_DIAGNOSTICS_RESET_COUNT,
+-  type ExtensionDiagnosticCollector,
+-  getExtensionDiagnosticSeverity,
+-  getExtensionErrorDiagnostics,
+-  recordExtensionDiagnostic,
+-} from "@/extensions/extension-diagnostics";
+-import type { ExtensionDiagnostic, ExtensionOwner } from "@/extensions/types";
++  appendModDiagnostic,
++  createModDiagnosticsReport,
++  getModDiagnosticSeverity,
++  getModErrorDiagnostics,
++  MOD_DIAGNOSTICS_MAX_COUNT,
++  MOD_DIAGNOSTICS_RESET_COUNT,
++  type ModDiagnosticCollector,
++  recordModDiagnostic,
++} from "@/mods/mod-diagnostics";
++import type { ModDiagnostic, ModOwner } from "@/mods/types";
+ 
+-function createOwner(): ExtensionOwner {
++function createOwner(): ModOwner {
+   return {
+     generation: 1,
+     id: "global:/tmp/example.ts",
+@@ -22,28 +22,28 @@ function createOwner(): ExtensionOwner {
+ 
+ function createError(message: string): Error {
+   const error = new Error(message);
+-  error.stack = `Error: ${message}\n    at extension.ts:1:1`;
++  error.stack = `Error: ${message}\n    at mod.ts:1:1`;
+   return error;
+ }
+ 
+-describe("extension diagnostics", () => {
++describe("mod diagnostics", () => {
+   test("classifies diagnostic phases for future surfacing", () => {
+-    expect(getExtensionDiagnosticSeverity("command_override")).toBe("warning");
+-    expect(getExtensionDiagnosticSeverity("report")).toBe("error");
+-    expect(getExtensionDiagnosticSeverity("report", "warning")).toBe("warning");
+-    expect(getExtensionDiagnosticSeverity("report", "error")).toBe("error");
+-    expect(getExtensionDiagnosticSeverity("activate")).toBe("error");
+-    expect(getExtensionDiagnosticSeverity("event")).toBe("error");
++    expect(getModDiagnosticSeverity("command_override")).toBe("warning");
++    expect(getModDiagnosticSeverity("report")).toBe("error");
++    expect(getModDiagnosticSeverity("report", "warning")).toBe("warning");
++    expect(getModDiagnosticSeverity("report", "error")).toBe("error");
++    expect(getModDiagnosticSeverity("activate")).toBe("error");
++    expect(getModDiagnosticSeverity("event")).toBe("error");
+   });
+ 
+   test("records diagnostics and derives error diagnostics", () => {
+-    const registry: ExtensionDiagnosticCollector = {
++    const registry: ModDiagnosticCollector = {
+       diagnostics: [],
+     };
+     const owner = createOwner();
+-    const seen: ExtensionDiagnostic[] = [];
++    const seen: ModDiagnostic[] = [];
+ 
+-    const warning = recordExtensionDiagnostic(
++    const warning = recordModDiagnostic(
+       registry,
+       {
+         capability: { id: "reload", kind: "command" },
+@@ -53,27 +53,27 @@ describe("extension diagnostics", () => {
+       },
+       (diagnostic) => seen.push(diagnostic),
+     );
+-    const error = recordExtensionDiagnostic(registry, {
++    const error = recordModDiagnostic(registry, {
+       error: new Error("activation failed"),
+       owner,
+       phase: "activate",
+     });
+ 
+     expect(registry.diagnostics).toEqual([warning, error]);
+-    expect(getExtensionErrorDiagnostics(registry.diagnostics)).toEqual([error]);
++    expect(getModErrorDiagnostics(registry.diagnostics)).toEqual([error]);
+     expect(seen).toEqual([warning]);
+     expect(warning.timestamp).toEqual(expect.any(Number));
+     expect(error.timestamp).toEqual(expect.any(Number));
+   });
+ 
+   test("caps diagnostics on append with hysteresis", () => {
+-    const registry: ExtensionDiagnosticCollector = {
++    const registry: ModDiagnosticCollector = {
+       diagnostics: [],
+     };
+     const owner = createOwner();
+ 
+-    for (let index = 0; index <= EXTENSION_DIAGNOSTICS_MAX_COUNT; index += 1) {
+-      appendExtensionDiagnostic(registry, {
++    for (let index = 0; index <= MOD_DIAGNOSTICS_MAX_COUNT; index += 1) {
++      appendModDiagnostic(registry, {
+         error: new Error(`diagnostic ${index}`),
+         owner,
+         phase: "event",
+@@ -81,35 +81,31 @@ describe("extension diagnostics", () => {
+       });
+     }
+ 
+-    expect(registry.diagnostics).toHaveLength(
+-      EXTENSION_DIAGNOSTICS_RESET_COUNT,
+-    );
++    expect(registry.diagnostics).toHaveLength(MOD_DIAGNOSTICS_RESET_COUNT);
+     expect(registry.diagnostics[0]?.error.message).toBe("diagnostic 151");
+     expect(registry.diagnostics.at(-1)?.error.message).toBe("diagnostic 200");
+ 
+-    appendExtensionDiagnostic(registry, {
++    appendModDiagnostic(registry, {
+       error: new Error("diagnostic 201"),
+       owner,
+       phase: "event",
+       timestamp: 201,
+     });
+ 
+-    expect(registry.diagnostics).toHaveLength(
+-      EXTENSION_DIAGNOSTICS_RESET_COUNT + 1,
+-    );
++    expect(registry.diagnostics).toHaveLength(MOD_DIAGNOSTICS_RESET_COUNT + 1);
+     expect(registry.diagnostics.at(-1)?.error.message).toBe("diagnostic 201");
+   });
+ 
+   test("creates compact agent reports from diagnostics", () => {
+     const owner = createOwner();
+-    const warning: ExtensionDiagnostic = {
++    const warning: ModDiagnostic = {
+       capability: { id: "reload", kind: "command" },
+       error: createError("command override"),
+       owner,
+       phase: "command_override",
+       timestamp: 100,
+     };
+-    const error: ExtensionDiagnostic = {
++    const error: ModDiagnostic = {
+       error: createError("activation failed"),
+       owner,
+       phase: "activate",
+@@ -117,37 +113,37 @@ describe("extension diagnostics", () => {
+     };
+     const reportError = new Error("missing optional env");
+     reportError.stack = undefined;
+-    const report: ExtensionDiagnostic = {
++    const report: ModDiagnostic = {
+       error: reportError,
+       owner,
+       phase: "report",
+       timestamp: 300,
+     };
+ 
+-    expect(createExtensionDiagnosticsReport([warning, error, report])).toEqual({
++    expect(createModDiagnosticsReport([warning, error, report])).toEqual({
+       diagnostics: [
+         {
+           capability: { id: "reload", kind: "command" },
+           errorName: "Error",
+-          extension: owner,
++          mod: owner,
+           message: "command override",
+           phase: "command_override",
+           severity: "warning",
+-          stack: "Error: command override\n    at extension.ts:1:1",
++          stack: "Error: command override\n    at mod.ts:1:1",
+           timestamp: 100,
+         },
+         {
+           errorName: "Error",
+-          extension: owner,
++          mod: owner,
+           message: "activation failed",
+           phase: "activate",
+           severity: "error",
+-          stack: "Error: activation failed\n    at extension.ts:1:1",
++          stack: "Error: activation failed\n    at mod.ts:1:1",
+           timestamp: 200,
+         },
+         {
+           errorName: "Error",
+-          extension: owner,
++          mod: owner,
+           message: "missing optional env",
+           phase: "report",
+           severity: "error",
+diff --git a/src/extensions/extension-engine.test.ts b/src/mods/mod-engine.test.ts
+similarity index 67%
+rename from src/extensions/extension-engine.test.ts
+rename to src/mods/mod-engine.test.ts
+index 565762aa..04fd249e 100644
+--- a/src/extensions/extension-engine.test.ts
++++ b/src/mods/mod-engine.test.ts
+@@ -7,45 +7,35 @@ import type { Backend } from "@/backend";
+ import {
+   clearRegisteredPiProviders,
+   getRegisteredPiProvider,
+-} from "@/backend/dev/pi-provider-extension-registry";
+-import { getExtensionErrorDiagnostics } from "@/extensions/extension-diagnostics";
++} from "@/backend/dev/pi-provider-mod-registry";
++import { getModErrorDiagnostics } from "@/mods/mod-diagnostics";
++import { createModEngine, type ModEngine } from "@/mods/mod-engine";
+ import {
+-  createExtensionEngine,
+-  type ExtensionEngine,
+-} from "@/extensions/extension-engine";
+-import {
+-  clearExtensionPermissions,
+-  getExtensionPermissionDefinition,
+-} from "@/extensions/permission-registry";
+-import {
+-  clearExtensionTools,
+-  getExtensionToolDefinition,
+-} from "@/extensions/tool-registry";
+-import type {
+-  ExtensionCapabilities,
+-  ExtensionContext,
+-  ExtensionPanelHandle,
+-} from "@/extensions/types";
+-
+-type ExtensionTestGlobal = typeof globalThis & {
+-  __lettaExtensionBackend?: unknown;
+-  __lettaExtensionBackendCalls?: string[];
+-  __lettaExtensionForkResult?: { id: string };
+-  __lettaExtensionHistoryResult?: string[];
+-  __lettaExtensionCapabilities?: ExtensionCapabilities;
+-  __lettaExtensionEvents?: string[];
+-  __lettaExtensionGate?: Promise<void>;
+-  __lettaExtensionPanel?: ExtensionPanelHandle;
+-  __lettaExtensionSignal?: AbortSignal;
+-  __lettaExtensionStarted?: () => void;
++  clearModPermissions,
++  getModPermissionDefinition,
++} from "@/mods/permission-registry";
++import { clearModTools, getModToolDefinition } from "@/mods/tool-registry";
++import type { ModCapabilities, ModContext, ModPanelHandle } from "@/mods/types";
++
++type ModTestGlobal = typeof globalThis & {
++  __lettaModBackend?: unknown;
++  __lettaModBackendCalls?: string[];
++  __lettaModForkResult?: { id: string };
++  __lettaModHistoryResult?: string[];
++  __lettaModCapabilities?: ModCapabilities;
++  __lettaModEvents?: string[];
++  __lettaModGate?: Promise<void>;
++  __lettaModPanel?: ModPanelHandle;
++  __lettaModSignal?: AbortSignal;
++  __lettaModStarted?: () => void;
+   __lettaSwapBackend?: () => void;
+ };
+ 
+ function createTempDir(): string {
+-  return mkdtempSync(path.join(tmpdir(), "letta-extension-engine-"));
++  return mkdtempSync(path.join(tmpdir(), "letta-mod-engine-"));
+ }
+ 
+-function createExtensionContext(): ExtensionContext {
++function createModContext(): ModContext {
+   return {
+     app: { version: "test" },
+     backgroundAgents: [],
+@@ -91,20 +81,20 @@ function createExtensionContext(): ExtensionContext {
+ 
+ function createEngine(
+   root: string,
+-  capabilities?: ExtensionCapabilities,
++  capabilities?: ModCapabilities,
+   backend?: Backend,
+-): ExtensionEngine {
+-  return createExtensionEngine({
+-    cacheDirectory: path.join(root, "extension-cache"),
++): ModEngine {
++  return createModEngine({
++    cacheDirectory: path.join(root, "mod-cache"),
+     ...(backend ? { getBackend: () => backend } : {}),
+     ...(capabilities ? { capabilities } : {}),
+     getClient: async () => ({}) as unknown as Letta,
+-    getContext: createExtensionContext,
+-    globalExtensionsDirectory: path.join(root, "global-extensions"),
++    getContext: createModContext,
++    globalModsDirectory: path.join(root, "global-mods"),
+   });
+ }
+ 
+-const TOOL_ONLY_EXTENSION_CAPABILITIES: ExtensionCapabilities = {
++const TOOL_ONLY_MOD_CAPABILITIES: ModCapabilities = {
+   tools: true,
+   commands: false,
+   events: { lifecycle: false, tools: false, turns: false },
+@@ -117,21 +107,21 @@ const TOOL_ONLY_EXTENSION_CAPABILITIES: ExtensionCapabilities = {
+   },
+ };
+ 
+-describe("extension engine", () => {
++describe("mod engine", () => {
+   afterEach(() => {
+-    clearExtensionPermissions();
+-    clearExtensionTools();
++    clearModPermissions();
++    clearModTools();
+     clearRegisteredPiProviders();
+   });
+ 
+   test("reload publishes snapshots with owner metadata", async () => {
+     const root = createTempDir();
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      const extensionPath = path.join(extensionDir, "command.ts");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      const modPath = path.join(modDir, "command.ts");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function(letta) {
+           letta.commands.register({
+             id: "hello",
+@@ -151,11 +141,11 @@ describe("extension engine", () => {
+       const snapshot = engine.getSnapshot();
+ 
+       expect(changes).toBeGreaterThan(0);
+-      expect(snapshot.loadedPaths).toEqual([extensionPath]);
++      expect(snapshot.loadedPaths).toEqual([modPath]);
+       expect(snapshot.commands.hello?.owner).toMatchObject({
+         generation: 1,
+-        id: `global:${extensionPath}`,
+-        path: extensionPath,
++        id: `global:${modPath}`,
++        path: modPath,
+         scope: "global",
+       });
+       expect(engine.getSnapshot()).toBe(snapshot);
+@@ -167,19 +157,19 @@ describe("extension engine", () => {
+     }
+   });
+ 
+-  test("exposes configured capabilities to extensions", async () => {
++  test("exposes configured capabilities to mods", async () => {
+     const root = createTempDir();
+-    const testGlobal = globalThis as ExtensionTestGlobal;
+-    delete testGlobal.__lettaExtensionCapabilities;
++    const testGlobal = globalThis as ModTestGlobal;
++    delete testGlobal.__lettaModCapabilities;
+ 
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      const extensionPath = path.join(extensionDir, "capabilities.ts");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      const modPath = path.join(modDir, "capabilities.ts");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function(letta) {
+-          globalThis.__lettaExtensionCapabilities = letta.capabilities;
++          globalThis.__lettaModCapabilities = letta.capabilities;
+           if (letta.capabilities.commands) {
+             letta.commands.register({
+               id: "hidden",
+@@ -200,29 +190,29 @@ describe("extension engine", () => {
+         }`,
+       );
+ 
+-      const engine = createEngine(root, TOOL_ONLY_EXTENSION_CAPABILITIES);
++      const engine = createEngine(root, TOOL_ONLY_MOD_CAPABILITIES);
+       await engine.reload();
+       const snapshot = engine.getSnapshot();
+ 
+-      const observedCapabilities = testGlobal.__lettaExtensionCapabilities as
+-        | ExtensionCapabilities
++      const observedCapabilities = testGlobal.__lettaModCapabilities as
++        | ModCapabilities
+         | undefined;
+-      expect(observedCapabilities).toEqual(TOOL_ONLY_EXTENSION_CAPABILITIES);
+-      expect(snapshot.capabilities).toEqual(TOOL_ONLY_EXTENSION_CAPABILITIES);
++      expect(observedCapabilities).toEqual(TOOL_ONLY_MOD_CAPABILITIES);
++      expect(snapshot.capabilities).toEqual(TOOL_ONLY_MOD_CAPABILITIES);
+       expect(Object.keys(snapshot.commands)).toEqual([]);
+       expect(Object.values(snapshot.ui.panels)).toEqual([]);
+       expect(Object.keys(snapshot.tools)).toEqual(["visible_tool"]);
+     } finally {
+-      delete testGlobal.__lettaExtensionCapabilities;
++      delete testGlobal.__lettaModCapabilities;
+       rmSync(root, { force: true, recursive: true });
+     }
+   });
+ 
+   test("keeps backend internal and exposes scoped conversation helpers to events", async () => {
+     const root = createTempDir();
+-    const testGlobal = globalThis as ExtensionTestGlobal;
+-    delete testGlobal.__lettaExtensionBackend;
+-    delete testGlobal.__lettaExtensionForkResult;
++    const testGlobal = globalThis as ModTestGlobal;
++    delete testGlobal.__lettaModBackend;
++    delete testGlobal.__lettaModForkResult;
+ 
+     const backend = {
+       forkConversation: async (
+@@ -233,15 +223,15 @@ describe("extension engine", () => {
+     } as unknown as Backend;
+ 
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      const extensionPath = path.join(extensionDir, "backend.ts");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      const modPath = path.join(modDir, "backend.ts");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default async function(letta) {
+-          globalThis.__lettaExtensionBackend = letta.backend;
++          globalThis.__lettaModBackend = letta.backend;
+           letta.events.on("conversation_open", async (_event, ctx) => {
+-            globalThis.__lettaExtensionForkResult = await ctx.conversation.fork({ hidden: true });
++            globalThis.__lettaModForkResult = await ctx.conversation.fork({ hidden: true });
+           });
+         }`,
+       );
+@@ -255,28 +245,28 @@ describe("extension engine", () => {
+         reason: "startup",
+       });
+ 
+-      const forkResult = testGlobal.__lettaExtensionForkResult as
++      const forkResult = testGlobal.__lettaModForkResult as
+         | { id: string }
+         | undefined;
+-      expect(testGlobal.__lettaExtensionBackend).toBeUndefined();
++      expect(testGlobal.__lettaModBackend).toBeUndefined();
+       expect(forkResult).toMatchObject({
+         id: "conv-1:agent-1:hidden",
+       });
+-      expect(
+-        getExtensionErrorDiagnostics(engine.getSnapshot().diagnostics),
+-      ).toEqual([]);
++      expect(getModErrorDiagnostics(engine.getSnapshot().diagnostics)).toEqual(
++        [],
++      );
+     } finally {
+-      delete testGlobal.__lettaExtensionBackend;
+-      delete testGlobal.__lettaExtensionForkResult;
++      delete testGlobal.__lettaModBackend;
++      delete testGlobal.__lettaModForkResult;
+       rmSync(root, { force: true, recursive: true });
+     }
+   });
+ 
+   test("captures backend once per event invocation for composed conversation helpers", async () => {
+     const root = createTempDir();
+-    const testGlobal = globalThis as ExtensionTestGlobal;
+-    testGlobal.__lettaExtensionBackendCalls = [];
+-    delete testGlobal.__lettaExtensionHistoryResult;
++    const testGlobal = globalThis as ModTestGlobal;
++    testGlobal.__lettaModBackendCalls = [];
++    delete testGlobal.__lettaModHistoryResult;
+     delete testGlobal.__lettaSwapBackend;
+ 
+     const createBackend = (label: string) =>
+@@ -284,7 +274,7 @@ describe("extension engine", () => {
+         forkConversation: async (
+           ...[conversationId, options]: Parameters<Backend["forkConversation"]>
+         ) => {
+-          testGlobal.__lettaExtensionBackendCalls?.push(
++          testGlobal.__lettaModBackendCalls?.push(
+             `${label}:fork:${conversationId}:${options?.agentId}:${options?.hidden}`,
+           );
+           return { id: `${label}-forked-conversation` };
+@@ -294,7 +284,7 @@ describe("extension engine", () => {
+             Backend["listConversationMessages"]
+           >
+         ) => {
+-          testGlobal.__lettaExtensionBackendCalls?.push(
++          testGlobal.__lettaModBackendCalls?.push(
+             `${label}:history:${conversationId}:${body?.limit}`,
+           );
+           return {
+@@ -311,27 +301,27 @@ describe("extension engine", () => {
+     };
+ 
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      const extensionPath = path.join(extensionDir, "scoped-backend.ts");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      const modPath = path.join(modDir, "scoped-backend.ts");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function(letta) {
+           letta.events.on("conversation_open", async (_event, ctx) => {
+             const fork = await ctx.conversation.fork({ hidden: true });
+             globalThis.__lettaSwapBackend();
+             const history = await fork.getHistory({ limit: 1 });
+-            globalThis.__lettaExtensionHistoryResult = history.map((message) => message.id);
++            globalThis.__lettaModHistoryResult = history.map((message) => message.id);
+           });
+         }`,
+       );
+ 
+-      const engine = createExtensionEngine({
+-        cacheDirectory: path.join(root, "extension-cache"),
++      const engine = createModEngine({
++        cacheDirectory: path.join(root, "mod-cache"),
+         getBackend: () => activeBackend,
+         getClient: async () => ({}) as unknown as Letta,
+-        getContext: createExtensionContext,
+-        globalExtensionsDirectory: extensionDir,
++        getContext: createModContext,
++        globalModsDirectory: modDir,
+       });
+       await engine.reload();
+       await engine.emitEvent("conversation_open", {
+@@ -341,29 +331,29 @@ describe("extension engine", () => {
+         reason: "startup",
+       });
+ 
+-      expect(testGlobal.__lettaExtensionBackendCalls).toEqual([
++      expect(testGlobal.__lettaModBackendCalls).toEqual([
+         "a:fork:conv-1:agent-1:true",
+         "a:history:a-forked-conversation:1",
+       ]);
+-      const historyResult = (globalThis as ExtensionTestGlobal)
+-        .__lettaExtensionHistoryResult;
++      const historyResult = (globalThis as ModTestGlobal)
++        .__lettaModHistoryResult;
+       expect(historyResult).toEqual(["a-message"]);
+     } finally {
+-      delete testGlobal.__lettaExtensionBackendCalls;
+-      delete testGlobal.__lettaExtensionHistoryResult;
++      delete testGlobal.__lettaModBackendCalls;
++      delete testGlobal.__lettaModHistoryResult;
+       delete testGlobal.__lettaSwapBackend;
+       rmSync(root, { force: true, recursive: true });
+     }
+   });
+ 
+-  test("lets extensions register pi providers for local backend", async () => {
++  test("lets mods register pi providers for local backend", async () => {
+     const root = createTempDir();
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      const extensionPath = path.join(extensionDir, "provider.ts");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      const modPath = path.join(modDir, "provider.ts");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function(letta) {
+           letta.registerProvider("lmstudio", {
+             baseUrl: "http://localhost:8000/v1",
+@@ -401,13 +391,13 @@ describe("extension engine", () => {
+     }
+   });
+ 
+-  test("unsupported capabilities no-op even when extensions call the APIs", async () => {
++  test("unsupported capabilities no-op even when mods call the APIs", async () => {
+     const root = createTempDir();
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "unsupported.ts"),
++        path.join(modDir, "unsupported.ts"),
+         `export default function(letta) {
+           letta.commands.register({
+             id: "hidden",
+@@ -427,11 +417,11 @@ describe("extension engine", () => {
+         }`,
+       );
+ 
+-      const engine = createEngine(root, TOOL_ONLY_EXTENSION_CAPABILITIES);
++      const engine = createEngine(root, TOOL_ONLY_MOD_CAPABILITIES);
+       await engine.reload();
+       const snapshot = engine.getSnapshot();
+ 
+-      expect(getExtensionErrorDiagnostics(snapshot.diagnostics)).toEqual([]);
++      expect(getModErrorDiagnostics(snapshot.diagnostics)).toEqual([]);
+       expect(snapshot.commands).toEqual({});
+       expect(snapshot.events).toEqual({});
+       expect(snapshot.ui.panels).toEqual({});
+@@ -443,19 +433,19 @@ describe("extension engine", () => {
+     }
+   });
+ 
+-  test("emits extension lifecycle events and isolates handler errors", async () => {
++  test("emits mod lifecycle events and isolates handler errors", async () => {
+     const root = createTempDir();
+-    const testGlobal = globalThis as ExtensionTestGlobal;
+-    testGlobal.__lettaExtensionEvents = [];
++    const testGlobal = globalThis as ModTestGlobal;
++    testGlobal.__lettaModEvents = [];
+ 
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "events.ts"),
++        path.join(modDir, "events.ts"),
+         `export default function(letta) {
+           letta.events.on("conversation_open", (event, ctx) => {
+-            globalThis.__lettaExtensionEvents.push(
++            globalThis.__lettaModEvents.push(
+               event.reason + ":" + event.agentId + ":" + ctx.context.agent.name + ":" + ctx.conversation.id,
+             );
+             letta.ui.setStatus("lifecycle", event.reason);
+@@ -486,20 +476,20 @@ describe("extension engine", () => {
+         name: "conversation_open",
+       });
+       expect(result.diagnostics).toHaveLength(1);
+-      expect(testGlobal.__lettaExtensionEvents).toEqual([
++      expect(testGlobal.__lettaModEvents).toEqual([
+         "startup:agent-1:Amelia:conversation-1",
+       ]);
+       expect(snapshot.ui.statusValues.lifecycle).toBe("startup");
+-      expect(
+-        getExtensionErrorDiagnostics(snapshot.diagnostics).at(-1),
+-      ).toMatchObject({
+-        phase: "event",
+-        error: expect.objectContaining({ message: "event failed" }),
+-      });
++      expect(getModErrorDiagnostics(snapshot.diagnostics).at(-1)).toMatchObject(
++        {
++          phase: "event",
++          error: expect.objectContaining({ message: "event failed" }),
++        },
++      );
+ 
+       engine.dispose();
+     } finally {
+-      delete testGlobal.__lettaExtensionEvents;
++      delete testGlobal.__lettaModEvents;
+       rmSync(root, { force: true, recursive: true });
+     }
+   });
+@@ -507,10 +497,10 @@ describe("extension engine", () => {
+   test("lets turn_start handlers replace input in registration order", async () => {
+     const root = createTempDir();
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "turn-start.ts"),
++        path.join(modDir, "turn-start.ts"),
+         `export default function(letta) {
+           letta.events.on("turn_start", (event) => ({
+             input: event.input.map((item) =>
+@@ -571,10 +561,10 @@ describe("extension engine", () => {
+   test("lets tool_start handlers replace args in registration order", async () => {
+     const root = createTempDir();
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "tool-start.ts"),
++        path.join(modDir, "tool-start.ts"),
+         `export default function(letta) {
+           letta.events.on("tool_start", (event) => ({
+             args: { ...event.args, command: String(event.args.command).replaceAll("??", "first") },
+@@ -626,19 +616,19 @@ describe("extension engine", () => {
+ 
+   test("reload aborts old activations and ignores stale handles", async () => {
+     const root = createTempDir();
+-    const testGlobal = globalThis as ExtensionTestGlobal;
+-    delete testGlobal.__lettaExtensionPanel;
+-    delete testGlobal.__lettaExtensionSignal;
++    const testGlobal = globalThis as ModTestGlobal;
++    delete testGlobal.__lettaModPanel;
++    delete testGlobal.__lettaModSignal;
+ 
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      const extensionPath = path.join(extensionDir, "panel.ts");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      const modPath = path.join(modDir, "panel.ts");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function(letta) {
+-          globalThis.__lettaExtensionSignal = letta.signal;
+-          globalThis.__lettaExtensionPanel = letta.ui.openPanel({
++          globalThis.__lettaModSignal = letta.signal;
++          globalThis.__lettaModPanel = letta.ui.openPanel({
+             id: "status",
+             content: "first generation",
+           });
+@@ -647,19 +637,19 @@ describe("extension engine", () => {
+ 
+       const engine = createEngine(root);
+       await engine.reload();
+-      const firstSignal = testGlobal.__lettaExtensionSignal as
++      const firstSignal = testGlobal.__lettaModSignal as
+         | AbortSignal
+         | undefined;
+-      const stalePanel = testGlobal.__lettaExtensionPanel as
+-        | ExtensionPanelHandle
++      const stalePanel = testGlobal.__lettaModPanel as
++        | ModPanelHandle
+         | undefined;
+       expect(firstSignal?.aborted).toBe(false);
+       expect(Object.values(engine.getSnapshot().ui.panels)).toHaveLength(1);
+ 
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function(letta) {
+-          globalThis.__lettaExtensionSignal = letta.signal;
++          globalThis.__lettaModSignal = letta.signal;
+         }`,
+       );
+       await engine.reload();
+@@ -676,29 +666,29 @@ describe("extension engine", () => {
+       });
+ 
+       engine.dispose();
+-      const secondSignal = testGlobal.__lettaExtensionSignal as
++      const secondSignal = testGlobal.__lettaModSignal as
+         | AbortSignal
+         | undefined;
+       expect(secondSignal?.aborted).toBe(true);
+     } finally {
+-      delete testGlobal.__lettaExtensionPanel;
+-      delete testGlobal.__lettaExtensionSignal;
++      delete testGlobal.__lettaModPanel;
++      delete testGlobal.__lettaModSignal;
+       rmSync(root, { force: true, recursive: true });
+     }
+   });
+ 
+-  test("reload publishes an empty snapshot while extensions are loading", async () => {
++  test("reload publishes an empty snapshot while mods are loading", async () => {
+     const root = createTempDir();
+-    const testGlobal = globalThis as ExtensionTestGlobal;
+-    delete testGlobal.__lettaExtensionGate;
+-    delete testGlobal.__lettaExtensionStarted;
++    const testGlobal = globalThis as ModTestGlobal;
++    delete testGlobal.__lettaModGate;
++    delete testGlobal.__lettaModStarted;
+ 
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      const extensionPath = path.join(extensionDir, "command.ts");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      const modPath = path.join(modDir, "command.ts");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function(letta) {
+           letta.commands.register({
+             id: "old-command",
+@@ -716,16 +706,16 @@ describe("extension engine", () => {
+ 
+       let releaseReload!: () => void;
+       const reloadStarted = new Promise<void>((resolve) => {
+-        testGlobal.__lettaExtensionStarted = resolve;
++        testGlobal.__lettaModStarted = resolve;
+       });
+-      testGlobal.__lettaExtensionGate = new Promise<void>((resolve) => {
++      testGlobal.__lettaModGate = new Promise<void>((resolve) => {
+         releaseReload = resolve;
+       });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default async function(letta) {
+-          globalThis.__lettaExtensionStarted?.();
+-          await globalThis.__lettaExtensionGate;
++          globalThis.__lettaModStarted?.();
++          await globalThis.__lettaModGate;
+           letta.commands.register({
+             id: "new-command",
+             description: "New command",
+@@ -748,34 +738,34 @@ describe("extension engine", () => {
+ 
+       engine.dispose();
+     } finally {
+-      delete testGlobal.__lettaExtensionGate;
+-      delete testGlobal.__lettaExtensionStarted;
++      delete testGlobal.__lettaModGate;
++      delete testGlobal.__lettaModStarted;
+       rmSync(root, { force: true, recursive: true });
+     }
+   });
+ 
+   test("ignores stale reload completions", async () => {
+     const root = createTempDir();
+-    const testGlobal = globalThis as ExtensionTestGlobal;
+-    delete testGlobal.__lettaExtensionGate;
+-    delete testGlobal.__lettaExtensionStarted;
++    const testGlobal = globalThis as ModTestGlobal;
++    delete testGlobal.__lettaModGate;
++    delete testGlobal.__lettaModStarted;
+ 
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      const extensionPath = path.join(extensionDir, "command.ts");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      const modPath = path.join(modDir, "command.ts");
++      mkdirSync(modDir, { recursive: true });
+       let releaseFirstReload!: () => void;
+       const firstReloadStarted = new Promise<void>((resolve) => {
+-        testGlobal.__lettaExtensionStarted = resolve;
++        testGlobal.__lettaModStarted = resolve;
+       });
+-      testGlobal.__lettaExtensionGate = new Promise<void>((resolve) => {
++      testGlobal.__lettaModGate = new Promise<void>((resolve) => {
+         releaseFirstReload = resolve;
+       });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default async function(letta) {
+-          globalThis.__lettaExtensionStarted?.();
+-          await globalThis.__lettaExtensionGate;
++          globalThis.__lettaModStarted?.();
++          await globalThis.__lettaModGate;
+           letta.commands.register({
+             id: "stale-command",
+             description: "Stale command",
+@@ -788,10 +778,10 @@ describe("extension engine", () => {
+       const firstReload = engine.reload();
+       await firstReloadStarted;
+ 
+-      delete testGlobal.__lettaExtensionGate;
+-      delete testGlobal.__lettaExtensionStarted;
++      delete testGlobal.__lettaModGate;
++      delete testGlobal.__lettaModStarted;
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function(letta) {
+           letta.commands.register({
+             id: "fresh-command",
+@@ -815,8 +805,8 @@ describe("extension engine", () => {
+ 
+       engine.dispose();
+     } finally {
+-      delete testGlobal.__lettaExtensionGate;
+-      delete testGlobal.__lettaExtensionStarted;
++      delete testGlobal.__lettaModGate;
++      delete testGlobal.__lettaModStarted;
+       rmSync(root, { force: true, recursive: true });
+     }
+   });
+@@ -824,19 +814,19 @@ describe("extension engine", () => {
+   test("records load diagnostics with specific phases", async () => {
+     const root = createTempDir();
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "phase-activate.js"),
++        path.join(modDir, "phase-activate.js"),
+         `export default function() { throw new Error("activate failed"); }`,
+       );
+       writeFileSync(
+-        path.join(extensionDir, "phase-import.js"),
+-        `import "missing-extension-test-package";
++        path.join(modDir, "phase-import.js"),
++        `import "missing-mod-test-package";
+          export default function() {}`,
+       );
+       writeFileSync(
+-        path.join(extensionDir, "phase-transpile.ts"),
++        path.join(modDir, "phase-transpile.ts"),
+         `export default function() { const value = ; }`,
+       );
+ 
+@@ -845,7 +835,7 @@ describe("extension engine", () => {
+ 
+       expect(
+         Object.fromEntries(
+-          getExtensionErrorDiagnostics(engine.getSnapshot().diagnostics).map(
++          getModErrorDiagnostics(engine.getSnapshot().diagnostics).map(
+             (entry) => [path.basename(entry.owner.path), entry.phase],
+           ),
+         ),
+@@ -861,13 +851,13 @@ describe("extension engine", () => {
+     }
+   });
+ 
+-  test("lets extensions report diagnostics intentionally", async () => {
++  test("lets mods report diagnostics intentionally", async () => {
+     const root = createTempDir();
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        path.join(extensionDir, "reports.ts"),
++        path.join(modDir, "reports.ts"),
+         `export default function(letta) {
+           letta.diagnostics.report({ message: "missing optional env" });
+           letta.diagnostics.report({ message: "configuration failed", severity: "error" });
+@@ -882,7 +872,7 @@ describe("extension engine", () => {
+         {
+           error: expect.objectContaining({
+             message: "missing optional env",
+-            name: "ExtensionDiagnosticReport",
++            name: "ModDiagnosticReport",
+           }),
+           phase: "report",
+           severity: "error",
+@@ -890,13 +880,13 @@ describe("extension engine", () => {
+         {
+           error: expect.objectContaining({
+             message: "configuration failed",
+-            name: "ExtensionDiagnosticReport",
++            name: "ModDiagnosticReport",
+           }),
+           phase: "report",
+           severity: "error",
+         },
+       ]);
+-      expect(getExtensionErrorDiagnostics(diagnostics)).toHaveLength(2);
++      expect(getModErrorDiagnostics(diagnostics)).toHaveLength(2);
+ 
+       engine.dispose();
+     } finally {
+@@ -904,14 +894,14 @@ describe("extension engine", () => {
+     }
+   });
+ 
+-  test("loads extension-provided tools with owner metadata", async () => {
++  test("loads mod-provided tools with owner metadata", async () => {
+     const root = createTempDir();
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      const extensionPath = path.join(extensionDir, "tools.ts");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      const modPath = path.join(modDir, "tools.ts");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function(letta) {
+           return letta.tools.register({
+             name: "local_weather",
+@@ -932,34 +922,34 @@ describe("extension engine", () => {
+       await engine.reload();
+       const snapshot = engine.getSnapshot();
+ 
+-      expect(getExtensionErrorDiagnostics(snapshot.diagnostics)).toEqual([]);
++      expect(getModErrorDiagnostics(snapshot.diagnostics)).toEqual([]);
+       expect(snapshot.tools.local_weather).toMatchObject({
+         description: "Get local weather",
+         owner: {
+           generation: 1,
+-          id: `global:${extensionPath}`,
+-          path: extensionPath,
++          id: `global:${modPath}`,
++          path: modPath,
+         },
+         parallelSafe: true,
+         requiresApproval: false,
+       });
+-      expect(getExtensionToolDefinition("local_weather")).toBeDefined();
++      expect(getModToolDefinition("local_weather")).toBeDefined();
+ 
+       engine.dispose();
+-      expect(getExtensionToolDefinition("local_weather")).toBeUndefined();
++      expect(getModToolDefinition("local_weather")).toBeUndefined();
+     } finally {
+       rmSync(root, { force: true, recursive: true });
+     }
+   });
+ 
+-  test("loads extension-provided permission overlays with owner metadata", async () => {
++  test("loads mod-provided permission overlays with owner metadata", async () => {
+     const root = createTempDir();
+     try {
+-      const extensionDir = path.join(root, "global-extensions");
+-      const extensionPath = path.join(extensionDir, "permissions.ts");
+-      mkdirSync(extensionDir, { recursive: true });
++      const modDir = path.join(root, "global-mods");
++      const modPath = path.join(modDir, "permissions.ts");
++      mkdirSync(modDir, { recursive: true });
+       writeFileSync(
+-        extensionPath,
++        modPath,
+         `export default function(letta) {
+           return letta.permissions.register({
+             id: "plan-mode",
+@@ -977,19 +967,19 @@ describe("extension engine", () => {
+       await engine.reload();
+       const snapshot = engine.getSnapshot();
+ 
+-      expect(getExtensionErrorDiagnostics(snapshot.diagnostics)).toEqual([]);
++      expect(getModErrorDiagnostics(snapshot.diagnostics)).toEqual([]);
+       expect(snapshot.permissions["plan-mode"]).toMatchObject({
+         description: "Allow reads and plan-file writes while planning",
+         owner: {
+           generation: 1,
+-          id: `global:${extensionPath}`,
+-          path: extensionPath,
++          id: `global:${modPath}`,
++          path: modPath,
+         },
+       });
+-      expect(getExtensionPermissionDefinition("plan-mode")).toBeDefined();
++      expect(getModPermissionDefinition("plan-mode")).toBeDefined();
+ 
+       engine.dispose();
+-      expect(getExtensionPermissionDefinition("plan-mode")).toBeUndefined();
++      expect(getModPermissionDefinition("plan-mode")).toBeUndefined();
+     } finally {
+       rmSync(root, { force: true, recursive: true });
+     }
+diff --git a/src/mods/paths.test.ts b/src/mods/paths.test.ts
+new file mode 100644
+index 00000000..816b47ef
+--- /dev/null
++++ b/src/mods/paths.test.ts
+@@ -0,0 +1,51 @@
++import { describe, expect, test } from "bun:test";
++import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
++import { tmpdir } from "node:os";
++import path from "node:path";
++import {
++  getGlobalModsDirectory,
++  getLegacyGlobalExtensionsDirectory,
++  resolveDefaultGlobalModsDirectory,
++} from "@/mods/paths";
++
++function createTempDir(): string {
++  return mkdtempSync(path.join(tmpdir(), "letta-mod-paths-"));
++}
++
++describe("mod paths", () => {
++  test("defaults new users to the mods directory", () => {
++    const root = createTempDir();
++    try {
++      expect(resolveDefaultGlobalModsDirectory(root)).toBe(
++        getGlobalModsDirectory(root),
++      );
++    } finally {
++      rmSync(root, { force: true, recursive: true });
++    }
++  });
++
++  test("uses legacy extensions directory when it is the only existing directory", () => {
++    const root = createTempDir();
++    try {
++      const legacyDirectory = getLegacyGlobalExtensionsDirectory(root);
++      mkdirSync(legacyDirectory, { recursive: true });
++
++      expect(resolveDefaultGlobalModsDirectory(root)).toBe(legacyDirectory);
++    } finally {
++      rmSync(root, { force: true, recursive: true });
++    }
++  });
++
++  test("prefers mods directory when both new and legacy directories exist", () => {
++    const root = createTempDir();
++    try {
++      const modsDirectory = getGlobalModsDirectory(root);
++      mkdirSync(modsDirectory, { recursive: true });
++      mkdirSync(getLegacyGlobalExtensionsDirectory(root), { recursive: true });
++
++      expect(resolveDefaultGlobalModsDirectory(root)).toBe(modsDirectory);
++    } finally {
++      rmSync(root, { force: true, recursive: true });
++    }
++  });
++});
+diff --git a/src/providers/local-pi-provider-catalog.test.ts b/src/providers/local-pi-provider-catalog.test.ts
+index 81a2e228..aa16cf31 100644
+--- a/src/providers/local-pi-provider-catalog.test.ts
++++ b/src/providers/local-pi-provider-catalog.test.ts
+@@ -10,7 +10,7 @@ import {
+ import {
+   clearRegisteredPiProviders,
+   registerPiProvider,
+-} from "@/backend/dev/pi-provider-extension-registry";
++} from "@/backend/dev/pi-provider-mod-registry";
+ import {
+   PI_PROVIDER_SPECS,
+   PI_TUI_DEFAULT_MODEL_IDS,
+@@ -150,7 +150,7 @@ describe("local pi provider catalog", () => {
+     expect(localApiKeyProviderIds.has("github-copilot")).toBe(false);
+   });
+ 
+-  test("local /connect configs include registered extension providers", () => {
++  test("local /connect configs include registered mod providers", () => {
+     registerPiProvider("kilo", {
+       name: "Kilo",
+       description: "Connect Kilo",
+@@ -194,7 +194,7 @@ describe("local pi provider catalog", () => {
+     });
+   });
+ 
+-  test("local /connect configs include registered extension OAuth providers", () => {
++  test("local /connect configs include registered mod OAuth providers", () => {
+     registerPiProvider("kilo", {
+       name: "Kilo",
+       description: "Connect Kilo account",
+@@ -243,7 +243,7 @@ describe("local pi provider catalog", () => {
+     expect(provider?.fields).toBeUndefined();
+   });
+ 
+-  test("local /connect configs respect connect false for registered extension OAuth providers", () => {
++  test("local /connect configs respect connect false for registered mod OAuth providers", () => {
+     registerPiProvider("kilo", {
+       name: "Kilo",
+       baseUrl: "https://api.kilo.dev/v1",
+@@ -278,7 +278,7 @@ describe("local pi provider catalog", () => {
+     ).toBe(false);
+   });
+ 
+-  test("local model listing includes dynamic extension provider models when configured", async () => {
++  test("local model listing includes dynamic mod provider models when configured", async () => {
+     const storageDir = await mkdtemp(join(tmpdir(), "local-kilo-provider-"));
+     try {
+       const connections: unknown[] = [];
+@@ -331,7 +331,7 @@ describe("local pi provider catalog", () => {
+     }
+   });
+ 
+-  test("local model listing passes extension OAuth api keys to listModels", async () => {
++  test("local model listing passes mod OAuth api keys to listModels", async () => {
+     const storageDir = await mkdtemp(join(tmpdir(), "local-kilo-oauth-"));
+     try {
+       const connections: unknown[] = [];
+diff --git a/src/tools/tool-execution-context.test.ts b/src/tools/tool-execution-context.test.ts
+index d897da5a..d866a793 100644
+--- a/src/tools/tool-execution-context.test.ts
++++ b/src/tools/tool-execution-context.test.ts
+@@ -28,14 +28,11 @@ import {
+ } from "@/channels/routing";
+ import type { ChannelAdapter } from "@/channels/types";
+ import {
+-  clearExtensionPermissions,
+-  registerExtensionPermission,
+-} from "@/extensions/permission-registry";
+-import {
+-  clearExtensionTools,
+-  registerExtensionTool,
+-} from "@/extensions/tool-registry";
+-import type { ExtensionToolStartEvent } from "@/extensions/types";
++  clearModPermissions,
++  registerModPermission,
++} from "@/mods/permission-registry";
++import { clearModTools, registerModTool } from "@/mods/tool-registry";
++import type { ModToolStartEvent } from "@/mods/types";
+ import {
+   LETTA_INHERITED_CHANNEL_CONTEXT_ENV,
+   runWithRuntimeContext,
+@@ -89,10 +86,10 @@ describe("tool execution context snapshot", () => {
+     };
+   }
+ 
+-  function registerEchoExtensionTool(signal: AbortSignal): void {
+-    registerExtensionTool({
++  function registerEchoModTool(signal: AbortSignal): void {
++    registerModTool({
+       name: "local_echo",
+-      description: "Echo input from a local extension",
++      description: "Echo input from a local mod",
+       parameters: {
+         type: "object",
+         properties: { message: { type: "string" } },
+@@ -128,8 +125,8 @@ describe("tool execution context snapshot", () => {
+     clearDynamicMessageChannelToolCache();
+     clearCapturedToolExecutionContexts();
+     clearExternalTools();
+-    clearExtensionPermissions();
+-    clearExtensionTools();
++    clearModPermissions();
++    clearModTools();
+     clearAllRoutes();
+     __testOverrideLoadRoutes(null);
+     __testOverrideSaveRoutes(null);
+@@ -147,8 +144,8 @@ describe("tool execution context snapshot", () => {
+ 
+   afterAll(async () => {
+     clearExternalTools();
+-    clearExtensionPermissions();
+-    clearExtensionTools();
++    clearModPermissions();
++    clearModTools();
+     if (initialTools.length > 0) {
+       await loadSpecificTools(initialTools);
+     } else {
+@@ -198,9 +195,9 @@ describe("tool execution context snapshot", () => {
+     expect(withContext.status).toBe("success");
+   });
+ 
+-  test("rechecks extension permission overlays after tool_start arg transforms", async () => {
++  test("rechecks mod permission overlays after tool_start arg transforms", async () => {
+     await loadSpecificTools(["Read"]);
+-    registerExtensionPermission({
++    registerModPermission({
+       id: "execution-gate",
+       description: "Deny mutated reads",
+       path: "/tmp/execution-gate.ts",
+@@ -228,10 +225,10 @@ describe("tool execution context snapshot", () => {
+     });
+ 
+     const prepared = await prepareCurrentToolExecutionContext({
+-      extensionEvents: {
++      modEvents: {
+         async emit(name, event) {
+           if (name === "tool_start") {
+-            const toolStartEvent = event as ExtensionToolStartEvent;
++            const toolStartEvent = event as ModToolStartEvent;
+             toolStartEvent.args = {
+               ...toolStartEvent.args,
+               file_path: "package.json",
+@@ -250,14 +247,14 @@ describe("tool execution context snapshot", () => {
+ 
+     expect(result.status).toBe("error");
+     expect(asText(result.toolReturn)).toContain(
+-      "extension permission:execution-gate",
++      "mod permission:execution-gate",
+     );
+     expect(asText(result.toolReturn)).toContain("mutated path blocked");
+   });
+ 
+   test("reports execution-phase ask decisions as blocked approval requests", async () => {
+     await loadSpecificTools(["Read"]);
+-    registerExtensionPermission({
++    registerModPermission({
+       id: "execution-ask",
+       description: "Ask before execution",
+       path: "/tmp/execution-ask.ts",
+@@ -289,11 +286,11 @@ describe("tool execution context snapshot", () => {
+ 
+     const text = asText(result.toolReturn);
+     expect(result.status).toBe("error");
+-    expect(text).toContain("blocked by extension permission:execution-ask");
++    expect(text).toContain("blocked by mod permission:execution-ask");
+     expect(text).toContain(
+       "Approval requested but cannot reopen during execution.",
+     );
+-    expect(text).not.toContain("denied by extension permission:execution-ask");
++    expect(text).not.toContain("denied by mod permission:execution-ask");
+   });
+ 
+   test("prepares explicit tool snapshots without reading the global registry", async () => {
+@@ -411,9 +408,9 @@ describe("tool execution context snapshot", () => {
+     expect(prepared.clientTools).toEqual([]);
+   });
+ 
+-  test("prepares and executes extension tools from turn snapshots", async () => {
++  test("prepares and executes mod tools from turn snapshots", async () => {
+     const controller = new AbortController();
+-    registerEchoExtensionTool(controller.signal);
++    registerEchoModTool(controller.signal);
+ 
+     const prepared = await prepareToolExecutionContextForModel(
+       "anthropic/claude-sonnet-4",
+@@ -425,7 +422,7 @@ describe("tool execution context snapshot", () => {
+       "local_echo",
+     ]);
+ 
+-    clearExtensionTools();
++    clearModTools();
+ 
+     const result = await executeTool(
+       "local_echo",
+@@ -437,7 +434,7 @@ describe("tool execution context snapshot", () => {
+     expect(asText(result.toolReturn)).toBe("echo:hi");
+   });
+ 
+-  test("exposes recent conversation history to extension tools", async () => {
++  test("exposes recent conversation history to mod tools", async () => {
+     const newestFirstMessages = [
+       {
+         id: "msg-2",
+@@ -466,7 +463,7 @@ describe("tool execution context snapshot", () => {
+     } as unknown as Backend);
+ 
+     const controller = new AbortController();
+-    registerExtensionTool({
++    registerModTool({
+       name: "history_echo",
+       description: "Echo conversation history ids",
+       parameters: { type: "object", properties: {}, required: [] },
+@@ -510,7 +507,7 @@ describe("tool execution context snapshot", () => {
+     ]);
+   });
+ 
+-  test("captures backend once for extension tool conversation handles", async () => {
++  test("captures backend once for mod tool conversation handles", async () => {
+     const calls: string[] = [];
+     const backendA = {
+       forkConversation: async (
+@@ -547,7 +544,7 @@ describe("tool execution context snapshot", () => {
+     __testSetBackend(backendA);
+ 
+     const controller = new AbortController();
+-    registerExtensionTool({
++    registerModTool({
+       name: "fork_history",
+       description: "Fork conversation and read fork history",
+       parameters: { type: "object", properties: {}, required: [] },
+@@ -593,7 +590,7 @@ describe("tool execution context snapshot", () => {
+     ]);
+   });
+ 
+-  test("extension tools take precedence over external tools with the same name", async () => {
++  test("mod tools take precedence over external tools with the same name", async () => {
+     registerExternalTools([
+       {
+         name: "local_echo",
+@@ -602,7 +599,7 @@ describe("tool execution context snapshot", () => {
+       },
+     ]);
+     const controller = new AbortController();
+-    registerEchoExtensionTool(controller.signal);
++    registerEchoModTool(controller.signal);
+ 
+     const prepared = await prepareToolExecutionContextForModel(
+       "anthropic/claude-sonnet-4",
+@@ -623,9 +620,9 @@ describe("tool execution context snapshot", () => {
+     expect(asText(result.toolReturn)).toBe("echo:hi");
+   });
+ 
+-  test("aborted extension activations stop captured tool execution", async () => {
++  test("aborted mod activations stop captured tool execution", async () => {
+     const controller = new AbortController();
+-    registerEchoExtensionTool(controller.signal);
++    registerEchoModTool(controller.signal);
+ 
+     const prepared = await prepareToolExecutionContextForModel(
+       "anthropic/claude-sonnet-4",
+diff --git a/src/websocket/listen-client-protocol.test.ts b/src/websocket/listen-client-protocol.test.ts
+index 01b2a52d..2814118f 100644
+--- a/src/websocket/listen-client-protocol.test.ts
++++ b/src/websocket/listen-client-protocol.test.ts
+@@ -45,7 +45,7 @@ import {
+   handleExecuteCommand,
+   SUPPORTED_REMOTE_COMMANDS,
+ } from "@/websocket/listener/commands";
+-import { ensureListenerExtensionAdapter } from "@/websocket/listener/extension-adapter";
++import { ensureListenerModAdapter } from "@/websocket/listener/mod-adapter";
+ import { isEditFileCommand } from "@/websocket/listener/protocol-inbound";
+ import {
+   DESKTOP_DEBUG_PANEL_INFO_PREFIX,
+@@ -1348,7 +1348,7 @@ describe("listen-client parseServerMessage", () => {
+ 
+   test("runs remote reload execute_command", async () => {
+     const listener = __listenClientTestUtils.createListenerRuntime();
+-    const adapter = ensureListenerExtensionAdapter(listener);
++    const adapter = ensureListenerModAdapter(listener);
+     const originalReload = adapter.reload;
+     let reloadCalls = 0;
+     adapter.reload = async () => {
+@@ -1376,12 +1376,12 @@ describe("listen-client parseServerMessage", () => {
+     } finally {
+       adapter.reload = originalReload;
+       adapter.dispose();
+-      listener.extensionAdapter = undefined;
++      listener.modAdapter = undefined;
+     }
+ 
+     expect(reloadCalls).toBe(1);
+     expect(socket.sentPayloads.join("\n")).toContain(
+-      "Reloaded settings, local extensions, and agent secrets",
++      "Reloaded settings, local mods, and agent secrets",
+     );
+   });
+ 
+diff --git a/src/websocket/listener/extension-adapter.test.ts b/src/websocket/listener/mod-adapter.test.ts
+similarity index 80%
+rename from src/websocket/listener/extension-adapter.test.ts
+rename to src/websocket/listener/mod-adapter.test.ts
+index 33a3b6f5..eb3ee96e 100644
+--- a/src/websocket/listener/extension-adapter.test.ts
++++ b/src/websocket/listener/mod-adapter.test.ts
+@@ -5,17 +5,17 @@ import { join } from "node:path";
+ import {
+   clearRegisteredPiProviders,
+   getRegisteredPiProvider,
+-} from "@/backend/dev/pi-provider-extension-registry";
++} from "@/backend/dev/pi-provider-mod-registry";
+ import {
+-  createListenerExtensionAdapter,
+-  createListenerExtensionContext,
+-  LISTENER_EXTENSION_CAPABILITIES,
+-} from "@/websocket/listener/extension-adapter";
++  createListenerModAdapter,
++  createListenerModContext,
++  LISTENER_MOD_CAPABILITIES,
++} from "@/websocket/listener/mod-adapter";
+ 
+ const tempRoots: string[] = [];
+ 
+ function createTempDir(): string {
+-  const dir = mkdtempSync(join(tmpdir(), "letta-listener-extension-"));
++  const dir = mkdtempSync(join(tmpdir(), "letta-listener-mod-"));
+   tempRoots.push(dir);
+   return dir;
+ }
+@@ -27,9 +27,9 @@ afterEach(() => {
+   }
+ });
+ 
+-describe("listener extension adapter", () => {
++describe("listener mod adapter", () => {
+   test("uses provider-only capabilities", () => {
+-    expect(LISTENER_EXTENSION_CAPABILITIES).toEqual({
++    expect(LISTENER_MOD_CAPABILITIES).toEqual({
+       tools: false,
+       commands: false,
+       events: {
+@@ -47,8 +47,8 @@ describe("listener extension adapter", () => {
+     });
+   });
+ 
+-  test("builds a listener-scoped extension context", () => {
+-    const context = createListenerExtensionContext({
++  test("builds a listener-scoped mod context", () => {
++    const context = createListenerModContext({
+       sessionId: "listen-test-session",
+       workingDirectory: "/tmp/listener-workspace",
+     });
+@@ -72,12 +72,12 @@ describe("listener extension adapter", () => {
+ 
+   test("loads provider registrations without exposing other listener capabilities", async () => {
+     const root = createTempDir();
+-    const extensionsDir = join(root, "extensions");
++    const modsDir = join(root, "mods");
+     const cacheDir = join(root, "cache");
+-    const extensionPath = join(extensionsDir, "kilo.ts");
+-    mkdirSync(extensionsDir, { recursive: true });
++    const modPath = join(modsDir, "kilo.ts");
++    mkdirSync(modsDir, { recursive: true });
+     writeFileSync(
+-      extensionPath,
++      modPath,
+       `export default function activate(letta) {
+         letta.providers.register("kilo", {
+           name: "Kilo",
+@@ -112,9 +112,9 @@ describe("listener extension adapter", () => {
+       }`,
+     );
+ 
+-    const adapter = createListenerExtensionAdapter({
++    const adapter = createListenerModAdapter({
+       cacheDirectory: cacheDir,
+-      globalExtensionsDirectory: extensionsDir,
++      globalModsDirectory: modsDir,
+       sessionId: "listen-provider-test",
+       workingDirectory: root,
+     });
+@@ -128,8 +128,8 @@ describe("listener extension adapter", () => {
+     });
+ 
+     const snapshot = adapter.getSnapshot().registry;
+-    expect(snapshot.capabilities).toEqual(LISTENER_EXTENSION_CAPABILITIES);
+-    expect(snapshot.loadedPaths).toEqual([extensionPath]);
++    expect(snapshot.capabilities).toEqual(LISTENER_MOD_CAPABILITIES);
++    expect(snapshot.loadedPaths).toEqual([modPath]);
+     expect(snapshot.commands).toEqual({});
+     expect(snapshot.tools).toEqual({});
+     expect(snapshot.events).toEqual({});

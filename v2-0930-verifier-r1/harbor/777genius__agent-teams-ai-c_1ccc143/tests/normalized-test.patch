@@ -1,0 +1,687 @@
+diff --git a/test/main/services/team/ChangeExtractorService.test.ts b/test/main/services/team/ChangeExtractorService.test.ts
+new file mode 100644
+index 000000000..4162fd817
+--- /dev/null
++++ b/test/main/services/team/ChangeExtractorService.test.ts
+@@ -0,0 +1,148 @@
++import * as os from 'os';
++import * as path from 'path';
++import { afterEach, describe, expect, it, vi } from 'vitest';
++
++import * as fs from 'fs/promises';
++
++import { ChangeExtractorService } from '../../../../src/main/services/team/ChangeExtractorService';
++import { setClaudeBasePathOverride } from '../../../../src/main/utils/pathDecoder';
++
++describe('ChangeExtractorService', () => {
++  let tmpDir: string | null = null;
++
++  afterEach(async () => {
++    setClaudeBasePathOverride(null);
++    if (tmpDir) {
++      await fs.rm(tmpDir, { recursive: true, force: true });
++      tmpDir = null;
++    }
++  });
++
++  it('does not reuse detailed task-change cache across different scope inputs', async () => {
++    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
++    setClaudeBasePathOverride(tmpDir);
++
++    const aliceLogPath = path.join(tmpDir, 'alice.jsonl');
++    await fs.writeFile(
++      aliceLogPath,
++      JSON.stringify({
++        timestamp: '2026-03-01T10:00:00.000Z',
++        type: 'assistant',
++        message: {
++          role: 'assistant',
++          content: [
++            {
++              type: 'tool_use',
++              id: 'tool-1',
++              name: 'Write',
++              input: { file_path: '/repo/src/file.ts', content: 'export const value = 1;\n' },
++            },
++          ],
++        },
++      }) + '\n',
++      'utf8'
++    );
++
++    const findLogsForTask = vi.fn(async (_teamName: string, _taskId: string, options?: any) =>
++      options?.owner === 'alice' ? [{ filePath: aliceLogPath, memberName: 'alice' }] : []
++    );
++    const parseBoundaries = vi.fn(async () => ({
++      boundaries: [],
++      scopes: [],
++      isSingleTaskSession: true,
++      detectedMechanism: 'none' as const,
++    }));
++    const service = new ChangeExtractorService(
++      {
++        findLogsForTask,
++        findMemberLogPaths: vi.fn(async () => []),
++      } as any,
++      { parseBoundaries } as any,
++      { getConfig: vi.fn(async () => ({ projectPath: '/repo' })) } as any
++    );
++
++    const empty = await service.getTaskChanges('team-a', '1', { owner: 'bob', status: 'completed' });
++    const populated = await service.getTaskChanges('team-a', '1', {
++      owner: 'alice',
++      status: 'completed',
++    });
++
++    expect(empty.files).toHaveLength(0);
++    expect(populated.files).toHaveLength(1);
++    expect(findLogsForTask).toHaveBeenCalledTimes(2);
++  });
++
++  it('merges fallback changes for the same Windows file across slash variants', async () => {
++    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'change-extractor-service-'));
++    setClaudeBasePathOverride(tmpDir);
++
++    const firstLogPath = path.join(tmpDir, 'first.jsonl');
++    const secondLogPath = path.join(tmpDir, 'second.jsonl');
++    await fs.writeFile(
++      firstLogPath,
++      JSON.stringify({
++        timestamp: '2026-03-01T10:00:00.000Z',
++        type: 'assistant',
++        message: {
++          role: 'assistant',
++          content: [
++            {
++              type: 'tool_use',
++              id: 'tool-1',
++              name: 'Write',
++              input: { file_path: 'C:\\repo\\src\\same.ts', content: 'first\n' },
++            },
++          ],
++        },
++      }) + '\n',
++      'utf8'
++    );
++    await fs.writeFile(
++      secondLogPath,
++      JSON.stringify({
++        timestamp: '2026-03-01T10:01:00.000Z',
++        type: 'assistant',
++        message: {
++          role: 'assistant',
++          content: [
++            {
++              type: 'tool_use',
++              id: 'tool-2',
++              name: 'Write',
++              input: { file_path: 'C:/repo/src/same.ts', content: 'second\n' },
++            },
++          ],
++        },
++      }) + '\n',
++      'utf8'
++    );
++
++    const service = new ChangeExtractorService(
++      {
++        findLogsForTask: vi.fn(async () => [
++          { filePath: firstLogPath, memberName: 'alice' },
++          { filePath: secondLogPath, memberName: 'alice' },
++        ]),
++        findMemberLogPaths: vi.fn(async () => []),
++      } as any,
++      {
++        parseBoundaries: vi.fn(async () => ({
++          boundaries: [],
++          scopes: [],
++          isSingleTaskSession: true,
++          detectedMechanism: 'none' as const,
++        })),
++      } as any,
++      { getConfig: vi.fn(async () => ({ projectPath: 'C:\\repo' })) } as any
++    );
++
++    const result = await service.getTaskChanges('team-a', '1', {
++      owner: 'alice',
++      status: 'completed',
++    });
++
++    expect(result.files).toHaveLength(1);
++    expect(result.files[0]?.relativePath).toBe('src/same.ts');
++    expect(result.totalLinesAdded).toBe(2);
++  });
++});
+diff --git a/test/main/services/team/TaskBoundaryParser.test.ts b/test/main/services/team/TaskBoundaryParser.test.ts
+index 22cad834e..e1f592bb1 100644
+--- a/test/main/services/team/TaskBoundaryParser.test.ts
++++ b/test/main/services/team/TaskBoundaryParser.test.ts
+@@ -110,4 +110,51 @@ describe('TaskBoundaryParser', () => {
+     expect(result.boundaries).toHaveLength(1);
+     expect(result.boundaries[0]?.mechanism).toBe('mcp');
+   });
++
++  it('accepts task_id for TaskUpdate and MCP task markers', async () => {
++    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'task-boundary-parser-'));
++    const jsonlPath = path.join(tmpDir, 'task-id-underscore.jsonl');
++    await fs.writeFile(
++      jsonlPath,
++      [
++        JSON.stringify({
++          timestamp: '2026-03-01T10:00:00.000Z',
++          type: 'assistant',
++          message: {
++            role: 'assistant',
++            content: [
++              {
++                type: 'tool_use',
++                id: 'tool-1',
++                name: 'TaskUpdate',
++                input: { task_id: 'task-123', status: 'in_progress' },
++              },
++            ],
++          },
++        }),
++        JSON.stringify({
++          timestamp: '2026-03-01T10:10:00.000Z',
++          type: 'assistant',
++          message: {
++            role: 'assistant',
++            content: [
++              {
++                type: 'tool_use',
++                id: 'tool-2',
++                name: 'task_complete',
++                input: { task_id: 'task-123' },
++              },
++            ],
++          },
++        }),
++      ].join('\n') + '\n',
++      'utf8'
++    );
++
++    const result = await new TaskBoundaryParser().parseBoundaries(jsonlPath);
++
++    expect(result.boundaries).toHaveLength(2);
++    expect(result.boundaries.map((entry) => entry.taskId)).toEqual(['task-123', 'task-123']);
++    expect(result.boundaries.map((entry) => entry.event)).toEqual(['start', 'complete']);
++  });
+ });
+diff --git a/test/main/services/team/TeamMcpConfigBuilder.test.ts b/test/main/services/team/TeamMcpConfigBuilder.test.ts
+index 454462bec..9dd3cda15 100644
+--- a/test/main/services/team/TeamMcpConfigBuilder.test.ts
++++ b/test/main/services/team/TeamMcpConfigBuilder.test.ts
+@@ -1,10 +1,23 @@
+-import { afterEach, describe, expect, it } from 'vitest';
++import { afterEach, describe, expect, it, vi } from 'vitest';
+ import * as fs from 'fs';
++import * as os from 'os';
++import * as path from 'path';
++
++let mockHomeDir = '';
++
++vi.mock('@main/utils/pathDecoder', async (importOriginal) => {
++  const actual = await importOriginal<typeof import('@main/utils/pathDecoder')>();
++  return {
++    ...actual,
++    getHomeDir: () => mockHomeDir || actual.getHomeDir(),
++  };
++});
+ 
+ import { TeamMcpConfigBuilder } from '@main/services/team/TeamMcpConfigBuilder';
+ 
+ describe('TeamMcpConfigBuilder', () => {
+   const createdPaths: string[] = [];
++  const createdDirs: string[] = [];
+ 
+   afterEach(() => {
+     for (const filePath of createdPaths.splice(0)) {
+@@ -14,6 +27,14 @@ describe('TeamMcpConfigBuilder', () => {
+         // ignore cleanup issues in temp dir
+       }
+     }
++    for (const dirPath of createdDirs.splice(0)) {
++      try {
++        fs.rmSync(dirPath, { recursive: true, force: true });
++      } catch {
++        // ignore cleanup issues in temp dir
++      }
++    }
++    mockHomeDir = '';
+   });
+ 
+   it('prefers the source MCP entry when workspace source is available', async () => {
+@@ -37,4 +58,156 @@ describe('TeamMcpConfigBuilder', () => {
+       `${process.cwd()}/mcp-server/src/index.ts`,
+     ]);
+   });
++
++  it('merges top-level user MCP with generated agent-teams config', async () => {
++    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-home-'));
++    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-project-'));
++    createdDirs.push(homeDir, projectDir);
++    mockHomeDir = homeDir;
++
++    fs.writeFileSync(
++      path.join(homeDir, '.claude.json'),
++      JSON.stringify(
++        {
++          mcpServers: {
++            globalOnly: { type: 'http', url: 'https://global.example.com/mcp' },
++            duplicateServer: { type: 'http', url: 'https://global.example.com/duplicate' },
++          },
++        },
++        null,
++        2
++      )
++    );
++
++    fs.writeFileSync(
++      path.join(projectDir, '.mcp.json'),
++      JSON.stringify(
++        {
++          mcpServers: {
++            projectOnly: { command: 'node', args: ['project-server.js'] },
++            duplicateServer: { command: 'node', args: ['project-override.js'] },
++          },
++        },
++        null,
++        2
++      )
++    );
++
++    const builder = new TeamMcpConfigBuilder();
++    const configPath = await builder.writeConfigFile(projectDir);
++    createdPaths.push(configPath);
++
++    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
++      mcpServers: Record<string, { command?: string; args?: string[]; type?: string; url?: string }>;
++    };
++
++    expect(Object.keys(parsed.mcpServers).sort()).toEqual([
++      'agent-teams',
++      'duplicateServer',
++      'globalOnly',
++    ]);
++    expect(parsed.mcpServers.globalOnly).toMatchObject({
++      type: 'http',
++      url: 'https://global.example.com/mcp',
++    });
++    expect(parsed.mcpServers.duplicateServer).toMatchObject({
++      type: 'http',
++      url: 'https://global.example.com/duplicate',
++    });
++  });
++
++  it('does not inline project MCP config to preserve native Claude precedence', async () => {
++    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-home-'));
++    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-project-'));
++    createdDirs.push(homeDir, projectDir);
++    mockHomeDir = homeDir;
++
++    fs.writeFileSync(path.join(homeDir, '.claude.json'), JSON.stringify({ mcpServers: {} }, null, 2));
++    fs.writeFileSync(
++      path.join(projectDir, '.mcp.json'),
++      JSON.stringify(
++        {
++          mcpServers: {
++            projectOnly: { command: 'node', args: ['project-server.js'] },
++          },
++        },
++        null,
++        2
++      )
++    );
++
++    const builder = new TeamMcpConfigBuilder();
++    const configPath = await builder.writeConfigFile(projectDir);
++    createdPaths.push(configPath);
++
++    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
++      mcpServers: Record<string, { command?: string; args?: string[] }>;
++    };
++
++    expect(parsed.mcpServers.projectOnly).toBeUndefined();
++    expect(Object.keys(parsed.mcpServers)).toEqual(['agent-teams']);
++  });
++
++  it('generated agent-teams server overrides same-named user MCP entry', async () => {
++    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-home-'));
++    createdDirs.push(homeDir);
++    mockHomeDir = homeDir;
++
++    fs.writeFileSync(
++      path.join(homeDir, '.claude.json'),
++      JSON.stringify(
++        {
++          mcpServers: {
++            'agent-teams': { command: 'node', args: ['user-server.js'] },
++          },
++        },
++        null,
++        2
++      )
++    );
++
++    const builder = new TeamMcpConfigBuilder();
++    const configPath = await builder.writeConfigFile();
++    createdPaths.push(configPath);
++
++    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
++      mcpServers: Record<string, { command?: string; args?: string[] }>;
++    };
++
++    expect(parsed.mcpServers['agent-teams']).toMatchObject({
++      command: 'pnpm',
++      args: [
++        '--dir',
++        `${process.cwd()}/mcp-server`,
++        'exec',
++        'tsx',
++        `${process.cwd()}/mcp-server/src/index.ts`,
++      ],
++    });
++  });
++
++  it('ignores malformed user MCP file', async () => {
++    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-home-'));
++    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'team-mcp-project-'));
++    createdDirs.push(homeDir, projectDir);
++    mockHomeDir = homeDir;
++
++    fs.writeFileSync(path.join(homeDir, '.claude.json'), '{ invalid json');
++
++    const builder = new TeamMcpConfigBuilder();
++    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
++    let configPath = '';
++    try {
++      configPath = await builder.writeConfigFile(projectDir);
++    } finally {
++      warnSpy.mockRestore();
++    }
++    createdPaths.push(configPath);
++
++    const parsed = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
++      mcpServers: Record<string, { command?: string; args?: string[] }>;
++    };
++
++    expect(Object.keys(parsed.mcpServers)).toEqual(['agent-teams']);
++  });
+ });
+diff --git a/test/renderer/store/changeReviewSlice.test.ts b/test/renderer/store/changeReviewSlice.test.ts
+new file mode 100644
+index 000000000..0df5a8ae9
+--- /dev/null
++++ b/test/renderer/store/changeReviewSlice.test.ts
+@@ -0,0 +1,173 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest';
++import { create } from 'zustand';
++
++import { createChangeReviewSlice } from '../../../src/renderer/store/slices/changeReviewSlice';
++
++const hoisted = vi.hoisted(() => ({
++  getTaskChanges: vi.fn(),
++  getAgentChanges: vi.fn(),
++  getChangeStats: vi.fn(),
++  getFileContent: vi.fn(),
++  applyDecisions: vi.fn(),
++  saveEditedFile: vi.fn(),
++  checkConflict: vi.fn(),
++  rejectHunks: vi.fn(),
++  rejectFile: vi.fn(),
++  previewReject: vi.fn(),
++}));
++
++vi.mock('@renderer/api', () => ({
++  api: {
++    review: {
++      getTaskChanges: hoisted.getTaskChanges,
++      getAgentChanges: hoisted.getAgentChanges,
++      getChangeStats: hoisted.getChangeStats,
++      getFileContent: hoisted.getFileContent,
++      applyDecisions: hoisted.applyDecisions,
++      saveEditedFile: hoisted.saveEditedFile,
++      checkConflict: hoisted.checkConflict,
++      rejectHunks: hoisted.rejectHunks,
++      rejectFile: hoisted.rejectFile,
++      previewReject: hoisted.previewReject,
++    },
++  },
++}));
++
++function createSliceStore() {
++  return create<any>()((set, get, store) => ({
++    ...createChangeReviewSlice(set as never, get as never, store as never),
++  }));
++}
++
++function deferred<T>() {
++  let resolve!: (value: T) => void;
++  let reject!: (error?: unknown) => void;
++  const promise = new Promise<T>((res, rej) => {
++    resolve = res;
++    reject = rej;
++  });
++  return { promise, resolve, reject };
++}
++
++const OPTIONS_A = {
++  owner: 'alice',
++  status: 'completed',
++  intervals: [{ startedAt: '2026-03-01T10:00:00.000Z' }],
++  since: '2026-03-01T09:58:00.000Z',
++};
++
++const OPTIONS_B = {
++  owner: 'bob',
++  status: 'completed',
++  intervals: [{ startedAt: '2026-03-01T11:00:00.000Z' }],
++  since: '2026-03-01T10:58:00.000Z',
++};
++
++describe('changeReviewSlice task changes', () => {
++  beforeEach(() => {
++    vi.clearAllMocks();
++  });
++
++  it('does not cache errors as negative task-change results', async () => {
++    const store = createSliceStore();
++    hoisted.getTaskChanges.mockRejectedValue(new Error('transient'));
++
++    await store.getState().checkTaskHasChanges('team-a', '1', OPTIONS_A);
++    await store.getState().checkTaskHasChanges('team-a', '1', OPTIONS_A);
++
++    expect(hoisted.getTaskChanges).toHaveBeenCalledTimes(2);
++  });
++
++  it('negative-caches confirmed empty results per request signature', async () => {
++    const store = createSliceStore();
++    hoisted.getTaskChanges.mockResolvedValue({
++      files: [],
++      totalFiles: 0,
++      totalLinesAdded: 0,
++      totalLinesRemoved: 0,
++      teamName: 'team-a',
++      taskId: '1',
++      confidence: 'fallback',
++      computedAt: '2026-03-01T12:00:00.000Z',
++      scope: {
++        taskId: '1',
++        memberName: '',
++        startLine: 0,
++        endLine: 0,
++        startTimestamp: '',
++        endTimestamp: '',
++        toolUseIds: [],
++        filePaths: [],
++        confidence: { tier: 4, label: 'fallback', reason: 'No log files found for task' },
++      },
++      warnings: [],
++    });
++
++    await store.getState().checkTaskHasChanges('team-a', '1', OPTIONS_A);
++    await store.getState().checkTaskHasChanges('team-a', '1', OPTIONS_A);
++    await store.getState().checkTaskHasChanges('team-a', '1', OPTIONS_B);
++
++    expect(hoisted.getTaskChanges).toHaveBeenCalledTimes(2);
++  });
++
++  it('ignores stale fetchTaskChanges responses when a newer task request wins', async () => {
++    const store = createSliceStore();
++    const first = deferred<any>();
++    const second = deferred<any>();
++    hoisted.getTaskChanges.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
++
++    const firstFetch = store.getState().fetchTaskChanges('team-a', '1', OPTIONS_A);
++    const secondFetch = store.getState().fetchTaskChanges('team-a', '2', OPTIONS_B);
++
++    second.resolve({
++      teamName: 'team-a',
++      taskId: '2',
++      files: [{ filePath: '/repo/new.ts', relativePath: 'new.ts', snippets: [], linesAdded: 1, linesRemoved: 0, isNewFile: true }],
++      totalFiles: 1,
++      totalLinesAdded: 1,
++      totalLinesRemoved: 0,
++      confidence: 'fallback',
++      computedAt: '2026-03-01T12:00:00.000Z',
++      scope: {
++        taskId: '2',
++        memberName: 'bob',
++        startLine: 0,
++        endLine: 0,
++        startTimestamp: '',
++        endTimestamp: '',
++        toolUseIds: [],
++        filePaths: ['/repo/new.ts'],
++        confidence: { tier: 4, label: 'fallback', reason: 'No task boundaries found in JSONL' },
++      },
++      warnings: [],
++    });
++    await secondFetch;
++
++    first.resolve({
++      teamName: 'team-a',
++      taskId: '1',
++      files: [{ filePath: '/repo/old.ts', relativePath: 'old.ts', snippets: [], linesAdded: 1, linesRemoved: 0, isNewFile: true }],
++      totalFiles: 1,
++      totalLinesAdded: 1,
++      totalLinesRemoved: 0,
++      confidence: 'fallback',
++      computedAt: '2026-03-01T12:00:00.000Z',
++      scope: {
++        taskId: '1',
++        memberName: 'alice',
++        startLine: 0,
++        endLine: 0,
++        startTimestamp: '',
++        endTimestamp: '',
++        toolUseIds: [],
++        filePaths: ['/repo/old.ts'],
++        confidence: { tier: 4, label: 'fallback', reason: 'No task boundaries found in JSONL' },
++      },
++      warnings: [],
++    });
++    await firstFetch;
++
++    expect(store.getState().activeChangeSet?.taskId).toBe('2');
++    expect(store.getState().selectedReviewFilePath).toBe('/repo/new.ts');
++  });
++});
+diff --git a/test/renderer/store/extensionsSlice.test.ts b/test/renderer/store/extensionsSlice.test.ts
+index 80b175aa7..0a2a696a0 100644
+--- a/test/renderer/store/extensionsSlice.test.ts
++++ b/test/renderer/store/extensionsSlice.test.ts
+@@ -36,6 +36,7 @@ const makePlugin = (overrides: Partial<EnrichedPlugin>): EnrichedPlugin => ({
+   marketplaceId: 'test@marketplace',
+   qualifiedName: 'test@marketplace',
+   name: 'Test Plugin',
++  source: 'official',
+   description: 'A test plugin',
+   category: 'testing',
+   hasLspServers: false,
+diff --git a/test/renderer/utils/taskChangeRequest.test.ts b/test/renderer/utils/taskChangeRequest.test.ts
+new file mode 100644
+index 000000000..041ac3108
+--- /dev/null
++++ b/test/renderer/utils/taskChangeRequest.test.ts
+@@ -0,0 +1,67 @@
++import { describe, expect, it } from 'vitest';
++
++import {
++  buildTaskChangePresenceKey,
++  buildTaskChangeRequestOptions,
++  deriveTaskSince,
++} from '@renderer/utils/taskChangeRequest';
++
++describe('taskChangeRequest', () => {
++  it('derives since from the earliest known task timestamp with grace window', () => {
++    const since = deriveTaskSince({
++      id: 't1',
++      owner: 'alice',
++      status: 'completed',
++      createdAt: '2026-03-01T10:05:00.000Z',
++      updatedAt: '2026-03-01T12:00:00.000Z',
++      workIntervals: [{ startedAt: '2026-03-01T10:10:00.000Z' }],
++      historyEvents: [
++        {
++          id: 'evt-1',
++          type: 'status_changed',
++          from: 'pending',
++          to: 'in_progress',
++          timestamp: '2026-03-01T10:00:00.000Z',
++        },
++      ],
++    });
++
++    expect(since).toBe('2026-03-01T09:58:00.000Z');
++  });
++
++  it('builds canonical task change request options', () => {
++    const options = buildTaskChangeRequestOptions(
++      {
++        id: 't1',
++        owner: 'alice',
++        status: 'completed',
++        createdAt: '2026-03-01T10:05:00.000Z',
++        updatedAt: '2026-03-01T12:00:00.000Z',
++        workIntervals: [{ startedAt: '2026-03-01T10:10:00.000Z' }],
++        historyEvents: [],
++      },
++      { summaryOnly: true }
++    );
++
++    expect(options).toEqual({
++      owner: 'alice',
++      status: 'completed',
++      intervals: [{ startedAt: '2026-03-01T10:10:00.000Z' }],
++      since: '2026-03-01T10:03:00.000Z',
++      summaryOnly: true,
++    });
++  });
++
++  it('uses scope inputs for presence keys', () => {
++    const base = {
++      owner: 'alice',
++      status: 'completed',
++      intervals: [{ startedAt: '2026-03-01T10:10:00.000Z' }],
++      since: '2026-03-01T10:03:00.000Z',
++    };
++
++    expect(buildTaskChangePresenceKey('team-a', '1', base)).not.toBe(
++      buildTaskChangePresenceKey('team-a', '1', { ...base, owner: 'bob' })
++    );
++  });
++});
+diff --git a/test/shared/utils/extensionNormalizers.test.ts b/test/shared/utils/extensionNormalizers.test.ts
+index a81eb3c43..ff28a938b 100644
+--- a/test/shared/utils/extensionNormalizers.test.ts
++++ b/test/shared/utils/extensionNormalizers.test.ts
+@@ -39,6 +39,7 @@ describe('inferCapabilities', () => {
+     marketplaceId: 'test@marketplace',
+     qualifiedName: 'test@marketplace',
+     name: 'test',
++    source: 'official',
+     description: 'test',
+     category: 'development',
+     hasLspServers: false,

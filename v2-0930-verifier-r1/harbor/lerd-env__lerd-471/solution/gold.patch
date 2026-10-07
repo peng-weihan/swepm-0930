@@ -1,0 +1,1041 @@
+diff --git a/docs/usage/framework-definitions.md b/docs/usage/framework-definitions.md
+--- a/docs/usage/framework-definitions.md
++++ b/docs/usage/framework-definitions.md
+@@ -128,6 +128,13 @@ workers:
+   messenger:
+     label: Messenger
+     command: php bin/console messenger:consume async --time-limit=3600
++    reload_command: ""            # alternate command for auto-reload (restart on
++                                  # file changes) during development (optional). When a
++                                  # project opts this worker into reload mode, lerd runs
++                                  # this command instead of `command`, and on macOS
++                                  # appends `--poll` since the container cannot observe
++                                  # host filesystem events. Laravel's horizon worker sets
++                                  # it to `php artisan horizon:listen`.
+     restart: always               # always | on-failure (default: always)
+     schedule: ""                  # systemd OnCalendar expression (optional). When set, the
+                                   # worker is run as a Type=oneshot service triggered by a
+diff --git a/docs/usage/frameworks.md b/docs/usage/frameworks.md
+--- a/docs/usage/frameworks.md
++++ b/docs/usage/frameworks.md
+@@ -146,7 +146,7 @@ Default workers:
+ | `queue` | Queue Worker | `php artisan queue:work --queue=default --tries=3 --timeout=60` | - | - |
+ | `schedule` | Task Scheduler | `php artisan schedule:work` | - | - |
+ | `reverb` | Reverb WebSocket | `php artisan reverb:start` | `laravel/reverb` | proxy at `/app`, auto-assigned port |
+-| `horizon` | Horizon | `php artisan horizon` | `laravel/horizon` | conflicts with `queue` |
++| `horizon` | Horizon | `php artisan horizon` | `laravel/horizon` | conflicts with `queue`; auto-reload via `horizon:listen` (see [queue workers](queue-workers.md)) |
+ 
+ ### Adding workers to Laravel
+ 
+diff --git a/docs/usage/queue-workers.md b/docs/usage/queue-workers.md
+--- a/docs/usage/queue-workers.md
++++ b/docs/usage/queue-workers.md
+@@ -40,22 +40,22 @@ journalctl --user -u lerd-horizon-my-app -f
+ 
+ ### Auto-reload on file changes
+ 
+-By default lerd runs `php artisan horizon`, which boots the app once and caches your code — so after editing a job, listener, or any class a worker touches, you have to restart Horizon for the change to take effect.
++By default lerd runs `php artisan horizon`, which boots the app once and caches your code, so after editing a job, listener, or any class a worker touches you have to restart Horizon for the change to take effect.
+ 
+-Turn on auto-reload to run `php artisan horizon:listen` instead. Horizon then watches your project and restarts its workers automatically whenever a file changes, so you never stop/restart Horizon by hand while developing — the dashboard and `config/horizon.php` keep working exactly the same.
++Turn on auto-reload to run `php artisan horizon:listen` instead. Horizon then watches your project and restarts its workers automatically whenever a file changes, so you never stop/restart Horizon by hand while developing. The dashboard and `config/horizon.php` keep working exactly the same.
+ 
+ ```bash
+ lerd horizon:reload on    # use horizon:listen (auto-restart on file changes)
+ lerd horizon:reload off   # back to standard horizon
+ lerd horizon:reload       # show the current state
+ ```
+ 
+-The setting is global (one switch per machine, stored under `workers.horizon_reload`). Toggling it restarts a running Horizon worker for the current project so the change applies immediately.
++The preference is per project, stored as `reload_workers` in the project's `.lerd.yaml`, so one project can develop with auto-reload while another stays in standard mode. You can also toggle it from the small reload button next to the Horizon worker in the dashboard. Either way, a running Horizon worker for the project is restarted so the change applies immediately.
+ 
+ Two notes:
+ 
+-- The watcher shells out to Node and resolves [`chokidar`](https://www.npmjs.com/package/chokidar) from your project's `node_modules`. lerd's runtime image already ships Node, and most Laravel projects pull in chokidar via Vite — but if it is missing, lerd keeps the standard `horizon` command and tells you to run `npm install`.
+-- lerd passes `--poll` because your project is bind-mounted into the container over virtiofs on macOS, where native filesystem events don't reach the watcher. Polling works on every platform.
++- The watcher shells out to Node and resolves [`chokidar`](https://www.npmjs.com/package/chokidar) from your project's `node_modules`. lerd's runtime image already ships Node, and most Laravel projects pull in chokidar via Vite, but if it is missing lerd keeps the standard `horizon` command and tells you to run `npm install`.
++- On macOS lerd adds `--poll`. Workers run inside a container that lives in the podman virtual machine, and filesystem events raised on your host do not reach the watcher inside the VM, so it has to poll. On native Linux the container shares the host filesystem directly and inotify works, so polling is left off to avoid the wasted CPU.
+ 
+ ## Generic workers (`lerd worker`)
+ 
+diff --git a/internal/cli/horizon.go b/internal/cli/horizon.go
+--- a/internal/cli/horizon.go
++++ b/internal/cli/horizon.go
+@@ -33,24 +33,27 @@ func NewHorizonStopCmd() *cobra.Command { return newHorizonStopCmd("horizon:stop
+ // NewHorizonReloadCmd returns the standalone horizon:reload command.
+ func NewHorizonReloadCmd() *cobra.Command { return newHorizonReloadCmd("horizon:reload") }
+ 
+-// newHorizonReloadCmd toggles auto-reload mode (`horizon:listen`) on or off. With
+-// no argument it prints the current state. When toggled it persists the global
+-// setting and, if a Horizon worker is running for the current site, restarts it
+-// so the new command takes effect immediately.
++// newHorizonReloadCmd toggles auto-reload mode (`horizon:listen`) on or off for
++// the current site. With no argument it prints the current state. When toggled
++// it persists the per-project preference and, if a Horizon worker is running,
++// restarts it so the new command takes effect immediately.
+ func newHorizonReloadCmd(use string) *cobra.Command {
+ 	return &cobra.Command{
+ 		Use:   use + " [on|off]",
+-		Short: "Toggle Horizon auto-reload on file changes (horizon:listen)",
++		Short: "Toggle Horizon auto-reload on file changes (horizon:listen) for the current site",
+ 		Args:  cobra.MaximumNArgs(1),
+ 		RunE: func(_ *cobra.Command, args []string) error {
+-			cfg, err := config.LoadGlobal()
++			cwd, err := os.Getwd()
+ 			if err != nil {
+ 				return err
+ 			}
++			if !SiteHasHorizon(cwd) {
++				return fmt.Errorf("laravel/horizon is not installed in this project\nInstall it with: composer require laravel/horizon\nSee https://laravel.com/docs/13.x/horizon")
++			}
+ 
+ 			if len(args) == 0 {
+ 				state := "off"
+-				if cfg.HorizonReloadEnabled() {
++				if config.ProjectReloadsWorker(cwd, "horizon") {
+ 					state = "on"
+ 				}
+ 				fmt.Printf("Horizon auto-reload (horizon:listen): %s\n", state)
+@@ -67,77 +70,63 @@ func newHorizonReloadCmd(use string) *cobra.Command {
+ 				return fmt.Errorf("expected 'on' or 'off', got %q", args[0])
+ 			}
+ 
+-			if err := ApplyHorizonReload(enable); err != nil {
++			siteName, err := queueSiteName(cwd)
++			if err != nil {
++				return err
++			}
++			phpVersion, err := phpDet.DetectVersion(cwd)
++			if err != nil {
++				cfg, _ := config.LoadGlobal()
++				phpVersion = cfg.PHP.DefaultVersion
++			}
++			if err := ApplyHorizonReload(siteName, cwd, phpVersion, enable); err != nil {
+ 				return err
+ 			}
+ 
+ 			if enable {
+-				fmt.Println("Horizon auto-reload enabled — Horizon will restart workers on file changes.")
++				fmt.Println("Horizon auto-reload enabled, Horizon will restart workers on file changes.")
+ 			} else {
+-				fmt.Println("Horizon auto-reload disabled — Horizon runs in standard mode.")
++				fmt.Println("Horizon auto-reload disabled, Horizon runs in standard mode.")
+ 			}
+ 			return nil
+ 		},
+ 	}
+ }
+ 
+-// ApplyHorizonReload persists the global Horizon auto-reload toggle and restarts
+-// every Horizon worker that is currently running so the new command takes effect
+-// immediately. The setting is global, so all running Horizon workers are
+-// reconciled (mirrors how the worker exec-mode change applies machine-wide).
+-// Restart failures are non-fatal — the setting is already persisted and applies
+-// on the next start; only a load/save failure is returned.
+-func ApplyHorizonReload(enabled bool) error {
+-	cfg, err := config.LoadGlobal()
+-	if err != nil {
++// ApplyHorizonReload persists the per-project Horizon auto-reload preference and,
++// when a Horizon worker is currently running for the site, restarts it so the
++// new command takes effect immediately. The restart reuses HorizonStartForSite,
++// which resolves the command (standard or horizon:listen) from the freshly
++// persisted preference.
++func ApplyHorizonReload(siteName, sitePath, phpVersion string, enabled bool) error {
++	if err := config.SetProjectWorkerReload(sitePath, "horizon", enabled); err != nil {
+ 		return err
+ 	}
+-	cfg.SetHorizonReload(enabled)
+-	if err := config.SaveGlobal(cfg); err != nil {
+-		return err
++	if !horizonRunningForSite(siteName) {
++		return nil
++	}
++	if err := HorizonStopForSite(siteName); err != nil {
++		return fmt.Errorf("stop horizon: %w", err)
++	}
++	if err := HorizonStartForSite(siteName, sitePath, phpVersion); err != nil {
++		return fmt.Errorf("restart horizon: %w", err)
+ 	}
+-	restartRunningHorizonWorkers()
+ 	return nil
+ }
+ 
+-// restartRunningHorizonWorkers restarts the Horizon worker of every site that
+-// currently has one running, so a toggle applies without manual intervention.
+-// Sites without a running Horizon worker are left untouched.
+-func restartRunningHorizonWorkers() {
+-	reg, err := config.LoadSites()
+-	if err != nil {
+-		fmt.Printf("[WARN] horizon reload: load sites: %v\n", err)
+-		return
++// horizonRunningForSite reports whether the named site currently has a running
++// Horizon worker.
++func horizonRunningForSite(siteName string) bool {
++	site, err := config.FindSite(siteName)
++	if err != nil || site == nil {
++		return false
+ 	}
+-	for i := range reg.Sites {
+-		site := reg.Sites[i]
+-		if site.Paused || !SiteHasHorizon(site.Path) {
+-			continue
+-		}
+-		running := false
+-		for _, n := range CollectRunningWorkerNames(&site) {
+-			if n == "horizon" {
+-				running = true
+-				break
+-			}
+-		}
+-		if !running {
+-			continue
+-		}
+-
+-		phpVersion, perr := phpDet.DetectVersion(site.Path)
+-		if perr != nil {
+-			if cfg, cerr := config.LoadGlobal(); cerr == nil {
+-				phpVersion = cfg.PHP.DefaultVersion
+-			}
+-		}
+-		if err := HorizonStopForSite(site.Name); err != nil {
+-			fmt.Printf("[WARN] stop horizon (%s): %v\n", site.Name, err)
+-		}
+-		if err := HorizonStartForSite(site.Name, site.Path, phpVersion); err != nil {
+-			fmt.Printf("[WARN] restart horizon (%s): %v\n", site.Name, err)
++	for _, n := range CollectRunningWorkerNames(site) {
++		if n == "horizon" {
++			return true
+ 		}
+ 	}
++	return false
+ }
+ 
+ func newHorizonStartCmd(use string) *cobra.Command {
+diff --git a/internal/cli/worker.go b/internal/cli/worker.go
+--- a/internal/cli/worker.go
++++ b/internal/cli/worker.go
+@@ -4,6 +4,7 @@ import (
+ 	"fmt"
+ 	"os"
+ 	"path/filepath"
++	"runtime"
+ 	"sort"
+ 	"strconv"
+ 	"strings"
+@@ -212,36 +213,41 @@ func requireFrameworkWorker(cwd, workerName string) error {
+ 	return nil
+ }
+ 
+-// resolveHorizonCommand swaps `php artisan horizon` for `php artisan
+-// horizon:listen --poll` when the operator opted into auto-reload
+-// (workers.horizon_reload) AND the project can support Horizon's watcher.
++// resolveWorkerCommand returns the command to run for a worker, substituting the
++// worker's reload variant (restart on file changes) when the project opted the
++// worker into reload mode and the framework declares the variant. The variant
++// text comes from the framework definition (FrameworkWorker.ReloadCommand), so
++// the store stays the single source of truth and core never rewrites command
++// strings.
+ //
+-// Horizon's listen command shells out to `node bin/file-watcher.cjs` and
+-// resolves chokidar from the project's node_modules. lerd's runtime image
+-// always ships node, so the only project-side requirement is chokidar; when it
+-// is missing we keep the standard command and tell the user how to enable the
+-// watcher rather than letting Horizon fail to boot. `--poll` is mandatory
+-// because the project is bind-mounted over virtiofs on macOS, where native
+-// filesystem events never reach the container — without it the watcher runs but
+-// never sees a change. The command is derived from the base (not hardcoded) so
+-// any extra flags such as `--environment` are preserved.
+-func resolveHorizonCommand(workerName, sitePath, command string) string {
+-	if workerName != "horizon" {
+-		return command
+-	}
+-	cfg, err := config.LoadGlobal()
+-	if err != nil || !cfg.HorizonReloadEnabled() {
+-		return command
++// On macOS the polling flag is appended. lerd runs workers inside a container,
++// and on macOS that container lives in the podman virtual machine while the
++// project is shared in from the host, so filesystem events raised on the host
++// do not reach the watcher inside the VM and it has to poll. On native Linux
++// the container shares the host filesystem directly and inotify works, so
++// polling is left off to avoid the wasted CPU.
++//
++// The reload command's watcher shells out to node and resolves the chokidar npm
++// package from the project's node_modules; when chokidar is missing we keep the
++// standard command and tell the user how to enable the watcher rather than
++// letting the worker fail to boot.
++func resolveWorkerCommand(sitePath, workerName string, w config.FrameworkWorker) string {
++	if w.ReloadCommand == "" || !config.ProjectReloadsWorker(sitePath, workerName) {
++		return w.Command
+ 	}
+ 	if !projectHasChokidar(sitePath) {
+-		fmt.Printf("[WARN] workers.horizon_reload is on but chokidar is not installed in %s — running standard horizon. Install it with: npm install\n", sitePath)
+-		return command
++		fmt.Printf("[WARN] %s auto-reload is on but chokidar is not installed in %s, running the standard command. Install it with: npm install\n", workerName, sitePath)
++		return w.Command
++	}
++	command := w.ReloadCommand
++	if runtime.GOOS == "darwin" {
++		command += " --poll"
+ 	}
+-	return strings.Replace(command, "php artisan horizon", "php artisan horizon:listen", 1) + " --poll"
++	return command
+ }
+ 
+-// projectHasChokidar reports whether the chokidar package — required by
+-// Horizon's `horizon:listen` file watcher — is installed in the project.
++// projectHasChokidar reports whether the chokidar package, required by the
++// reload command's file watcher, is installed in the project.
+ func projectHasChokidar(sitePath string) bool {
+ 	info, err := os.Stat(filepath.Join(sitePath, "node_modules", "chokidar"))
+ 	return err == nil && info.IsDir()
+@@ -275,7 +281,7 @@ func WorkerStartForSite(siteName, sitePath, phpVersion, workerName string, w con
+ 		WorkerStopForSite(siteName, sitePath, conflict) //nolint:errcheck
+ 	}
+ 
+-	command := resolveHorizonCommand(workerName, sitePath, w.Command)
++	command := resolveWorkerCommand(sitePath, workerName, w)
+ 
+ 	// Handle proxy port assignment and command augmentation.
+ 	if w.Proxy != nil && w.Proxy.PortEnvKey != "" {
+diff --git a/internal/config/framework.go b/internal/config/framework.go
+--- a/internal/config/framework.go
++++ b/internal/config/framework.go
+@@ -96,8 +96,18 @@ type FrameworkFrankenPHP struct {
+ // The Command is executed inside the PHP-FPM container for the site unless
+ // Host is true, in which case it runs directly on the host via fnm.
+ type FrameworkWorker struct {
+-	Label         string         `yaml:"label,omitempty"`
+-	Command       string         `yaml:"command"`
++	Label   string `yaml:"label,omitempty"`
++	Command string `yaml:"command"`
++	// ReloadCommand is the alternate command run when a project opts this
++	// worker into auto-reload (restart on file changes) for development.
++	// Empty means the worker has no reload variant. Laravel's horizon worker
++	// sets it to "php artisan horizon:listen"; core selects it over Command
++	// when the project enables reload for the worker and, on platforms where
++	// the container cannot observe host filesystem events, appends the polling
++	// flag (see resolveWorkerCommand). Keeping the literal command text in the
++	// framework definition rather than rewriting Command in Go means the store
++	// stays the single source of truth for what actually runs.
++	ReloadCommand string         `yaml:"reload_command,omitempty"`
+ 	Restart       string         `yaml:"restart,omitempty"`        // always | on-failure (default: always)
+ 	Schedule      string         `yaml:"schedule,omitempty"`       // systemd OnCalendar expression (e.g. "minutely"); when set, the worker is run as a Type=oneshot service triggered by a .timer rather than a long-running daemon. Use this for Laravel <=10 schedule:run, cron-style cleanup tasks, etc.
+ 	Check         *FrameworkRule `yaml:"check,omitempty"`          // only show when check passes (file exists or composer package installed)
+@@ -460,6 +470,7 @@ var laravelFramework = &Framework{
+ 		"horizon": {
+ 			Label:         "Horizon",
+ 			Command:       "php artisan horizon",
++			ReloadCommand: "php artisan horizon:listen",
+ 			Restart:       "always",
+ 			Check:         &FrameworkRule{Composer: "laravel/horizon"},
+ 			ConflictsWith: []string{"queue"},
+diff --git a/internal/config/global.go b/internal/config/global.go
+--- a/internal/config/global.go
++++ b/internal/config/global.go
+@@ -128,15 +128,6 @@ type GlobalConfig struct {
+ 		// dependable supervisor there). Use WorkerExecMode() to read the
+ 		// effective value.
+ 		ExecMode string `yaml:"exec_mode,omitempty" mapstructure:"exec_mode"`
+-
+-		// HorizonReload runs Laravel Horizon via `horizon:listen` instead of
+-		// `horizon`, so a code edit restarts the workers automatically and you
+-		// never have to stop/restart Horizon by hand while developing. Off by
+-		// default (production-like, lower overhead); opt in per machine. The
+-		// swap only applies when the project can support it (chokidar present);
+-		// otherwise the standard `horizon` command is kept. Read the effective
+-		// value with HorizonReloadEnabled().
+-		HorizonReload bool `yaml:"horizon_reload,omitempty" mapstructure:"horizon_reload"`
+ 	} `yaml:"workers,omitempty" mapstructure:"workers"`
+ 	Dumps struct {
+ 		// Enabled is the single switch for the whole debug window: the dump
+@@ -601,18 +592,6 @@ func (c *GlobalConfig) SetDumpsEnabled(enabled bool) {
+ 	c.Dumps.Enabled = enabled
+ }
+ 
+-// HorizonReloadEnabled reports whether Horizon should run via `horizon:listen`
+-// (auto-restart on file changes) instead of `horizon`.
+-func (c *GlobalConfig) HorizonReloadEnabled() bool {
+-	return c.Workers.HorizonReload
+-}
+-
+-// SetHorizonReload flips the Horizon auto-reload mode. Persist via SaveGlobal,
+-// then restart the Horizon worker so the new command takes effect.
+-func (c *GlobalConfig) SetHorizonReload(enabled bool) {
+-	c.Workers.HorizonReload = enabled
+-}
+-
+ // IsDevtoolsWorkers reports whether queue/scheduler worker queries are captured.
+ func (c *GlobalConfig) IsDevtoolsWorkers() bool {
+ 	return c.Devtools.Workers
+diff --git a/internal/config/project.go b/internal/config/project.go
+--- a/internal/config/project.go
++++ b/internal/config/project.go
+@@ -47,6 +47,12 @@ type ProjectConfig struct {
+ 	Services      []ProjectService           `yaml:"services,omitempty"`
+ 	Workers       []string                   `yaml:"workers,omitempty"`
+ 	CustomWorkers map[string]FrameworkWorker `yaml:"custom_workers,omitempty"`
++	// ReloadWorkers lists worker names this project runs in auto-reload mode
++	// (restart on file changes) for development, for workers that declare a
++	// reload_command variant. Per project so one project can develop with
++	// reload while another stays in standard mode. Laravel's horizon worker is
++	// currently the only worker with a reload variant.
++	ReloadWorkers []string `yaml:"reload_workers,omitempty"`
+ 	// Commands extends or overrides the framework's command set. Entries with
+ 	// a Name matching a framework command replace it (set Disabled: true to
+ 	// suppress instead). Entries with a new Name are appended. See
+@@ -88,12 +94,33 @@ type ProjectConfig struct {
+ func (c *ProjectConfig) IsEmpty() bool {
+ 	return len(c.Domains) == 0 && c.PHPVersion == "" && c.NodeVersion == "" &&
+ 		c.Framework == "" && c.PublicDir == "" && len(c.Services) == 0 &&
+-		len(c.Workers) == 0 && len(c.CustomWorkers) == 0 && !c.Secured &&
++		len(c.Workers) == 0 && len(c.CustomWorkers) == 0 && len(c.ReloadWorkers) == 0 && !c.Secured &&
+ 		c.AppURL == "" && c.DB.Service == "" && c.DB.Database == "" &&
+ 		c.Container == nil && c.Runtime == "" && !c.RuntimeWorker &&
+ 		!c.DBIsolated && len(c.EnvOverrides) == 0 && c.RequestTimeout == 0
+ }
+ 
++// ReloadsWorker reports whether the named worker is opted into auto-reload
++// (restart on file changes) for this project.
++func (c *ProjectConfig) ReloadsWorker(name string) bool {
++	for _, w := range c.ReloadWorkers {
++		if w == name {
++			return true
++		}
++	}
++	return false
++}
++
++// ProjectReloadsWorker reports whether the project at dir opts the named worker
++// into auto-reload mode. Returns false when .lerd.yaml is absent or unreadable.
++func ProjectReloadsWorker(dir, name string) bool {
++	cfg, err := LoadProjectConfig(dir)
++	if err != nil || cfg == nil {
++		return false
++	}
++	return cfg.ReloadsWorker(name)
++}
++
+ // ServiceNames returns the name of every service in the config, for callers
+ // that only need the list of names (e.g. the init wizard multi-select).
+ func (p *ProjectConfig) ServiceNames() []string {
+@@ -324,6 +351,9 @@ func cloneProjectConfig(in *ProjectConfig) *ProjectConfig {
+ 	if in.Workers != nil {
+ 		out.Workers = append([]string(nil), in.Workers...)
+ 	}
++	if in.ReloadWorkers != nil {
++		out.ReloadWorkers = append([]string(nil), in.ReloadWorkers...)
++	}
+ 	if in.CustomWorkers != nil {
+ 		out.CustomWorkers = make(map[string]FrameworkWorker, len(in.CustomWorkers))
+ 		for k, v := range in.CustomWorkers {
+diff --git a/internal/config/project_update.go b/internal/config/project_update.go
+--- a/internal/config/project_update.go
++++ b/internal/config/project_update.go
+@@ -55,6 +55,23 @@ func AddProjectWorker(dir, name string) error {
+ 	})
+ }
+ 
++// SetProjectWorkerReload opts the named worker into or out of auto-reload mode
++// (restart on file changes) for the project. No-op if .lerd.yaml does not exist.
++func SetProjectWorkerReload(dir, name string, enabled bool) error {
++	return updateProjectConfig(dir, func(cfg *ProjectConfig) {
++		out := cfg.ReloadWorkers[:0:0]
++		for _, w := range cfg.ReloadWorkers {
++			if w != name {
++				out = append(out, w)
++			}
++		}
++		if enabled {
++			out = append(out, name)
++		}
++		cfg.ReloadWorkers = out
++	})
++}
++
+ // SetProjectDomains replaces the domains list. No-op if .lerd.yaml does not exist.
+ func SetProjectDomains(dir string, domains []string) error {
+ 	return updateProjectConfig(dir, func(cfg *ProjectConfig) {
+diff --git a/internal/ui/server.go b/internal/ui/server.go
+--- a/internal/ui/server.go
++++ b/internal/ui/server.go
+@@ -243,7 +243,6 @@ func Start(currentVersion string) error {
+ 	mux.HandleFunc("/api/settings", withCORS(handleSettings))
+ 	mux.HandleFunc("/api/settings/autostart", withCORS(handleSettingsAutostart))
+ 	mux.HandleFunc("/api/settings/worker-mode", withCORS(handleSettingsWorkerMode))
+-	mux.HandleFunc("/api/settings/horizon-reload", withCORS(handleSettingsHorizonReload))
+ 	mux.HandleFunc("/api/workers/health", withCORS(handleWorkersHealth))
+ 	mux.HandleFunc("/api/workers/heal", withCORS(handleWorkersHeal))
+ 	mux.HandleFunc("/api/stats", withCORS(handleStats))
+@@ -688,6 +687,7 @@ type SiteResponse struct {
+ 	HasHorizon         bool                `json:"has_horizon"`
+ 	HorizonRunning     bool                `json:"horizon_running"`
+ 	HorizonFailing     bool                `json:"horizon_failing,omitempty"`
++	HorizonReload      bool                `json:"horizon_reload,omitempty"` // horizon runs via horizon:listen (auto-reload)
+ 	HasQueueWorker     bool                `json:"has_queue_worker"`
+ 	HasScheduleWorker  bool                `json:"has_schedule_worker"`
+ 	FrameworkWorkers   []WorkerStatus      `json:"framework_workers,omitempty"`
+@@ -809,6 +809,7 @@ func buildSites() []SiteResponse {
+ 			HasHorizon:         e.HasHorizon,
+ 			HorizonRunning:     e.HorizonRunning,
+ 			HorizonFailing:     e.HorizonFailing,
++			HorizonReload:      e.HasHorizon && config.ProjectReloadsWorker(e.Path, "horizon"),
+ 			HasQueueWorker:     e.HasQueueWorker,
+ 			HasScheduleWorker:  e.HasScheduleWorker,
+ 			FrameworkWorkers:   fwWorkers,
+@@ -3064,6 +3065,18 @@ func handleSiteAction(w http.ResponseWriter, r *http.Request) {
+ 		}
+ 		writeJSON(w, SiteActionResponse{OK: true})
+ 		return
++	case "horizon:reload":
++		enabled := r.URL.Query().Get("enabled") == "true"
++		phpVersion := site.PHPVersion
++		if detected, err := phpPkg.DetectVersion(site.Path); err == nil && detected != "" {
++			phpVersion = detected
++		}
++		if err := cli.ApplyHorizonReload(site.Name, site.Path, phpVersion, enabled); err != nil {
++			writeJSON(w, SiteActionResponse{Error: err.Error()})
++			return
++		}
++		writeJSON(w, SiteActionResponse{OK: true})
++		return
+ 	case "queue:start":
+ 		phpVersion := site.PHPVersion
+ 		if detected, err := phpPkg.DetectVersion(site.Path); err == nil && detected != "" {
+@@ -3963,47 +3976,21 @@ type SettingsResponse struct {
+ 	AutostartOnLogin  bool   `json:"autostart_on_login"`
+ 	WorkerExecMode    string `json:"worker_exec_mode"`
+ 	WorkerModeApplies bool   `json:"worker_mode_applies"` // true on macOS only
+-	HorizonReload     bool   `json:"horizon_reload"`      // run Horizon via horizon:listen
+ }
+ 
+ func handleSettings(w http.ResponseWriter, _ *http.Request) {
+ 	cfg, _ := config.LoadGlobal()
+ 	mode := config.WorkerExecModeExec
+-	horizonReload := false
+ 	if cfg != nil {
+ 		mode = cfg.WorkerExecMode()
+-		horizonReload = cfg.HorizonReloadEnabled()
+ 	}
+ 	writeJSON(w, SettingsResponse{
+ 		AutostartOnLogin:  lerdSystemd.IsAutostartEnabled(),
+ 		WorkerExecMode:    mode,
+ 		WorkerModeApplies: runtime.GOOS == "darwin",
+-		HorizonReload:     horizonReload,
+ 	})
+ }
+ 
+-// handleSettingsHorizonReload toggles the global "run Horizon via
+-// horizon:listen" setting and restarts any running Horizon worker so the change
+-// applies immediately.
+-func handleSettingsHorizonReload(w http.ResponseWriter, r *http.Request) {
+-	if r.Method != http.MethodPost {
+-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+-		return
+-	}
+-	var body struct {
+-		Enabled bool `json:"enabled"`
+-	}
+-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+-		http.Error(w, "invalid body", http.StatusBadRequest)
+-		return
+-	}
+-	if err := cli.ApplyHorizonReload(body.Enabled); err != nil {
+-		writeJSON(w, map[string]any{"ok": false, "error": err.Error()})
+-		return
+-	}
+-	writeJSON(w, map[string]any{"ok": true, "horizon_reload": body.Enabled})
+-}
+-
+ func handleSettingsWorkerMode(w http.ResponseWriter, r *http.Request) {
+ 	if r.Method != http.MethodPost {
+ 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+diff --git a/internal/ui/web/messages/de.json b/internal/ui/web/messages/de.json
+--- a/internal/ui/web/messages/de.json
++++ b/internal/ui/web/messages/de.json
+@@ -248,6 +248,8 @@
+   "sites_controls_horizonToggle_on": "Horizon stoppen",
+   "sites_controls_horizonToggle_off": "Horizon starten",
+   "sites_controls_horizonToggle_failing": "Horizon ist fehlerhaft, zum Neustart klicken",
++  "sites_controls_horizonReloadToggle_on": "Automatisches Neuladen bei Dateiänderungen ist an, zum Ausschalten klicken",
++  "sites_controls_horizonReloadToggle_off": "Automatisches Neuladen bei Dateiänderungen ist aus, zum Einschalten klicken (horizon:listen)",
+   "sites_controls_scheduleToggle_on": "Scheduler stoppen",
+   "sites_controls_scheduleToggle_off": "Scheduler starten",
+   "sites_controls_reverbToggle_on": "Reverb stoppen",
+@@ -421,15 +423,6 @@
+   "system_lerd_starCta": "Gib ihm einen Stern auf GitHub",
+   "system_lerd_starAfter": "damit andere es entdecken.",
+   "system_workerMode_listLabel": "Worker-Laufzeit",
+-  "system_horizonReload_listLabel": "Horizon reload",
+-  "system_horizonReload_title": "Horizon auto-reload",
+-  "system_horizonReload_description": "Runs Laravel Horizon via horizon:listen so it restarts its workers automatically when you edit a job, listener, or any class \u2014 no manual stop/restart while developing. The dashboard and config/horizon.php keep working the same.",
+-  "system_horizonReload_badge_on": "On",
+-  "system_horizonReload_badge_off": "Off",
+-  "system_horizonReload_toggle_label": "Restart Horizon workers on file changes",
+-  "system_horizonReload_note_label": "Requires:",
+-  "system_horizonReload_note_body": "the chokidar package in the project's node_modules (most Laravel apps get it via Vite). lerd passes --poll because project files are bind-mounted over virtiofs. When chokidar is missing the standard horizon command is kept.",
+-  "system_horizonReload_apply_failed": "Couldn't change Horizon auto-reload",
+   "system_workerMode_title": "Worker-Laufzeit",
+   "system_workerMode_execBadge": "Exec-Modus",
+   "system_workerMode_containerBadge": "Container-Modus",
+diff --git a/internal/ui/web/messages/en.json b/internal/ui/web/messages/en.json
+--- a/internal/ui/web/messages/en.json
++++ b/internal/ui/web/messages/en.json
+@@ -233,6 +233,8 @@
+   "sites_controls_horizonToggle_on": "Stop Horizon",
+   "sites_controls_horizonToggle_off": "Start Horizon",
+   "sites_controls_horizonToggle_failing": "Horizon is failing, click to restart",
++  "sites_controls_horizonReloadToggle_on": "Auto-reload on file changes is on, click to turn off",
++  "sites_controls_horizonReloadToggle_off": "Auto-reload on file changes is off, click to turn on (horizon:listen)",
+   "sites_controls_scheduleToggle_on": "Stop scheduler",
+   "sites_controls_scheduleToggle_off": "Start scheduler",
+   "sites_controls_reverbToggle_on": "Stop Reverb",
+@@ -406,15 +408,6 @@
+   "system_lerd_starCta": "Star it on GitHub",
+   "system_lerd_starAfter": "to help others discover it.",
+   "system_workerMode_listLabel": "Worker runtime",
+-  "system_horizonReload_listLabel": "Horizon reload",
+-  "system_horizonReload_title": "Horizon auto-reload",
+-  "system_horizonReload_description": "Runs Laravel Horizon via horizon:listen so it restarts its workers automatically when you edit a job, listener, or any class \u2014 no manual stop/restart while developing. The dashboard and config/horizon.php keep working the same.",
+-  "system_horizonReload_badge_on": "On",
+-  "system_horizonReload_badge_off": "Off",
+-  "system_horizonReload_toggle_label": "Restart Horizon workers on file changes",
+-  "system_horizonReload_note_label": "Requires:",
+-  "system_horizonReload_note_body": "the chokidar package in the project's node_modules (most Laravel apps get it via Vite). lerd passes --poll because project files are bind-mounted over virtiofs. When chokidar is missing the standard horizon command is kept.",
+-  "system_horizonReload_apply_failed": "Couldn't change Horizon auto-reload",
+   "system_workerMode_title": "Worker runtime",
+   "system_workerMode_execBadge": "Exec mode",
+   "system_workerMode_containerBadge": "Container mode",
+diff --git a/internal/ui/web/messages/es.json b/internal/ui/web/messages/es.json
+--- a/internal/ui/web/messages/es.json
++++ b/internal/ui/web/messages/es.json
+@@ -248,6 +248,8 @@
+   "sites_controls_horizonToggle_on": "Detener Horizon",
+   "sites_controls_horizonToggle_off": "Iniciar Horizon",
+   "sites_controls_horizonToggle_failing": "Horizon falla, clic para reiniciar",
++  "sites_controls_horizonReloadToggle_on": "La recarga automática al cambiar archivos está activada, clic para desactivar",
++  "sites_controls_horizonReloadToggle_off": "La recarga automática al cambiar archivos está desactivada, clic para activar (horizon:listen)",
+   "sites_controls_scheduleToggle_on": "Detener planificador",
+   "sites_controls_scheduleToggle_off": "Iniciar planificador",
+   "sites_controls_reverbToggle_on": "Detener Reverb",
+@@ -421,15 +423,6 @@
+   "system_lerd_starCta": "Dale una estrella en GitHub",
+   "system_lerd_starAfter": "para ayudar a otros a descubrirlo.",
+   "system_workerMode_listLabel": "Tiempo de ejecución de workers",
+-  "system_horizonReload_listLabel": "Horizon reload",
+-  "system_horizonReload_title": "Horizon auto-reload",
+-  "system_horizonReload_description": "Runs Laravel Horizon via horizon:listen so it restarts its workers automatically when you edit a job, listener, or any class \u2014 no manual stop/restart while developing. The dashboard and config/horizon.php keep working the same.",
+-  "system_horizonReload_badge_on": "On",
+-  "system_horizonReload_badge_off": "Off",
+-  "system_horizonReload_toggle_label": "Restart Horizon workers on file changes",
+-  "system_horizonReload_note_label": "Requires:",
+-  "system_horizonReload_note_body": "the chokidar package in the project's node_modules (most Laravel apps get it via Vite). lerd passes --poll because project files are bind-mounted over virtiofs. When chokidar is missing the standard horizon command is kept.",
+-  "system_horizonReload_apply_failed": "Couldn't change Horizon auto-reload",
+   "system_workerMode_title": "Tiempo de ejecución de workers",
+   "system_workerMode_execBadge": "Modo exec",
+   "system_workerMode_containerBadge": "Modo contenedor",
+diff --git a/internal/ui/web/messages/fr.json b/internal/ui/web/messages/fr.json
+--- a/internal/ui/web/messages/fr.json
++++ b/internal/ui/web/messages/fr.json
+@@ -248,6 +248,8 @@
+   "sites_controls_horizonToggle_on": "Arrêter Horizon",
+   "sites_controls_horizonToggle_off": "Démarrer Horizon",
+   "sites_controls_horizonToggle_failing": "Horizon échoue, cliquer pour redémarrer",
++  "sites_controls_horizonReloadToggle_on": "Le rechargement automatique aux modifications de fichiers est activé, cliquer pour désactiver",
++  "sites_controls_horizonReloadToggle_off": "Le rechargement automatique aux modifications de fichiers est désactivé, cliquer pour activer (horizon:listen)",
+   "sites_controls_scheduleToggle_on": "Arrêter le planificateur",
+   "sites_controls_scheduleToggle_off": "Démarrer le planificateur",
+   "sites_controls_reverbToggle_on": "Arrêter Reverb",
+@@ -421,15 +423,6 @@
+   "system_lerd_starCta": "Ajoutez une étoile sur GitHub",
+   "system_lerd_starAfter": "pour aider les autres à le découvrir.",
+   "system_workerMode_listLabel": "Runtime des workers",
+-  "system_horizonReload_listLabel": "Horizon reload",
+-  "system_horizonReload_title": "Horizon auto-reload",
+-  "system_horizonReload_description": "Runs Laravel Horizon via horizon:listen so it restarts its workers automatically when you edit a job, listener, or any class \u2014 no manual stop/restart while developing. The dashboard and config/horizon.php keep working the same.",
+-  "system_horizonReload_badge_on": "On",
+-  "system_horizonReload_badge_off": "Off",
+-  "system_horizonReload_toggle_label": "Restart Horizon workers on file changes",
+-  "system_horizonReload_note_label": "Requires:",
+-  "system_horizonReload_note_body": "the chokidar package in the project's node_modules (most Laravel apps get it via Vite). lerd passes --poll because project files are bind-mounted over virtiofs. When chokidar is missing the standard horizon command is kept.",
+-  "system_horizonReload_apply_failed": "Couldn't change Horizon auto-reload",
+   "system_workerMode_title": "Runtime des workers",
+   "system_workerMode_execBadge": "Mode exec",
+   "system_workerMode_containerBadge": "Mode conteneur",
+diff --git a/internal/ui/web/messages/id.json b/internal/ui/web/messages/id.json
+--- a/internal/ui/web/messages/id.json
++++ b/internal/ui/web/messages/id.json
+@@ -248,6 +248,8 @@
+   "sites_controls_horizonToggle_on": "Hentikan Horizon",
+   "sites_controls_horizonToggle_off": "Mulai Horizon",
+   "sites_controls_horizonToggle_failing": "Horizon gagal, klik untuk memulai ulang",
++  "sites_controls_horizonReloadToggle_on": "Auto-reload saat file berubah aktif, klik untuk mematikan",
++  "sites_controls_horizonReloadToggle_off": "Auto-reload saat file berubah nonaktif, klik untuk mengaktifkan (horizon:listen)",
+   "sites_controls_scheduleToggle_on": "Hentikan scheduler",
+   "sites_controls_scheduleToggle_off": "Mulai scheduler",
+   "sites_controls_reverbToggle_on": "Hentikan Reverb",
+@@ -421,15 +423,6 @@
+   "system_lerd_starCta": "Beri bintang di GitHub",
+   "system_lerd_starAfter": "untuk membantu orang lain menemukannya.",
+   "system_workerMode_listLabel": "Runtime worker",
+-  "system_horizonReload_listLabel": "Horizon reload",
+-  "system_horizonReload_title": "Auto-reload Horizon",
+-  "system_horizonReload_description": "Menjalankan Laravel Horizon lewat horizon:listen sehingga worker-nya restart otomatis saat kamu mengubah job, listener, atau class apa pun — tanpa stop/restart manual selama development. Dashboard dan config/horizon.php tetap berjalan seperti biasa.",
+-  "system_horizonReload_badge_on": "Aktif",
+-  "system_horizonReload_badge_off": "Nonaktif",
+-  "system_horizonReload_toggle_label": "Restart worker Horizon saat file berubah",
+-  "system_horizonReload_note_label": "Membutuhkan:",
+-  "system_horizonReload_note_body": "paket chokidar di node_modules project (kebanyakan app Laravel sudah punya lewat Vite). lerd memakai --poll karena file project di-mount lewat virtiofs. Jika chokidar tidak ada, perintah horizon standar tetap dipakai.",
+-  "system_horizonReload_apply_failed": "Gagal mengubah auto-reload Horizon",
+   "system_workerMode_title": "Runtime worker",
+   "system_workerMode_execBadge": "Mode exec",
+   "system_workerMode_containerBadge": "Mode kontainer",
+@@ -814,4 +807,4 @@
+   "debug_tab_exceptions": "Exceptions",
+   "debug_tab_logs": "Logs",
+   "views_template": "template"
+-}
+\ No newline at end of file
++}
+diff --git a/internal/ui/web/messages/nl.json b/internal/ui/web/messages/nl.json
+--- a/internal/ui/web/messages/nl.json
++++ b/internal/ui/web/messages/nl.json
+@@ -248,6 +248,8 @@
+   "sites_controls_horizonToggle_on": "Horizon stoppen",
+   "sites_controls_horizonToggle_off": "Horizon starten",
+   "sites_controls_horizonToggle_failing": "Horizon is mislukt, klik om te herstarten",
++  "sites_controls_horizonReloadToggle_on": "Automatisch herladen bij bestandswijzigingen staat aan, klik om uit te schakelen",
++  "sites_controls_horizonReloadToggle_off": "Automatisch herladen bij bestandswijzigingen staat uit, klik om in te schakelen (horizon:listen)",
+   "sites_controls_scheduleToggle_on": "Scheduler stoppen",
+   "sites_controls_scheduleToggle_off": "Scheduler starten",
+   "sites_controls_reverbToggle_on": "Reverb stoppen",
+@@ -421,15 +423,6 @@
+   "system_lerd_starCta": "Geef het een ster op GitHub",
+   "system_lerd_starAfter": "om anderen het te laten ontdekken.",
+   "system_workerMode_listLabel": "Worker-runtime",
+-  "system_horizonReload_listLabel": "Horizon reload",
+-  "system_horizonReload_title": "Horizon auto-reload",
+-  "system_horizonReload_description": "Runs Laravel Horizon via horizon:listen so it restarts its workers automatically when you edit a job, listener, or any class \u2014 no manual stop/restart while developing. The dashboard and config/horizon.php keep working the same.",
+-  "system_horizonReload_badge_on": "On",
+-  "system_horizonReload_badge_off": "Off",
+-  "system_horizonReload_toggle_label": "Restart Horizon workers on file changes",
+-  "system_horizonReload_note_label": "Requires:",
+-  "system_horizonReload_note_body": "the chokidar package in the project's node_modules (most Laravel apps get it via Vite). lerd passes --poll because project files are bind-mounted over virtiofs. When chokidar is missing the standard horizon command is kept.",
+-  "system_horizonReload_apply_failed": "Couldn't change Horizon auto-reload",
+   "system_workerMode_title": "Worker-runtime",
+   "system_workerMode_execBadge": "Exec-modus",
+   "system_workerMode_containerBadge": "Container-modus",
+diff --git a/internal/ui/web/messages/pt.json b/internal/ui/web/messages/pt.json
+--- a/internal/ui/web/messages/pt.json
++++ b/internal/ui/web/messages/pt.json
+@@ -248,6 +248,8 @@
+   "sites_controls_horizonToggle_on": "Parar Horizon",
+   "sites_controls_horizonToggle_off": "Iniciar Horizon",
+   "sites_controls_horizonToggle_failing": "Horizon está falhando, clique para reiniciar",
++  "sites_controls_horizonReloadToggle_on": "O recarregamento automático ao alterar arquivos está ativado, clique para desativar",
++  "sites_controls_horizonReloadToggle_off": "O recarregamento automático ao alterar arquivos está desativado, clique para ativar (horizon:listen)",
+   "sites_controls_scheduleToggle_on": "Parar agendador",
+   "sites_controls_scheduleToggle_off": "Iniciar agendador",
+   "sites_controls_reverbToggle_on": "Parar Reverb",
+@@ -421,15 +423,6 @@
+   "system_lerd_starCta": "Dê uma estrela no GitHub",
+   "system_lerd_starAfter": "para ajudar outros a descobrirem.",
+   "system_workerMode_listLabel": "Runtime dos workers",
+-  "system_horizonReload_listLabel": "Horizon reload",
+-  "system_horizonReload_title": "Horizon auto-reload",
+-  "system_horizonReload_description": "Runs Laravel Horizon via horizon:listen so it restarts its workers automatically when you edit a job, listener, or any class \u2014 no manual stop/restart while developing. The dashboard and config/horizon.php keep working the same.",
+-  "system_horizonReload_badge_on": "On",
+-  "system_horizonReload_badge_off": "Off",
+-  "system_horizonReload_toggle_label": "Restart Horizon workers on file changes",
+-  "system_horizonReload_note_label": "Requires:",
+-  "system_horizonReload_note_body": "the chokidar package in the project's node_modules (most Laravel apps get it via Vite). lerd passes --poll because project files are bind-mounted over virtiofs. When chokidar is missing the standard horizon command is kept.",
+-  "system_horizonReload_apply_failed": "Couldn't change Horizon auto-reload",
+   "system_workerMode_title": "Runtime dos workers",
+   "system_workerMode_execBadge": "Modo exec",
+   "system_workerMode_containerBadge": "Modo contêiner",
+diff --git a/internal/ui/web/messages/tr.json b/internal/ui/web/messages/tr.json
+--- a/internal/ui/web/messages/tr.json
++++ b/internal/ui/web/messages/tr.json
+@@ -248,6 +248,8 @@
+   "sites_controls_horizonToggle_on": "Horizon'u durdur",
+   "sites_controls_horizonToggle_off": "Horizon'u başlat",
+   "sites_controls_horizonToggle_failing": "Horizon hatalı, yeniden başlatmak için tıklayın",
++  "sites_controls_horizonReloadToggle_on": "Dosya değişikliklerinde otomatik yeniden yükleme açık, kapatmak için tıklayın",
++  "sites_controls_horizonReloadToggle_off": "Dosya değişikliklerinde otomatik yeniden yükleme kapalı, açmak için tıklayın (horizon:listen)",
+   "sites_controls_scheduleToggle_on": "Zamanlayıcıyı durdur",
+   "sites_controls_scheduleToggle_off": "Zamanlayıcıyı başlat",
+   "sites_controls_reverbToggle_on": "Reverb'i durdur",
+@@ -421,15 +423,6 @@
+   "system_lerd_starCta": "GitHub'da yıldız verin",
+   "system_lerd_starAfter": "böylece başkaları da keşfedebilir.",
+   "system_workerMode_listLabel": "Worker çalışma zamanı",
+-  "system_horizonReload_listLabel": "Horizon reload",
+-  "system_horizonReload_title": "Horizon auto-reload",
+-  "system_horizonReload_description": "Runs Laravel Horizon via horizon:listen so it restarts its workers automatically when you edit a job, listener, or any class \u2014 no manual stop/restart while developing. The dashboard and config/horizon.php keep working the same.",
+-  "system_horizonReload_badge_on": "On",
+-  "system_horizonReload_badge_off": "Off",
+-  "system_horizonReload_toggle_label": "Restart Horizon workers on file changes",
+-  "system_horizonReload_note_label": "Requires:",
+-  "system_horizonReload_note_body": "the chokidar package in the project's node_modules (most Laravel apps get it via Vite). lerd passes --poll because project files are bind-mounted over virtiofs. When chokidar is missing the standard horizon command is kept.",
+-  "system_horizonReload_apply_failed": "Couldn't change Horizon auto-reload",
+   "system_workerMode_title": "Worker çalışma zamanı",
+   "system_workerMode_execBadge": "Exec modu",
+   "system_workerMode_containerBadge": "Konteyner modu",
+diff --git a/internal/ui/web/src/stores/horizonReload.ts b/internal/ui/web/src/stores/horizonReload.ts
+deleted file mode 100644
+--- a/internal/ui/web/src/stores/horizonReload.ts
++++ /dev/null
+@@ -1,45 +0,0 @@
+-import { writable } from 'svelte/store';
+-import { apiJson, apiFetch } from '$lib/api';
+-
+-// Global "run Horizon via horizon:listen" toggle. When on, lerd runs
+-// `php artisan horizon:listen --poll` so Horizon restarts its workers on file
+-// changes — no manual stop/restart while developing.
+-export const horizonReload = writable<boolean>(false);
+-export const horizonReloadLoading = writable<boolean>(false);
+-
+-interface SettingsResponse {
+-  horizon_reload?: boolean;
+-}
+-
+-export async function loadHorizonReload() {
+-  try {
+-    const res = await apiJson<SettingsResponse>('/api/settings');
+-    horizonReload.set(Boolean(res.horizon_reload));
+-  } catch {
+-    /* keep previous value */
+-  }
+-}
+-
+-// setHorizonReload POSTs the new state and, on success, restarts a running
+-// Horizon worker so the change applies immediately. Returns { ok, error }.
+-export async function setHorizonReload(
+-  enabled: boolean
+-): Promise<{ ok: boolean; error?: string }> {
+-  horizonReloadLoading.set(true);
+-  try {
+-    const res = await apiFetch('/api/settings/horizon-reload', {
+-      method: 'POST',
+-      body: JSON.stringify({ enabled })
+-    });
+-    const data = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+-    if (res.ok && data.ok !== false) {
+-      horizonReload.set(enabled);
+-      return { ok: true };
+-    }
+-    return { ok: false, error: data.error || `request failed (${res.status})` };
+-  } catch (e) {
+-    return { ok: false, error: e instanceof Error ? e.message : 'request failed' };
+-  } finally {
+-    horizonReloadLoading.set(false);
+-  }
+-}
+diff --git a/internal/ui/web/src/stores/sites.ts b/internal/ui/web/src/stores/sites.ts
+--- a/internal/ui/web/src/stores/sites.ts
++++ b/internal/ui/web/src/stores/sites.ts
+@@ -58,6 +58,7 @@ export interface Site {
+   queue_failing?: boolean;
+   horizon_running?: boolean;
+   horizon_failing?: boolean;
++  horizon_reload?: boolean;
+   stripe_running?: boolean;
+   stripe_secret_set?: boolean;
+   schedule_running?: boolean;
+@@ -423,6 +424,8 @@ export const toggleQueue = (s: Site) =>
+   postAction(site(s.domain, s.queue_running ? 'queue:stop' : 'queue:start'));
+ export const toggleHorizon = (s: Site) =>
+   postAction(site(s.domain, s.horizon_running ? 'horizon:stop' : 'horizon:start'));
++export const setHorizonReload = (s: Site, enabled: boolean) =>
++  postAction(site(s.domain, 'horizon:reload') + `?enabled=${enabled ? 'true' : 'false'}`);
+ export const toggleSchedule = (s: Site) =>
+   postAction(site(s.domain, s.schedule_running ? 'schedule:stop' : 'schedule:start'));
+ export const toggleReverb = (s: Site) =>
+diff --git a/internal/ui/web/src/tabs/SystemDetail.svelte b/internal/ui/web/src/tabs/SystemDetail.svelte
+--- a/internal/ui/web/src/tabs/SystemDetail.svelte
++++ b/internal/ui/web/src/tabs/SystemDetail.svelte
+@@ -10,7 +10,6 @@
+   import NodePage from './system/NodePage.svelte';
+   import LerdDetail from './system/LerdDetail.svelte';
+   import WorkerModeDetail from './system/WorkerModeDetail.svelte';
+-  import HorizonReloadDetail from './system/HorizonReloadDetail.svelte';
+ 
+   const selected = $derived($routeRest || 'lerd');
+   const phpVersion = $derived(selected.startsWith('php-') ? selected.slice(4) : '');
+@@ -34,8 +33,6 @@
+   <NodePage />
+ {:else if selected === 'workermode'}
+   <WorkerModeDetail />
+-{:else if selected === 'horizon-reload'}
+-  <HorizonReloadDetail />
+ {:else}
+   <LerdDetail />
+ {/if}
+diff --git a/internal/ui/web/src/tabs/SystemTab.svelte b/internal/ui/web/src/tabs/SystemTab.svelte
+--- a/internal/ui/web/src/tabs/SystemTab.svelte
++++ b/internal/ui/web/src/tabs/SystemTab.svelte
+@@ -14,15 +14,13 @@
+   import { accessMode } from '$stores/accessMode';
+   import { lerdStart, lerdStop, lerdStarting, lerdStopping } from '$stores/lerdLifecycle';
+   import { workerExecMode, workerModeApplies, loadWorkerMode } from '$stores/workerMode';
+-  import { horizonReload, loadHorizonReload } from '$stores/horizonReload';
+   import { status as dumpsStatusValue, refreshStatus as refreshDumpsStatus } from '$stores/dumps';
+   import { notifyPrefs, permissionState, autoSubscribeDisabled } from '$lib/notify';
+   import { onMount } from 'svelte';
+   import { m } from '../paraglide/messages.js';
+ 
+   onMount(() => {
+     loadWorkerMode();
+-    void loadHorizonReload();
+     void refreshDumpsStatus();
+   });
+ 
+@@ -110,11 +108,6 @@
+       </ListRow>
+     {/if}
+ 
+-    {#snippet horizonReloadDot()}<StatusDot color={$horizonReload ? 'green' : 'gray'} />{/snippet}
+-    <ListRow active={selected === 'horizon-reload'} onclick={() => select('horizon-reload')} leading={horizonReloadDot}>
+-      {m.system_horizonReload_listLabel()}
+-    </ListRow>
+-
+     {#snippet watcherDot()}<StatusDot color={$status.watcher_running ? 'green' : 'gray'} />{/snippet}
+     <ListRow active={selected === 'watcher'} onclick={() => select('watcher')} leading={watcherDot}>{m.system_watcher()}</ListRow>
+ 
+diff --git a/internal/ui/web/src/tabs/sites/SiteControls.svelte b/internal/ui/web/src/tabs/sites/SiteControls.svelte
+--- a/internal/ui/web/src/tabs/sites/SiteControls.svelte
++++ b/internal/ui/web/src/tabs/sites/SiteControls.svelte
+@@ -5,6 +5,7 @@
+     setSiteVersion,
+     toggleQueue,
+     toggleHorizon,
++    setHorizonReload,
+     toggleSchedule,
+     toggleReverb,
+     toggleStripe,
+@@ -117,6 +118,7 @@
+   $effect(() => {
+     reconcile('queue', Boolean(site.queue_running));
+     reconcile('horizon', Boolean(site.horizon_running));
++    reconcile('horizon-reload', Boolean(site.horizon_reload));
+     reconcile('schedule', Boolean(site.schedule_running));
+     reconcile('reverb', Boolean(site.reverb_running));
+     reconcile('stripe', Boolean(site.stripe_running));
+@@ -256,15 +258,40 @@
+       {/if}
+ 
+       {#if site.has_horizon}
+-        <ToggleButton
+-          label={m.sites_controls_horizon()}
+-          on={Boolean(site.horizon_running)}
+-          failing={Boolean(site.horizon_failing)}
+-          loading={isPending('horizon')}
+-          disabled={isPending('horizon')}
+-          onclick={() => transition('horizon', !site.horizon_running, () => toggleHorizon(site))}
+-          title={site.horizon_failing ? m.sites_controls_horizonToggle_failing() : site.horizon_running ? m.sites_controls_horizonToggle_on() : m.sites_controls_horizonToggle_off()}
+-        />
++        <div class="inline-flex items-center gap-1">
++          <ToggleButton
++            label={m.sites_controls_horizon()}
++            on={Boolean(site.horizon_running)}
++            failing={Boolean(site.horizon_failing)}
++            loading={isPending('horizon')}
++            disabled={isPending('horizon')}
++            onclick={() => transition('horizon', !site.horizon_running, () => toggleHorizon(site))}
++            title={site.horizon_failing ? m.sites_controls_horizonToggle_failing() : site.horizon_running ? m.sites_controls_horizonToggle_on() : m.sites_controls_horizonToggle_off()}
++          />
++          <button
++            type="button"
++            class="inline-flex items-center justify-center h-7 w-7 rounded-md border transition-colors disabled:opacity-50 disabled:cursor-not-allowed {site.horizon_reload
++              ? 'border-emerald-300 dark:border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-900/15 hover:bg-emerald-50 dark:hover:bg-emerald-900/25'
++              : 'border-gray-200 dark:border-lerd-border text-gray-400 dark:text-gray-500 bg-white dark:bg-lerd-card hover:bg-gray-50 dark:hover:bg-white/5'}"
++            disabled={isPending('horizon-reload')}
++            aria-pressed={Boolean(site.horizon_reload)}
++            title={site.horizon_reload ? m.sites_controls_horizonReloadToggle_on() : m.sites_controls_horizonReloadToggle_off()}
++            onclick={() => transition('horizon-reload', !site.horizon_reload, () => setHorizonReload(site, !site.horizon_reload))}
++          >
++            {#if isPending('horizon-reload')}
++              <svg class="w-3 h-3 animate-spin text-amber-500" fill="none" viewBox="0 0 24 24">
++                <circle class="opacity-30" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
++                <path class="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
++              </svg>
++            {:else}
++              <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
++                <polyline points="23 4 23 10 17 10" />
++                <polyline points="1 20 1 14 7 14" />
++                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
++              </svg>
++            {/if}
++          </button>
++        </div>
+       {/if}
+ 
+       {#if site.has_schedule_worker}
+diff --git a/internal/ui/web/src/tabs/system/HorizonReloadDetail.svelte b/internal/ui/web/src/tabs/system/HorizonReloadDetail.svelte
+deleted file mode 100644
+--- a/internal/ui/web/src/tabs/system/HorizonReloadDetail.svelte
++++ /dev/null
+@@ -1,64 +0,0 @@
+-<script lang="ts">
+-  import { onMount } from 'svelte';
+-  import {
+-    horizonReload,
+-    horizonReloadLoading,
+-    loadHorizonReload,
+-    setHorizonReload
+-  } from '$stores/horizonReload';
+-  import Toggle from '$components/Toggle.svelte';
+-  import { m } from '../../paraglide/messages.js';
+-
+-  onMount(loadHorizonReload);
+-
+-  let applyError = $state('');
+-
+-  async function toggle() {
+-    if ($horizonReloadLoading) return;
+-    applyError = '';
+-    const r = await setHorizonReload(!$horizonReload);
+-    if (!r.ok) {
+-      applyError = r.error
+-        ? m.system_horizonReload_apply_failed() + ' (' + r.error + ')'
+-        : m.system_horizonReload_apply_failed();
+-    }
+-  }
+-</script>
+-
+-<div class="flex-1 overflow-y-auto">
+-  <div class="flex flex-wrap items-center justify-between gap-y-2 p-3 border-b border-gray-100 dark:border-lerd-border">
+-    <span class="font-semibold text-gray-900 dark:text-white text-base">{m.system_horizonReload_title()}</span>
+-    <span
+-      class="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full {$horizonReload
+-        ? 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-500'
+-        : 'bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400'}"
+-    >
+-      <span class="w-1.5 h-1.5 rounded-full {$horizonReload ? 'bg-emerald-500' : 'bg-gray-400'}"></span>
+-      {$horizonReload ? m.system_horizonReload_badge_on() : m.system_horizonReload_badge_off()}
+-    </span>
+-  </div>
+-
+-  <div class="p-3 space-y-4">
+-    <p class="text-sm text-gray-600 dark:text-gray-400">{m.system_horizonReload_description()}</p>
+-
+-    <div class="flex items-center justify-between gap-3 p-3 rounded-sm border border-gray-200 dark:border-lerd-border">
+-      <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{m.system_horizonReload_toggle_label()}</span>
+-      <Toggle
+-        on={$horizonReload}
+-        tone="emerald"
+-        loading={$horizonReloadLoading}
+-        title={$horizonReload ? m.system_horizonReload_badge_on() : m.system_horizonReload_badge_off()}
+-        onclick={toggle}
+-      />
+-    </div>
+-
+-    <div class="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-lerd-card/50 rounded-sm px-3 py-2 border border-gray-200 dark:border-lerd-border">
+-      <span class="font-medium text-gray-700 dark:text-gray-300">{m.system_horizonReload_note_label()}</span>
+-      {m.system_horizonReload_note_body()}
+-    </div>
+-
+-    {#if applyError}
+-      <p class="text-xs text-red-500">{applyError}</p>
+-    {/if}
+-  </div>
+-</div>

@@ -1,0 +1,337 @@
+diff --git a/pinot-broker/src/test/java/org/apache/pinot/broker/requesthandler/QueryValidationTest.java b/pinot-broker/src/test/java/org/apache/pinot/broker/requesthandler/QueryValidationTest.java
+index 7a5d45de4a..f3ebe5a647 100644
+--- a/pinot-broker/src/test/java/org/apache/pinot/broker/requesthandler/QueryValidationTest.java
++++ b/pinot-broker/src/test/java/org/apache/pinot/broker/requesthandler/QueryValidationTest.java
+@@ -21,9 +21,9 @@ package org.apache.pinot.broker.requesthandler;
+ 
+ import com.fasterxml.jackson.core.JsonProcessingException;
+ import java.util.Map;
++import org.apache.pinot.common.evaluator.GroovyFunctionEvaluator;
++import org.apache.pinot.common.evaluator.GroovyStaticAnalyzerConfig;
+ import org.apache.pinot.common.request.PinotQuery;
+-import org.apache.pinot.segment.local.function.GroovyFunctionEvaluator;
+-import org.apache.pinot.segment.local.function.GroovyStaticAnalyzerConfig;
+ import org.apache.pinot.sql.parsers.CalciteSqlParser;
+ import org.testng.Assert;
+ import org.testng.annotations.Test;
+diff --git a/pinot-segment-local/src/test/java/org/apache/pinot/segment/local/function/InbuiltFunctionEvaluatorTest.java b/pinot-common/src/test/java/org/apache/pinot/common/evaluator/InbuiltFunctionEvaluatorTest.java
+similarity index 96%
+rename from pinot-segment-local/src/test/java/org/apache/pinot/segment/local/function/InbuiltFunctionEvaluatorTest.java
+rename to pinot-common/src/test/java/org/apache/pinot/common/evaluator/InbuiltFunctionEvaluatorTest.java
+index e7d1bd09cd..7c22937bf5 100644
+--- a/pinot-segment-local/src/test/java/org/apache/pinot/segment/local/function/InbuiltFunctionEvaluatorTest.java
++++ b/pinot-common/src/test/java/org/apache/pinot/common/evaluator/InbuiltFunctionEvaluatorTest.java
+@@ -16,12 +16,11 @@
+  * specific language governing permissions and limitations
+  * under the License.
+  */
+-package org.apache.pinot.segment.local.function;
++package org.apache.pinot.common.evaluator;
+ 
+ import java.util.Collections;
+ import org.apache.pinot.common.function.FunctionUtils;
+ import org.apache.pinot.common.utils.PinotDataType;
+-import org.apache.pinot.spi.annotations.ScalarFunction;
+ import org.apache.pinot.spi.data.readers.GenericRow;
+ import org.joda.time.DateTime;
+ import org.joda.time.DateTimeZone;
+@@ -254,15 +253,4 @@ public class InbuiltFunctionEvaluatorTest {
+     longRow.putValue("shift", 40);
+     assertEquals(new InbuiltFunctionEvaluator("bitExtract(value, shift)").evaluate(longRow), 1);
+   }
+-
+-  @SuppressWarnings("unused")
+-  public static class MyFunc {
+-    String _baseString = "";
+-
+-    @ScalarFunction
+-    public String appendToStringAndReturn(String addedString) {
+-      _baseString += addedString;
+-      return _baseString;
+-    }
+-  }
+ }
+diff --git a/pinot-common/src/test/java/org/apache/pinot/common/function/test/MutableStringTestFunction.java b/pinot-common/src/test/java/org/apache/pinot/common/function/test/MutableStringTestFunction.java
+new file mode 100644
+index 0000000000..755dbf6360
+--- /dev/null
++++ b/pinot-common/src/test/java/org/apache/pinot/common/function/test/MutableStringTestFunction.java
+@@ -0,0 +1,36 @@
++/**
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++package org.apache.pinot.common.function.test;
++
++import org.apache.pinot.spi.annotations.ScalarFunction;
++
++
++/**
++ * Test-only scalar function used to verify that stateful function instances are reused across evaluations.
++ */
++@SuppressWarnings("unused")
++public class MutableStringTestFunction {
++  private String _baseString = "";
++
++  @ScalarFunction
++  public String appendToStringAndReturn(String addedString) {
++    _baseString += addedString;
++    return _baseString;
++  }
++}
+diff --git a/pinot-core/src/test/java/org/apache/pinot/core/data/function/ArithmeticFunctionsTest.java b/pinot-core/src/test/java/org/apache/pinot/core/data/function/ArithmeticFunctionsTest.java
+index 226e9d5632..0d2f38d445 100644
+--- a/pinot-core/src/test/java/org/apache/pinot/core/data/function/ArithmeticFunctionsTest.java
++++ b/pinot-core/src/test/java/org/apache/pinot/core/data/function/ArithmeticFunctionsTest.java
+@@ -22,7 +22,7 @@ import com.google.common.collect.Lists;
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.function.Consumer;
+-import org.apache.pinot.segment.local.function.InbuiltFunctionEvaluator;
++import org.apache.pinot.common.evaluator.InbuiltFunctionEvaluator;
+ import org.apache.pinot.spi.data.readers.GenericRow;
+ import org.testng.Assert;
+ import org.testng.annotations.DataProvider;
+diff --git a/pinot-core/src/test/java/org/apache/pinot/core/data/function/ArrayFunctionsTest.java b/pinot-core/src/test/java/org/apache/pinot/core/data/function/ArrayFunctionsTest.java
+index 356cfb3b4c..fffa66c4ad 100644
+--- a/pinot-core/src/test/java/org/apache/pinot/core/data/function/ArrayFunctionsTest.java
++++ b/pinot-core/src/test/java/org/apache/pinot/core/data/function/ArrayFunctionsTest.java
+@@ -22,7 +22,7 @@ import com.google.common.collect.Lists;
+ import java.util.ArrayList;
+ import java.util.Collections;
+ import java.util.List;
+-import org.apache.pinot.segment.local.function.InbuiltFunctionEvaluator;
++import org.apache.pinot.common.evaluator.InbuiltFunctionEvaluator;
+ import org.apache.pinot.spi.data.readers.GenericRow;
+ import org.testng.Assert;
+ import org.testng.annotations.DataProvider;
+diff --git a/pinot-core/src/test/java/org/apache/pinot/core/data/function/BitFunctionsTest.java b/pinot-core/src/test/java/org/apache/pinot/core/data/function/BitFunctionsTest.java
+index 64afb85f4e..fc11baea56 100644
+--- a/pinot-core/src/test/java/org/apache/pinot/core/data/function/BitFunctionsTest.java
++++ b/pinot-core/src/test/java/org/apache/pinot/core/data/function/BitFunctionsTest.java
+@@ -21,7 +21,7 @@ package org.apache.pinot.core.data.function;
+ import com.google.common.collect.Lists;
+ import java.util.ArrayList;
+ import java.util.List;
+-import org.apache.pinot.segment.local.function.InbuiltFunctionEvaluator;
++import org.apache.pinot.common.evaluator.InbuiltFunctionEvaluator;
+ import org.apache.pinot.spi.data.readers.GenericRow;
+ import org.testng.Assert;
+ import org.testng.annotations.DataProvider;
+diff --git a/pinot-core/src/test/java/org/apache/pinot/core/data/function/DateTimeFunctionsTest.java b/pinot-core/src/test/java/org/apache/pinot/core/data/function/DateTimeFunctionsTest.java
+index 3547924512..b75cd5e7ba 100644
+--- a/pinot-core/src/test/java/org/apache/pinot/core/data/function/DateTimeFunctionsTest.java
++++ b/pinot-core/src/test/java/org/apache/pinot/core/data/function/DateTimeFunctionsTest.java
+@@ -27,8 +27,8 @@ import java.util.Arrays;
+ import java.util.Collections;
+ import java.util.List;
+ import java.util.function.Consumer;
++import org.apache.pinot.common.evaluator.InbuiltFunctionEvaluator;
+ import org.apache.pinot.common.function.scalar.DateTimeFunctions;
+-import org.apache.pinot.segment.local.function.InbuiltFunctionEvaluator;
+ import org.apache.pinot.spi.data.readers.GenericRow;
+ import org.joda.time.DateTime;
+ import org.joda.time.DateTimeZone;
+diff --git a/pinot-core/src/test/java/org/apache/pinot/core/data/function/GroovyFunctionEvaluatorTest.java b/pinot-core/src/test/java/org/apache/pinot/core/data/function/GroovyFunctionEvaluatorTest.java
+index 3f1adaa26c..99211b1619 100644
+--- a/pinot-core/src/test/java/org/apache/pinot/core/data/function/GroovyFunctionEvaluatorTest.java
++++ b/pinot-core/src/test/java/org/apache/pinot/core/data/function/GroovyFunctionEvaluatorTest.java
+@@ -23,15 +23,15 @@ import java.util.ArrayList;
+ import java.util.HashMap;
+ import java.util.List;
+ import java.util.Map;
+-import org.apache.pinot.segment.local.function.GroovyFunctionEvaluator;
+-import org.apache.pinot.segment.local.function.GroovyStaticAnalyzerConfig;
++import org.apache.pinot.common.evaluator.GroovyFunctionEvaluator;
++import org.apache.pinot.common.evaluator.GroovyStaticAnalyzerConfig;
+ import org.apache.pinot.spi.data.readers.GenericRow;
+ import org.testng.annotations.DataProvider;
+ import org.testng.annotations.Test;
+ import org.testng.collections.Lists;
+ 
+-import static org.apache.pinot.segment.local.function.GroovyStaticAnalyzerConfig.getDefaultAllowedImports;
+-import static org.apache.pinot.segment.local.function.GroovyStaticAnalyzerConfig.getDefaultAllowedReceivers;
++import static org.apache.pinot.common.evaluator.GroovyStaticAnalyzerConfig.getDefaultAllowedImports;
++import static org.apache.pinot.common.evaluator.GroovyStaticAnalyzerConfig.getDefaultAllowedReceivers;
+ import static org.testng.Assert.assertEquals;
+ import static org.testng.Assert.fail;
+ 
+diff --git a/pinot-core/src/test/java/org/apache/pinot/core/data/function/GroovyStaticAnalyzerConfigTest.java b/pinot-core/src/test/java/org/apache/pinot/core/data/function/GroovyStaticAnalyzerConfigTest.java
+index 8007d5e41c..45ca627609 100644
+--- a/pinot-core/src/test/java/org/apache/pinot/core/data/function/GroovyStaticAnalyzerConfigTest.java
++++ b/pinot-core/src/test/java/org/apache/pinot/core/data/function/GroovyStaticAnalyzerConfigTest.java
+@@ -20,7 +20,7 @@ package org.apache.pinot.core.data.function;
+ 
+ import java.util.Iterator;
+ import java.util.List;
+-import org.apache.pinot.segment.local.function.GroovyStaticAnalyzerConfig;
++import org.apache.pinot.common.evaluator.GroovyStaticAnalyzerConfig;
+ import org.apache.pinot.spi.utils.JsonUtils;
+ import org.testng.Assert;
+ import org.testng.annotations.DataProvider;
+diff --git a/pinot-core/src/test/java/org/apache/pinot/core/data/function/JsonFunctionsTest.java b/pinot-core/src/test/java/org/apache/pinot/core/data/function/JsonFunctionsTest.java
+index 6aa8bcbe3d..69e01d4372 100644
+--- a/pinot-core/src/test/java/org/apache/pinot/core/data/function/JsonFunctionsTest.java
++++ b/pinot-core/src/test/java/org/apache/pinot/core/data/function/JsonFunctionsTest.java
+@@ -24,7 +24,7 @@ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.List;
+ import java.util.Map;
+-import org.apache.pinot.segment.local.function.InbuiltFunctionEvaluator;
++import org.apache.pinot.common.evaluator.InbuiltFunctionEvaluator;
+ import org.apache.pinot.spi.data.readers.GenericRow;
+ import org.apache.pinot.spi.utils.JsonUtils;
+ import org.testng.Assert;
+diff --git a/pinot-core/src/test/java/org/apache/pinot/core/data/function/LogicalFunctionsTest.java b/pinot-core/src/test/java/org/apache/pinot/core/data/function/LogicalFunctionsTest.java
+index 90e7cbf9b4..9932f5553f 100644
+--- a/pinot-core/src/test/java/org/apache/pinot/core/data/function/LogicalFunctionsTest.java
++++ b/pinot-core/src/test/java/org/apache/pinot/core/data/function/LogicalFunctionsTest.java
+@@ -21,7 +21,7 @@ package org.apache.pinot.core.data.function;
+ import com.google.common.collect.Lists;
+ import java.util.ArrayList;
+ import java.util.List;
+-import org.apache.pinot.segment.local.function.InbuiltFunctionEvaluator;
++import org.apache.pinot.common.evaluator.InbuiltFunctionEvaluator;
+ import org.apache.pinot.spi.data.readers.GenericRow;
+ import org.testng.Assert;
+ import org.testng.annotations.DataProvider;
+diff --git a/pinot-core/src/test/java/org/apache/pinot/core/data/function/ObjectFunctionsTest.java b/pinot-core/src/test/java/org/apache/pinot/core/data/function/ObjectFunctionsTest.java
+index e71bd740f0..05b53974ab 100644
+--- a/pinot-core/src/test/java/org/apache/pinot/core/data/function/ObjectFunctionsTest.java
++++ b/pinot-core/src/test/java/org/apache/pinot/core/data/function/ObjectFunctionsTest.java
+@@ -21,7 +21,7 @@ package org.apache.pinot.core.data.function;
+ import com.google.common.collect.Lists;
+ import java.util.ArrayList;
+ import java.util.List;
+-import org.apache.pinot.segment.local.function.InbuiltFunctionEvaluator;
++import org.apache.pinot.common.evaluator.InbuiltFunctionEvaluator;
+ import org.apache.pinot.spi.data.readers.GenericRow;
+ import org.testng.Assert;
+ import org.testng.annotations.DataProvider;
+diff --git a/pinot-core/src/test/java/org/apache/pinot/core/data/function/VectorFunctionsTest.java b/pinot-core/src/test/java/org/apache/pinot/core/data/function/VectorFunctionsTest.java
+index 6600b5c10f..f62c20df14 100644
+--- a/pinot-core/src/test/java/org/apache/pinot/core/data/function/VectorFunctionsTest.java
++++ b/pinot-core/src/test/java/org/apache/pinot/core/data/function/VectorFunctionsTest.java
+@@ -21,7 +21,7 @@ package org.apache.pinot.core.data.function;
+ import com.google.common.collect.Lists;
+ import java.util.ArrayList;
+ import java.util.List;
+-import org.apache.pinot.segment.local.function.InbuiltFunctionEvaluator;
++import org.apache.pinot.common.evaluator.InbuiltFunctionEvaluator;
+ import org.apache.pinot.spi.data.readers.GenericRow;
+ import org.testng.Assert;
+ import org.testng.annotations.DataProvider;
+diff --git a/pinot-segment-local/src/test/java/org/apache/pinot/segment/local/function/FunctionPackageCompatibilityTest.java b/pinot-segment-local/src/test/java/org/apache/pinot/segment/local/function/FunctionPackageCompatibilityTest.java
+new file mode 100644
+index 0000000000..a9f52ffea5
+--- /dev/null
++++ b/pinot-segment-local/src/test/java/org/apache/pinot/segment/local/function/FunctionPackageCompatibilityTest.java
+@@ -0,0 +1,62 @@
++/**
++ * Licensed to the Apache Software Foundation (ASF) under one
++ * or more contributor license agreements.  See the NOTICE file
++ * distributed with this work for additional information
++ * regarding copyright ownership.  The ASF licenses this file
++ * to you under the Apache License, Version 2.0 (the
++ * "License"); you may not use this file except in compliance
++ * with the License.  You may obtain a copy of the License at
++ *
++ *   http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing,
++ * software distributed under the License is distributed on an
++ * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
++ * KIND, either express or implied.  See the License for the
++ * specific language governing permissions and limitations
++ * under the License.
++ */
++package org.apache.pinot.segment.local.function;
++
++import org.apache.pinot.spi.data.readers.GenericRow;
++import org.apache.pinot.spi.function.FunctionEvaluator;
++import org.testng.annotations.Test;
++
++import static org.testng.Assert.assertEquals;
++import static org.testng.Assert.assertNotNull;
++import static org.testng.Assert.assertTrue;
++
++
++/**
++ * Verifies that the deprecated {@code org.apache.pinot.segment.local.function} shim layer
++ * is wired through to the canonical implementations in {@code org.apache.pinot.common.evaluator}.
++ */
++@SuppressWarnings("deprecation")
++public class FunctionPackageCompatibilityTest {
++
++  @Test
++  public void testLegacyFactoryReturnsCanonicalInbuiltEvaluator() {
++    FunctionEvaluator evaluator = FunctionEvaluatorFactory.getExpressionEvaluator("reverse(testColumn)");
++    assertNotNull(evaluator);
++    assertTrue(evaluator instanceof org.apache.pinot.common.evaluator.InbuiltFunctionEvaluator);
++
++    GenericRow row = new GenericRow();
++    row.putValue("testColumn", "value");
++    assertEquals(evaluator.evaluate(row), "eulav");
++  }
++
++  @Test
++  public void testLegacyGroovyApiStillWorks()
++      throws Exception {
++    GroovyStaticAnalyzerConfig config = GroovyStaticAnalyzerConfig.createDefault();
++    GroovyFunctionEvaluator.setGroovyStaticAnalyzerConfig(config);
++    try {
++      GroovyFunctionEvaluator.parseGroovyScript("Groovy({a + 1}, a)");
++      FunctionEvaluator evaluator = FunctionEvaluatorFactory.getExpressionEvaluator("Groovy({a + 1}, a)");
++      assertTrue(evaluator instanceof org.apache.pinot.common.evaluator.GroovyFunctionEvaluator);
++      assertEquals(evaluator.evaluate(new Object[]{1}), 2);
++    } finally {
++      GroovyFunctionEvaluator.setGroovyStaticAnalyzerConfig(null);
++    }
++  }
++}
+diff --git a/pinot-segment-local/src/test/java/org/apache/pinot/segment/local/upsert/PartialUpsertHandlerTest.java b/pinot-segment-local/src/test/java/org/apache/pinot/segment/local/upsert/PartialUpsertHandlerTest.java
+index c28937e948..162edcc906 100644
+--- a/pinot-segment-local/src/test/java/org/apache/pinot/segment/local/upsert/PartialUpsertHandlerTest.java
++++ b/pinot-segment-local/src/test/java/org/apache/pinot/segment/local/upsert/PartialUpsertHandlerTest.java
+@@ -25,7 +25,7 @@ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+ import org.apache.commons.lang3.StringUtils;
+-import org.apache.pinot.segment.local.function.FunctionEvaluatorFactory;
++import org.apache.pinot.common.evaluator.FunctionEvaluatorFactory;
+ import org.apache.pinot.segment.local.indexsegment.immutable.ImmutableSegmentImpl;
+ import org.apache.pinot.segment.local.recordtransformer.RecordTransformerUtils;
+ import org.apache.pinot.segment.local.segment.readers.LazyRow;
+diff --git a/pinot-udf-test/src/main/java/org/apache/pinot/udf/test/scenarios/ExpressionTransformerTestScenario.java b/pinot-udf-test/src/main/java/org/apache/pinot/udf/test/scenarios/ExpressionTransformerTestScenario.java
+index 5f80c50935..041308dfed 100644
+--- a/pinot-udf-test/src/main/java/org/apache/pinot/udf/test/scenarios/ExpressionTransformerTestScenario.java
++++ b/pinot-udf-test/src/main/java/org/apache/pinot/udf/test/scenarios/ExpressionTransformerTestScenario.java
+@@ -21,12 +21,12 @@ package org.apache.pinot.udf.test.scenarios;
+ import com.google.auto.service.AutoService;
+ import java.util.HashMap;
+ import java.util.Map;
++import org.apache.pinot.common.evaluator.FunctionEvaluatorFactory;
+ import org.apache.pinot.core.udf.Udf;
+ import org.apache.pinot.core.udf.UdfExample;
+ import org.apache.pinot.core.udf.UdfSignature;
+-import org.apache.pinot.segment.local.function.FunctionEvaluator;
+-import org.apache.pinot.segment.local.function.FunctionEvaluatorFactory;
+ import org.apache.pinot.spi.data.readers.GenericRow;
++import org.apache.pinot.spi.function.FunctionEvaluator;
+ import org.apache.pinot.udf.test.PinotFunctionEnvGenerator;
+ import org.apache.pinot.udf.test.UdfExampleResult;
+ import org.apache.pinot.udf.test.UdfTestCluster;

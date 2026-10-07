@@ -1,0 +1,253 @@
+diff --git a/apps/app/src/components/sidebar/ProjectRow.test.tsx b/apps/app/src/components/sidebar/ProjectRow.test.tsx
+index e399893fd..6f5b78455 100644
+--- a/apps/app/src/components/sidebar/ProjectRow.test.tsx
++++ b/apps/app/src/components/sidebar/ProjectRow.test.tsx
+@@ -12,7 +12,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
+ import { Provider as JotaiProvider } from "jotai";
+ import type { ThreadListEntry } from "@bb/domain";
+ import type { ProjectResponse } from "@bb/server-contract";
+-import { SidebarStickyStack } from "@/components/ui";
++import { SidebarStickyStack } from "@/components/ui/sidebar.js";
+ import { MemoryRouter } from "react-router-dom";
+ import { afterEach, describe, expect, it, vi } from "vitest";
+ import { ProjectActionsProvider } from "@/components/project/ProjectActionsProvider";
+diff --git a/apps/app/src/components/ui/markdown-local-file-link.test.ts b/apps/app/src/components/ui/markdown-local-file-link.test.ts
+new file mode 100644
+index 000000000..bc33cd319
+--- /dev/null
++++ b/apps/app/src/components/ui/markdown-local-file-link.test.ts
+@@ -0,0 +1,136 @@
++import { describe, expect, it } from "vitest";
++import {
++  buildLocalFileAnchorHref,
++  parseLocalFileHref,
++} from "./markdown-local-file-link.js";
++
++describe("parseLocalFileHref", () => {
++  it("returns null for empty or missing hrefs", () => {
++    expect(parseLocalFileHref(undefined)).toBeNull();
++    expect(parseLocalFileHref("")).toBeNull();
++  });
++
++  it("returns null for non-absolute hrefs", () => {
++    expect(parseLocalFileHref("apps/app/src/main.tsx")).toBeNull();
++    expect(parseLocalFileHref("README.md")).toBeNull();
++    expect(parseLocalFileHref("https://example.test")).toBeNull();
++  });
++
++  it("parses absolute paths with no line number", () => {
++    expect(parseLocalFileHref("/workspace/src/app.ts")).toEqual({
++      path: "/workspace/src/app.ts",
++      lineNumber: null,
++    });
++  });
++
++  it("parses absolute paths with a :N line suffix", () => {
++    expect(parseLocalFileHref("/workspace/src/app.ts:12")).toEqual({
++      path: "/workspace/src/app.ts",
++      lineNumber: 12,
++    });
++  });
++
++  it("parses absolute paths with a #LN line suffix", () => {
++    expect(parseLocalFileHref("/workspace/src/app.ts#L12")).toEqual({
++      path: "/workspace/src/app.ts",
++      lineNumber: 12,
++    });
++  });
++
++  it("parses file:// URLs with a #LN line suffix", () => {
++    expect(
++      parseLocalFileHref("file:///workspace/src/file-url.ts#L4"),
++    ).toEqual({
++      path: "/workspace/src/file-url.ts",
++      lineNumber: 4,
++    });
++  });
++
++  it("parses deeply nested worktree paths", () => {
++    expect(
++      parseLocalFileHref(
++        "/Users/michael/.bb-dev/worktrees/env_7m3cieyz6q/bb/apps/app/src/views/thread-detail/ThreadTimelinePane.tsx:145",
++      ),
++    ).toEqual({
++      path: "/Users/michael/.bb-dev/worktrees/env_7m3cieyz6q/bb/apps/app/src/views/thread-detail/ThreadTimelinePane.tsx",
++      lineNumber: 145,
++    });
++  });
++
++  it("rejects file:// URLs with query strings", () => {
++    expect(parseLocalFileHref("file:///workspace/app.ts?foo=1")).toBeNull();
++  });
++
++  it("rejects hrefs with a hash that is not #LN", () => {
++    expect(parseLocalFileHref("/workspace/app.ts#section")).toBeNull();
++  });
++
++  it("rejects double-leading-slash paths", () => {
++    expect(parseLocalFileHref("//workspace/app.ts")).toBeNull();
++  });
++
++  it("rejects zero-line line suffixes", () => {
++    expect(parseLocalFileHref("/workspace/app.ts:0")).toBeNull();
++    expect(parseLocalFileHref("/workspace/app.ts#L0")).toBeNull();
++  });
++
++  it("decodes percent-encoded path segments", () => {
++    expect(parseLocalFileHref("/work%20space/app.ts:3")).toEqual({
++      path: "/work space/app.ts",
++      lineNumber: 3,
++    });
++  });
++});
++
++describe("buildLocalFileAnchorHref", () => {
++  it("returns the original href when the link is null", () => {
++    expect(buildLocalFileAnchorHref(null, "https://example.test")).toBe(
++      "https://example.test",
++    );
++  });
++
++  it("returns the original href when the path is not absolute", () => {
++    expect(
++      buildLocalFileAnchorHref(
++        { path: "apps/app/main.tsx", lineNumber: 4 },
++        "apps/app/main.tsx:4",
++      ),
++    ).toBe("apps/app/main.tsx:4");
++  });
++
++  it("returns the original href when the path has no line and no file-like basename", () => {
++    expect(
++      buildLocalFileAnchorHref(
++        { path: "/workspace/somedir", lineNumber: null },
++        "/workspace/somedir",
++      ),
++    ).toBe("/workspace/somedir");
++  });
++
++  it("rewrites absolute paths with a line number to file:// URLs with #LN", () => {
++    expect(
++      buildLocalFileAnchorHref(
++        { path: "/workspace/src/app.ts", lineNumber: 12 },
++        "/workspace/src/app.ts:12",
++      ),
++    ).toBe("file:///workspace/src/app.ts#L12");
++  });
++
++  it("rewrites absolute paths with a file-like basename even without a line", () => {
++    expect(
++      buildLocalFileAnchorHref(
++        { path: "/workspace/README.md", lineNumber: null },
++        "/workspace/README.md",
++      ),
++    ).toBe("file:///workspace/README.md");
++  });
++
++  it("percent-encodes spaces in path segments", () => {
++    expect(
++      buildLocalFileAnchorHref(
++        { path: "/work space/app.ts", lineNumber: 3 },
++        "/work space/app.ts:3",
++      ),
++    ).toBe("file:///work%20space/app.ts#L3");
++  });
++});
+diff --git a/apps/app/src/components/ui/markdown-preview.test.tsx b/apps/app/src/components/ui/markdown-preview.test.tsx
+index 969c74688..e711a3aae 100644
+--- a/apps/app/src/components/ui/markdown-preview.test.tsx
++++ b/apps/app/src/components/ui/markdown-preview.test.tsx
+@@ -27,45 +27,25 @@ afterEach(() => {
+ });
+ 
+ describe("MarkdownPreview", () => {
+-  it("lets callers intercept local file links without changing other links", () => {
++  it("routes local file link clicks through the handler and prevents default navigation", () => {
+     const onOpenLocalFileLink = vi.fn(() => true);
+     render(
+       <MarkdownPreview
+-        content={[
+-          "[Open absolute](/workspace/src/app.ts:12)",
+-          "[Open file URL](file:///workspace/src/file-url.ts#L4)",
+-          "[Leave relative](apps/app/src/main.tsx#L4)",
+-          "[Leave bare](README.md)",
+-          "[Docs](https://example.test)",
+-        ].join(" ")}
++        content="[Open absolute](/workspace/src/app.ts:12)"
+         onOpenLocalFileLink={onOpenLocalFileLink}
+       />,
+     );
+ 
+     fireEvent.click(screen.getByRole("link", { name: "Open absolute" }));
+-    fireEvent.click(screen.getByRole("link", { name: "Open file URL" }));
+ 
+-    expect(
+-      screen.getByRole("link", { name: "Open absolute" }).getAttribute("href"),
+-    ).toBe("file:///workspace/src/app.ts#L12");
+-    expect(
+-      screen.getByRole("link", { name: "Leave relative" }).getAttribute("href"),
+-    ).toBe("apps/app/src/main.tsx#L4");
+-    expect(
+-      screen.getByRole("link", { name: "Leave bare" }).getAttribute("href"),
+-    ).toBe("README.md");
+-    expect(onOpenLocalFileLink).toHaveBeenCalledTimes(2);
++    expect(onOpenLocalFileLink).toHaveBeenCalledTimes(1);
+     expect(onOpenLocalFileLink).toHaveBeenCalledWith({
+       lineNumber: 12,
+       path: "/workspace/src/app.ts",
+     });
+-    expect(onOpenLocalFileLink).toHaveBeenCalledWith({
+-      lineNumber: 4,
+-      path: "/workspace/src/file-url.ts",
+-    });
+   });
+ 
+-  it("does not rewrite local file links without a local file handler", () => {
++  it("leaves anchors untouched when no local file handler is supplied", () => {
+     render(
+       <MarkdownPreview content="[Open absolute](/workspace/src/app.ts:12)" />,
+     );
+@@ -75,30 +55,6 @@ describe("MarkdownPreview", () => {
+     ).toBe("/workspace/src/app.ts:12");
+   });
+ 
+-  it("renders thread file links as file URLs while routing clicks through the local file handler", () => {
+-    const onOpenLocalFileLink = vi.fn(() => true);
+-    render(
+-      <MarkdownPreview
+-        content={
+-          "[ThreadTimelinePane.tsx](/Users/michael/.bb-dev/worktrees/env_7m3cieyz6q/bb/apps/app/src/views/thread-detail/ThreadTimelinePane.tsx:145)"
+-        }
+-        onOpenLocalFileLink={onOpenLocalFileLink}
+-      />,
+-    );
+-
+-    const link = screen.getByRole("link", { name: "ThreadTimelinePane.tsx" });
+-    expect(link.getAttribute("href")).toBe(
+-      "file:///Users/michael/.bb-dev/worktrees/env_7m3cieyz6q/bb/apps/app/src/views/thread-detail/ThreadTimelinePane.tsx#L145",
+-    );
+-
+-    fireEvent.click(link);
+-
+-    expect(onOpenLocalFileLink).toHaveBeenCalledWith({
+-      lineNumber: 145,
+-      path: "/Users/michael/.bb-dev/worktrees/env_7m3cieyz6q/bb/apps/app/src/views/thread-detail/ThreadTimelinePane.tsx",
+-    });
+-  });
+-
+   it("renders inline code and block code with copy affordance", () => {
+     const writeText = installClipboardWriteTextMock();
+     render(
+diff --git a/apps/app/src/views/thread-detail/ThreadDetailView.test.tsx b/apps/app/src/views/thread-detail/ThreadDetailView.test.tsx
+index c44079bb2..b83ce529c 100644
+--- a/apps/app/src/views/thread-detail/ThreadDetailView.test.tsx
++++ b/apps/app/src/views/thread-detail/ThreadDetailView.test.tsx
+@@ -25,7 +25,7 @@ import type {
+ } from "@bb/domain";
+ import type { ThreadTimelineResponse } from "@bb/server-contract";
+ import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
+-import { SidebarProvider } from "@/components/ui";
++import { SidebarProvider } from "@/components/ui/sidebar.js";
+ import { Provider as JotaiProvider, createStore } from "jotai";
+ import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
+ import { resetFakeReconnectingWebSockets } from "@/test/fake-reconnecting-websocket";

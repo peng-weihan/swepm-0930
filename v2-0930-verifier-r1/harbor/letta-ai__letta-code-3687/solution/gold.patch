@@ -1,0 +1,1919 @@
+diff --git a/scripts/source-file-size-baseline.json b/scripts/source-file-size-baseline.json
+--- a/scripts/source-file-size-baseline.json
++++ b/scripts/source-file-size-baseline.json
+@@ -38,14 +38,14 @@
+   "src/settings-manager.test.ts": 1669,
+   "src/settings-manager.ts": 2112,
+   "src/tools/impl/enter-worktree.ts": 1260,
+-  "src/tools/manager.ts": 3261,
+-  "src/tools/tool-execution-context.test.ts": 1422,
++  "src/tools/manager.ts": 3080,
++  "src/tools/tool-execution-context.test.ts": 1138,
+   "src/types/protocol_v2.ts": 2958,
+   "src/websocket/listen-client-concurrency.test.ts": 2686,
+   "src/websocket/listen-client-protocol.test.ts": 5827,
+   "src/websocket/listener/commands/memory.ts": 1114,
+   "src/websocket/listener/file-commands.ts": 1053,
+-  "src/websocket/listener/lifecycle.ts": 1052,
+-  "src/websocket/listener/protocol-inbound.ts": 2315,
++  "src/websocket/listener/lifecycle.ts": 1051,
++  "src/websocket/listener/protocol-inbound.ts": 2302,
+   "src/websocket/listener/protocol-outbound.ts": 1085
+ }
+diff --git a/src/agent/approval-execution.ts b/src/agent/approval-execution.ts
+--- a/src/agent/approval-execution.ts
++++ b/src/agent/approval-execution.ts
+@@ -7,7 +7,6 @@ import type {
+   ToolReturn,
+ } from "@letta-ai/letta-client/resources/agents/messages";
+ import type { ToolReturnMessage } from "@letta-ai/letta-client/resources/tools";
+-import type { ChannelTurnSource } from "@/channels/types";
+ import type { ApprovalRequest } from "@/cli/helpers/stream";
+ import { INTERRUPTED_BY_USER } from "@/constants";
+ import { getCurrentWorkingDirectory } from "@/runtime-context";
+@@ -205,7 +204,6 @@ async function executeSingleDecision(
+     ) => void;
+     toolContextId?: string;
+     parentScope?: { agentId: string; conversationId: string };
+-    channelTurnSources?: ChannelTurnSource[];
+     onFileWrite?: (filePath: string, content: string) => void;
+   },
+ ): Promise<ApprovalResult> {
+@@ -266,7 +264,6 @@ async function executeSingleDecision(
+           toolCallId: decision.approval.toolCallId,
+           toolContextId: options?.toolContextId,
+           parentScope: options?.parentScope,
+-          channelTurnSources: options?.channelTurnSources,
+           onOutput: options?.onStreamingOutput
+             ? (chunk, stream) =>
+                 options.onStreamingOutput?.(
+@@ -385,7 +382,6 @@ export async function executeApprovalBatch(
+     toolContextId?: string;
+     workingDirectory?: string;
+     parentScope?: { agentId: string; conversationId: string };
+-    channelTurnSources?: ChannelTurnSource[];
+     onFileWrite?: (filePath: string, content: string) => void;
+   },
+ ): Promise<ApprovalResult[]> {
+diff --git a/src/agent/subagents/manager.ts b/src/agent/subagents/manager.ts
+--- a/src/agent/subagents/manager.ts
++++ b/src/agent/subagents/manager.ts
+@@ -28,10 +28,7 @@ import {
+ import { cliPermissions } from "@/permissions/cli-permissions-instance";
+ import { resolveAllowedMemoryRoots } from "@/permissions/memory-paths";
+ import { sessionPermissions } from "@/permissions/session";
+-import {
+-  getCurrentWorkingDirectory,
+-  getRuntimeContext,
+-} from "@/runtime-context";
++import { getCurrentWorkingDirectory } from "@/runtime-context";
+ import { settingsManager } from "@/settings-manager";
+ import { debugLog, debugWarn } from "@/utils/debug";
+ import { getErrorMessage } from "@/utils/error";
+@@ -48,7 +45,6 @@ import {
+   REFLECTION_STARTUP_CONTEXT_TOKEN_LIMIT,
+ } from "./context-budget";
+ import {
+-  buildInheritedChannelContextPayload,
+   composeSubagentChildEnv,
+   resolveSubagentInheritedPrimaryRoot,
+   resolveSubagentLauncher,
+@@ -380,9 +376,6 @@ async function executeSubagent(
+     const backendMode: BackendMode = activeBackend.capabilities.localMemfs
+       ? "local"
+       : "api";
+-    const runtimeContext = getRuntimeContext();
+-    const inheritedChannelContext =
+-      buildInheritedChannelContextPayload(runtimeContext);
+     const boundedUserPrompt = buildSubagentPrompt(type, config, userPrompt);
+ 
+     let parentAgentId = parentAgentIdOverride;
+@@ -406,10 +399,6 @@ async function executeSubagent(
+         backendMode,
+         promptTransport: "stdin",
+         parentAgentId,
+-        extraTools:
+-          config.fork && inheritedChannelContext
+-            ? ["MessageChannel"]
+-            : undefined,
+         systemPromptOverride,
+       },
+     );
+@@ -462,7 +451,6 @@ async function executeSubagent(
+       inheritedApiKey,
+       inheritedBaseUrl,
+       transcriptPath,
+-      inheritedChannelContext,
+     });
+ 
+     // Optionally confine subagents with the memory-subagent profile to an OS filesystem sandbox.
+diff --git a/src/agent/subagents/subagent-launcher.ts b/src/agent/subagents/subagent-launcher.ts
+--- a/src/agent/subagents/subagent-launcher.ts
++++ b/src/agent/subagents/subagent-launcher.ts
+@@ -1,6 +1,6 @@
+ // How a subagent child process is launched: the command/args to spawn, the
+ // working directory it runs in, and the environment it inherits (including the
+-// memory-subagent MEMORY_DIR wiring and channel-context propagation).
++// memory-subagent MEMORY_DIR wiring).
+ //
+ // Extracted from `manager.ts`. Pure resolution helpers — they depend only on
+ // lower-level backend/runtime/shell helpers and shared subagent types, never
+@@ -9,12 +9,7 @@
+ import { type BackendMode, getLocalBackendStorageDir } from "@/backend";
+ import { getLocalBackendMemoryFilesystemRoot } from "@/backend/local/paths";
+ import { LETTA_DISABLE_MODS_ENV } from "@/mods/disable";
+-import {
+-  getCurrentWorkingDirectory,
+-  type InheritedChannelContextPayload,
+-  LETTA_INHERITED_CHANNEL_CONTEXT_ENV,
+-  type RuntimeContextSnapshot,
+-} from "@/runtime-context";
++import { getCurrentWorkingDirectory } from "@/runtime-context";
+ import {
+   resolveEntryScriptPath,
+   resolveLettaInvocation,
+@@ -153,26 +148,6 @@ export interface ComposeSubagentChildEnvOptions {
+    * can reference `$TRANSCRIPT_PATH` (resolved via Bash) instead of
+    * interpolating the absolute path. Unset → no TRANSCRIPT_PATH in child. */
+   transcriptPath?: string | null;
+-  /** Serializable channel scope for child processes. Execution-context IDs are
+-   * process-local, so channel scope must be copied explicitly across spawn. */
+-  inheritedChannelContext?: InheritedChannelContextPayload | null;
+-}
+-
+-export function buildInheritedChannelContextPayload(
+-  runtimeContext: RuntimeContextSnapshot | undefined,
+-): InheritedChannelContextPayload | null {
+-  const channelToolScope = runtimeContext?.channelToolScope;
+-  const channelTurnSources = runtimeContext?.channelTurnSources ?? [];
+-  if (!channelToolScope?.channels.length && channelTurnSources.length === 0) {
+-    return null;
+-  }
+-
+-  return {
+-    ...(channelToolScope?.channels.length ? { channelToolScope } : {}),
+-    ...(channelTurnSources.length
+-      ? { channelTurnSources: [...channelTurnSources] }
+-      : {}),
+-  };
+ }
+ 
+ /**
+@@ -207,7 +182,6 @@ export function composeSubagentChildEnv(
+     inheritedApiKey,
+     inheritedBaseUrl,
+     transcriptPath,
+-    inheritedChannelContext,
+   } = options;
+ 
+   const childEnv: NodeJS.ProcessEnv = {
+@@ -218,11 +192,6 @@ export function composeSubagentChildEnv(
+     ...(subagentType === "reflection" && { [LETTA_DISABLE_MODS_ENV]: "1" }),
+     ...(parentAgentId && { LETTA_PARENT_AGENT_ID: parentAgentId }),
+     ...(transcriptPath && { TRANSCRIPT_PATH: transcriptPath }),
+-    ...(inheritedChannelContext && {
+-      [LETTA_INHERITED_CHANNEL_CONTEXT_ENV]: JSON.stringify(
+-        inheritedChannelContext,
+-      ),
+-    }),
+   };
+ 
+   if (backendMode === "local") {
+diff --git a/src/channels/README.md b/src/channels/README.md
+--- a/src/channels/README.md
++++ b/src/channels/README.md
+@@ -126,8 +126,8 @@ routing flow:
+ 2. Letta Code enforces `dmPolicy` / `allowedUsers`.
+ 3. Letta Code resolves a route from `routing.yaml` or creates a pairing code.
+ 4. The routed message is delivered to the bound agent/conversation.
+-5. `MessageChannel` becomes available when the conversation has an active route
+-   for at least one running channel adapter.
++5. ChannelGateway registers `MessageChannel` for the conversation when it has an
++   active route on at least one running channel adapter.
+ 
+ Plugins that need Slack/Discord-style auto-routing or rich Desktop management
+ remain first-party/bundled work for now. Custom plugins can still expose custom
+diff --git a/src/channels/gateway-core.ts b/src/channels/gateway-core.ts
+--- a/src/channels/gateway-core.ts
++++ b/src/channels/gateway-core.ts
+@@ -25,7 +25,6 @@ import type {
+   ChannelTurnSource,
+ } from "./types";
+ 
+-export const CHANNEL_GATEWAY_TOOL_SCOPE_ID = "channel-gateway";
+ const MAX_ACCEPTED_CLIENT_MESSAGE_IDS = 2048;
+ 
+ export interface ChannelGatewayClient {
+@@ -58,7 +57,7 @@ export interface ChannelGatewayHooks {
+   buildExternalTool(
+     runtime: RuntimeScope,
+     sources: ChannelTurnSource[],
+-  ): Promise<ExternalToolDefinitionPayload>;
++  ): Promise<ExternalToolDefinitionPayload | null>;
+   executeExternalTool(
+     request: ExternalToolCallRequestMessage,
+     sources: ChannelTurnSource[],
+@@ -106,6 +105,8 @@ type GatewayRuntimeState = {
+   active: ActiveGatewayTurn | null;
+   registrationSignature: string | null;
+   registration: Promise<void> | null;
++  registrationQueue: Promise<void>;
++  routedSources: ChannelTurnSource[];
+   replayedControlRequestIds: Set<string>;
+   submissionQueue: Promise<void>;
+   hookQueue: Promise<void> | null;
+@@ -179,10 +180,10 @@ export class ChannelGateway {
+     this.disposers.push(
+       client.onMessage((message) => this.handleMessage(message)),
+       client.onExternalToolCall((request) => {
+-        const sources = request.runtime
+-          ? (this.states.get(runtimeKey(request.runtime))?.active?.sources ??
+-            [])
+-          : [];
++        const state = request.runtime
++          ? this.states.get(runtimeKey(request.runtime))
++          : undefined;
++        const sources = state?.active?.sources ?? state?.routedSources ?? [];
+         return hooks.executeExternalTool(request, sources);
+       }),
+     );
+@@ -219,6 +220,10 @@ export class ChannelGateway {
+       sources: uniqueSources(delivery.sources),
+       disposition: "submitting",
+     });
++    state.routedSources = uniqueSources([
++      ...state.routedSources,
++      ...delivery.sources,
++    ]);
+ 
+     try {
+       await this.ensureRuntimeRegistration(state, delivery);
+@@ -233,7 +238,6 @@ export class ChannelGateway {
+               client_message_id: delivery.clientMessageId,
+             },
+           ],
+-          external_tool_scope_ids: [CHANNEL_GATEWAY_TOOL_SCOPE_ID],
+           image_failure_mode: "drop",
+         },
+       });
+@@ -308,6 +312,7 @@ export class ChannelGateway {
+     defaultPermissionMode?: ChannelDefaultPermissionMode,
+   ): Promise<void> {
+     const state = this.getState(runtime);
++    state.routedSources = uniqueSources(sources);
+     await this.ensureRuntimeRegistration(state, {
+       runtime,
+       content: "",
+@@ -328,6 +333,10 @@ export class ChannelGateway {
+     return result.accepted;
+   }
+ 
++  getKnownRuntimes(): RuntimeScope[] {
++    return [...this.states.values()].map((state) => state.runtime);
++  }
++
+   getModelStatus(runtime: RuntimeScope): ChannelGatewayModelStatus | null {
+     return this.states.get(runtimeKey(runtime))?.modelStatus ?? null;
+   }
+@@ -351,6 +360,8 @@ export class ChannelGateway {
+         active: null,
+         registrationSignature: null,
+         registration: null,
++        registrationQueue: Promise.resolve(),
++        routedSources: [],
+         replayedControlRequestIds: new Set(),
+         submissionQueue: Promise.resolve(),
+         hookQueue: null,
+@@ -387,7 +398,18 @@ export class ChannelGateway {
+     return pending;
+   }
+ 
+-  private async ensureRuntimeRegistration(
++  private ensureRuntimeRegistration(
++    state: GatewayRuntimeState,
++    delivery: ChannelGatewayDelivery,
++  ): Promise<void> {
++    const registration = state.registrationQueue.then(() =>
++      this.performRuntimeRegistration(state, delivery),
++    );
++    state.registrationQueue = registration.catch(() => undefined);
++    return registration;
++  }
++
++  private async performRuntimeRegistration(
+     state: GatewayRuntimeState,
+     delivery: ChannelGatewayDelivery,
+   ): Promise<void> {
+@@ -413,13 +435,9 @@ export class ChannelGateway {
+         recover_approvals: true,
+         force_device_status: false,
+         wait_for_replay: true,
++        preserve_skill_sources: true,
+         client_info: { name: "channel-gateway", title: "Channel Gateway" },
+-        external_tools: [
+-          {
+-            scope_id: CHANNEL_GATEWAY_TOOL_SCOPE_ID,
+-            tools: [tool],
+-          },
+-        ],
++        external_tools: tool ? [{ tools: [tool] }] : [],
+       })
+       .then((response) => {
+         if (!response.success) {
+diff --git a/src/channels/gateway-local.ts b/src/channels/gateway-local.ts
+--- a/src/channels/gateway-local.ts
++++ b/src/channels/gateway-local.ts
+@@ -4,7 +4,6 @@ import { getModelInfo } from "@/agent/model";
+ import { createAppServerClient } from "@/app-server-client";
+ import { settingsManager } from "@/settings-manager";
+ import { message_channel } from "@/tools/impl/message-channel";
+-import { TOOL_DEFINITIONS } from "@/tools/tool-definitions";
+ import type {
+   ExecuteCommandResponseMessage,
+   ListModelsResponseMessage,
+@@ -27,14 +26,16 @@ import {
+   buildChannelModelUpdateFailedMessage,
+ } from "./commands";
+ import { ChannelGateway, type ChannelGatewayDelivery } from "./gateway-core";
+-import { buildDynamicMessageChannelToolDefinition } from "./message-tool";
++import { buildGatewayMessageChannelTool } from "./message-channel-gateway-tool";
+ import {
+   type ChannelsCommand,
+   handleChannelsProtocolCommand,
+   isDetachedChannelsCommand,
+ } from "./protocol-command-handler";
+ import { getChannelRegistry, initializeChannels } from "./registry";
+ import type { ChannelRestoreAgentScope } from "./restore-scope";
++import { createRoutedRuntimeRegistrationRefresher } from "./routed-runtime-registration";
++import { subscribeChannelRoutesChanged } from "./routing";
+ import { handleChannelsSlashCommand } from "./slash-command";
+ import type {
+   ChannelModelPickerData,
+@@ -214,36 +215,13 @@ export async function startLocalChannelGateway(
+           }
+         : null;
+     },
+-    buildExternalTool: async (runtime, deliverySources) => {
+-      const routeSources = registry.resolveTurnSourcesForScope(
+-        runtime.agent_id,
+-        runtime.conversation_id,
+-      );
+-      const sources = [...routeSources, ...deliverySources];
+-      const seen = new Set<string>();
+-      const channels = sources
+-        .map((source) => ({
+-          channelId: source.channel,
+-          accountId: source.accountId ?? null,
+-        }))
+-        .filter(({ channelId, accountId }) => {
+-          const key = `${channelId}:${accountId ?? ""}`;
+-          if (seen.has(key)) return false;
+-          seen.add(key);
+-          return true;
+-        });
+-      const base = TOOL_DEFINITIONS.MessageChannel;
+-      const resolved = await buildDynamicMessageChannelToolDefinition(
+-        base.description,
+-        base.schema,
+-        { channels },
++    buildExternalTool: async (runtime) => {
++      return buildGatewayMessageChannelTool(
++        registry.resolveTurnSourcesForScope(
++          runtime.agent_id,
++          runtime.conversation_id,
++        ),
+       );
+-      return {
+-        name: "MessageChannel",
+-        label: "Message Channel",
+-        description: resolved.description,
+-        parameters: resolved.schema,
+-      };
+     },
+     executeExternalTool: async (request, sources) => {
+       if (request.tool_name !== "MessageChannel" || !request.runtime) {
+@@ -268,6 +246,13 @@ export async function startLocalChannelGateway(
+     onControlRequest: (event) => registry.registerPendingControlRequest(event),
+   });
+ 
++  const routedRuntimeRegistrationRefresher =
++    createRoutedRuntimeRegistrationRefresher(
++      registry,
++      gateway,
++      options.channelNames,
++      options.logger,
++    );
+   registry.setMessageHandler((delivery) => {
+     const sources = delivery.turnSources ?? [];
+     const gatewayDelivery: ChannelGatewayDelivery = {
+@@ -349,6 +334,7 @@ export async function startLocalChannelGateway(
+       return;
+     }
+     if (event.type === "channel_account_state_updated") {
++      routedRuntimeRegistrationRefresher.requestRefresh();
+       options.onServiceEvent?.({
+         kind: "protocol",
+         message: {
+@@ -425,6 +411,10 @@ export async function startLocalChannelGateway(
+       }
+     }
+   }
++  await routedRuntimeRegistrationRefresher.refresh();
++  const unsubscribeRouteChanges = subscribeChannelRoutesChanged(() => {
++    routedRuntimeRegistrationRefresher.requestRefresh();
++  });
+ 
+   registry.setCancelHandler(async ({ runtime }) => {
+     const response = await client.abort({ runtime, run_id: null });
+@@ -571,8 +561,27 @@ export async function startLocalChannelGateway(
+ 
+   registry.setReady();
+   return {
+-    executeCommand: executeGatewayServiceCommand,
++    executeCommand: async (command) => {
++      let result: Awaited<ReturnType<typeof executeGatewayServiceCommand>>;
++      try {
++        result = await executeGatewayServiceCommand(command);
++      } catch (error) {
++        routedRuntimeRegistrationRefresher.requestRefresh();
++        throw error;
++      }
++      try {
++        await routedRuntimeRegistrationRefresher.refresh();
++      } catch (error) {
++        options.logger?.(
++          `[ChannelGateway] Failed to refresh routed runtimes after service command; retrying: ${error instanceof Error ? error.message : String(error)}`,
++        );
++        routedRuntimeRegistrationRefresher.requestRefresh();
++      }
++      return result;
++    },
+     close: async () => {
++      unsubscribeRouteChanges();
++      routedRuntimeRegistrationRefresher.close();
+       try {
+         await registry.stopAll();
+       } finally {
+diff --git a/src/channels/message-channel-gateway-tool.ts b/src/channels/message-channel-gateway-tool.ts
+new file mode 100644
+--- /dev/null
++++ b/src/channels/message-channel-gateway-tool.ts
+@@ -0,0 +1,28 @@
++import type { ExternalToolDefinitionPayload } from "@/types/app-server-protocol";
++import { buildMessageChannelExternalToolDefinition } from "./message-channel-tool-definition";
++import { resolveLocalMessageChannelToolChannels } from "./message-tool";
++import type { ChannelTurnSource } from "./types";
++
++export async function buildGatewayMessageChannelTool(
++  sources: ChannelTurnSource[],
++): Promise<ExternalToolDefinitionPayload | null> {
++  if (sources.length === 0) return null;
++
++  const seen = new Set<string>();
++  const channels = sources
++    .map((source) => ({
++      channelId: source.channel,
++      accountId: source.accountId ?? null,
++    }))
++    .filter(({ channelId, accountId }) => {
++      const key = `${channelId}:${accountId ?? ""}`;
++      if (seen.has(key)) return false;
++      seen.add(key);
++      return true;
++    });
++  return buildMessageChannelExternalToolDefinition({
++    channels: await resolveLocalMessageChannelToolChannels({ channels }),
++    scoped: true,
++    allowProactiveTargets: true,
++  });
++}
+diff --git a/src/channels/message-tool.ts b/src/channels/message-tool.ts
+--- a/src/channels/message-tool.ts
++++ b/src/channels/message-tool.ts
+@@ -20,8 +20,6 @@ export type MessageChannelToolDiscoveryScope = {
+ };
+ 
+ const loggedDiscoveryErrors = new Set<string>();
+-let cachedDynamicMessageChannelTool: ResolvedMessageChannelToolDefinition | null =
+-  null;
+ 
+ function logDiscoveryError(
+   channelId: SupportedChannelId,
+@@ -36,7 +34,7 @@ function logDiscoveryError(
+   );
+ }
+ 
+-async function resolveLocalToolChannels(
++export async function resolveLocalMessageChannelToolChannels(
+   scope?: MessageChannelToolDiscoveryScope | null,
+ ): Promise<MessageChannelToolChannel[]> {
+   const scopedChannels = scope?.channels ?? [];
+@@ -72,7 +70,7 @@ export async function resolveMessageChannelToolDiscovery(
+   scope?: MessageChannelToolDiscoveryScope | null,
+ ): Promise<MessageChannelToolDiscoveryResult> {
+   return resolveMessageChannelToolChannels(
+-    await resolveLocalToolChannels(scope),
++    await resolveLocalMessageChannelToolChannels(scope),
+   );
+ }
+ 
+@@ -91,30 +89,14 @@ export async function buildDynamicMessageChannelToolDefinition(
+   baseSchema: Record<string, unknown>,
+   scope?: MessageChannelToolDiscoveryScope | null,
+ ): Promise<ResolvedMessageChannelToolDefinition> {
+-  const resolved = buildMessageChannelToolFromDiscovery({
++  return buildMessageChannelToolFromDiscovery({
+     baseDescription,
+     baseSchema,
+     discovery: await resolveMessageChannelToolDiscovery(scope),
+     scoped: Boolean(scope?.channels.length),
+   });
+-  if (!scope || scope.channels.length === 0) {
+-    cachedDynamicMessageChannelTool = {
+-      description: resolved.description,
+-      schema: structuredClone(resolved.schema),
+-    };
+-  }
+-  return resolved;
+-}
+-
+-export function getCachedDynamicMessageChannelToolDefinition(): ResolvedMessageChannelToolDefinition | null {
+-  if (!cachedDynamicMessageChannelTool) return null;
+-  return {
+-    description: cachedDynamicMessageChannelTool.description,
+-    schema: structuredClone(cachedDynamicMessageChannelTool.schema),
+-  };
+ }
+ 
+-export function clearDynamicMessageChannelToolCache(): void {
+-  cachedDynamicMessageChannelTool = null;
++export function clearMessageChannelDiscoveryErrors(): void {
+   loggedDiscoveryErrors.clear();
+ }
+diff --git a/src/channels/registry.ts b/src/channels/registry.ts
+--- a/src/channels/registry.ts
++++ b/src/channels/registry.ts
+@@ -261,17 +261,21 @@ export class ChannelRegistry {
+     agentId: string,
+     conversationId: string,
+   ): ChannelTurnSource[] {
++    return this.resolveRoutedTurnSources().filter(
++      (source) =>
++        source.agentId === agentId && source.conversationId === conversationId,
++    );
++  }
++
++  resolveRoutedTurnSources(): ChannelTurnSource[] {
+     const sources: ChannelTurnSource[] = [];
+     const seen = new Set<string>();
+     for (const adapter of this.adapters.values()) {
++      if (!adapter.isRunning()) continue;
+       const channel = adapter.channelId ?? adapter.id;
+       const accountId = adapter.accountId ?? LEGACY_CHANNEL_ACCOUNT_ID;
+       for (const route of getRoutesForChannel(channel, accountId)) {
+-        if (
+-          route.enabled === false ||
+-          route.agentId !== agentId ||
+-          route.conversationId !== conversationId
+-        ) {
++        if (route.enabled === false || route.outboundEnabled === false) {
+           continue;
+         }
+         const key = `${channel}:${accountId}:${route.chatId}:${route.threadId ?? ""}`;
+@@ -285,8 +289,8 @@ export class ChannelRegistry {
+           chatId: route.chatId,
+           chatType: route.chatType,
+           threadId: route.threadId ?? null,
+-          agentId,
+-          conversationId,
++          agentId: route.agentId,
++          conversationId: route.conversationId,
+         });
+       }
+     }
+diff --git a/src/channels/routed-runtime-registration.ts b/src/channels/routed-runtime-registration.ts
+new file mode 100644
+--- /dev/null
++++ b/src/channels/routed-runtime-registration.ts
+@@ -0,0 +1,126 @@
++import type { RuntimeScope } from "@/types/app-server-protocol";
++import { loadRoutes } from "./routing";
++import type { ChannelStartupLogger, ChannelTurnSource } from "./types";
++
++interface RoutedRuntimeSourceResolver {
++  resolveRoutedTurnSources(): ChannelTurnSource[];
++}
++
++interface RoutedRuntimeRegistrar {
++  getKnownRuntimes(): RuntimeScope[];
++  registerRuntime(
++    runtime: RuntimeScope,
++    sources?: ChannelTurnSource[],
++  ): Promise<void>;
++}
++
++async function refreshRoutedRuntimeRegistrations(
++  registry: RoutedRuntimeSourceResolver,
++  gateway: RoutedRuntimeRegistrar,
++  channelNames: string[],
++): Promise<void> {
++  const sourcesByRuntime = new Map<
++    string,
++    { runtime: RuntimeScope; sources: ChannelTurnSource[] }
++  >();
++  for (const channel of channelNames) {
++    loadRoutes(channel);
++  }
++  for (const source of registry.resolveRoutedTurnSources()) {
++    const runtime = {
++      agent_id: source.agentId,
++      conversation_id: source.conversationId,
++    };
++    const key = `${runtime.agent_id}:${runtime.conversation_id}`;
++    const existing = sourcesByRuntime.get(key);
++    if (existing) {
++      existing.sources.push(source);
++    } else {
++      sourcesByRuntime.set(key, { runtime, sources: [source] });
++    }
++  }
++  for (const runtime of gateway.getKnownRuntimes()) {
++    const key = `${runtime.agent_id}:${runtime.conversation_id}`;
++    if (!sourcesByRuntime.has(key)) {
++      sourcesByRuntime.set(key, { runtime, sources: [] });
++    }
++  }
++
++  for (const { runtime, sources } of sourcesByRuntime.values()) {
++    await gateway.registerRuntime(runtime, sources);
++  }
++}
++
++export function createRoutedRuntimeRegistrationRefresher(
++  registry: RoutedRuntimeSourceResolver,
++  gateway: RoutedRuntimeRegistrar,
++  channelNames: string[],
++  logger?: ChannelStartupLogger,
++  retryDelayMs = 1000,
++): {
++  refresh: () => Promise<void>;
++  requestRefresh: () => void;
++  close: () => void;
++} {
++  let pending = Promise.resolve();
++  let backgroundRefresh: Promise<void> | null = null;
++  let requestedVersion = 0;
++  let completedVersion = 0;
++  let closed = false;
++  let retryTimer: NodeJS.Timeout | null = null;
++  let resolveRetry: (() => void) | null = null;
++
++  const refresh = (): Promise<void> => {
++    const run = () =>
++      refreshRoutedRuntimeRegistrations(registry, gateway, channelNames);
++    pending = pending.then(run, run);
++    return pending;
++  };
++  const waitForRetry = (): Promise<void> =>
++    new Promise((resolve) => {
++      resolveRetry = resolve;
++      retryTimer = setTimeout(() => {
++        retryTimer = null;
++        resolveRetry = null;
++        resolve();
++      }, retryDelayMs);
++      retryTimer.unref?.();
++    });
++  const startBackgroundRefresh = (): void => {
++    if (closed || backgroundRefresh) return;
++    backgroundRefresh = (async () => {
++      while (!closed) {
++        const version = requestedVersion;
++        try {
++          await refresh();
++          completedVersion = version;
++          if (version === requestedVersion) return;
++        } catch (error) {
++          logger?.(
++            `[ChannelGateway] Failed to refresh routed runtimes; retrying: ${error instanceof Error ? error.message : String(error)}`,
++          );
++          await waitForRetry();
++        }
++      }
++    })().finally(() => {
++      backgroundRefresh = null;
++      if (!closed && completedVersion < requestedVersion) {
++        startBackgroundRefresh();
++      }
++    });
++  };
++  const requestRefresh = (): void => {
++    if (closed) return;
++    requestedVersion++;
++    startBackgroundRefresh();
++  };
++  const close = (): void => {
++    closed = true;
++    if (retryTimer) clearTimeout(retryTimer);
++    retryTimer = null;
++    resolveRetry?.();
++    resolveRetry = null;
++  };
++
++  return { refresh, requestRefresh, close };
++}
+diff --git a/src/channels/routing.ts b/src/channels/routing.ts
+--- a/src/channels/routing.ts
++++ b/src/channels/routing.ts
+@@ -14,6 +14,7 @@ import type { ChannelRoute, InboundChannelMessage } from "./types";
+ 
+ /** Key: "channel:chatId" */
+ const routesByKey = new Map<string, ChannelRoute>();
++const routeChangeListeners = new Set<(channelId: string) => void>();
+ 
+ let loadRoutesOverride: ((channelId: string) => ChannelRoute[] | null) | null =
+   null;
+@@ -22,6 +23,17 @@ function normalizeAccountId(accountId?: string): string {
+   return accountId ?? LEGACY_CHANNEL_ACCOUNT_ID;
+ }
+ 
++export function subscribeChannelRoutesChanged(
++  listener: (channelId: string) => void,
++): () => void {
++  routeChangeListeners.add(listener);
++  return () => routeChangeListeners.delete(listener);
++}
++
++function notifyChannelRoutesChanged(channelId: string): void {
++  for (const listener of routeChangeListeners) listener(channelId);
++}
++
+ function normalizeThreadId(threadId?: string | null): string {
+   const trimmed = threadId?.trim();
+   return trimmed && trimmed.length > 0 ? trimmed : "__root__";
+@@ -274,6 +286,7 @@ export function addRoute(channelId: string, route: ChannelRoute): void {
+     },
+   );
+   saveRoutes(channelId);
++  notifyChannelRoutesChanged(channelId);
+ }
+ 
+ /**
+@@ -289,6 +302,7 @@ export function removeRoute(
+   const existed = routesByKey.delete(key);
+   if (existed) {
+     saveRoutes(channelId);
++    notifyChannelRoutesChanged(channelId);
+   }
+   return existed;
+ }
+@@ -349,6 +363,7 @@ export function removeRoutesForScope(
+   }
+   if (removed > 0) {
+     saveRoutes(channelId);
++    notifyChannelRoutesChanged(channelId);
+   }
+   return removed;
+ }
+@@ -367,6 +382,7 @@ export function removeRoutesForAccount(
+   }
+   if (removed > 0) {
+     saveRoutes(channelId);
++    notifyChannelRoutesChanged(channelId);
+   }
+   return removed;
+ }
+diff --git a/src/channels/service-accounts.ts b/src/channels/service-accounts.ts
+--- a/src/channels/service-accounts.ts
++++ b/src/channels/service-accounts.ts
+@@ -14,11 +14,7 @@ import {
+   createAccountFromPatch,
+   mergeAccountPatch,
+ } from "./service-account-model";
+-import {
+-  assertSupportedChannelId,
+-  getErrorMessage,
+-  refreshLoadedMessageChannelTool,
+-} from "./service-shared";
++import { assertSupportedChannelId, getErrorMessage } from "./service-shared";
+ import {
+   isAccountConfigured,
+   resolveChannelAccountDisplayName,
+@@ -379,7 +375,6 @@ export async function startChannelAccountLive(
+       force: channelId === "slack" || channelId === "discord",
+     },
+   );
+-  await refreshLoadedMessageChannelTool();
+   return snapshot;
+ }
+ 
+@@ -404,7 +399,6 @@ export async function stopChannelAccountLive(
+     : existing;
+ 
+   await getChannelRegistry()?.stopChannelAccount(channelId, accountId);
+-  await refreshLoadedMessageChannelTool();
+   return toAccountSnapshot(next);
+ }
+ 
+@@ -426,6 +420,5 @@ export async function removeChannelAccountLive(
+   removeChannelTargetsForAccount(channelId, accountId);
+   removePairingStateForAccount(channelId, accountId);
+   const removed = removeChannelAccount(channelId, accountId);
+-  await refreshLoadedMessageChannelTool();
+   return removed;
+ }
+diff --git a/src/channels/service-runtime.ts b/src/channels/service-runtime.ts
+--- a/src/channels/service-runtime.ts
++++ b/src/channels/service-runtime.ts
+@@ -16,7 +16,6 @@ import {
+ import {
+   assertSupportedChannelId,
+   getSelectedChannelAccountWithSecrets,
+-  refreshLoadedMessageChannelTool,
+ } from "./service-shared";
+ import {
+   getChannelConfigSnapshotWithSecrets,
+@@ -159,7 +158,6 @@ export async function setChannelConfigLive(
+   if (!snapshot) {
+     throw new Error(`Failed to write ${channelId} channel config`);
+   }
+-  await refreshLoadedMessageChannelTool();
+   return snapshot;
+ }
+ 
+@@ -221,7 +219,6 @@ export async function startChannelLive(
+   if (!summary) {
+     throw new Error(`Channel "${channelId}" summary not found after start`);
+   }
+-  await refreshLoadedMessageChannelTool();
+   return summary;
+ }
+ 
+@@ -255,6 +252,5 @@ export async function stopChannelLive(
+   if (!summary) {
+     throw new Error(`Channel "${channelId}" summary not found after stop`);
+   }
+-  await refreshLoadedMessageChannelTool();
+   return summary;
+ }
+diff --git a/src/channels/service-shared.ts b/src/channels/service-shared.ts
+--- a/src/channels/service-shared.ts
++++ b/src/channels/service-shared.ts
+@@ -1,4 +1,3 @@
+-import { refreshDynamicChannelToolsInLoadedRegistry } from "@/tools/manager";
+ import {
+   getChannelAccount,
+   getChannelAccountWithSecrets,
+@@ -8,10 +7,6 @@ import {
+ import { isSupportedChannelId } from "./plugin-registry";
+ import type { ChannelAccount, SupportedChannelId } from "./types";
+ 
+-export async function refreshLoadedMessageChannelTool(): Promise<void> {
+-  await refreshDynamicChannelToolsInLoadedRegistry();
+-}
+-
+ export function assertSupportedChannelId(
+   channelId: string,
+ ): asserts channelId is SupportedChannelId {
+diff --git a/src/cli/subcommands/listen.tsx b/src/cli/subcommands/listen.tsx
+--- a/src/cli/subcommands/listen.tsx
++++ b/src/cli/subcommands/listen.tsx
+@@ -532,6 +532,7 @@ export async function runListenSubcommand(argv: string[]): Promise<number> {
+         channelAppServer = await startAppServer({
+           runtime,
+           connectionName,
++          startProcessServices: false,
+           onLog: (message) => sessionLog.log(`[ChannelGateway] ${message}`),
+         });
+         const { startChannelGatewaySupervisor } = await import(
+@@ -622,7 +623,8 @@ export async function runListenSubcommand(argv: string[]): Promise<number> {
+             console.log(`[${formatTimestamp()}] status: ${status}`);
+           }
+         },
+-        onConnected: () => {
++        onConnected: async () => {
++          await startChannelGateway();
+           sessionLog.log("Local channel listener ready.");
+           if (debugMode) {
+             console.log(`[${formatTimestamp()}] Local channel listener ready.`);
+@@ -636,8 +638,6 @@ export async function runListenSubcommand(argv: string[]): Promise<number> {
+         },
+       });
+ 
+-      await startChannelGateway();
+-
+       return createListenerProcessAnchorPromise();
+     }
+ 
+diff --git a/src/gateway-core.ts b/src/gateway-core.ts
+--- a/src/gateway-core.ts
++++ b/src/gateway-core.ts
+@@ -5,10 +5,7 @@ export type {
+   ChannelGatewayModelStatus,
+   ChannelGatewayRichDraft,
+ } from "./channels/gateway-core";
+-export {
+-  CHANNEL_GATEWAY_TOOL_SCOPE_ID,
+-  ChannelGateway,
+-} from "./channels/gateway-core";
++export { ChannelGateway } from "./channels/gateway-core";
+ export type {
+   ExecuteMessageChannelOptions,
+   MessageChannelExecutionResolver,
+diff --git a/src/runtime-context.ts b/src/runtime-context.ts
+--- a/src/runtime-context.ts
++++ b/src/runtime-context.ts
+@@ -1,8 +1,6 @@
+ import { AsyncLocalStorage } from "node:async_hooks";
+ import { homedir, tmpdir } from "node:os";
+ import type { SkillSource } from "./agent/skills";
+-import type { MessageChannelToolDiscoveryScope } from "./channels/message-tool";
+-import type { ChannelTurnSource } from "./channels/types";
+ import { isUsableDirectory } from "./helpers/usable-directory";
+ 
+ export type RuntimePermissionMode =
+@@ -30,18 +28,8 @@ export interface RuntimeContextSnapshot {
+   workingDirectoryRecoveredFrom?: string | null;
+   toolContextId?: string | null;
+   permissionMode?: RuntimePermissionMode;
+-  channelToolScope?: MessageChannelToolDiscoveryScope | null;
+-  channelTurnSources?: ChannelTurnSource[];
+ }
+ 
+-export interface InheritedChannelContextPayload {
+-  channelToolScope?: MessageChannelToolDiscoveryScope | null;
+-  channelTurnSources?: ChannelTurnSource[];
+-}
+-
+-export const LETTA_INHERITED_CHANNEL_CONTEXT_ENV =
+-  "LETTA_INHERITED_CHANNEL_CONTEXT";
+-
+ const runtimeContextStorage = new AsyncLocalStorage<RuntimeContextSnapshot>();
+ 
+ export function getRuntimeContext(): RuntimeContextSnapshot | undefined {
+@@ -60,9 +48,6 @@ export function runWithRuntimeContext<T>(
+       ...(snapshot.skillSources
+         ? { skillSources: [...snapshot.skillSources] }
+         : {}),
+-      ...(snapshot.channelTurnSources
+-        ? { channelTurnSources: [...snapshot.channelTurnSources] }
+-        : {}),
+     },
+     fn,
+   );
+@@ -86,9 +71,6 @@ export function updateRuntimeContext(
+     update.skillSources && {
+       skillSources: [...update.skillSources],
+     },
+-    update.channelTurnSources && {
+-      channelTurnSources: [...update.channelTurnSources],
+-    },
+   );
+ }
+ 
+diff --git a/src/tools/impl/message-channel.ts b/src/tools/impl/message-channel.ts
+--- a/src/tools/impl/message-channel.ts
++++ b/src/tools/impl/message-channel.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Local MessageChannel tool binding.
++ * ChannelGateway's local MessageChannel execution binding.
+  *
+  * The canonical contract lives in channels/message-channel-executor. This file
+  * only resolves local persisted routes, running adapters, and proactive Slack
+diff --git a/src/tools/manager.ts b/src/tools/manager.ts
+--- a/src/tools/manager.ts
++++ b/src/tools/manager.ts
+@@ -11,13 +11,6 @@ import {
+ import { getModelInfo } from "@/agent/model";
+ import { getAllSubagentConfigs } from "@/agent/subagents";
+ import { getBackend } from "@/backend";
+-import {
+-  buildDynamicMessageChannelToolDefinition,
+-  getCachedDynamicMessageChannelToolDefinition,
+-  type MessageChannelToolDiscoveryScope,
+-} from "@/channels/message-tool";
+-import { getActiveChannelIds } from "@/channels/registry";
+-import type { ChannelTurnSource } from "@/channels/types";
+ import { INTERRUPTED_BY_USER } from "@/constants";
+ import { experimentManager } from "@/experiments/manager";
+ import {
+@@ -87,54 +80,6 @@ import { TOOL_DEFINITIONS, type ToolName } from "./tool-definitions";
+ 
+ export const TOOL_NAMES = Object.keys(TOOL_DEFINITIONS) as ToolName[];
+ 
+-/**
+- * Append MessageChannel tool if any channels are active.
+- * Used by both resolveBaseToolNamesForModel() and getToolNamesForToolset().
+- */
+-function maybeAppendChannelTools(
+-  toolNames: ToolName[],
+-  channelToolScope?: MessageChannelToolDiscoveryScope | null,
+-): ToolName[] {
+-  const hasActiveChannelTools =
+-    channelToolScope !== undefined
+-      ? (channelToolScope?.channels.length ?? 0) > 0
+-      : getActiveChannelIds().length > 0;
+-  if (
+-    hasActiveChannelTools &&
+-    !toolNames.includes("MessageChannel" as ToolName)
+-  ) {
+-    return [...toolNames, "MessageChannel" as ToolName];
+-  }
+-  return toolNames;
+-}
+-
+-/**
+- * Inject dynamic channel-tool discovery into MessageChannel if channels are active.
+- * Used by both buildRegistryForModel() and buildSpecificToolRegistry().
+- */
+-async function maybeResolveDynamicChannelTool(
+-  name: string,
+-  description: string,
+-  schema: Record<string, unknown>,
+-  channelToolScope?: MessageChannelToolDiscoveryScope | null,
+-): Promise<{ description: string; input_schema: Record<string, unknown> }> {
+-  if (name !== "MessageChannel") {
+-    return {
+-      description,
+-      input_schema: schema,
+-    };
+-  }
+-  const resolved = await buildDynamicMessageChannelToolDefinition(
+-    description,
+-    schema,
+-    channelToolScope,
+-  );
+-  return {
+-    description: resolved.description,
+-    input_schema: resolved.schema,
+-  };
+-}
+-
+ async function resolveBackendSpecificToolDescription(
+   name: string,
+   description: string,
+@@ -187,46 +132,6 @@ function resolvedModelForm(
+   });
+ }
+ 
+-function withDynamicMessageChannelCache(registry: ToolRegistry): ToolRegistry {
+-  const nextRegistry = new Map(registry);
+-  const existing = nextRegistry.get("MessageChannel");
+-
+-  // Only update an existing entry — never inject MessageChannel into a registry
+-  // that deliberately excluded it (e.g. a conversation with no channel routes).
+-  if (!existing) {
+-    return nextRegistry;
+-  }
+-
+-  if (
+-    existing.schema.description !== TOOL_DEFINITIONS.MessageChannel.description
+-  ) {
+-    return nextRegistry;
+-  }
+-
+-  if (getActiveChannelIds().length === 0) {
+-    nextRegistry.delete("MessageChannel");
+-    return nextRegistry;
+-  }
+-
+-  const cachedMessageChannel = getCachedDynamicMessageChannelToolDefinition();
+-  if (!cachedMessageChannel) {
+-    return nextRegistry;
+-  }
+-
+-  nextRegistry.set("MessageChannel", {
+-    schema: {
+-      name: "MessageChannel",
+-      description: cachedMessageChannel.description,
+-      input_schema: cachedMessageChannel.schema as JsonSchema,
+-    },
+-    modelForm: functionToolForm({
+-      description: cachedMessageChannel.description,
+-      parameters: cachedMessageChannel.schema as JsonSchema,
+-    }),
+-    fn: existing?.fn ?? TOOL_DEFINITIONS.MessageChannel.impl,
+-  });
+-  return nextRegistry;
+-}
+ const STREAMING_SHELL_TOOLS = new Set([
+   "Bash",
+   "BashOutput",
+@@ -396,15 +301,19 @@ function filterExternalToolsByRuntimeContext(
+ ): Map<string, ExternalToolDefinition> {
+   return new Map(
+     Array.from(externalTools.entries()).filter(([, tool]) => {
++      const matchesRuntime =
++        !tool.runtime ||
++        (tool.runtime.agentId === runtimeContext.agentId &&
++          tool.runtime.conversationId === runtimeContext.conversationId);
++      // An unscoped runtime tool belongs to its agent/conversation. The
++      // registration connection remains its execution return path, but turns
++      // for that runtime may originate from another connection or the process
++      // queue (for example, cron). Scoped tools remain connection-owned.
+       const matchesConnection =
+         tool.connectionId === undefined ||
+-        tool.connectionId === runtimeContext.connectionId;
+-      return (
+-        matchesConnection &&
+-        (!tool.runtime ||
+-          (tool.runtime.agentId === runtimeContext.agentId &&
+-            tool.runtime.conversationId === runtimeContext.conversationId))
+-      );
++        tool.connectionId === runtimeContext.connectionId ||
++        (tool.runtime !== undefined && tool.scopeId === undefined);
++      return matchesRuntime && matchesConnection;
+     }),
+   );
+ }
+@@ -555,7 +464,6 @@ const TOOL_PERMISSIONS: Record<
+   LS: { requiresApproval: false },
+   memory: { requiresApproval: false },
+   memory_apply_patch: { requiresApproval: false },
+-  MessageChannel: { requiresApproval: false },
+   MultiEdit: { requiresApproval: true },
+   Read: { requiresApproval: false },
+   read_artifact_file: { requiresApproval: false },
+@@ -729,8 +637,6 @@ function buildExecutionRuntimeContextSnapshot(options?: {
+   workingDirectory?: string;
+   permissionModeState?: PermissionModeState;
+   runtimeContext?: Partial<RuntimeContextSnapshot>;
+-  channelToolScope?: MessageChannelToolDiscoveryScope | null;
+-  channelTurnSources?: ChannelTurnSource[];
+ }): RuntimeContextSnapshot {
+   const mergedScope: RuntimeContextSnapshot = {
+     ...(getRuntimeContext() ?? {}),
+@@ -1076,7 +982,7 @@ export async function executeExternalTool(
+  */
+ export function getClientToolsFromRegistry(): ClientTool[] {
+   return buildClientToolsFromSnapshot(
+-    withDynamicMessageChannelCache(toolRegistry),
++    toolRegistry,
+     toModelFacingExternalToolMap(
+       filterExternalToolsByRuntimeContext(getExternalToolsRegistry(), {}),
+     ),
+@@ -1115,21 +1021,13 @@ function capturePreparedToolExecutionContext(
+     modContext?: ModContext;
+     modEvents?: ModEvents;
+     runtimeContext?: Partial<RuntimeContextSnapshot>;
+-    channelToolScope?: MessageChannelToolDiscoveryScope | null;
+-    channelTurnSources?: ChannelTurnSource[];
+   },
+ ): PreparedToolExecutionContext {
+   const runtimeContext = buildExecutionRuntimeContextSnapshot(options);
+   const clientToolAllowlist =
+     options?.clientToolAllowlist ?? toolFilter.getEnabledTools() ?? undefined;
+-  if (options?.channelToolScope !== undefined) {
+-    runtimeContext.channelToolScope = options.channelToolScope;
+-  }
+-  if (options?.channelTurnSources?.length) {
+-    runtimeContext.channelTurnSources = [...options.channelTurnSources];
+-  }
+   const toolRegistrySnapshot = filterToolRegistryByClientAllowlist(
+-    withDynamicMessageChannelCache(snapshot.toolRegistry),
++    snapshot.toolRegistry,
+     clientToolAllowlist,
+   );
+   const executionSnapshot: ToolExecutionContextSnapshot = {
+@@ -1210,17 +1108,13 @@ export async function prepareCurrentToolExecutionContext(options?: {
+   workingDirectory?: string;
+   permissionModeState?: PermissionModeState;
+   runtimeContext?: Partial<RuntimeContextSnapshot>;
+-  channelToolScope?: MessageChannelToolDiscoveryScope | null;
+-  channelTurnSources?: ChannelTurnSource[];
+   modContext?: ModContext;
+   modEvents?: ModEvents;
+   modPermissions?: Map<string, ModPermissionDefinition>;
+   modTools?: Map<string, ModToolDefinition>;
+ }): Promise<PreparedToolExecutionContext> {
+   await waitForToolsetReady();
+-  const currentToolNames = maybeAppendChannelTools(
+-    Array.from(toolRegistry.keys()) as ToolName[],
+-  );
++  const currentToolNames = Array.from(toolRegistry.keys()) as ToolName[];
+   const toolRegistrySnapshot =
+     await buildSpecificToolRegistry(currentToolNames);
+   return capturePreparedToolExecutionContext(
+@@ -1247,19 +1141,14 @@ export async function prepareToolExecutionContextForSpecificTools(
+     externalToolScopeIds?: string[];
+     workingDirectory?: string;
+     permissionModeState?: PermissionModeState;
+-    channelToolScope?: MessageChannelToolDiscoveryScope | null;
+-    channelTurnSources?: ChannelTurnSource[];
+     modContext?: ModContext;
+     modEvents?: ModEvents;
+     modPermissions?: Map<string, ModPermissionDefinition>;
+     modTools?: Map<string, ModToolDefinition>;
+     runtimeContext?: Partial<RuntimeContextSnapshot>;
+   },
+ ): Promise<PreparedToolExecutionContext> {
+-  const toolRegistrySnapshot = await buildSpecificToolRegistry(
+-    toolNames,
+-    options?.channelToolScope,
+-  );
++  const toolRegistrySnapshot = await buildSpecificToolRegistry(toolNames);
+   return capturePreparedToolExecutionContext(
+     {
+       toolRegistry: toolRegistrySnapshot,
+@@ -1286,8 +1175,6 @@ export async function prepareToolExecutionContextForModel(
+     externalToolScopeIds?: string[];
+     workingDirectory?: string;
+     permissionModeState?: PermissionModeState;
+-    channelToolScope?: MessageChannelToolDiscoveryScope | null;
+-    channelTurnSources?: ChannelTurnSource[];
+     modContext?: ModContext;
+     modEvents?: ModEvents;
+     modPermissions?: Map<string, ModPermissionDefinition>;
+@@ -1537,7 +1424,6 @@ function maybeApplyLspReadOverride(registry: ToolRegistry): void {
+ 
+ async function buildSpecificToolRegistry(
+   toolNames: string[],
+-  channelToolScope?: MessageChannelToolDiscoveryScope | null,
+ ): Promise<ToolRegistry> {
+   const { toolFilter } = await import("@/tools/filter");
+   const newRegistry: ToolRegistry = new Map();
+@@ -1571,25 +1457,18 @@ async function buildSpecificToolRegistry(
+       definition.description,
+     );
+ 
+-    const resolvedTool = await maybeResolveDynamicChannelTool(
+-      internalName,
+-      description,
+-      definition.schema,
+-      channelToolScope,
+-    );
+-
+     const toolSchema: ToolSchema = {
+       name: internalName,
+-      description: resolvedTool.description,
+-      input_schema: resolvedTool.input_schema as JsonSchema,
++      description,
++      input_schema: definition.schema as JsonSchema,
+     };
+ 
+     newRegistry.set(internalName, {
+       schema: toolSchema,
+       modelForm: resolvedModelForm(
+         definition.modelForm,
+-        resolvedTool.description,
+-        resolvedTool.input_schema as JsonSchema,
++        description,
++        definition.schema as JsonSchema,
+       ),
+       fn: definition.impl,
+     });
+@@ -1605,7 +1484,6 @@ async function resolveBaseToolNamesForModel(
+     exclude?: ToolName[];
+     include?: ToolName[];
+     clientToolAllowlist?: string[];
+-    channelToolScope?: MessageChannelToolDiscoveryScope | null;
+   },
+ ): Promise<ToolName[]> {
+   const { toolFilter } = await import("@/tools/filter");
+@@ -1643,12 +1521,6 @@ async function resolveBaseToolNamesForModel(
+ 
+   baseToolNames = resolveArtifactToolNames(baseToolNames);
+ 
+-  // Append channel tool if channels are active
+-  baseToolNames = maybeAppendChannelTools(
+-    baseToolNames,
+-    options?.channelToolScope,
+-  );
+-
+   baseToolNames = filterBuiltInToolNamesByClientAllowlist(
+     baseToolNames,
+     options?.clientToolAllowlist,
+@@ -1663,7 +1535,6 @@ async function buildRegistryForModel(
+     exclude?: ToolName[];
+     include?: ToolName[];
+     clientToolAllowlist?: string[];
+-    channelToolScope?: MessageChannelToolDiscoveryScope | null;
+   },
+ ): Promise<ToolRegistry> {
+   const { toolFilter } = await import("@/tools/filter");
+@@ -1707,25 +1578,18 @@ async function buildRegistryForModel(
+         );
+       }
+ 
+-      const resolvedTool = await maybeResolveDynamicChannelTool(
+-        name,
+-        description,
+-        definition.schema,
+-        options?.channelToolScope,
+-      );
+-
+       const toolSchema: ToolSchema = {
+         name,
+-        description: resolvedTool.description,
+-        input_schema: resolvedTool.input_schema as JsonSchema,
++        description,
++        input_schema: definition.schema as JsonSchema,
+       };
+ 
+       newRegistry.set(name, {
+         schema: toolSchema,
+         modelForm: resolvedModelForm(
+           definition.modelForm,
+-          resolvedTool.description,
+-          resolvedTool.input_schema as JsonSchema,
++          description,
++          definition.schema as JsonSchema,
+         ),
+         fn: definition.impl,
+       });
+@@ -2609,7 +2473,6 @@ async function executeToolInner(
+     onOutput?: (chunk: string, stream: "stdout" | "stderr") => void;
+     toolContextId?: string;
+     parentScope?: { agentId: string; conversationId: string };
+-    channelTurnSources?: ChannelTurnSource[];
+     /** Called after a file-mutating tool (Edit, Write, MultiEdit) writes to disk.
+      *  The listener layer uses this to broadcast the new content via WebSocket. */
+     onFileWrite?: (filePath: string, content: string) => void;
+@@ -2868,19 +2731,6 @@ async function executeToolInner(
+         enhancedArgs = { ...enhancedArgs, parentScope: options.parentScope };
+       }
+ 
+-      // Inject parent scope for MessageChannel tool (per-execution, not global singleton)
+-      if (internalName === "MessageChannel") {
+-        if (options?.parentScope) {
+-          enhancedArgs = { ...enhancedArgs, parentScope: options.parentScope };
+-        }
+-        if (options?.channelTurnSources?.length) {
+-          enhancedArgs = {
+-            ...enhancedArgs,
+-            channelTurnSources: options.channelTurnSources,
+-          };
+-        }
+-      }
+-
+       // Inject the execution context id for tools that need to mutate
+       // turn-scoped execution state without touching global singletons.
+       if (
+@@ -3157,9 +3007,9 @@ export function getAllLettaToolNames(): string[] {
+  * @returns Array of tool schemas
+  */
+ export function getToolSchemas(): ToolSchema[] {
+-  const builtInSchemas = Array.from(
+-    withDynamicMessageChannelCache(toolRegistry).values(),
+-  ).map((tool) => tool.schema);
++  const builtInSchemas = Array.from(toolRegistry.values()).map(
++    (tool) => tool.schema,
++  );
+   const modSchemas = Array.from(getAvailableModToolsRegistry().values()).map(
+     (tool) => ({
+       name: tool.name,
+@@ -3186,7 +3036,7 @@ export function getToolSchema(
+   const registry = context?.toolRegistry ?? toolRegistry;
+   const internalName = resolveInternalToolName(name, registry);
+   if (internalName) {
+-    return withDynamicMessageChannelCache(registry).get(internalName)?.schema;
++    return registry.get(internalName)?.schema;
+   }
+   const modTool = context?.modTools.get(name) ?? getModToolDefinition(name);
+   if (modTool) {
+@@ -3208,37 +3058,6 @@ export function getToolSchema(
+   return undefined;
+ }
+ 
+-export async function refreshDynamicChannelToolsInLoadedRegistry(): Promise<void> {
+-  const activeChannels = getActiveChannelIds();
+-  if (activeChannels.length === 0) {
+-    toolRegistry.delete("MessageChannel");
+-    return;
+-  }
+-
+-  const definition = TOOL_DEFINITIONS.MessageChannel;
+-  if (!definition?.impl) {
+-    throw new Error("Tool implementation not found for MessageChannel");
+-  }
+-
+-  const resolvedTool = await maybeResolveDynamicChannelTool(
+-    "MessageChannel",
+-    definition.description,
+-    definition.schema,
+-  );
+-  toolRegistry.set("MessageChannel", {
+-    schema: {
+-      name: "MessageChannel",
+-      description: resolvedTool.description,
+-      input_schema: resolvedTool.input_schema as JsonSchema,
+-    },
+-    modelForm: functionToolForm({
+-      description: resolvedTool.description,
+-      parameters: resolvedTool.input_schema as JsonSchema,
+-    }),
+-    fn: definition.impl,
+-  });
+-}
+-
+ /**
+  * Clears the tool registry (useful for testing).
+  */
+diff --git a/src/tools/tool-definitions.ts b/src/tools/tool-definitions.ts
+--- a/src/tools/tool-definitions.ts
++++ b/src/tools/tool-definitions.ts
+@@ -17,7 +17,6 @@ import ListDirectoryGeminiDescription from "./descriptions/ListDirectoryGemini.m
+ import LSDescription from "./descriptions/LS.md";
+ import MemoryDescription from "./descriptions/Memory.md";
+ import MemoryApplyPatchDescription from "./descriptions/MemoryApplyPatch.md";
+-import MessageChannelDescription from "./descriptions/MessageChannel.md";
+ import MultiEditDescription from "./descriptions/MultiEdit.md";
+ import ReadDescription from "./descriptions/Read.md";
+ import ReadArtifactFileDescription from "./descriptions/ReadArtifactFile.md";
+@@ -65,7 +64,6 @@ import { list_directory } from "./impl/list-directory-gemini";
+ import { ls } from "./impl/ls";
+ import { memory } from "./impl/memory";
+ import { memory_apply_patch } from "./impl/memory-apply-patch";
+-import { message_channel } from "./impl/message-channel";
+ import { multi_edit } from "./impl/multi-edit";
+ import { read } from "./impl/read";
+ import { read_file } from "./impl/read-file-codex";
+@@ -110,7 +108,6 @@ import ListDirectoryGeminiSchema from "./schemas/ListDirectoryGemini.json";
+ import LSSchema from "./schemas/LS.json";
+ import MemorySchema from "./schemas/Memory.json";
+ import MemoryApplyPatchSchema from "./schemas/MemoryApplyPatch.json";
+-import MessageChannelSchema from "./schemas/MessageChannel.json";
+ import MultiEditSchema from "./schemas/MultiEdit.json";
+ import ReadSchema from "./schemas/Read.json";
+ import ReadArtifactFileSchema from "./schemas/ReadArtifactFile.json";
+@@ -233,11 +230,6 @@ const toolDefinitions = {
+     description: MemoryApplyPatchDescription.trim(),
+     impl: memory_apply_patch,
+   }),
+-  MessageChannel: defineTool({
+-    schema: MessageChannelSchema,
+-    description: MessageChannelDescription.trim(),
+-    impl: message_channel,
+-  }),
+   MultiEdit: defineTool({
+     schema: MultiEditSchema,
+     description: MultiEditDescription.trim(),
+diff --git a/src/tools/toolset.ts b/src/tools/toolset.ts
+--- a/src/tools/toolset.ts
++++ b/src/tools/toolset.ts
+@@ -4,23 +4,14 @@ import { resolveModelHandleFromLlmConfig } from "@/agent/model-handles";
+ import type { SkillSource } from "@/agent/skill-sources";
+ import { getBackend } from "@/backend";
+ import { getClient } from "@/backend/api/client";
+-import type { MessageChannelToolDiscoveryScope } from "@/channels/message-tool";
+-import { getSupportedChannelIds } from "@/channels/plugin-registry";
+-import { getChannelRegistry } from "@/channels/registry";
+-import { getRoutesForChannel, loadRoutes } from "@/channels/routing";
+-import type { ChannelTurnSource, SupportedChannelId } from "@/channels/types";
+ import { experimentManager } from "@/experiments/manager";
+ import { buildModInvocationContext } from "@/mods/context";
+ import type { ModEvents } from "@/mods/event-emitter";
+ import type { ModAdapter } from "@/mods/mod-adapter";
+ import type { ModPermissionDefinition } from "@/mods/permission-registry";
+ import type { ModToolDefinition } from "@/mods/tool-registry";
+ import type { ModContext } from "@/mods/types";
+-import {
+-  type InheritedChannelContextPayload,
+-  LETTA_INHERITED_CHANNEL_CONTEXT_ENV,
+-  type RuntimeContextSnapshot,
+-} from "@/runtime-context";
++import type { RuntimeContextSnapshot } from "@/runtime-context";
+ import { settingsManager } from "@/settings-manager";
+ import { isRecord } from "@/utils/type-guards";
+ import { toolFilter } from "./filter";
+@@ -180,10 +171,7 @@ function getPreferredAgentModelHandle(
+   return resolveModelHandleFromLlmConfig(agent.llm_config);
+ }
+ 
+-function getToolNamesForToolset(
+-  toolsetName: ToolsetName,
+-  channelToolScope?: MessageChannelToolDiscoveryScope | null,
+-): ToolName[] {
++function getToolNamesForToolset(toolsetName: ToolsetName): ToolName[] {
+   let tools: ToolName[];
+   switch (toolsetName) {
+     case "codex":
+@@ -206,16 +194,6 @@ function getToolNamesForToolset(
+       break;
+   }
+ 
+-  const hasScopedChannelTool =
+-    channelToolScope !== undefined
+-      ? (channelToolScope?.channels.length ?? 0) > 0
+-      : (getChannelRegistry()?.getActiveChannelIds().length ?? 0) > 0;
+-
+-  // Append channel tool if channels are active (covers ALL pinned toolsets)
+-  if (hasScopedChannelTool && !tools.includes("MessageChannel" as ToolName)) {
+-    tools.push("MessageChannel" as ToolName);
+-  }
+-
+   return appendArtifactToolsIfEnabled(tools);
+ }
+ 
+@@ -230,7 +208,6 @@ export async function prepareToolExecutionContextForResolvedTarget(params: {
+   externalToolScopeIds?: string[];
+   workingDirectory?: string;
+   permissionModeState?: PermissionModeState;
+-  channelToolScope?: MessageChannelToolDiscoveryScope | null;
+   modContext?: ModContext;
+   modEvents?: ModEvents;
+   modAdapters?: ModAdapter[];
+@@ -248,7 +225,6 @@ export async function prepareToolExecutionContextForResolvedTarget(params: {
+     externalToolScopeIds,
+     workingDirectory,
+     permissionModeState,
+-    channelToolScope,
+     modContext,
+     modEvents,
+     modAdapters,
+@@ -289,7 +265,6 @@ export async function prepareToolExecutionContextForResolvedTarget(params: {
+         externalToolScopeIds,
+         workingDirectory,
+         permissionModeState,
+-        channelToolScope,
+         modContext: scopedModContext,
+         modEvents,
+         modPermissions: modCapabilities.permissions,
+@@ -324,7 +299,7 @@ export async function prepareToolExecutionContextForResolvedTarget(params: {
+   const preparedToolContext = await prepareToolExecutionContextForSpecificTools(
+     filterBuiltInToolNamesByClientAllowlist(
+       appendUniqueToolNames(
+-        getToolNamesForToolset(effectiveToolsetPreference, channelToolScope),
++        getToolNamesForToolset(effectiveToolsetPreference),
+         includedToolNames,
+       ).filter((toolName) => (exclude ? !exclude.includes(toolName) : true)),
+       clientToolAllowlist,
+@@ -334,7 +309,6 @@ export async function prepareToolExecutionContextForResolvedTarget(params: {
+       externalToolScopeIds,
+       workingDirectory,
+       permissionModeState,
+-      channelToolScope,
+       modContext: scopedModContext,
+       modEvents,
+       modPermissions: modCapabilities.permissions,
+@@ -352,151 +326,6 @@ export async function prepareToolExecutionContextForResolvedTarget(params: {
+   };
+ }
+ 
+-export function resolveConversationChannelToolScope(
+-  agentId: string,
+-  conversationId: string,
+-): MessageChannelToolDiscoveryScope {
+-  const registry = getChannelRegistry();
+-  if (!registry) {
+-    return { channels: [] };
+-  }
+-
+-  const channels: Array<{
+-    channelId: SupportedChannelId;
+-    accountId?: string | null;
+-  }> = [];
+-  const seen = new Set<string>();
+-
+-  for (const channelId of getSupportedChannelIds()) {
+-    loadRoutes(channelId);
+-    for (const route of getRoutesForChannel(channelId)) {
+-      if (
+-        route.agentId !== agentId ||
+-        route.conversationId !== conversationId ||
+-        !route.enabled ||
+-        route.outboundEnabled === false
+-      ) {
+-        continue;
+-      }
+-
+-      const adapter = registry.getAdapter(channelId, route.accountId);
+-      if (!adapter?.isRunning()) {
+-        continue;
+-      }
+-
+-      const key = `${channelId}:${route.accountId ?? ""}`;
+-      if (seen.has(key)) {
+-        continue;
+-      }
+-      seen.add(key);
+-      channels.push({
+-        channelId,
+-        accountId: route.accountId ?? null,
+-      });
+-    }
+-  }
+-  return { channels };
+-}
+-
+-function parseInheritedChannelToolScope(
+-  value: unknown,
+-): MessageChannelToolDiscoveryScope | null {
+-  if (!isRecord(value) || !Array.isArray(value.channels)) {
+-    return null;
+-  }
+-
+-  const supportedChannelIds = new Set<string>(getSupportedChannelIds());
+-  const channels: MessageChannelToolDiscoveryScope["channels"] = [];
+-  for (const entry of value.channels) {
+-    if (!isRecord(entry) || typeof entry.channelId !== "string") {
+-      continue;
+-    }
+-    if (!supportedChannelIds.has(entry.channelId)) {
+-      continue;
+-    }
+-    const accountId = entry.accountId;
+-    channels.push({
+-      channelId: entry.channelId as SupportedChannelId,
+-      ...(typeof accountId === "string" || accountId === null
+-        ? { accountId }
+-        : {}),
+-    });
+-  }
+-
+-  return { channels };
+-}
+-
+-function parseInheritedChannelTurnSources(value: unknown): ChannelTurnSource[] {
+-  if (!Array.isArray(value)) {
+-    return [];
+-  }
+-
+-  const sources: ChannelTurnSource[] = [];
+-  for (const entry of value) {
+-    if (
+-      !isRecord(entry) ||
+-      typeof entry.channel !== "string" ||
+-      typeof entry.chatId !== "string" ||
+-      typeof entry.agentId !== "string" ||
+-      typeof entry.conversationId !== "string"
+-    ) {
+-      continue;
+-    }
+-
+-    sources.push({
+-      channel: entry.channel,
+-      chatId: entry.chatId,
+-      agentId: entry.agentId,
+-      conversationId: entry.conversationId,
+-      ...(typeof entry.accountId === "string"
+-        ? { accountId: entry.accountId }
+-        : {}),
+-      ...(entry.chatType === "direct" || entry.chatType === "channel"
+-        ? { chatType: entry.chatType }
+-        : {}),
+-      ...(typeof entry.messageId === "string"
+-        ? { messageId: entry.messageId }
+-        : {}),
+-      ...(typeof entry.threadId === "string" || entry.threadId === null
+-        ? { threadId: entry.threadId }
+-        : {}),
+-    });
+-  }
+-
+-  return sources;
+-}
+-
+-function parseInheritedChannelContextEnv(): InheritedChannelContextPayload | null {
+-  const raw = process.env[LETTA_INHERITED_CHANNEL_CONTEXT_ENV];
+-  if (!raw) {
+-    return null;
+-  }
+-
+-  try {
+-    const parsed: unknown = JSON.parse(raw);
+-    if (!isRecord(parsed)) {
+-      return null;
+-    }
+-
+-    const channelToolScope = parseInheritedChannelToolScope(
+-      parsed.channelToolScope,
+-    );
+-    const channelTurnSources = parseInheritedChannelTurnSources(
+-      parsed.channelTurnSources,
+-    );
+-    if (!channelToolScope?.channels.length && channelTurnSources.length === 0) {
+-      return null;
+-    }
+-
+-    return {
+-      ...(channelToolScope?.channels.length ? { channelToolScope } : {}),
+-      ...(channelTurnSources.length ? { channelTurnSources } : {}),
+-    };
+-  } catch {
+-    return null;
+-  }
+-}
+-
+ export async function prepareToolExecutionContextForScope(params: {
+   connectionId?: string;
+   environmentDeviceId?: string;
+@@ -513,7 +342,6 @@ export async function prepareToolExecutionContextForScope(params: {
+   permissionModeState?: PermissionModeState;
+   skillSources?: SkillSource[];
+   cachedAgent?: AgentState | null;
+-  channelTurnSources?: import("@/channels/types").ChannelTurnSource[];
+   modContext?: ModContext;
+   modEvents?: ModEvents;
+   modAdapters?: ModAdapter[];
+@@ -534,7 +362,6 @@ export async function prepareToolExecutionContextForScope(params: {
+     permissionModeState,
+     skillSources,
+     cachedAgent,
+-    channelTurnSources: explicitChannelTurnSources,
+     modContext,
+     modEvents,
+     modAdapters,
+@@ -586,18 +413,7 @@ export async function prepareToolExecutionContextForScope(params: {
+     }
+   })();
+ 
+-  const inheritedChannelContext = parseInheritedChannelContextEnv();
+-  const inheritedChannelToolScope =
+-    inheritedChannelContext?.channelToolScope ?? null;
+-  const inheritedChannelTurnSources =
+-    explicitChannelTurnSources ??
+-    inheritedChannelContext?.channelTurnSources ??
+-    [];
+   const scopedConversationId = conversationId ?? "default";
+-  const channelToolScope =
+-    inheritedChannelToolScope && inheritedChannelToolScope.channels.length > 0
+-      ? inheritedChannelToolScope
+-      : resolveConversationChannelToolScope(agentId, scopedConversationId);
+ 
+   const result = await prepareToolExecutionContextForResolvedTarget({
+     modelIdentifier: effectiveModel,
+@@ -622,12 +438,7 @@ export async function prepareToolExecutionContextForScope(params: {
+       conversationId: scopedConversationId,
+       workingDirectory,
+       ...(skillSources !== undefined ? { skillSources } : {}),
+-      ...(channelToolScope.channels.length > 0 ? { channelToolScope } : {}),
+-      ...(inheritedChannelTurnSources.length > 0
+-        ? { channelTurnSources: inheritedChannelTurnSources }
+-        : {}),
+     },
+-    channelToolScope,
+   });
+   return { ...result, agent: agent as AgentState };
+ }
+diff --git a/src/types/protocol_v2.ts b/src/types/protocol_v2.ts
+--- a/src/types/protocol_v2.ts
++++ b/src/types/protocol_v2.ts
+@@ -807,7 +807,6 @@ export interface ExternalToolDefinitionPayload {
+   description: string;
+   parameters: Record<string, unknown>;
+ }
+-
+ export interface RuntimeStartExternalToolsGroup {
+   /** Hidden controller-defined scope used to select these tools on input turns. */
+   scope_id?: string;
+@@ -830,6 +829,7 @@ export interface RuntimeStartCommand {
+   /** Initial permission mode for this runtime scope. */
+   mode?: DevicePermissionMode;
+   skill_sources?: readonly ("bundled" | "global" | "agent" | "project")[];
++  /** Preserve the current override when skill_sources is omitted. */ preserve_skill_sources?: boolean;
+   /** Optional client metadata for diagnostics/future protocol negotiation. */
+   client_info?: RuntimeStartClientInfo;
+   /** Whether to probe backend state for stale pending approvals before replaying state. Defaults to true. */
+diff --git a/src/websocket/app-server.ts b/src/websocket/app-server.ts
+--- a/src/websocket/app-server.ts
++++ b/src/websocket/app-server.ts
+@@ -65,6 +65,8 @@ export interface StartAppServerOptions {
+   shouldRecordPong?: (connectionId: string) => boolean;
+   /** @internal Test override for listener runtime initialization. */
+   initializeRuntime?: (runtime: ListenerRuntime) => Promise<void>;
++  /** Whether attached clients may start process-owned services. Defaults true. */
++  startProcessServices?: boolean;
+ }
+ 
+ export interface AppServerListeningInfo {
+@@ -239,6 +241,7 @@ export async function startAppServer(
+       {
+         startHeartbeat: false,
+         startCronScheduler: true,
++        startProcessServices: options.startProcessServices ?? true,
+         startupReady: getStartupReady(),
+       },
+     ).catch((error) => {
+diff --git a/src/websocket/listener/commands/runtime-start.ts b/src/websocket/listener/commands/runtime-start.ts
+--- a/src/websocket/listener/commands/runtime-start.ts
++++ b/src/websocket/listener/commands/runtime-start.ts
+@@ -239,10 +239,13 @@ async function applyRuntimeStartState(
+   scope: RuntimeScope,
+   scopedRuntime: ConversationRuntime,
+ ): Promise<void> {
+-  if (parsed.skill_sources === undefined) {
++  if (
++    parsed.skill_sources === undefined &&
++    parsed.preserve_skill_sources !== true
++  ) {
+     scopedRuntime.skillSources = undefined;
+     context.runtime.skillSourcesByConversation.delete(scopedRuntime.key);
+-  } else {
++  } else if (parsed.skill_sources !== undefined) {
+     const skillSources = [...new Set(parsed.skill_sources)];
+     scopedRuntime.skillSources = skillSources;
+     context.runtime.skillSourcesByConversation.set(
+diff --git a/src/websocket/listener/lifecycle.ts b/src/websocket/listener/lifecycle.ts
+--- a/src/websocket/listener/lifecycle.ts
++++ b/src/websocket/listener/lifecycle.ts
+@@ -378,23 +378,20 @@ export async function startConnectedListenerRuntime(
+   options: {
+     startHeartbeat?: boolean;
+     startCronScheduler?: boolean;
++    startProcessServices?: boolean;
+     streamTransport?: ListenerTransport | null;
+     emitInitialState?: boolean;
+   } = {},
+ ): Promise<void> {
+-  if (runtime !== getActiveRuntime() || runtime.intentionallyClosed) {
+-    return;
+-  }
++  if (runtime !== getActiveRuntime() || runtime.intentionallyClosed) return;
+   installExternalToolBridge(runtime);
+-  const shouldStartHeartbeat = options.startHeartbeat !== false;
+   // LETTA_DISABLE_CRON_SCHEDULER=1 lets users opt out entirely. Useful when
+   // running multiple letta-code instances against the same agent dir, since
+   // only one process can hold the lease and the others would otherwise log
+   // "scheduler lease held by PID ..." on every connect.
+-  const cronSchedulerDisabledByEnv =
+-    process.env.LETTA_DISABLE_CRON_SCHEDULER === "1";
+   const shouldStartCronScheduler =
+-    options.startCronScheduler !== false && !cronSchedulerDisabledByEnv;
++    options.startCronScheduler !== false &&
++    process.env.LETTA_DISABLE_CRON_SCHEDULER !== "1";
+ 
+   markListenerConnectionInitialized(runtime, opts.connectionId);
+   safeEmitWsEvent("recv", "lifecycle", {
+@@ -415,7 +412,7 @@ export async function startConnectedListenerRuntime(
+     );
+   }
+ 
+-  if (shouldStartHeartbeat) {
++  if (options.startHeartbeat !== false) {
+     startConnectionHeartbeat(
+       runtime,
+       transport,
+@@ -440,6 +437,8 @@ export async function startConnectedListenerRuntime(
+     );
+   }
+ 
++  if (options.startProcessServices === false) return;
++
+   const processTransport = getOrCreateProcessTransport(runtime);
+   for (const conversationRuntime of runtime.conversationRuntimes.values()) {
+     if (conversationRuntime.queueRuntime?.isEmpty === false) {
+@@ -452,9 +451,7 @@ export async function startConnectedListenerRuntime(
+     }
+   }
+ 
+-  if (runtime.processServicesStarted) {
+-    return;
+-  }
++  if (runtime.processServicesStarted) return;
+   if (!(await waitForProcessServicesSlot(runtime, opts.connectionId))) return;
+ 
+   const processServicesGeneration = runtime.processServicesGeneration + 1;
+@@ -513,6 +510,7 @@ export async function attachOpenListenerSocket(
+     streamSocket?: WebSocket | null;
+     startHeartbeat?: boolean;
+     startCronScheduler?: boolean;
++    startProcessServices?: boolean;
+     startupReady?: Promise<void>;
+   } = {},
+ ): Promise<void> {
+@@ -647,6 +645,7 @@ export async function attachOpenListenerSocket(
+     {
+       startHeartbeat: options.startHeartbeat ?? false,
+       startCronScheduler: options.startCronScheduler ?? true,
++      startProcessServices: options.startProcessServices ?? true,
+       streamTransport,
+       emitInitialState: false,
+     },
+diff --git a/src/websocket/listener/protocol-inbound.ts b/src/websocket/listener/protocol-inbound.ts
+--- a/src/websocket/listener/protocol-inbound.ts
++++ b/src/websocket/listener/protocol-inbound.ts
+@@ -541,22 +541,7 @@ export function isRuntimeStartCommand(
+   value: unknown,
+ ): value is RuntimeStartCommand {
+   if (!value || typeof value !== "object") return false;
+-  const c = value as {
+-    type?: unknown;
+-    request_id?: unknown;
+-    agent_id?: unknown;
+-    create_agent?: unknown;
+-    conversation_id?: unknown;
+-    create_conversation?: unknown;
+-    cwd?: unknown;
+-    mode?: unknown;
+-    skill_sources?: unknown;
+-    client_info?: unknown;
+-    recover_approvals?: unknown;
+-    force_device_status?: unknown;
+-    wait_for_replay?: unknown;
+-    external_tools?: unknown;
+-  };
++  const c = value as Record<string, unknown>;
+   return (
+     c.type === "runtime_start" &&
+     typeof c.request_id === "string" &&
+@@ -570,6 +555,8 @@ export function isRuntimeStartCommand(
+     (c.cwd === undefined || c.cwd === null || typeof c.cwd === "string") &&
+     (c.mode === undefined || isDevicePermissionMode(c.mode)) &&
+     (c.skill_sources === undefined || isSkillSourceArray(c.skill_sources)) &&
++    (c.preserve_skill_sources === undefined ||
++      typeof c.preserve_skill_sources === "boolean") &&
+     (c.client_info === undefined || isRuntimeStartClientInfo(c.client_info)) &&
+     (c.recover_approvals === undefined ||
+       typeof c.recover_approvals === "boolean") &&

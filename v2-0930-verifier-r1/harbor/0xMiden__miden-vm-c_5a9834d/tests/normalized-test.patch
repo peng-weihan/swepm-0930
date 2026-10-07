@@ -1,0 +1,96 @@
+diff --git a/stark/miden-lifted-stark/src/testing/test_per_air_degree.rs b/stark/miden-lifted-stark/src/testing/test_per_air_degree.rs
+index 138d4c6..c39c111 100644
+--- a/stark/miden-lifted-stark/src/testing/test_per_air_degree.rs
++++ b/stark/miden-lifted-stark/src/testing/test_per_air_degree.rs
+@@ -95,14 +95,14 @@ impl BaseAir<Felt> for PeriodicPowerAir {
+     fn width(&self) -> usize {
+         1
+     }
+-}
+ 
+-impl LiftedAir<Felt, QuadFelt> for PeriodicPowerAir {
+     fn periodic_columns(&self) -> Vec<Vec<Felt>> {
+         // Period 2: entries [1, 0] repeat across the trace.
+         vec![vec![Felt::ONE, Felt::ZERO]]
+     }
++}
+ 
++impl LiftedAir<Felt, QuadFelt> for PeriodicPowerAir {
+     fn num_randomness(&self) -> usize {
+         1
+     }
+diff --git a/stark/miden-lifted-stark/src/testing/test_preprocessed.rs b/stark/miden-lifted-stark/src/testing/test_preprocessed.rs
+index 5f6df48..e8699a2 100644
+--- a/stark/miden-lifted-stark/src/testing/test_preprocessed.rs
++++ b/stark/miden-lifted-stark/src/testing/test_preprocessed.rs
+@@ -50,12 +50,12 @@ impl BaseAir<Felt> for RowCounterAir {
+     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Felt>> {
+         Some(self.preprocessed.clone())
+     }
+-}
+-
+-impl LiftedAir<Felt, QuadFelt> for RowCounterAir {
+     fn preprocessed_width(&self) -> usize {
+         1
+     }
++}
++
++impl LiftedAir<Felt, QuadFelt> for RowCounterAir {
+     fn aux_width(&self) -> usize {
+         1
+     }
+@@ -165,15 +165,15 @@ impl BaseAir<Felt> for MixedAir {
+             Self::RowCounter(a) => a.preprocessed_trace(),
+         }
+     }
+-}
+-
+-impl LiftedAir<Felt, QuadFelt> for MixedAir {
+     fn preprocessed_width(&self) -> usize {
+         match self {
+             Self::Constant(_) => 0,
+             Self::RowCounter(a) => a.preprocessed_width(),
+         }
+     }
++}
++
++impl LiftedAir<Felt, QuadFelt> for MixedAir {
+     fn aux_width(&self) -> usize {
+         1
+     }
+@@ -222,12 +222,12 @@ impl BaseAir<Felt> for WrongWidthAir {
+     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Felt>> {
+         Some(self.preprocessed.clone())
+     }
+-}
+-
+-impl LiftedAir<Felt, QuadFelt> for WrongWidthAir {
+     fn preprocessed_width(&self) -> usize {
+         2
+     }
++}
++
++impl LiftedAir<Felt, QuadFelt> for WrongWidthAir {
+     fn aux_width(&self) -> usize {
+         1
+     }
+diff --git a/stark/miden-lifted-stark/src/testing/test_tiny_air.rs b/stark/miden-lifted-stark/src/testing/test_tiny_air.rs
+index 03240ca..29fde23 100644
+--- a/stark/miden-lifted-stark/src/testing/test_tiny_air.rs
++++ b/stark/miden-lifted-stark/src/testing/test_tiny_air.rs
+@@ -59,13 +59,13 @@ impl BaseAir<Felt> for TinyAir {
+     fn num_public_values(&self) -> usize {
+         1
+     }
+-}
+ 
+-impl LiftedAir<Felt, QuadFelt> for TinyAir {
+     fn periodic_columns(&self) -> Vec<Vec<Felt>> {
+         self.periodic_cols.clone()
+     }
++}
+ 
++impl LiftedAir<Felt, QuadFelt> for TinyAir {
+     fn num_randomness(&self) -> usize {
+         1
+     }

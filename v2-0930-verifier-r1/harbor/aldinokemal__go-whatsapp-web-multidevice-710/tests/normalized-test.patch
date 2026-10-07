@@ -1,0 +1,1752 @@
+diff --git a/src/infrastructure/chatstorage/sqlite_repository_chatwoot_config_test.go b/src/infrastructure/chatstorage/sqlite_repository_chatwoot_config_test.go
+new file mode 100644
+index 0000000..5c2fd86
+--- /dev/null
++++ b/src/infrastructure/chatstorage/sqlite_repository_chatwoot_config_test.go
+@@ -0,0 +1,317 @@
++package chatstorage
++
++import (
++	"testing"
++
++	domainChatStorage "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/chatstorage"
++)
++
++func TestSQLiteRepositoryChatwootDeviceConfigCRUD(t *testing.T) {
++	repo := newTestSQLiteRepository(t)
++
++	cfg := &domainChatStorage.ChatwootDeviceConfig{
++		DeviceID:    "busine",
++		DeviceJID:   "628111111111@s.whatsapp.net",
++		ChatwootURL: "https://chat.example.com",
++		AccountID:   1,
++		InboxID:     5,
++		APIToken:    "tok-a",
++		Enabled:     true,
++	}
++	if err := repo.SaveChatwootDeviceConfig(cfg); err != nil {
++		t.Fatalf("save config: %v", err)
++	}
++	if cfg.ID == 0 {
++		t.Fatal("expected config ID to be populated after insert")
++	}
++
++	got, err := repo.GetChatwootDeviceConfig("busine")
++	if err != nil || got == nil {
++		t.Fatalf("get config: %v (got=%v)", err, got)
++	}
++	if got.AccountID != 1 || got.InboxID != 5 || got.APIToken != "tok-a" || !got.Enabled {
++		t.Fatalf("unexpected config: %+v", got)
++	}
++
++	// Lookup by identifier resolves both device_id and device_jid.
++	byID, err := repo.GetChatwootDeviceConfigByIdentifier("busine")
++	if err != nil || byID == nil || byID.ID != cfg.ID {
++		t.Fatalf("get by device_id: %v (%v)", err, byID)
++	}
++	byJID, err := repo.GetChatwootDeviceConfigByIdentifier("628111111111@s.whatsapp.net")
++	if err != nil || byJID == nil || byJID.ID != cfg.ID {
++		t.Fatalf("get by device_jid: %v (%v)", err, byJID)
++	}
++
++	// Update keeps the same ID and changes fields.
++	cfg.InboxID = 9
++	cfg.APIToken = "tok-b"
++	if err := repo.SaveChatwootDeviceConfig(cfg); err != nil {
++		t.Fatalf("update config: %v", err)
++	}
++	got, _ = repo.GetChatwootDeviceConfig("busine")
++	if got.InboxID != 9 || got.APIToken != "tok-b" || got.ID != cfg.ID {
++		t.Fatalf("expected updated config keeping ID, got %+v", got)
++	}
++
++	count, err := repo.CountChatwootDeviceConfigs()
++	if err != nil || count != 1 {
++		t.Fatalf("count = %d err=%v, want 1", count, err)
++	}
++
++	list, err := repo.ListChatwootDeviceConfigs()
++	if err != nil || len(list) != 1 {
++		t.Fatalf("list len = %d err=%v, want 1", len(list), err)
++	}
++
++	if err := repo.DeleteChatwootDeviceConfig("busine"); err != nil {
++		t.Fatalf("delete config: %v", err)
++	}
++	got, _ = repo.GetChatwootDeviceConfig("busine")
++	if got != nil {
++		t.Fatalf("expected nil after delete, got %+v", got)
++	}
++}
++
++// One row's device_id can collide with another row's device_jid (each column
++// is only unique on its own). The identifier lookup must surface that as an
++// error instead of picking a query-plan-dependent winner.
++func TestSQLiteRepositoryChatwootDeviceConfigByIdentifierCollision(t *testing.T) {
++	repo := newTestSQLiteRepository(t)
++
++	// Device "busine" paired as 628111...; another device was (unwisely) named
++	// with that same JID string as its user-facing id.
++	for _, cfg := range []*domainChatStorage.ChatwootDeviceConfig{
++		{DeviceID: "busine", DeviceJID: "628111111111@s.whatsapp.net", ChatwootURL: "https://a.example.com", AccountID: 1, InboxID: 1, APIToken: "t", Enabled: true},
++		{DeviceID: "628111111111@s.whatsapp.net", ChatwootURL: "https://b.example.com", AccountID: 2, InboxID: 2, APIToken: "t", Enabled: true},
++	} {
++		if err := repo.SaveChatwootDeviceConfig(cfg); err != nil {
++			t.Fatalf("save %s: %v", cfg.DeviceID, err)
++		}
++	}
++
++	if _, err := repo.GetChatwootDeviceConfigByIdentifier("628111111111@s.whatsapp.net"); err == nil {
++		t.Fatal("colliding identifier must error, not silently pick a config")
++	}
++
++	// The unambiguous identifier still resolves.
++	got, err := repo.GetChatwootDeviceConfigByIdentifier("busine")
++	if err != nil || got == nil || got.DeviceID != "busine" {
++		t.Fatalf("unambiguous lookup = %+v err=%v", got, err)
++	}
++
++	// A row matching by both its own device_id and device_jid is NOT ambiguous.
++	self := &domainChatStorage.ChatwootDeviceConfig{
++		DeviceID: "629000000000@s.whatsapp.net", DeviceJID: "629000000000@s.whatsapp.net",
++		ChatwootURL: "https://c.example.com", AccountID: 3, InboxID: 3, APIToken: "t", Enabled: true,
++	}
++	if err := repo.SaveChatwootDeviceConfig(self); err != nil {
++		t.Fatalf("save self: %v", err)
++	}
++	got, err = repo.GetChatwootDeviceConfigByIdentifier("629000000000@s.whatsapp.net")
++	if err != nil || got == nil || got.ID != self.ID {
++		t.Fatalf("self-matching lookup = %+v err=%v", got, err)
++	}
++}
++
++func TestSQLiteRepositoryChatwootDeviceConfigByInboxAmbiguity(t *testing.T) {
++	repo := newTestSQLiteRepository(t)
++
++	// Two devices on the SAME account+inbox but DIFFERENT Chatwoot URLs.
++	// (UNIQUE(url,account,inbox) permits this; the inbox lookup must treat it
++	// as ambiguous and return nil rather than guessing.)
++	for i, url := range []string{"https://a.example.com", "https://b.example.com"} {
++		if err := repo.SaveChatwootDeviceConfig(&domainChatStorage.ChatwootDeviceConfig{
++			DeviceID:    []string{"dev-a", "dev-b"}[i],
++			ChatwootURL: url,
++			AccountID:   1,
++			InboxID:     2,
++			APIToken:    "tok",
++			Enabled:     true,
++		}); err != nil {
++			t.Fatalf("save %s: %v", url, err)
++		}
++	}
++	got, err := repo.GetChatwootDeviceConfigByInbox(1, 2)
++	if err != nil {
++		t.Fatalf("get by inbox: %v", err)
++	}
++	if got != nil {
++		t.Fatalf("expected nil for ambiguous inbox match, got %+v", got)
++	}
++
++	// A unique account+inbox resolves to exactly one config.
++	if err := repo.SaveChatwootDeviceConfig(&domainChatStorage.ChatwootDeviceConfig{
++		DeviceID: "dev-c", ChatwootURL: "https://c.example.com", AccountID: 7, InboxID: 3, APIToken: "tok", Enabled: true,
++	}); err != nil {
++		t.Fatalf("save dev-c: %v", err)
++	}
++	got, err = repo.GetChatwootDeviceConfigByInbox(7, 3)
++	if err != nil || got == nil || got.DeviceID != "dev-c" {
++		t.Fatalf("unique inbox lookup = %+v err=%v, want dev-c", got, err)
++	}
++}
++
++func TestSQLiteRepositoryChatwootMessageLinkScopeColumns(t *testing.T) {
++	repo := newTestSQLiteRepository(t)
++
++	link := &domainChatStorage.ChatwootMessageLink{
++		DeviceID:               "dev-a",
++		WhatsAppMessageID:      "wa-1",
++		WhatsAppChatJID:        "628@s.whatsapp.net",
++		ChatwootMessageID:      10,
++		ChatwootConversationID: 50,
++		ChatwootInboxID:        5,
++		ChatwootConfigID:       42,
++		ChatwootAccountID:      1,
++		Direction:              "incoming",
++	}
++	if err := repo.UpsertChatwootMessageLink(link); err != nil {
++		t.Fatalf("upsert link: %v", err)
++	}
++	got, err := repo.GetChatwootMessageLinkByWhatsAppID("dev-a", "wa-1")
++	if err != nil || got == nil {
++		t.Fatalf("get link: %v (%v)", err, got)
++	}
++	if got.ChatwootConfigID != 42 || got.ChatwootAccountID != 1 {
++		t.Fatalf("scope columns not persisted: %+v", got)
++	}
++
++	n, err := repo.CountChatwootMessageLinksByConfig(42)
++	if err != nil || n != 1 {
++		t.Fatalf("count links by config = %d err=%v, want 1", n, err)
++	}
++}
++
++func TestSQLiteRepositoryConversationLookupIsAccountScoped(t *testing.T) {
++	repo := newTestSQLiteRepository(t)
++
++	// Same conversation_id (5) in two different Chatwoot accounts.
++	for _, l := range []*domainChatStorage.ChatwootMessageLink{
++		{DeviceID: "dev-a", WhatsAppMessageID: "a1", WhatsAppChatJID: "111@s.whatsapp.net", ChatwootConversationID: 5, ChatwootAccountID: 1, Direction: "incoming"},
++		{DeviceID: "dev-b", WhatsAppMessageID: "b1", WhatsAppChatJID: "222@s.whatsapp.net", ChatwootConversationID: 5, ChatwootAccountID: 2, Direction: "incoming"},
++	} {
++		if err := repo.UpsertChatwootMessageLink(l); err != nil {
++			t.Fatalf("upsert: %v", err)
++		}
++	}
++
++	got, err := repo.GetLatestChatwootMessageLinkByConversation(5, 2, false, 0)
++	if err != nil || got == nil {
++		t.Fatalf("scoped lookup: %v (%v)", err, got)
++	}
++	if got.DeviceID != "dev-b" {
++		t.Fatalf("account-scoped lookup returned wrong device: %+v", got)
++	}
++}
++
++// Two separate Chatwoot servers can collide on (conversation_id, account_id) —
++// fresh installs all start at account 1, conversation 1 — so per-device
++// (forced-route) callers additionally scope the lookup by their own config id.
++func TestSQLiteRepositoryConversationLookupIsConfigScoped(t *testing.T) {
++	repo := newTestSQLiteRepository(t)
++
++	for _, l := range []*domainChatStorage.ChatwootMessageLink{
++		{DeviceID: "dev-a", WhatsAppMessageID: "a1", WhatsAppChatJID: "111@s.whatsapp.net", ChatwootConversationID: 1, ChatwootAccountID: 1, ChatwootConfigID: 10, Direction: "incoming"},
++		{DeviceID: "dev-b", WhatsAppMessageID: "b1", WhatsAppChatJID: "222@s.whatsapp.net", ChatwootConversationID: 1, ChatwootAccountID: 1, ChatwootConfigID: 20, Direction: "incoming"},
++	} {
++		if err := repo.UpsertChatwootMessageLink(l); err != nil {
++			t.Fatalf("upsert: %v", err)
++		}
++	}
++
++	got, err := repo.GetLatestChatwootMessageLinkByConversation(1, 1, false, 10)
++	if err != nil || got == nil || got.DeviceID != "dev-a" {
++		t.Fatalf("config-scoped lookup (10) = %+v err=%v, want dev-a", got, err)
++	}
++	got, err = repo.GetLatestChatwootMessageLinkByConversation(1, 1, false, 20)
++	if err != nil || got == nil || got.DeviceID != "dev-b" {
++		t.Fatalf("config-scoped lookup (20) = %+v err=%v, want dev-b", got, err)
++	}
++	// configID 0 keeps the account-wide behavior (shared/legacy endpoint).
++	got, err = repo.GetLatestChatwootMessageLinkByConversation(1, 1, false, 0)
++	if err != nil || got == nil {
++		t.Fatalf("unscoped lookup: %v (%v)", err, got)
++	}
++}
++
++func TestSQLiteRepositoryUpdateChatwootDeviceConfigJID(t *testing.T) {
++	repo := newTestSQLiteRepository(t)
++
++	// Config created before the device paired: empty JID.
++	cfg := &domainChatStorage.ChatwootDeviceConfig{
++		DeviceID: "busine", ChatwootURL: "https://chat.example.com",
++		AccountID: 1, InboxID: 5, APIToken: "tok", Enabled: true,
++	}
++	if err := repo.SaveChatwootDeviceConfig(cfg); err != nil {
++		t.Fatalf("save: %v", err)
++	}
++	if got, _ := repo.GetChatwootDeviceConfigByIdentifier("628@s.whatsapp.net"); got != nil {
++		t.Fatalf("precondition: JID must not resolve before stamping, got %+v", got)
++	}
++
++	// Device pairs: connect handler stamps the JID; the forward path (keyed by
++	// JID) must now resolve the config.
++	changed, err := repo.UpdateChatwootDeviceConfigJID("busine", "628@s.whatsapp.net")
++	if err != nil || !changed {
++		t.Fatalf("stamp JID: changed=%v err=%v", changed, err)
++	}
++	got, err := repo.GetChatwootDeviceConfigByIdentifier("628@s.whatsapp.net")
++	if err != nil || got == nil || got.ID != cfg.ID {
++		t.Fatalf("JID lookup after stamp = %+v err=%v", got, err)
++	}
++
++	// Idempotent: same JID again reports no change.
++	if changed, err := repo.UpdateChatwootDeviceConfigJID("busine", "628@s.whatsapp.net"); err != nil || changed {
++		t.Fatalf("re-stamp: changed=%v err=%v, want false,nil", changed, err)
++	}
++
++	// Re-pair with a new number: the stale JID is replaced.
++	if changed, err := repo.UpdateChatwootDeviceConfigJID("busine", "629@s.whatsapp.net"); err != nil || !changed {
++		t.Fatalf("re-pair stamp: changed=%v err=%v", changed, err)
++	}
++	if got, _ := repo.GetChatwootDeviceConfigByIdentifier("628@s.whatsapp.net"); got != nil {
++		t.Fatalf("stale JID must no longer resolve, got %+v", got)
++	}
++	if got, _ := repo.GetChatwootDeviceConfigByIdentifier("629@s.whatsapp.net"); got == nil {
++		t.Fatal("new JID must resolve after re-pair")
++	}
++
++	// No row / empty input: no-op.
++	if changed, err := repo.UpdateChatwootDeviceConfigJID("ghost", "630@s.whatsapp.net"); err != nil || changed {
++		t.Fatalf("unknown device: changed=%v err=%v, want false,nil", changed, err)
++	}
++}
++
++func TestSQLiteRepositoryDeleteChatwootMessageLinksByConfig(t *testing.T) {
++	repo := newTestSQLiteRepository(t)
++
++	for _, l := range []*domainChatStorage.ChatwootMessageLink{
++		{DeviceID: "dev-a", WhatsAppMessageID: "a1", WhatsAppChatJID: "111@s.whatsapp.net", ChatwootConversationID: 1, ChatwootAccountID: 1, ChatwootConfigID: 10, Direction: "incoming"},
++		{DeviceID: "dev-a", WhatsAppMessageID: "a2", WhatsAppChatJID: "111@s.whatsapp.net", ChatwootConversationID: 1, ChatwootAccountID: 1, ChatwootConfigID: 10, Direction: "outgoing"},
++		{DeviceID: "dev-b", WhatsAppMessageID: "b1", WhatsAppChatJID: "222@s.whatsapp.net", ChatwootConversationID: 2, ChatwootAccountID: 1, ChatwootConfigID: 20, Direction: "incoming"},
++		{DeviceID: "dev-l", WhatsAppMessageID: "l1", WhatsAppChatJID: "333@s.whatsapp.net", ChatwootConversationID: 3, ChatwootAccountID: 1, ChatwootConfigID: 0, Direction: "incoming"},
++	} {
++		if err := repo.UpsertChatwootMessageLink(l); err != nil {
++			t.Fatalf("upsert: %v", err)
++		}
++	}
++
++	if err := repo.DeleteChatwootMessageLinksByConfig(10); err != nil {
++		t.Fatalf("delete by config: %v", err)
++	}
++	if n, _ := repo.CountChatwootMessageLinksByConfig(10); n != 0 {
++		t.Fatalf("config 10 links remaining: %d", n)
++	}
++	if n, _ := repo.CountChatwootMessageLinksByConfig(20); n != 1 {
++		t.Fatalf("config 20 links = %d, want 1 (untouched)", n)
++	}
++
++	// Legacy links (config 0) are never bulk-deleted.
++	if err := repo.DeleteChatwootMessageLinksByConfig(0); err == nil {
++		t.Fatal("deleting config-0 links must be refused")
++	}
++	if got, _ := repo.GetChatwootMessageLinkByWhatsAppID("dev-l", "l1"); got == nil {
++		t.Fatal("legacy link must survive")
++	}
++}
+diff --git a/src/infrastructure/chatstorage/sqlite_repository_chatwoot_test.go b/src/infrastructure/chatstorage/sqlite_repository_chatwoot_test.go
+index 4af200d..e7e8059 100644
+--- a/src/infrastructure/chatstorage/sqlite_repository_chatwoot_test.go
++++ b/src/infrastructure/chatstorage/sqlite_repository_chatwoot_test.go
+@@ -233,7 +233,7 @@ func TestSQLiteRepositoryGetsLatestChatwootMessageLinkByConversation(t *testing.
+ 		}
+ 	}
+ 
+-	link, err := repo.GetLatestChatwootMessageLinkByConversation(conversationID)
++	link, err := repo.GetLatestChatwootMessageLinkByConversation(conversationID, 0, true, 0)
+ 	if err != nil {
+ 		t.Fatalf("lookup latest conversation link: %v", err)
+ 	}
+@@ -242,6 +242,102 @@ func TestSQLiteRepositoryGetsLatestChatwootMessageLinkByConversation(t *testing.
+ 	}
+ }
+ 
++func TestSQLiteRepositoryConversationLookupExcludesLegacyZeroInPerDeviceMode(t *testing.T) {
++	repo := newTestSQLiteRepository(t)
++
++	// A pre-migration legacy link (account id 0) for conversation 9. Chatwoot
++	// numbers conversations per account, so account 7 can also have a conversation
++	// 9 — the legacy row must not be allowed to satisfy that account's reply.
++	legacy := &domainChatStorage.ChatwootMessageLink{
++		DeviceID:               "legacy-dev",
++		WhatsAppMessageID:      "legacy-1",
++		WhatsAppChatJID:        "628000000000@s.whatsapp.net",
++		ChatwootConversationID: 9,
++		ChatwootAccountID:      0,
++		Direction:              "incoming",
++	}
++	if err := repo.UpsertChatwootMessageLink(legacy); err != nil {
++		t.Fatalf("upsert legacy link: %v", err)
++	}
++
++	// Per-device mode: account 7 webhook must NOT match the account-0 legacy row.
++	got, err := repo.GetLatestChatwootMessageLinkByConversation(9, 7, false, 0)
++	if err != nil {
++		t.Fatalf("scoped lookup: %v", err)
++	}
++	if got != nil {
++		t.Fatalf("per-device lookup must not match legacy account-0 link, got %+v", got)
++	}
++
++	// Legacy mode: the account-0 wildcard still resolves the historical link.
++	got, err = repo.GetLatestChatwootMessageLinkByConversation(9, 7, true, 0)
++	if err != nil {
++		t.Fatalf("legacy lookup: %v", err)
++	}
++	if got == nil || got.DeviceID != "legacy-dev" {
++		t.Fatalf("legacy-mode lookup should match account-0 link, got %+v", got)
++	}
++}
++
++func TestSQLiteRepositoryBackfillChatwootMessageLinkAccount(t *testing.T) {
++	repo := newTestSQLiteRepository(t)
++
++	legacyLink := &domainChatStorage.ChatwootMessageLink{
++		DeviceID:               "legacy-dev",
++		WhatsAppMessageID:      "legacy-1",
++		WhatsAppChatJID:        "628000000000@s.whatsapp.net",
++		ChatwootConversationID: 9,
++		ChatwootAccountID:      0,
++		Direction:              "incoming",
++	}
++	scopedLink := &domainChatStorage.ChatwootMessageLink{
++		DeviceID:               "scoped-dev",
++		WhatsAppMessageID:      "scoped-1",
++		WhatsAppChatJID:        "628111111111@s.whatsapp.net",
++		ChatwootConversationID: 10,
++		ChatwootAccountID:      7,
++		Direction:              "incoming",
++	}
++	for _, l := range []*domainChatStorage.ChatwootMessageLink{legacyLink, scopedLink} {
++		if err := repo.UpsertChatwootMessageLink(l); err != nil {
++			t.Fatalf("upsert %s: %v", l.WhatsAppMessageID, err)
++		}
++	}
++
++	n, err := repo.BackfillChatwootMessageLinkAccount(5)
++	if err != nil {
++		t.Fatalf("backfill: %v", err)
++	}
++	if n != 1 {
++		t.Fatalf("backfill rows affected = %d, want 1 (only the account-0 row)", n)
++	}
++
++	got, err := repo.GetChatwootMessageLinkByWhatsAppID("legacy-dev", "legacy-1")
++	if err != nil || got == nil {
++		t.Fatalf("get legacy link: %v (%v)", err, got)
++	}
++	if got.ChatwootAccountID != 5 {
++		t.Fatalf("legacy link account id = %d, want 5 after backfill", got.ChatwootAccountID)
++	}
++
++	got, err = repo.GetChatwootMessageLinkByWhatsAppID("scoped-dev", "scoped-1")
++	if err != nil || got == nil {
++		t.Fatalf("get scoped link: %v (%v)", err, got)
++	}
++	if got.ChatwootAccountID != 7 {
++		t.Fatalf("non-zero link account id = %d, want untouched 7", got.ChatwootAccountID)
++	}
++
++	// Idempotent: a second run finds nothing left at 0.
++	n, err = repo.BackfillChatwootMessageLinkAccount(5)
++	if err != nil {
++		t.Fatalf("second backfill: %v", err)
++	}
++	if n != 0 {
++		t.Fatalf("second backfill rows affected = %d, want 0", n)
++	}
++}
++
+ func TestSQLiteRepositoryChatwootForwardQueueLifecycle(t *testing.T) {
+ 	repo := newTestSQLiteRepository(t)
+ 	now := time.Date(2026, time.June, 6, 10, 0, 0, 0, time.UTC)
+diff --git a/src/infrastructure/chatwoot/client_methods_test.go b/src/infrastructure/chatwoot/client_methods_test.go
+index 6b22d6a..62d5275 100644
+--- a/src/infrastructure/chatwoot/client_methods_test.go
++++ b/src/infrastructure/chatwoot/client_methods_test.go
+@@ -1225,12 +1225,13 @@ func TestCreateMessage_AttachmentMissingIDReturnsZero(t *testing.T) {
+ // --- Echo dedup map (MarkMessageAsSent / IsMessageSentByUs) ----------------
+ 
+ func TestEchoDedup_MapBehavior(t *testing.T) {
+-	// MarkMessageAsSent(0) is a no-op and IsMessageSentByUs(0) is always
++	const acc = 1
++	// MarkMessageAsSent(_, 0) is a no-op and IsMessageSentByUs(_, 0) is always
+ 	// false: id 0 is the "no id" sentinel returned by CreateMessage and must
+ 	// never be treated as a tracked message.
+-	MarkMessageAsSent(0)
+-	if IsMessageSentByUs(0) {
+-		t.Error("IsMessageSentByUs(0) = true, want false")
++	MarkMessageAsSent(acc, 0)
++	if IsMessageSentByUs(acc, 0) {
++		t.Error("IsMessageSentByUs(acc, 0) = true, want false")
+ 	}
+ 
+ 	// A real id, once marked, is recognized as ours. We use a large, fixed
+@@ -1239,19 +1240,36 @@ func TestEchoDedup_MapBehavior(t *testing.T) {
+ 	// does not delete on read, so it stays true on a second check — Chatwoot
+ 	// fires multiple webhook events for one message.
+ 	const id = 987654321
+-	if IsMessageSentByUs(id) {
++	if IsMessageSentByUs(acc, id) {
+ 		t.Fatalf("IsMessageSentByUs(%d) = true before marking, want false", id)
+ 	}
+-	MarkMessageAsSent(id)
+-	if !IsMessageSentByUs(id) {
++	MarkMessageAsSent(acc, id)
++	if !IsMessageSentByUs(acc, id) {
+ 		t.Fatalf("IsMessageSentByUs(%d) = false after marking, want true", id)
+ 	}
+-	if !IsMessageSentByUs(id) {
++	if !IsMessageSentByUs(acc, id) {
+ 		t.Fatalf("IsMessageSentByUs(%d) = false on second check, want true (no delete-on-read)", id)
+ 	}
+ 
+ 	// An id that was never marked is not ours.
+-	if IsMessageSentByUs(123456789) {
++	if IsMessageSentByUs(acc, 123456789) {
+ 		t.Error("IsMessageSentByUs(unknown) = true, want false")
+ 	}
+ }
++
++// TestEchoDedup_AccountPartitioned guards multi-account routing: the same
++// numeric Chatwoot message id in two different accounts must not collide, or a
++// message we sent in account A would suppress a genuine agent reply with the
++// same id in account B (dropped reply).
++func TestEchoDedup_AccountPartitioned(t *testing.T) {
++	const id = 555111222
++	const accA, accB = 11, 22
++
++	MarkMessageAsSent(accA, id)
++	if !IsMessageSentByUs(accA, id) {
++		t.Fatalf("account A id %d should be ours after marking", id)
++	}
++	if IsMessageSentByUs(accB, id) {
++		t.Fatalf("account B id %d must NOT be considered ours (cross-account collision)", id)
++	}
++}
+diff --git a/src/infrastructure/chatwoot/client_registry_test.go b/src/infrastructure/chatwoot/client_registry_test.go
+new file mode 100644
+index 0000000..46fa437
+--- /dev/null
++++ b/src/infrastructure/chatwoot/client_registry_test.go
+@@ -0,0 +1,200 @@
++package chatwoot
++
++import (
++	"testing"
++
++	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
++	domainChatStorage "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/chatstorage"
++)
++
++// fakeConfigRepo implements just the methods ClientRegistry uses; the rest of
++// IChatStorageRepository is satisfied by the embedded (nil) interface.
++type fakeConfigRepo struct {
++	domainChatStorage.IChatStorageRepository
++	byIdentifier map[string]*domainChatStorage.ChatwootDeviceConfig
++	byInbox      map[[2]int]*domainChatStorage.ChatwootDeviceConfig
++	count        int
++}
++
++func (f *fakeConfigRepo) GetChatwootDeviceConfigByIdentifier(identifier string) (*domainChatStorage.ChatwootDeviceConfig, error) {
++	return f.byIdentifier[identifier], nil
++}
++
++func (f *fakeConfigRepo) GetChatwootDeviceConfigByInbox(accountID, inboxID int) (*domainChatStorage.ChatwootDeviceConfig, error) {
++	return f.byInbox[[2]int{accountID, inboxID}], nil
++}
++
++func (f *fakeConfigRepo) CountChatwootDeviceConfigs() (int, error) {
++	return f.count, nil
++}
++
++func TestClientRegistryResolveByDeviceIDAndJID(t *testing.T) {
++	cfg := &domainChatStorage.ChatwootDeviceConfig{
++		ID: 7, DeviceID: "busine", DeviceJID: "628@s.whatsapp.net",
++		ChatwootURL: "https://chat.example.com", AccountID: 3, InboxID: 9,
++		APIToken: "tok", Enabled: true,
++	}
++	repo := &fakeConfigRepo{
++		byIdentifier: map[string]*domainChatStorage.ChatwootDeviceConfig{
++			"busine":             cfg,
++			"628@s.whatsapp.net": cfg,
++		},
++		count: 1,
++	}
++	reg := NewClientRegistry(repo)
++
++	for _, id := range []string{"busine", "628@s.whatsapp.net"} {
++		rc, err := reg.Resolve(id)
++		if err != nil || rc == nil || rc.Client == nil {
++			t.Fatalf("resolve %q: rc=%v err=%v", id, rc, err)
++		}
++		if rc.ConfigID != 7 || rc.Client.AccountID != 3 || rc.Client.InboxID != 9 || rc.Client.BaseURL != "https://chat.example.com" {
++			t.Fatalf("resolve %q wrong: %+v / %+v", id, rc, rc.Client)
++		}
++	}
++}
++
++func TestClientRegistryDisabledConfigReturnsNil(t *testing.T) {
++	repo := &fakeConfigRepo{
++		byIdentifier: map[string]*domainChatStorage.ChatwootDeviceConfig{
++			"d": {ID: 1, DeviceID: "d", Enabled: false, AccountID: 1, InboxID: 1, ChatwootURL: "https://x.example.com", APIToken: "t"},
++		},
++		count: 1,
++	}
++	reg := NewClientRegistry(repo)
++	rc, err := reg.Resolve("d")
++	if err != nil {
++		t.Fatalf("err: %v", err)
++	}
++	if rc != nil {
++		t.Fatalf("disabled config must resolve to nil (skip), got %+v", rc)
++	}
++}
++
++func TestClientRegistryEmptyTableFallsBackToEnv(t *testing.T) {
++	origURL, origTok, origAcc, origInbox := config.ChatwootURL, config.ChatwootAPIToken, config.ChatwootAccountID, config.ChatwootInboxID
++	t.Cleanup(func() {
++		config.ChatwootURL, config.ChatwootAPIToken, config.ChatwootAccountID, config.ChatwootInboxID = origURL, origTok, origAcc, origInbox
++	})
++	config.ChatwootURL = "https://env.example.com"
++	config.ChatwootAPIToken = "env-tok"
++	config.ChatwootAccountID = 1
++	config.ChatwootInboxID = 2
++
++	repo := &fakeConfigRepo{count: 0} // empty table
++	reg := NewClientRegistry(repo)
++	rc, err := reg.Resolve("anything")
++	if err != nil || rc == nil || rc.Client == nil {
++		t.Fatalf("legacy resolve: rc=%v err=%v", rc, err)
++	}
++	if rc.ConfigID != 0 {
++		t.Fatalf("legacy config must have ConfigID 0, got %d", rc.ConfigID)
++	}
++	if rc.Client.BaseURL != "https://env.example.com" || rc.Client.AccountID != 1 || rc.Client.InboxID != 2 {
++		t.Fatalf("legacy client not built from env: %+v", rc.Client)
++	}
++}
++
++func TestClientRegistryNonEmptyNoMatchFailsFast(t *testing.T) {
++	repo := &fakeConfigRepo{count: 2} // table has configs, but none match "ghost"
++	reg := NewClientRegistry(repo)
++	rc, err := reg.Resolve("ghost")
++	if err != nil {
++		t.Fatalf("err: %v", err)
++	}
++	if rc != nil {
++		t.Fatalf("unmapped device with non-empty table must fail-fast (nil), got %+v", rc)
++	}
++}
++
++func TestClientRegistryInvalidateRefreshes(t *testing.T) {
++	cfg := &domainChatStorage.ChatwootDeviceConfig{ID: 1, DeviceID: "d", ChatwootURL: "https://a.example.com", AccountID: 1, InboxID: 1, APIToken: "t", Enabled: true}
++	repo := &fakeConfigRepo{
++		byIdentifier: map[string]*domainChatStorage.ChatwootDeviceConfig{"d": cfg},
++		count:        1,
++	}
++	reg := NewClientRegistry(repo)
++
++	rc, _ := reg.Resolve("d")
++	if rc.Client.InboxID != 1 {
++		t.Fatalf("initial inbox = %d, want 1", rc.Client.InboxID)
++	}
++	// Change underlying config, then invalidate: next resolve must reflect it.
++	cfg.InboxID = 99
++	reg.Invalidate("d")
++	rc, _ = reg.Resolve("d")
++	if rc.Client.InboxID != 99 {
++		t.Fatalf("after invalidate inbox = %d, want 99 (stale cache)", rc.Client.InboxID)
++	}
++}
++
++// A device that resolved to the env fallback while the table was empty must
++// not keep that client after the first per-device config is written. The
++// forward path caches under the JID (with DeviceID = JID), so the write-path
++// Invalidate(<user-facing id>) can only clear it by purging legacy entries
++// wholesale — this is the regression test for that purge.
++func TestClientRegistryInvalidatePurgesEnvFallbackEntries(t *testing.T) {
++	origURL, origTok, origAcc, origInbox := config.ChatwootURL, config.ChatwootAPIToken, config.ChatwootAccountID, config.ChatwootInboxID
++	t.Cleanup(func() {
++		config.ChatwootURL, config.ChatwootAPIToken, config.ChatwootAccountID, config.ChatwootInboxID = origURL, origTok, origAcc, origInbox
++	})
++	config.ChatwootURL = "https://env.example.com"
++	config.ChatwootAPIToken = "env-tok"
++	config.ChatwootAccountID = 1
++	config.ChatwootInboxID = 2
++
++	repo := &fakeConfigRepo{byIdentifier: map[string]*domainChatStorage.ChatwootDeviceConfig{}}
++	reg := NewClientRegistry(repo)
++
++	// Table empty: the forward path (keyed by JID) resolves the env fallback.
++	rc, err := reg.Resolve("628@s.whatsapp.net")
++	if err != nil || rc == nil || rc.ConfigID != 0 {
++		t.Fatalf("precondition: env fallback expected, got rc=%+v err=%v", rc, err)
++	}
++
++	// Operator creates this device's config via PUT (user-facing id "busine");
++	// the handler invalidates by that id only.
++	cfg := &domainChatStorage.ChatwootDeviceConfig{
++		ID: 7, DeviceID: "busine", DeviceJID: "628@s.whatsapp.net",
++		ChatwootURL: "https://device.example.com", AccountID: 3, InboxID: 9,
++		APIToken: "tok", Enabled: true,
++	}
++	repo.byIdentifier["busine"] = cfg
++	repo.byIdentifier["628@s.whatsapp.net"] = cfg
++	repo.count = 1
++	reg.Invalidate("busine")
++
++	// The same device's next forward must use its own config, not the env inbox.
++	rc, err = reg.Resolve("628@s.whatsapp.net")
++	if err != nil || rc == nil {
++		t.Fatalf("resolve after config create: rc=%v err=%v", rc, err)
++	}
++	if rc.ConfigID != 7 || rc.Client.BaseURL != "https://device.example.com" {
++		t.Fatalf("stale env fallback survived Invalidate: %+v / %+v", rc, rc.Client)
++	}
++
++	// And an unrelated device that had also cached the env fallback fails fast.
++	reg2 := NewClientRegistry(&fakeConfigRepo{byIdentifier: map[string]*domainChatStorage.ChatwootDeviceConfig{}})
++	if rc, _ := reg2.Resolve("999@s.whatsapp.net"); rc == nil || rc.ConfigID != 0 {
++		t.Fatalf("precondition: env fallback expected for unrelated device")
++	}
++	reg2.repo.(*fakeConfigRepo).count = 1
++	reg2.Invalidate("busine")
++	if rc, _ := reg2.Resolve("999@s.whatsapp.net"); rc != nil {
++		t.Fatalf("unmapped device must fail-fast after first config write, got %+v", rc)
++	}
++}
++
++func TestClientRegistryResolveByInbox(t *testing.T) {
++	cfg := &domainChatStorage.ChatwootDeviceConfig{ID: 5, DeviceID: "d", ChatwootURL: "https://a.example.com", AccountID: 3, InboxID: 9, APIToken: "t", Enabled: true}
++	repo := &fakeConfigRepo{byInbox: map[[2]int]*domainChatStorage.ChatwootDeviceConfig{{3, 9}: cfg}}
++	reg := NewClientRegistry(repo)
++
++	rc, err := reg.ResolveByInbox(3, 9)
++	if err != nil || rc == nil || rc.ConfigID != 5 || rc.Client.InboxID != 9 {
++		t.Fatalf("resolve by inbox: rc=%v err=%v", rc, err)
++	}
++	if rc, _ := reg.ResolveByInbox(1, 1); rc != nil {
++		t.Fatalf("unknown inbox must resolve nil, got %+v", rc)
++	}
++}
+diff --git a/src/infrastructure/chatwoot/sync_perdevice_test.go b/src/infrastructure/chatwoot/sync_perdevice_test.go
+new file mode 100644
+index 0000000..df35e88
+--- /dev/null
++++ b/src/infrastructure/chatwoot/sync_perdevice_test.go
+@@ -0,0 +1,120 @@
++package chatwoot
++
++import (
++	"context"
++	"testing"
++
++	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
++)
++
++func TestPerDeviceSyncServicesAreDistinct(t *testing.T) {
++	t.Cleanup(func() { _ = CloseAllSyncServices() })
++
++	c1 := NewClientFromConfig("https://a.example.com", "t", 1, 1)
++	c2 := NewClientFromConfig("https://b.example.com", "t", 2, 2)
++
++	s1 := GetSyncServiceForDevice("devA", c1, nil, false, 1)
++	s2 := GetSyncServiceForDevice("devB", c2, nil, false, 2)
++
++	if s1 == s2 {
++		t.Fatal("expected distinct sync services per device")
++	}
++	if s1.client != c1 || s2.client != c2 {
++		t.Fatal("each sync service must hold its own device client")
++	}
++	// configID must be stamped so REST history-sync links are account/config
++	// scoped (else reverse routing could cross accounts).
++	if s1.configID != 1 || s2.configID != 2 {
++		t.Fatalf("configID not threaded: s1=%d s2=%d", s1.configID, s2.configID)
++	}
++	// Same key returns the cached instance.
++	if again := GetSyncServiceForDevice("devA", c1, nil, false, 1); again != s1 {
++		t.Fatal("GetSyncServiceForDevice should be idempotent per key")
++	}
++	// Per-device services must not enable direct-Postgres import; legacy may.
++	if s1.allowPgImport {
++		t.Fatal("per-device service must not allow pg import")
++	}
++	legacy := GetSyncServiceForDevice(legacySyncServiceKey, c1, nil, true, 0)
++	if !legacy.allowPgImport {
++		t.Fatal("legacy service should allow pg import")
++	}
++	if LookupSyncServiceForDevice(legacySyncServiceKey) != legacy {
++		t.Fatal("legacy-keyed lookup should return the legacy sync service")
++	}
++}
++
++func TestSyncServiceRebuiltOnClientChange(t *testing.T) {
++	t.Cleanup(func() { _ = CloseAllSyncServices() })
++
++	orig := GetSyncServiceForDevice("devRot", NewClientFromConfig("https://a.example.com", "old-token", 1, 1), nil, false, 1)
++
++	// An equivalent client (same destination + credentials, different pointer)
++	// must reuse the cached service — identity is by value, not pointer.
++	same := GetSyncServiceForDevice("devRot", NewClientFromConfig("https://a.example.com", "old-token", 1, 1), nil, false, 1)
++	if same != orig {
++		t.Fatal("equivalent client should reuse the cached sync service")
++	}
++
++	// Simulate an in-flight run on the original service before rotation.
++	running := NewSyncProgress("628@s.whatsapp.net")
++	orig.progressMu.Lock()
++	orig.progressMap["628@s.whatsapp.net"] = running
++	orig.progressMu.Unlock()
++	running.SetRunning()
++
++	// A rotated token is a different client identity: the cached service must be
++	// rebuilt rather than continuing to use the stale (revoked) token.
++	rotated := NewClientFromConfig("https://a.example.com", "new-token", 1, 1)
++	got := GetSyncServiceForDevice("devRot", rotated, nil, false, 1)
++	if got == orig {
++		t.Fatal("rotated token should rebuild the sync service")
++	}
++	if got.client != rotated {
++		t.Fatal("rebuilt sync service must bind the new client")
++	}
++	if LookupSyncServiceForDevice("devRot") != got {
++		t.Fatal("cache should now hold the rebuilt service")
++	}
++
++	// The in-flight run must survive the rebuild: still visible in progress and
++	// still blocking a concurrent second run for the same device.
++	if !got.IsRunning("628@s.whatsapp.net") {
++		t.Fatal("rebuilt service lost the in-flight run guard")
++	}
++	if p := got.GetProgress("628@s.whatsapp.net"); p == nil || p.Status != "running" {
++		t.Fatalf("rebuilt service lost progress visibility: %+v", p)
++	}
++	running.SetCompleted()
++	if got.IsRunning("628@s.whatsapp.net") {
++		t.Fatal("completed run should unblock the device (shared progress pointer)")
++	}
++}
++
++func TestPgImporterGatedByAllowPgImport(t *testing.T) {
++	prev := config.ChatwootImportDBURI
++	config.ChatwootImportDBURI = "postgresql://user:pass@localhost:5432/chatwoot"
++	t.Cleanup(func() { config.ChatwootImportDBURI = prev })
++
++	// Direct-DB import configured, but a per-device service must not use it.
++	s := &SyncService{allowPgImport: false}
++	imp, err := s.pgImporterForSync(context.Background())
++	if err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++	if imp != nil {
++		t.Fatal("per-device service must return nil importer (REST-only) even when ChatwootImportDBURI is set")
++	}
++}
++
++func TestSyncServiceKeyFor(t *testing.T) {
++	if k := SyncServiceKeyFor(nil); k != legacySyncServiceKey {
++		t.Fatalf("nil -> %q, want legacy key", k)
++	}
++	if k := SyncServiceKeyFor(&ResolvedConfig{ConfigID: 0, DeviceID: "d"}); k != legacySyncServiceKey {
++		t.Fatalf("legacy config -> %q, want legacy key", k)
++	}
++	if k := SyncServiceKeyFor(&ResolvedConfig{ConfigID: 5, DeviceID: "d"}); k != "d" {
++		t.Fatalf("per-device config -> %q, want device id", k)
++	}
++}
+diff --git a/src/infrastructure/chatwoot/sync_rest_test.go b/src/infrastructure/chatwoot/sync_rest_test.go
+index f42a36a..377d185 100644
+--- a/src/infrastructure/chatwoot/sync_rest_test.go
++++ b/src/infrastructure/chatwoot/sync_rest_test.go
+@@ -27,7 +27,9 @@ func TestPgImporterForSync_EmptyURIReturnsNil(t *testing.T) {
+ 	orig := config.ChatwootImportDBURI
+ 	defer func() { config.ChatwootImportDBURI = orig }()
+ 
++	// allowPgImport=true exercises the URI branch (the gate is tested separately).
+ 	s := NewSyncService(nil, nil)
++	s.allowPgImport = true
+ 
+ 	tests := []struct {
+ 		name string
+@@ -70,6 +72,7 @@ func TestPgImporterForSync_ConfiguredURIRequiresAccountAndInbox(t *testing.T) {
+ 	config.ChatwootInboxID = 99
+ 
+ 	s := NewSyncService(nil, nil)
++	s.allowPgImport = true // legacy/env service: direct-Postgres import enabled
+ 	imp, err := s.pgImporterForSync(context.Background())
+ 	if err == nil {
+ 		t.Fatal("pgImporterForSync() error = nil, want configured import failure")
+diff --git a/src/infrastructure/chatwoot/sync_test.go b/src/infrastructure/chatwoot/sync_test.go
+index 4ee363d..c08d974 100644
+--- a/src/infrastructure/chatwoot/sync_test.go
++++ b/src/infrastructure/chatwoot/sync_test.go
+@@ -236,6 +236,8 @@ func TestRetryable(t *testing.T) {
+ 		{"502", &HTTPStatusError{StatusCode: 502}, true},
+ 		{"503", &HTTPStatusError{StatusCode: 503}, true},
+ 		{"non-HTTP error", &testError{msg: "network"}, true},
++		{"registry unavailable", ErrClientRegistryUnavailable, false},
++		{"wrapped registry unavailable", fmt.Errorf("resolve: %w", ErrClientRegistryUnavailable), false},
+ 	}
+ 	for _, tt := range tests {
+ 		if got := Retryable(tt.err); got != tt.retryable {
+diff --git a/src/infrastructure/chatwoot/url_validation_test.go b/src/infrastructure/chatwoot/url_validation_test.go
+new file mode 100644
+index 0000000..5b3d196
+--- /dev/null
++++ b/src/infrastructure/chatwoot/url_validation_test.go
+@@ -0,0 +1,173 @@
++package chatwoot
++
++import (
++	"fmt"
++	"net"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
++)
++
++func TestCanonicalizeChatwootURL(t *testing.T) {
++	cases := []struct {
++		name    string
++		in      string
++		want    string
++		wantErr bool
++	}{
++		{"https plain", "https://app.chatwoot.com", "https://app.chatwoot.com", false},
++		{"trailing slash", "https://app.chatwoot.com/", "https://app.chatwoot.com", false},
++		{"uppercase scheme+host", "HTTPS://APP.Chatwoot.COM", "https://app.chatwoot.com", false},
++		{"strip default https port", "https://app.chatwoot.com:443", "https://app.chatwoot.com", false},
++		{"strip default http port", "http://example.com:80/", "http://example.com", false},
++		{"keep nonstandard port", "https://host.example.com:8443", "https://host.example.com:8443", false},
++		{"keep subpath, trim slash", "https://h.example.com/chatwoot/", "https://h.example.com/chatwoot", false},
++		{"surrounding spaces", "  https://app.chatwoot.com  ", "https://app.chatwoot.com", false},
++		{"reject ftp", "ftp://example.com", "", true},
++		{"reject empty", "", "", true},
++		{"reject no host", "https://", "", true},
++		{"reject userinfo", "https://user:pass@example.com", "", true},
++	}
++	for _, tc := range cases {
++		t.Run(tc.name, func(t *testing.T) {
++			got, err := CanonicalizeChatwootURL(tc.in)
++			if tc.wantErr {
++				if err == nil {
++					t.Fatalf("expected error for %q, got %q", tc.in, got)
++				}
++				return
++			}
++			if err != nil {
++				t.Fatalf("unexpected error for %q: %v", tc.in, err)
++			}
++			if got != tc.want {
++				t.Fatalf("canonicalize(%q) = %q, want %q", tc.in, got, tc.want)
++			}
++		})
++	}
++}
++
++func TestValidateChatwootURL_SSRF(t *testing.T) {
++	// Stub DNS so resolution is deterministic and hermetic (no network).
++	orig := lookupIP
++	t.Cleanup(func() { lookupIP = orig })
++	lookupIP = func(host string) ([]net.IP, error) {
++		switch host {
++		case "app.chatwoot.com", "chat.example.com":
++			return []net.IP{net.ParseIP("203.0.113.10")}, nil // public
++		case "internal.example.com":
++			return []net.IP{net.ParseIP("10.0.0.5")}, nil // resolves to private (SSRF via DNS)
++		case "rebind.example.com":
++			return []net.IP{net.ParseIP("203.0.113.7"), net.ParseIP("127.0.0.1")}, nil // one bad IP
++		}
++		return nil, fmt.Errorf("no such host: %s", host)
++	}
++
++	reject := []string{
++		"http://127.0.0.1",
++		"http://localhost",
++		"http://10.0.0.5",
++		"http://192.168.1.1:3000",
++		"http://172.16.5.5",
++		"http://169.254.169.254", // cloud metadata
++		"http://[::1]",
++		"http://0.0.0.0",
++		"ftp://example.com",
++		"https://user:pass@example.com",
++		"https://internal.example.com", // hostname resolving to a private IP
++		"https://rebind.example.com",   // any resolved IP private -> reject
++		"https://nonexistent.invalid",  // unresolvable
++	}
++	for _, u := range reject {
++		if err := ValidateChatwootURL(u); err == nil {
++			t.Errorf("ValidateChatwootURL(%q) = nil, want rejection", u)
++		}
++	}
++
++	accept := []string{
++		"https://app.chatwoot.com",
++		"https://chat.example.com:8443",
++		"http://203.0.113.10", // public IP literal
++	}
++	for _, u := range accept {
++		if err := ValidateChatwootURL(u); err != nil {
++			t.Errorf("ValidateChatwootURL(%q) = %v, want accept", u, err)
++		}
++	}
++}
++
++// TestChatwootClientSSRFGuardWiring verifies per-device clients get the
++// connect-time SSRF guard by default, the env client does not, and an explicit
++// allowlist disables the guard (the operator opted into trusting those hosts).
++func TestChatwootClientSSRFGuardWiring(t *testing.T) {
++	origHosts := config.ChatwootAllowedHosts
++	t.Cleanup(func() { config.ChatwootAllowedHosts = origHosts })
++
++	config.ChatwootAllowedHosts = nil
++	if c := NewClientFromConfig("https://x.example.com", "t", 1, 1); c.HTTPClient.Transport == nil {
++		t.Error("per-device client without allowlist should be SSRF-guarded (Transport set)")
++	}
++	if c := NewClient(); c.HTTPClient.Transport != nil {
++		t.Error("env client should NOT be SSRF-guarded (trusted, may be internal)")
++	}
++
++	config.ChatwootAllowedHosts = []string{"x.example.com"}
++	if c := NewClientFromConfig("https://x.example.com", "t", 1, 1); c.HTTPClient.Transport != nil {
++		t.Error("per-device client WITH allowlist should not be guarded (allowlist is the control)")
++	}
++
++	// Sanity: the guard transport is a real *http.Transport.
++	if _, ok := any(ssrfGuardedTransport()).(*http.Transport); !ok {
++		t.Error("ssrfGuardedTransport should return an *http.Transport")
++	}
++}
++
++// TestChatwootClientSSRFGuardBlocksConnect exercises the Dialer.Control guard
++// end to end: a guarded client must refuse to actually connect to a loopback
++// address (the DNS-rebinding case a one-time URL validation can't catch),
++// while the unguarded env client connects to the same address. This covers the
++// runtime behavior, not just that a Transport is wired.
++func TestChatwootClientSSRFGuardBlocksConnect(t *testing.T) {
++	origHosts := config.ChatwootAllowedHosts
++	t.Cleanup(func() { config.ChatwootAllowedHosts = origHosts })
++	config.ChatwootAllowedHosts = nil
++
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
++		w.WriteHeader(http.StatusOK)
++	}))
++	defer srv.Close() // listens on 127.0.0.1
++
++	// Guarded per-device client: connect to the loopback server must be blocked.
++	guarded := NewClientFromConfig(srv.URL, "t", 1, 1)
++	if _, err := guarded.HTTPClient.Get(srv.URL); err == nil {
++		t.Fatal("guarded client connected to a loopback address, want block")
++	} else if !strings.Contains(err.Error(), "disallowed address") {
++		t.Fatalf("guarded client error = %v, want a disallowed-address block", err)
++	}
++
++	// Unguarded env client: the same loopback connection succeeds (trusted).
++	unguarded := NewClient()
++	unguarded.HTTPClient.Timeout = 5 * time.Second
++	resp, err := unguarded.HTTPClient.Get(srv.URL)
++	if err != nil {
++		t.Fatalf("unguarded env client should reach loopback, got %v", err)
++	}
++	resp.Body.Close()
++}
++
++func TestValidateChatwootURL_Allowlist(t *testing.T) {
++	orig := config.ChatwootAllowedHosts
++	t.Cleanup(func() { config.ChatwootAllowedHosts = orig })
++
++	config.ChatwootAllowedHosts = []string{"app.chatwoot.com"}
++	if err := ValidateChatwootURL("https://app.chatwoot.com"); err != nil {
++		t.Errorf("allowlisted host rejected: %v", err)
++	}
++	if err := ValidateChatwootURL("https://evil.example.com"); err == nil {
++		t.Error("non-allowlisted host accepted, want rejection")
++	}
++}
+diff --git a/src/infrastructure/whatsapp/chatwoot_forward_test.go b/src/infrastructure/whatsapp/chatwoot_forward_test.go
+index 72de949..bb08339 100644
+--- a/src/infrastructure/whatsapp/chatwoot_forward_test.go
++++ b/src/infrastructure/whatsapp/chatwoot_forward_test.go
+@@ -1,12 +1,37 @@
+ package whatsapp
+ 
+ import (
++	"context"
++	"errors"
+ 	"testing"
+ 
+ 	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
+ 	"github.com/aldinokemal/go-whatsapp-web-multidevice/infrastructure/chatwoot"
+ )
+ 
++// TestSyncPayloadToChatwootFailFast verifies the forward path skips silently
++// (no error, no retry) when the device resolves to no Chatwoot config, and
++// propagates a transient resolution error so the caller can retry.
++func TestSyncPayloadToChatwootFailFast(t *testing.T) {
++	orig := getChatwootClientFn
++	t.Cleanup(func() { getChatwootClientFn = orig })
++
++	payload := map[string]any{"payload": map[string]any{"id": "wa-1", "chat_id": "628@s.whatsapp.net"}}
++
++	// No config for this device -> skip, return nil.
++	getChatwootClientFn = func(string) (*chatwoot.ResolvedConfig, error) { return nil, nil }
++	if err := syncPayloadToChatwoot(context.Background(), payload, "message", "dev-unmapped", nil); err != nil {
++		t.Fatalf("unmapped device should skip with nil, got %v", err)
++	}
++
++	// Transient resolution error -> propagate (retryable).
++	wantErr := errors.New("storage down")
++	getChatwootClientFn = func(string) (*chatwoot.ResolvedConfig, error) { return nil, wantErr }
++	if err := syncPayloadToChatwoot(context.Background(), payload, "message", "dev", nil); !errors.Is(err, wantErr) {
++		t.Fatalf("resolution error should propagate, got %v", err)
++	}
++}
++
+ func TestChatwootMessageTypeFromPayload(t *testing.T) {
+ 	tests := []struct {
+ 		name     string
+@@ -58,6 +83,8 @@ func TestBuildChatwootForwardMessageLink(t *testing.T) {
+ 
+ 	link := buildChatwootForwardMessageLink(
+ 		"device-a@s.whatsapp.net",
++		42, // configID
++		3,  // accountID
+ 		data,
+ 		chatwoot.MessageOptions{SourceID: "WAID:wa-live-1"},
+ 		&chatwootSyncResult{MessageID: 123, ConversationID: 456, InboxID: 789},
+@@ -75,6 +102,9 @@ func TestBuildChatwootForwardMessageLink(t *testing.T) {
+ 	if link.ChatwootMessageID != 123 || link.ChatwootConversationID != 456 || link.ChatwootInboxID != 789 {
+ 		t.Fatalf("unexpected chatwoot ids: %+v", link)
+ 	}
++	if link.ChatwootConfigID != 42 || link.ChatwootAccountID != 3 {
++		t.Fatalf("unexpected scope ids: config=%d account=%d", link.ChatwootConfigID, link.ChatwootAccountID)
++	}
+ 	if link.Direction != "incoming" {
+ 		t.Fatalf("Direction = %q, want incoming", link.Direction)
+ 	}
+diff --git a/src/infrastructure/whatsapp/device_logout_keepslot_test.go b/src/infrastructure/whatsapp/device_logout_keepslot_test.go
+index 1d2617c..461a905 100644
+--- a/src/infrastructure/whatsapp/device_logout_keepslot_test.go
++++ b/src/infrastructure/whatsapp/device_logout_keepslot_test.go
+@@ -44,6 +44,12 @@ func (s *keepSlotStubStorage) DeleteDeviceRecord(deviceID string) error {
+ 	return nil
+ }
+ 
++// The purge path drops the device's Chatwoot config with it; these slots have
++// none, so the lookup returns empty and the delete methods are never reached.
++func (s *keepSlotStubStorage) GetChatwootDeviceConfig(string) (*domainChatStorage.ChatwootDeviceConfig, error) {
++	return nil, nil
++}
++
+ // assertStoreLacksJID fails if any device row in the container still matches the given
+ // NonAD JID. Matching mirrors deleteStoreRowsForJID / LoadExistingDevices.
+ func assertStoreLacksJID(t *testing.T, ctx context.Context, c *sqlstore.Container, nonADJID string) {
+diff --git a/src/infrastructure/whatsapp/webhook_forward_test.go b/src/infrastructure/whatsapp/webhook_forward_test.go
+index 33692b5..10fa990 100644
+--- a/src/infrastructure/whatsapp/webhook_forward_test.go
++++ b/src/infrastructure/whatsapp/webhook_forward_test.go
+@@ -6,6 +6,7 @@ import (
+ 	"net/http"
+ 	"strings"
+ 	"testing"
++	"time"
+ 
+ 	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
+ 	"github.com/aldinokemal/go-whatsapp-web-multidevice/domains/chatstorage"
+@@ -257,6 +258,73 @@ func TestEnqueueChatwootForwardRetrySkipsPermanentFailure(t *testing.T) {
+ 	}
+ }
+ 
++// retryWorkerTestRepo records which terminal action the retry worker takes for a
++// due event so a test can distinguish "rescheduled" from "marked done/deleted".
++type retryWorkerTestRepo struct {
++	chatstorage.IChatStorageRepository
++	due       []*chatstorage.ChatwootForwardEvent
++	failedIDs []int64
++	doneIDs   []int64
++}
++
++func (r *retryWorkerTestRepo) ListDueChatwootForwardEvents(_ time.Time, _ int) ([]*chatstorage.ChatwootForwardEvent, error) {
++	return r.due, nil
++}
++
++func (r *retryWorkerTestRepo) MarkChatwootForwardEventFailed(id int64, _ string, _ time.Time) error {
++	r.failedIDs = append(r.failedIDs, id)
++	return nil
++}
++
++func (r *retryWorkerTestRepo) MarkChatwootForwardEventDone(id int64) error {
++	r.doneIDs = append(r.doneIDs, id)
++	return nil
++}
++
++func TestProcessDueChatwootForwardRetriesReschedulesOnRegistryUnavailable(t *testing.T) {
++	// Reproduces the P1 data-loss bug: when the registry is uninitialized, a due
++	// retry must be rescheduled, NOT marked done (which deletes it without ever
++	// delivering the message).
++	orig := getChatwootClientFn
++	t.Cleanup(func() { getChatwootClientFn = orig })
++	getChatwootClientFn = func(string) (*chatwoot.ResolvedConfig, error) {
++		return nil, chatwoot.ErrClientRegistryUnavailable
++	}
++
++	repo := &retryWorkerTestRepo{
++		due: []*chatstorage.ChatwootForwardEvent{
++			{ID: 7, DeviceID: "dev", EventName: "message", WhatsAppMessageID: "wa-1", PayloadJSON: `{"payload":{"id":"wa-1"}}`},
++		},
++	}
++
++	processDueChatwootForwardRetries(repo)
++
++	if len(repo.doneIDs) != 0 {
++		t.Fatalf("retry job must not be marked done on nil registry, got done=%v", repo.doneIDs)
++	}
++	if len(repo.failedIDs) != 1 || repo.failedIDs[0] != 7 {
++		t.Fatalf("retry job should be rescheduled, got failed=%v", repo.failedIDs)
++	}
++}
++
++func TestEnqueueChatwootForwardRetrySkipsRegistryUnavailable(t *testing.T) {
++	// An uninitialized registry is a wiring/startup condition, not a transient
++	// network failure. The live path must NOT enqueue a retry that would only
++	// fail the same way (and, in MCP-only deployments, accumulate forever).
++	repo := &chatwootForwardQueueTestRepo{}
++	payload := map[string]any{
++		"payload": map[string]any{"id": "wa-no-registry"},
++	}
++
++	queued := enqueueChatwootForwardRetry(repo, "device-a@s.whatsapp.net", "message", payload, chatwoot.ErrClientRegistryUnavailable)
++	if queued {
++		t.Fatal("registry-unavailable failure should not be queued")
++	}
++	if len(repo.events) != 0 {
++		t.Fatalf("queued events = %d, want 0", len(repo.events))
++	}
++}
++
+ func TestExtractStructuredMessageContentWithContactPayload(t *testing.T) {
+ 	payload := map[string]any{
+ 		"contact": webhookContactPayload{
+diff --git a/src/ui/rest/chatwoot_config_test.go b/src/ui/rest/chatwoot_config_test.go
+new file mode 100644
+index 0000000..def4694
+--- /dev/null
++++ b/src/ui/rest/chatwoot_config_test.go
+@@ -0,0 +1,319 @@
++package rest
++
++import (
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++
++	domainChatStorage "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/chatstorage"
++	"github.com/aldinokemal/go-whatsapp-web-multidevice/infrastructure/chatwoot"
++	"github.com/aldinokemal/go-whatsapp-web-multidevice/infrastructure/whatsapp"
++	"github.com/gofiber/fiber/v2"
++)
++
++func TestMaskAPIToken(t *testing.T) {
++	cases := map[string]string{
++		"":                  "",
++		"abc":               "****",
++		"abcd":              "****",
++		"secret-token-1234": "****1234",
++	}
++	for in, want := range cases {
++		if got := maskAPIToken(in); got != want {
++			t.Errorf("maskAPIToken(%q) = %q, want %q", in, got, want)
++		}
++	}
++}
++
++// fakeConfigStore is an in-memory IChatStorageRepository covering the methods
++// the config handlers use; the rest is the embedded (nil) interface.
++type fakeConfigStore struct {
++	domainChatStorage.IChatStorageRepository
++	configs            map[string]*domainChatStorage.ChatwootDeviceConfig
++	linkCount          map[int64]int
++	nextID             int64
++	deletedLinkConfigs []int64
++}
++
++func newFakeConfigStore() *fakeConfigStore {
++	return &fakeConfigStore{configs: map[string]*domainChatStorage.ChatwootDeviceConfig{}, linkCount: map[int64]int{}}
++}
++
++func (f *fakeConfigStore) SaveChatwootDeviceConfig(cfg *domainChatStorage.ChatwootDeviceConfig) error {
++	if cfg.ID == 0 {
++		f.nextID++
++		cfg.ID = f.nextID
++	}
++	clone := *cfg
++	f.configs[cfg.DeviceID] = &clone
++	return nil
++}
++
++func (f *fakeConfigStore) GetChatwootDeviceConfig(deviceID string) (*domainChatStorage.ChatwootDeviceConfig, error) {
++	if cfg, ok := f.configs[deviceID]; ok {
++		clone := *cfg
++		return &clone, nil
++	}
++	return nil, nil
++}
++
++func (f *fakeConfigStore) GetChatwootDeviceConfigByIdentifier(identifier string) (*domainChatStorage.ChatwootDeviceConfig, error) {
++	for _, cfg := range f.configs {
++		if cfg.DeviceID == identifier || (cfg.DeviceJID != "" && cfg.DeviceJID == identifier) {
++			clone := *cfg
++			return &clone, nil
++		}
++	}
++	return nil, nil
++}
++
++func (f *fakeConfigStore) ListChatwootDeviceConfigs() ([]*domainChatStorage.ChatwootDeviceConfig, error) {
++	out := make([]*domainChatStorage.ChatwootDeviceConfig, 0, len(f.configs))
++	for _, cfg := range f.configs {
++		clone := *cfg
++		out = append(out, &clone)
++	}
++	return out, nil
++}
++
++func (f *fakeConfigStore) DeleteChatwootDeviceConfig(deviceID string) error {
++	delete(f.configs, deviceID)
++	return nil
++}
++
++func (f *fakeConfigStore) CountChatwootMessageLinksByConfig(configID int64) (int, error) {
++	return f.linkCount[configID], nil
++}
++
++func (f *fakeConfigStore) DeleteChatwootMessageLinksByConfig(configID int64) error {
++	f.deletedLinkConfigs = append(f.deletedLinkConfigs, configID)
++	delete(f.linkCount, configID)
++	return nil
++}
++
++func (f *fakeConfigStore) CountChatwootDeviceConfigs() (int, error) {
++	return len(f.configs), nil
++}
++
++func newConfigTestApp(t *testing.T, store *fakeConfigStore) *fiber.App {
++	t.Helper()
++	dm := whatsapp.NewDeviceManager(nil, nil, nil)
++	dm.AddDevice(whatsapp.NewDeviceInstance("dev", nil, nil))
++	chatwoot.InitClientRegistry(store)
++	t.Cleanup(func() { chatwoot.InitClientRegistry(nil) })
++
++	h := &ChatwootHandler{DeviceManager: dm, ChatStorageRepo: store}
++	app := fiber.New()
++	app.Get("/chatwoot/configs", h.ListChatwootConfigs)
++	app.Get("/devices/:device_id/chatwoot/config", h.GetChatwootConfig)
++	app.Put("/devices/:device_id/chatwoot/config", h.UpsertChatwootConfig)
++	app.Delete("/devices/:device_id/chatwoot/config", h.DeleteChatwootConfig)
++	return app
++}
++
++func doJSON(t *testing.T, app *fiber.App, method, path, body string) (*http.Response, string) {
++	t.Helper()
++	req := httptest.NewRequest(method, path, strings.NewReader(body))
++	req.Header.Set("Content-Type", "application/json")
++	resp, err := app.Test(req)
++	if err != nil {
++		t.Fatalf("app.Test: %v", err)
++	}
++	b, _ := io.ReadAll(resp.Body)
++	return resp, string(b)
++}
++
++func TestChatwootConfigCRUDFlow(t *testing.T) {
++	store := newFakeConfigStore()
++	app := newConfigTestApp(t, store)
++
++	// Create.
++	resp, body := doJSON(t, app, http.MethodPut, "/devices/dev/chatwoot/config",
++		`{"chatwoot_url":"https://203.0.113.10/","account_id":1,"inbox_id":5,"api_token":"super-secret-token"}`)
++	if resp.StatusCode != fiber.StatusOK {
++		t.Fatalf("create status = %d body=%s", resp.StatusCode, body)
++	}
++	stored := store.configs["dev"]
++	if stored == nil || stored.APIToken != "super-secret-token" {
++		t.Fatalf("token not stored raw: %+v", stored)
++	}
++	if stored.ChatwootURL != "https://203.0.113.10" { // canonicalized (trailing slash removed)
++		t.Fatalf("url not canonicalized: %q", stored.ChatwootURL)
++	}
++
++	// Read masks the token and never leaks the raw secret.
++	resp, body = doJSON(t, app, http.MethodGet, "/devices/dev/chatwoot/config", "")
++	if resp.StatusCode != fiber.StatusOK {
++		t.Fatalf("get status = %d", resp.StatusCode)
++	}
++	if strings.Contains(body, "super-secret-token") {
++		t.Fatalf("GET leaked raw token: %s", body)
++	}
++	if !strings.Contains(body, "****oken") {
++		t.Fatalf("GET should show masked token, got %s", body)
++	}
++
++	// Update with empty token keeps the stored secret.
++	resp, body = doJSON(t, app, http.MethodPut, "/devices/dev/chatwoot/config",
++		`{"chatwoot_url":"https://203.0.113.10","account_id":1,"inbox_id":5,"enabled":false}`)
++	if resp.StatusCode != fiber.StatusOK {
++		t.Fatalf("update status = %d body=%s", resp.StatusCode, body)
++	}
++	if store.configs["dev"].APIToken != "super-secret-token" {
++		t.Fatal("empty token on update must keep the stored token")
++	}
++	if store.configs["dev"].Enabled {
++		t.Fatal("enabled=false should have been applied")
++	}
++
++	// Delete removes the config AND its message links: stale links would keep
++	// winning the account-scoped reverse lookup after a delete-and-recreate
++	// rebind and hijack reply destinations.
++	configID := store.configs["dev"].ID
++	resp, _ = doJSON(t, app, http.MethodDelete, "/devices/dev/chatwoot/config", "")
++	if resp.StatusCode != fiber.StatusOK {
++		t.Fatalf("delete status = %d", resp.StatusCode)
++	}
++	if _, ok := store.configs["dev"]; ok {
++		t.Fatal("config not deleted")
++	}
++	if len(store.deletedLinkConfigs) != 1 || store.deletedLinkConfigs[0] != configID {
++		t.Fatalf("delete must remove the config's message links, got %v", store.deletedLinkConfigs)
++	}
++}
++
++// TestChatwootConfigWriteInvalidatesRegistry proves the PR's "registry
++// invalidated on write" claim end to end: after a PUT rotates the token (or a
++// DELETE removes the config), the registry must hand out a freshly built
++// client instead of the cached one.
++func TestChatwootConfigWriteInvalidatesRegistry(t *testing.T) {
++	store := newFakeConfigStore()
++	app := newConfigTestApp(t, store)
++
++	doJSON(t, app, http.MethodPut, "/devices/dev/chatwoot/config",
++		`{"chatwoot_url":"https://203.0.113.10","account_id":1,"inbox_id":5,"api_token":"token-one"}`)
++
++	reg := chatwoot.GetClientRegistry()
++	rc, err := reg.Resolve("dev")
++	if err != nil || rc == nil || rc.Client == nil || rc.Client.APIToken != "token-one" {
++		t.Fatalf("initial resolve: rc=%+v err=%v", rc, err)
++	}
++
++	// Rotate the token via PUT: the cached client must not survive.
++	doJSON(t, app, http.MethodPut, "/devices/dev/chatwoot/config",
++		`{"chatwoot_url":"https://203.0.113.10","account_id":1,"inbox_id":5,"api_token":"token-two"}`)
++	rc, err = reg.Resolve("dev")
++	if err != nil || rc == nil || rc.Client == nil {
++		t.Fatalf("resolve after rotation: rc=%+v err=%v", rc, err)
++	}
++	if rc.Client.APIToken != "token-two" {
++		t.Fatalf("registry served stale client after PUT: token=%q, want token-two", rc.Client.APIToken)
++	}
++
++	// DELETE: the per-device client must be evicted (table empty again, so the
++	// next resolve falls back to the env config with ConfigID 0).
++	doJSON(t, app, http.MethodDelete, "/devices/dev/chatwoot/config", "")
++	rc, err = reg.Resolve("dev")
++	if err != nil {
++		t.Fatalf("resolve after delete: %v", err)
++	}
++	if rc != nil && rc.ConfigID != 0 {
++		t.Fatalf("registry served deleted per-device client: %+v", rc)
++	}
++}
++
++// TestChatwootConfigListEndpoint smoke-tests GET /chatwoot/configs: it must
++// return every config with the token masked.
++func TestChatwootConfigListEndpoint(t *testing.T) {
++	store := newFakeConfigStore()
++	app := newConfigTestApp(t, store)
++
++	doJSON(t, app, http.MethodPut, "/devices/dev/chatwoot/config",
++		`{"chatwoot_url":"https://203.0.113.10","account_id":1,"inbox_id":5,"api_token":"super-secret-token"}`)
++
++	resp, body := doJSON(t, app, http.MethodGet, "/chatwoot/configs", "")
++	if resp.StatusCode != fiber.StatusOK {
++		t.Fatalf("list status = %d body=%s", resp.StatusCode, body)
++	}
++	if !strings.Contains(body, `"device_id":"dev"`) {
++		t.Fatalf("list missing config: %s", body)
++	}
++	if strings.Contains(body, "super-secret-token") {
++		t.Fatalf("list leaked raw token: %s", body)
++	}
++	if !strings.Contains(body, "****oken") {
++		t.Fatalf("list should show masked token: %s", body)
++	}
++}
++
++// TestChatwootConfigMaskedTokenRoundTrip proves a client that echoes the masked
++// token from GET back into PUT keeps the stored secret — the mask must never be
++// stored as the credential itself.
++func TestChatwootConfigMaskedTokenRoundTrip(t *testing.T) {
++	store := newFakeConfigStore()
++	app := newConfigTestApp(t, store)
++
++	doJSON(t, app, http.MethodPut, "/devices/dev/chatwoot/config",
++		`{"chatwoot_url":"https://203.0.113.10","account_id":1,"inbox_id":5,"api_token":"super-secret-token"}`)
++
++	// GET shows "****oken"; a naive client PUTs that value straight back.
++	resp, body := doJSON(t, app, http.MethodPut, "/devices/dev/chatwoot/config",
++		`{"chatwoot_url":"https://203.0.113.10","account_id":1,"inbox_id":5,"api_token":"****oken"}`)
++	if resp.StatusCode != fiber.StatusOK {
++		t.Fatalf("masked-echo update status = %d body=%s", resp.StatusCode, body)
++	}
++	if got := store.configs["dev"].APIToken; got != "super-secret-token" {
++		t.Fatalf("masked token was stored as the credential: %q", got)
++	}
++}
++
++func TestChatwootConfigRejectsSSRFURL(t *testing.T) {
++	store := newFakeConfigStore()
++	app := newConfigTestApp(t, store)
++	resp, _ := doJSON(t, app, http.MethodPut, "/devices/dev/chatwoot/config",
++		`{"chatwoot_url":"http://127.0.0.1:3000","account_id":1,"inbox_id":5,"api_token":"t"}`)
++	if resp.StatusCode != fiber.StatusBadRequest {
++		t.Fatalf("SSRF URL status = %d, want 400", resp.StatusCode)
++	}
++}
++
++func TestChatwootConfigRejectsRoutingEditWithLinks(t *testing.T) {
++	store := newFakeConfigStore()
++	app := newConfigTestApp(t, store)
++
++	// Create config (id 1) and pretend it has linked conversations.
++	doJSON(t, app, http.MethodPut, "/devices/dev/chatwoot/config",
++		`{"chatwoot_url":"https://203.0.113.10","account_id":1,"inbox_id":5,"api_token":"t"}`)
++	store.linkCount[store.configs["dev"].ID] = 3
++
++	// Changing the inbox (routing identity) must be rejected with 409.
++	resp, body := doJSON(t, app, http.MethodPut, "/devices/dev/chatwoot/config",
++		`{"chatwoot_url":"https://203.0.113.10","account_id":1,"inbox_id":9,"api_token":"t"}`)
++	if resp.StatusCode != fiber.StatusConflict {
++		t.Fatalf("routing edit status = %d body=%s, want 409", resp.StatusCode, body)
++	}
++
++	// Same for the URL and account dimensions of the routing identity.
++	resp, body = doJSON(t, app, http.MethodPut, "/devices/dev/chatwoot/config",
++		`{"chatwoot_url":"https://203.0.113.99","account_id":1,"inbox_id":5,"api_token":"t"}`)
++	if resp.StatusCode != fiber.StatusConflict {
++		t.Fatalf("url edit status = %d body=%s, want 409", resp.StatusCode, body)
++	}
++	resp, body = doJSON(t, app, http.MethodPut, "/devices/dev/chatwoot/config",
++		`{"chatwoot_url":"https://203.0.113.10","account_id":2,"inbox_id":5,"api_token":"t"}`)
++	if resp.StatusCode != fiber.StatusConflict {
++		t.Fatalf("account edit status = %d body=%s, want 409", resp.StatusCode, body)
++	}
++
++	// Rotating only the token (same routing identity) is allowed.
++	resp, _ = doJSON(t, app, http.MethodPut, "/devices/dev/chatwoot/config",
++		`{"chatwoot_url":"https://203.0.113.10","account_id":1,"inbox_id":5,"api_token":"rotated"}`)
++	if resp.StatusCode != fiber.StatusOK {
++		t.Fatalf("token rotation status = %d, want 200", resp.StatusCode)
++	}
++	if store.configs["dev"].APIToken != "rotated" {
++		t.Fatal("token should have been rotated")
++	}
++}
+diff --git a/src/ui/rest/chatwoot_device_webhook_test.go b/src/ui/rest/chatwoot_device_webhook_test.go
+new file mode 100644
+index 0000000..aa20d7c
+--- /dev/null
++++ b/src/ui/rest/chatwoot_device_webhook_test.go
+@@ -0,0 +1,165 @@
++package rest
++
++import (
++	"net/http"
++	"net/http/httptest"
++	"strings"
++	"testing"
++
++	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
++	domainChatStorage "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/chatstorage"
++	"github.com/aldinokemal/go-whatsapp-web-multidevice/infrastructure/chatwoot"
++	"github.com/gofiber/fiber/v2"
++)
++
++// deviceWebhookTestRepo satisfies the few repo methods the ClientRegistry and
++// route resolver call; the rest of the interface is the embedded (nil) value.
++type deviceWebhookTestRepo struct {
++	domainChatStorage.IChatStorageRepository
++	cfg   *domainChatStorage.ChatwootDeviceConfig
++	count int
++}
++
++func (r *deviceWebhookTestRepo) GetChatwootDeviceConfigByIdentifier(identifier string) (*domainChatStorage.ChatwootDeviceConfig, error) {
++	if r.cfg != nil && (identifier == r.cfg.DeviceID || identifier == r.cfg.DeviceJID) {
++		return r.cfg, nil
++	}
++	return nil, nil
++}
++
++func (r *deviceWebhookTestRepo) GetChatwootDeviceConfigByInbox(accountID, inboxID int) (*domainChatStorage.ChatwootDeviceConfig, error) {
++	return nil, nil
++}
++
++func (r *deviceWebhookTestRepo) GetLatestChatwootMessageLinkByConversation(conversationID, accountID int, allowLegacyZero bool, configID int64) (*domainChatStorage.ChatwootMessageLink, error) {
++	return nil, nil
++}
++
++func (r *deviceWebhookTestRepo) CountChatwootDeviceConfigs() (int, error) {
++	return r.count, nil
++}
++
++// TestHandleDeviceWebhookValidatesAccountInbox proves the per-device endpoint is
++// route-by-config: a payload whose account/inbox does not match the device's
++// configured account/inbox is rejected (401), while a matching payload passes
++// the gate (here a non-action event, so it returns 200 without sending).
++func TestHandleDeviceWebhookValidatesAccountInbox(t *testing.T) {
++	repo := &deviceWebhookTestRepo{
++		cfg:   &domainChatStorage.ChatwootDeviceConfig{ID: 1, DeviceID: "d", ChatwootURL: "https://chat.example.com", AccountID: 1, InboxID: 2, APIToken: "t", Enabled: true},
++		count: 1,
++	}
++	chatwoot.InitClientRegistry(repo)
++	t.Cleanup(func() { chatwoot.InitClientRegistry(nil) })
++
++	handler := &ChatwootHandler{ChatStorageRepo: repo}
++	app := fiber.New()
++	app.Post("/chatwoot/webhook/:device_id", handler.HandleDeviceWebhook)
++
++	post := func(body string) int {
++		req := httptest.NewRequest(http.MethodPost, "/chatwoot/webhook/d", strings.NewReader(body))
++		req.Header.Set("Content-Type", "application/json")
++		resp, err := app.Test(req)
++		if err != nil {
++			t.Fatalf("app.Test: %v", err)
++		}
++		return resp.StatusCode
++	}
++
++	// Mismatched account -> rejected.
++	if got := post(`{"event":"message_created","message_type":"outgoing","account":{"id":999},"conversation":{"id":5,"inbox_id":2}}`); got != fiber.StatusUnauthorized {
++		t.Fatalf("account mismatch status = %d, want 401", got)
++	}
++	// Mismatched inbox -> rejected.
++	if got := post(`{"event":"message_created","message_type":"outgoing","account":{"id":1},"conversation":{"id":5,"inbox_id":77}}`); got != fiber.StatusUnauthorized {
++		t.Fatalf("inbox mismatch status = %d, want 401", got)
++	}
++	// Matching account+inbox passes the gate (incoming message -> 200, no send).
++	if got := post(`{"event":"message_created","message_type":"incoming","account":{"id":1},"conversation":{"id":5,"inbox_id":2}}`); got != fiber.StatusOK {
++		t.Fatalf("matching status = %d, want 200", got)
++	}
++	// Non-message events lack the fields the gate checks; they must be
++	// acknowledged, not 401-ed, even when account/inbox don't match.
++	if got := post(`{"event":"conversation_updated","account":{"id":999}}`); got != fiber.StatusOK {
++		t.Fatalf("non-message event status = %d, want 200", got)
++	}
++}
++
++// TestProcessChatwootWebhookDropsUnroutablePayload proves the fail-fast is
++// enforced at delivery: in per-device mode an unmapped conversation must be
++// acknowledged WITHOUT resolving a device — an empty DeviceID would otherwise
++// fall through to the default device and send from the wrong WhatsApp account.
++func TestProcessChatwootWebhookDropsUnroutablePayload(t *testing.T) {
++	chatwoot.InitClientRegistry(nil)
++	t.Cleanup(func() { chatwoot.InitClientRegistry(nil) })
++
++	// Non-empty config table, no link/attr/inbox mapping for the payload.
++	handler := &ChatwootHandler{ChatStorageRepo: &deviceWebhookTestRepo{count: 2}}
++	route := handler.resolveChatwootWebhookRoute(chatwoot.WebhookPayload{
++		Account:      chatwoot.Account{ID: 1},
++		Conversation: chatwoot.ConversationWebhook{ID: 5, InboxID: 9},
++	}, nil)
++	if !route.Unroutable {
++		t.Fatalf("unmapped payload in per-device mode must be marked unroutable, got %+v", route)
++	}
++
++	// End-to-end: the webhook handler must return 200 without touching the
++	// device manager (nil here — a delivery attempt would resolve the default
++	// device and panic on the nil usecases before responding).
++	app := fiber.New()
++	app.Post("/chatwoot/webhook", handler.HandleWebhook)
++	body := `{"event":"message_created","message_type":"outgoing","account":{"id":1},"conversation":{"id":5,"inbox_id":9,"meta":{"sender":{"phone_number":"+628999999999"}}},"content":"hi"}`
++	req := httptest.NewRequest(http.MethodPost, "/chatwoot/webhook", strings.NewReader(body))
++	req.Header.Set("Content-Type", "application/json")
++	resp, err := app.Test(req)
++	if err != nil {
++		t.Fatalf("app.Test: %v", err)
++	}
++	if resp.StatusCode != fiber.StatusOK {
++		t.Fatalf("unroutable payload status = %d, want 200", resp.StatusCode)
++	}
++
++	// Legacy mode stays deliverable: the same payload resolves the env device.
++	prev := config.ChatwootDeviceID
++	config.ChatwootDeviceID = "env-default-device"
++	t.Cleanup(func() { config.ChatwootDeviceID = prev })
++	legacy := &ChatwootHandler{ChatStorageRepo: &deviceWebhookTestRepo{count: 0}}
++	route = legacy.resolveChatwootWebhookRoute(chatwoot.WebhookPayload{
++		Account:      chatwoot.Account{ID: 1},
++		Conversation: chatwoot.ConversationWebhook{ID: 5, InboxID: 9},
++	}, nil)
++	if route.Unroutable {
++		t.Fatalf("legacy mode must not mark payloads unroutable, got %+v", route)
++	}
++}
++
++// TestResolveChatwootWebhookRouteFailsFastWhenConfigsExist proves that once any
++// per-device config exists, an unmapped conversation does NOT fall back to the
++// env ChatwootDeviceID (which would mis-deliver across inboxes).
++func TestResolveChatwootWebhookRouteFailsFastWhenConfigsExist(t *testing.T) {
++	prev := config.ChatwootDeviceID
++	config.ChatwootDeviceID = "env-default-device"
++	t.Cleanup(func() { config.ChatwootDeviceID = prev })
++	chatwoot.InitClientRegistry(nil)
++	t.Cleanup(func() { chatwoot.InitClientRegistry(nil) })
++
++	// Repo: no conversation link, but the config table is non-empty.
++	handler := &ChatwootHandler{ChatStorageRepo: &deviceWebhookTestRepo{count: 2}}
++
++	route := handler.resolveChatwootWebhookRoute(chatwoot.WebhookPayload{
++		Account:      chatwoot.Account{ID: 1},
++		Conversation: chatwoot.ConversationWebhook{ID: 5, InboxID: 9},
++	}, nil)
++	if route.DeviceID != "" {
++		t.Fatalf("expected fail-fast (empty device), got %q", route.DeviceID)
++	}
++
++	// Sanity: with an empty config table, env fallback applies.
++	handlerLegacy := &ChatwootHandler{ChatStorageRepo: &deviceWebhookTestRepo{count: 0}}
++	route = handlerLegacy.resolveChatwootWebhookRoute(chatwoot.WebhookPayload{
++		Account:      chatwoot.Account{ID: 1},
++		Conversation: chatwoot.ConversationWebhook{ID: 5, InboxID: 9},
++	}, nil)
++	if route.DeviceID != "env-default-device" {
++		t.Fatalf("legacy mode should use env device, got %q", route.DeviceID)
++	}
++}
+diff --git a/src/ui/rest/chatwoot_test.go b/src/ui/rest/chatwoot_test.go
+index 29db42a..ae55097 100644
+--- a/src/ui/rest/chatwoot_test.go
++++ b/src/ui/rest/chatwoot_test.go
+@@ -39,13 +39,27 @@ func withChatwootWebhookSecret(t *testing.T, secret string) {
+ 
+ type chatwootRouteTestRepo struct {
+ 	domainChatStorage.IChatStorageRepository
+-	link *domainChatStorage.ChatwootMessageLink
++	link  *domainChatStorage.ChatwootMessageLink
++	count int
+ }
+ 
+-func (r *chatwootRouteTestRepo) GetLatestChatwootMessageLinkByConversation(conversationID int) (*domainChatStorage.ChatwootMessageLink, error) {
++func (r *chatwootRouteTestRepo) CountChatwootDeviceConfigs() (int, error) {
++	return r.count, nil
++}
++
++// GetLatestChatwootMessageLinkByConversation mirrors the real repo's matching
++// rules (account scope, legacy-zero wildcard, config scope) so a handler that
++// passed the wrong scope would get nil here instead of silently succeeding.
++func (r *chatwootRouteTestRepo) GetLatestChatwootMessageLinkByConversation(conversationID, accountID int, allowLegacyZero bool, configID int64) (*domainChatStorage.ChatwootMessageLink, error) {
+ 	if r.link == nil || r.link.ChatwootConversationID != conversationID {
+ 		return nil, nil
+ 	}
++	if r.link.ChatwootAccountID != accountID && !(allowLegacyZero && r.link.ChatwootAccountID == 0) {
++		return nil, nil
++	}
++	if configID != 0 && r.link.ChatwootConfigID != configID {
++		return nil, nil
++	}
+ 	cloned := *r.link
+ 	return &cloned, nil
+ }
+@@ -313,7 +327,7 @@ func TestResolveChatwootWebhookRoutePrefersConversationLink(t *testing.T) {
+ 				},
+ 			},
+ 		},
+-	})
++	}, nil)
+ 
+ 	if route.DeviceID != "device-b@s.whatsapp.net" {
+ 		t.Fatalf("DeviceID = %q, want device-b@s.whatsapp.net", route.DeviceID)

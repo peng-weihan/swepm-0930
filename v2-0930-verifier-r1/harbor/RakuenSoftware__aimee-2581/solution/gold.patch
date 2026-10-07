@@ -1,0 +1,777 @@
+diff --git a/dependencies/aimee-repositories.lock.json b/dependencies/aimee-repositories.lock.json
+--- a/dependencies/aimee-repositories.lock.json
++++ b/dependencies/aimee-repositories.lock.json
+@@ -166,7 +166,7 @@
+       "placements": [
+         "server"
+       ],
+-      "source_sha256": "1123bc62747abc76e2d2fd22eec0384db7c7c4af228b0c58a6f98c87cb45f76e",
++      "source_sha256": "bae9ed74f52e535191b886a95ca70f31629ba98a411e314907e11f0ee13e92a2",
+       "runtime": "go",
+       "principal_class": 1,
+       "principal_ref": 10,
+@@ -186,7 +186,8 @@
+         6669,
+         6670,
+         6671,
+-        6672
++        6672,
++        6673
+       ]
+     },
+     {
+diff --git a/server-go/cmd/aimee-module/main.go b/server-go/cmd/aimee-module/main.go
+--- a/server-go/cmd/aimee-module/main.go
++++ b/server-go/cmd/aimee-module/main.go
+@@ -120,6 +120,7 @@ func moduleConfig(executable string) (bus.ModuleProcessConfig, bool) {
+ 			{EventKind: delegates.EventIsolation, StageID: delegates.StageIsolation},
+ 			{EventKind: delegates.EventMayWrite, StageID: delegates.StageMayWrite},
+ 			{EventKind: delegates.EventImageGC, StageID: delegates.StageImageGC},
++			{EventKind: delegates.EventRouteFilter, StageID: delegates.StageRouteFilter},
+ 		}
+ 		config.Handler = delegates.Handle
+ 	case "tools":
+diff --git a/server-go/modules/delegates/delegates.go b/server-go/modules/delegates/delegates.go
+--- a/server-go/modules/delegates/delegates.go
++++ b/server-go/modules/delegates/delegates.go
+@@ -74,6 +74,9 @@ func Handle(invocation bus.ModuleInvocation, request []byte) ([]byte, bus.Module
+ 	if invocation.StageID == StageImageGC {
+ 		return handleImageGC(invocation, request)
+ 	}
++	if invocation.StageID == StageRouteFilter {
++		return handleRouteFilter(invocation, request)
++	}
+ 	if invocation.StageID != StageInvoke || len(request) != messageLen ||
+ 		binary.LittleEndian.Uint32(request[0:4]) != requestMagic || request[4] != wireVersion ||
+ 		request[5] != 0 || request[7] != 0 || request[6] == 0 || request[6] > roleMax {
+diff --git a/server-go/modules/delegates/routefilter.go b/server-go/modules/delegates/routefilter.go
+new file mode 100644
+--- /dev/null
++++ b/server-go/modules/delegates/routefilter.go
+@@ -0,0 +1,199 @@
++package delegates
++
++// Which agents in a fleet can serve a delegate packet.
++//
++// Three rules that only work together:
++//
++//   - whether one agent meets a requirement
++//   - which context window an agent effectively has, out of the three places a
++//     window can come from
++//   - whether to RELAX the inferred modality requirements
++//
++// The last is why this takes the whole fleet at once. Relaxation is a decision
++// about the fleet, not about an agent: it fires only when requiring modality
++// would leave NOBODY and dropping it would leave somebody. Asked one agent at a
++// time the question cannot be answered, and a caller that answered it itself
++// would be holding the interesting half of the rule.
++
++// Capability bits, mirroring model_registry.h. A capability is a property of a
++// model, so the numbering belongs to the registry and is restated here only so
++// the wire has a definition that does not depend on server headers.
++const (
++	ModelCapTools  uint32 = 1 << 1
++	ModelCapVision uint32 = 1 << 2
++	ModelCapPDF    uint32 = 1 << 3
++	ModelCapAudio  uint32 = 1 << 4
++)
++
++// ModelCapModalitySoft are inferred from prompt TEXT, so they over-trigger on a
++// task that merely mentions an image or pdf filename. They are routing
++// preferences, not requirements -- see RouteFilter.
++const ModelCapModalitySoft = ModelCapVision | ModelCapPDF | ModelCapAudio
++
++// RouteAgent is one agent's resolved facts. Every one is supplied rather than
++// looked up: the catalog, the agent registry and the CLI adapters are the
++// caller's, and this module reads none of them.
++type RouteAgent struct {
++	// Enabled and HasRole narrow the fleet to this packet's candidates.
++	Enabled bool
++	HasRole bool
++
++	// CapFlags is what the catalog says the model can do; HaveCap is whether
++	// the catalog knew the model at all.
++	CapFlags   uint32
++	HaveCap    bool
++	Deprecated bool
++
++	// ToolsEnabled is the AGENT's setting and overrides the catalog's tools
++	// bit in both directions: an agent with tools off cannot serve a packet
++	// that needs them however capable its model is.
++	ToolsEnabled bool
++
++	// The three places a context window can come from, most specific first.
++	// See EffectiveContext.
++	OverrideContext int // the agent's explicit middleware override
++	CatalogContext  int // the model capability catalog
++	CLIContext      int // the vendor CLI adapter's declared window
++}
++
++// RouteFilterResult is the fleet decision.
++type RouteFilterResult struct {
++	// Keep[i] reports whether agent i may serve the packet. Agents that were
++	// already disabled, or do not have the role, are false and were never
++	// candidates.
++	Keep []bool
++	// Kept counts the survivors.
++	Kept int
++	// Relaxed reports that the inferred modality requirements were dropped.
++	Relaxed bool
++	// EffectiveCaps is what was actually required after any relaxation.
++	EffectiveCaps uint32
++}
++
++// EffectiveContext resolves an agent's context window.
++//
++// Precedence, most specific first: the agent's explicit override, then the
++// model catalog, then the vendor CLI adapter's declared window. The last exists
++// because a tmux-CLI agent usually carries no model to resolve a window from --
++// the vendor's CLI picks the model itself -- and it is consulted ONLY when the
++// first two produced nothing, so model-backed agents are untouched.
++//
++// This ordering is the reason onboarding a model is a config or catalog change
++// rather than a code edit, which is worth keeping in one place.
++func EffectiveContext(a RouteAgent) int {
++	if a.OverrideContext > 0 {
++		return a.OverrideContext
++	}
++	if a.HaveCap && a.CatalogContext > 0 {
++		return a.CatalogContext
++	}
++	if a.CLIContext > 0 {
++		return a.CLIContext
++	}
++	return 0
++}
++
++// AgentMeetsFilter is the per-agent predicate: no mutation, so the relaxation
++// pass below can dry-run it before deciding what to actually enforce.
++func AgentMeetsFilter(a RouteAgent, requiredCaps uint32, minContext int, dropDeprecated bool) bool {
++	if dropDeprecated && a.HaveCap && a.Deprecated {
++		return false
++	}
++
++	flags := uint32(0)
++	if a.HaveCap {
++		flags = a.CapFlags
++	}
++	// The agent's own setting wins over the catalog, both ways.
++	if a.ToolsEnabled {
++		flags |= ModelCapTools
++	} else {
++		flags &^= ModelCapTools
++	}
++	if requiredCaps != 0 && flags&requiredCaps != requiredCaps {
++		return false
++	}
++
++	if minContext > 0 {
++		ctx := EffectiveContext(a)
++		if ctx <= 0 || ctx < minContext {
++			return false
++		}
++	}
++	return true
++}
++
++// RouteFilter decides which agents may serve the packet.
++//
++// MODALITY IS RELAXED, NEVER FATAL. Vision, PDF and audio requirements are
++// inferred from prompt text, so a text task that mentions an image filename can
++// ask for a capability it does not need. If requiring them would leave no
++// candidate at all, and the hard requirements alone would leave one, they are
++// dropped and the packet routes on the hard set. Hard-failing a whole fleet on a
++// guess made from a filename is the outcome this exists to prevent.
++//
++// The hard set is everything else: tools and min_context. Those are asserted by
++// the caller, not inferred, so they are never relaxed.
++func RouteFilter(agents []RouteAgent, requiredCaps uint32, minContext int,
++	dropDeprecated bool) RouteFilterResult {
++	result := RouteFilterResult{
++		Keep:          make([]bool, len(agents)),
++		EffectiveCaps: requiredCaps,
++	}
++
++	// Nothing to enforce: every candidate stands.
++	if requiredCaps == 0 && minContext <= 0 && !dropDeprecated {
++		for i, a := range agents {
++			if a.Enabled && a.HasRole {
++				result.Keep[i] = true
++				result.Kept++
++			}
++		}
++		return result
++	}
++
++	candidates := 0
++	for _, a := range agents {
++		if a.Enabled && a.HasRole {
++			candidates++
++		}
++	}
++	// No candidate for the role at all is not this rule's refusal to make: the
++	// caller's own "no agent has this role" path says something more useful.
++	if candidates == 0 {
++		return result
++	}
++
++	effective := requiredCaps
++	if requiredCaps&ModelCapModalitySoft != 0 {
++		hard := requiredCaps &^ ModelCapModalitySoft
++		keptFull, keptHard := 0, 0
++		for _, a := range agents {
++			if !a.Enabled || !a.HasRole {
++				continue
++			}
++			if AgentMeetsFilter(a, requiredCaps, minContext, dropDeprecated) {
++				keptFull++
++			}
++			if AgentMeetsFilter(a, hard, minContext, dropDeprecated) {
++				keptHard++
++			}
++		}
++		if keptFull == 0 && keptHard > 0 {
++			effective = hard
++			result.Relaxed = true
++		}
++	}
++	result.EffectiveCaps = effective
++
++	for i, a := range agents {
++		if !a.Enabled || !a.HasRole {
++			continue
++		}
++		if AgentMeetsFilter(a, effective, minContext, dropDeprecated) {
++			result.Keep[i] = true
++			result.Kept++
++		}
++	}
++	return result
++}
+diff --git a/server-go/modules/delegates/routefilter_stage.go b/server-go/modules/delegates/routefilter_stage.go
+new file mode 100644
+--- /dev/null
++++ b/server-go/modules/delegates/routefilter_stage.go
+@@ -0,0 +1,82 @@
++package delegates
++
++import (
++	"encoding/binary"
++
++	"github.com/JBailes/aimee/server-go/bus"
++)
++
++// Which agents in a fleet may serve a delegate packet.
++//
++// The whole fleet goes at once because the modality relaxation is a decision
++// ABOUT the fleet: it fires only when requiring modality would leave nobody and
++// dropping it would leave somebody. A per-agent call could not answer it, and a
++// caller that answered it itself would hold the interesting half of the rule.
++
++const (
++	StageRouteFilter uint32 = 17
++	EventRouteFilter uint32 = 6673
++
++	routeFilterRequestMagic  uint32 = 0x51525444 /* "DTRQ" */
++	routeFilterResponseMagic uint32 = 0x53525444 /* "DTRS" */
++	routeFilterReqHeaderLen         = 24
++	routeFilterAgentLen             = 32
++
++	routeFilterMaxAgents = 4096
++
++	routeFilterFlagEnabled    uint32 = 1
++	routeFilterFlagHasRole    uint32 = 2
++	routeFilterFlagHaveCap    uint32 = 4
++	routeFilterFlagDeprecated uint32 = 8
++	routeFilterFlagTools      uint32 = 16
++)
++
++// handleRouteFilter returns a keep decision per agent, in the order sent.
++func handleRouteFilter(invocation bus.ModuleInvocation, request []byte) ([]byte, bus.ModuleStatus) {
++	if len(request) < routeFilterReqHeaderLen ||
++		binary.LittleEndian.Uint32(request[0:4]) != routeFilterRequestMagic ||
++		request[4] != wireVersion || request[5] > 1 {
++		return nil, bus.ModuleStatusInvalidRequest
++	}
++	dropDeprecated := request[5] == 1
++	count := int(binary.LittleEndian.Uint32(request[8:12]))
++	requiredCaps := binary.LittleEndian.Uint32(request[12:16])
++	minContext := int(int32(binary.LittleEndian.Uint32(request[16:20])))
++
++	if count > routeFilterMaxAgents ||
++		len(request) != routeFilterReqHeaderLen+count*routeFilterAgentLen {
++		return nil, bus.ModuleStatusInvalidRequest
++	}
++
++	agents := make([]RouteAgent, count)
++	for i := 0; i < count; i++ {
++		at := routeFilterReqHeaderLen + i*routeFilterAgentLen
++		flags := binary.LittleEndian.Uint32(request[at : at+4])
++		agents[i] = RouteAgent{
++			Enabled:         flags&routeFilterFlagEnabled != 0,
++			HasRole:         flags&routeFilterFlagHasRole != 0,
++			HaveCap:         flags&routeFilterFlagHaveCap != 0,
++			Deprecated:      flags&routeFilterFlagDeprecated != 0,
++			ToolsEnabled:    flags&routeFilterFlagTools != 0,
++			CapFlags:        binary.LittleEndian.Uint32(request[at+4 : at+8]),
++			OverrideContext: int(int32(binary.LittleEndian.Uint32(request[at+8 : at+12]))),
++			CatalogContext:  int(int32(binary.LittleEndian.Uint32(request[at+12 : at+16]))),
++			CLIContext:      int(int32(binary.LittleEndian.Uint32(request[at+16 : at+20]))),
++		}
++	}
++	if invocation.Cancelled() {
++		return nil, bus.ModuleStatusCancelled
++	}
++
++	result := RouteFilter(agents, requiredCaps, minContext, dropDeprecated)
++
++	response := make([]byte, 16+count*4)
++	binary.LittleEndian.PutUint32(response[0:4], routeFilterResponseMagic)
++	binary.LittleEndian.PutUint32(response[4:8], uint32(result.Kept))
++	putBool(response[8:12], result.Relaxed)
++	binary.LittleEndian.PutUint32(response[12:16], result.EffectiveCaps)
++	for i, keep := range result.Keep {
++		putBool(response[16+i*4:20+i*4], keep)
++	}
++	return response, bus.ModuleStatusOK
++}
+diff --git a/src/modules/delegates/delegate_launch_args.c b/src/modules/delegates/delegate_launch_args.c
+--- a/src/modules/delegates/delegate_launch_args.c
++++ b/src/modules/delegates/delegate_launch_args.c
+@@ -156,3 +156,26 @@ int delegate_image_gc_judge(const uint8_t *request, size_t request_len, uint8_t
+    }
+    return g_image_gc(request, request_len, response, response_cap, response_len);
+ }
++
++static delegate_route_filter_fn g_route_filter;
++
++void delegate_register_route_filter_provider(delegate_route_filter_fn provider)
++{
++   g_route_filter = provider;
++}
++
++int delegate_route_filter_apply(const uint8_t *request, size_t request_len, uint8_t *response,
++                                size_t response_cap, size_t *response_len)
++{
++   if (!request || !response || !response_len)
++      return -1;
++   *response_len = 0;
++   if (!g_route_filter)
++   {
++      LOG_ERROR("delegate.route",
++                "no route-filter provider registered; refusing to route on requirements nothing "
++                "checked");
++      return -1;
++   }
++   return g_route_filter(request, request_len, response, response_cap, response_len);
++}
+diff --git a/src/modules/delegates/delegate_routing.c b/src/modules/delegates/delegate_routing.c
+--- a/src/modules/delegates/delegate_routing.c
++++ b/src/modules/delegates/delegate_routing.c
+@@ -7,6 +7,7 @@
+ #include "log.h"
+ #include <ctype.h>
+ #include <string.h>
++#include <aimee/delegates/delegate_launch_args.h>
+ 
+ static delegate_capability_provider_fn g_capability_provider;
+ 
+@@ -36,47 +37,49 @@ void delegate_infer_capability_requirements(const char *prompt, int tools_enable
+       *min_context_out = min_context;
+ }
+ 
+-/* Does this agent satisfy the filter (caps + min_context, and not a dropped
+- * deprecated model)? Pure predicate — no mutation — so the relaxation pass below
+- * can dry-run it before deciding which capabilities to actually enforce.
+- * Effective context window prefers the agent's explicit override (agents.json
+- * `middleware.context_window`, via `aimee agent --ctx` or `ag_probe_slots`), then
+- * the model capability catalog, so onboarding a model is a config/catalog change
+- * not a registry code edit. */
+-static int agent_meets_filter(const agent_t *ag, unsigned required_caps, int min_context,
+-                              int drop_deprecated)
++/* Resolve one agent's facts for the router.
++ *
++ * This is the half that STAYS: it reads the model capability catalog, the
++ * agent's own registry record and the vendor CLI adapter. What those facts MEAN
++ * -- whether the agent qualifies, which of the three context windows applies,
++ * and whether inferred modality should be relaxed -- is decided by the module,
++ * which reads none of them.
++ *
++ * The three windows are all sent rather than resolved here on purpose: the
++ * PRECEDENCE between them is part of the rule, and resolving it locally would
++ * put half the rule back on this side. */
++static unsigned route_agent_facts(const agent_t *ag, int has_role, unsigned *cap_flags_out,
++                                  int *catalog_ctx_out, int *cli_ctx_out)
+ {
+    model_capability_t cap;
+    int have_cap = model_capability_get(agent_catalog_provider(ag), ag->model, &cap);
+-   if (drop_deprecated && have_cap && cap.deprecated)
+-      return 0;
+-   unsigned effective_flags = have_cap ? cap.flags : 0;
++
++   unsigned flags = AIMEE_DELEGATES_RF_ENABLED;
++   if (!ag->enabled)
++      flags = 0;
++   if (has_role)
++      flags |= AIMEE_DELEGATES_RF_HAS_ROLE;
++   if (have_cap)
++      flags |= AIMEE_DELEGATES_RF_HAVE_CAP;
++   if (have_cap && cap.deprecated)
++      flags |= AIMEE_DELEGATES_RF_DEPRECATED;
+    if (ag->tools_enabled)
+-      effective_flags |= MODEL_CAP_TOOLS;
+-   else
+-      effective_flags &= ~MODEL_CAP_TOOLS;
+-   if (required_caps && (effective_flags & required_caps) != required_caps)
+-      return 0;
+-   if (min_context > 0)
++      flags |= AIMEE_DELEGATES_RF_TOOLS;
++
++   *cap_flags_out = have_cap ? cap.flags : 0u;
++   *catalog_ctx_out = have_cap ? cap.context_window : 0;
++
++   /* A tmux-CLI agent usually carries no `model` to resolve a window from -- the
++    * vendor's CLI picks the model itself -- so its adapter's declared window is
++    * offered as the last candidate. Whether it is USED is the module's call. */
++   *cli_ctx_out = 0;
++   if (ag->cli_kind[0])
+    {
+-      int effective_ctx = ag->middleware.context_window > 0 ? ag->middleware.context_window
+-                                                            : (have_cap ? cap.context_window : 0);
+-      /* Still no window: a tmux-CLI agent (codex/claude-oauth) usually carries no
+-       * `model` to resolve one from — the vendor CLI picks the model itself — so
+-       * fall back to the window its CLI adapter declares. Reached only when the
+-       * model produced nothing (effective_ctx<=0), so model-backed agents are
+-       * untouched. Covers records written before context_window was persisted
+-       * onto the agent (no re-registration needed). */
+-      if (effective_ctx <= 0 && ag->cli_kind[0])
+-      {
+-         const provider_cli_adapter_t *adapter = provider_cli_adapter_get(ag->cli_kind);
+-         if (adapter && adapter->caps.max_context_tokens > 0)
+-            effective_ctx = adapter->caps.max_context_tokens;
+-      }
+-      if (effective_ctx <= 0 || effective_ctx < min_context)
+-         return 0;
++      const provider_cli_adapter_t *adapter = provider_cli_adapter_get(ag->cli_kind);
++      if (adapter && adapter->caps.max_context_tokens > 0)
++         *cli_ctx_out = adapter->caps.max_context_tokens;
+    }
+-   return 1;
++   return flags;
+ }
+ 
+ /* Disable every agent whose declared ceiling cannot serve this packet's scope.
+@@ -134,64 +137,97 @@ int delegate_filter_route_capabilities(agent_config_t *cfg, const char *role,
+       return 0;
+    if (!required_caps && min_context <= 0 && !drop_deprecated)
+       return 0;
++   if (cfg->agent_count <= 0 || (unsigned)cfg->agent_count > AIMEE_DELEGATES_ROUTEFILTER_MAX_AGENTS)
++      return 0;
+ 
++   /* No agent serves this role at all: not this filter's refusal to phrase. The
++    * preflight that follows says something far more useful than "no model
++    * supports the required capabilities", so leave the fleet untouched and let
++    * it. Refusing here reads as a capability problem when it is a roster one. */
+    int role_candidates = 0;
+    for (int i = 0; i < cfg->agent_count; i++)
+-   {
+-      agent_t *ag = &cfg->agents[i];
+-      if (ag->enabled && agent_has_role(ag, role))
++      if (cfg->agents[i].enabled && agent_has_role(&cfg->agents[i], role))
+          role_candidates++;
+-   }
+    if (role_candidates == 0)
+       return 0;
+ 
+-   /* Modality caps (vision/pdf/audio) are inferred from prompt TEXT and so are
+-    * best-effort: if requiring them would disable EVERY role candidate but the
+-    * hard caps (tools + min_context) alone would keep some, relax the modality
+-    * caps and route on the hard set — never hard-fail a text task fleet-wide just
+-    * because it mentioned an image/pdf/audio filename. */
+-   unsigned eff = required_caps;
+-   if (required_caps & MODEL_CAP_MODALITY_SOFT)
++   unsigned count = (unsigned)cfg->agent_count;
++   size_t req_len = AIMEE_DELEGATES_ROUTEFILTER_HEADER_LEN +
++                    (size_t)count * AIMEE_DELEGATES_ROUTEFILTER_AGENT_LEN;
++   size_t resp_cap = 16u + (size_t)count * 4u;
++   uint8_t *req = malloc(req_len);
++   uint8_t *resp = malloc(resp_cap);
++   int *keep = calloc(count, sizeof(*keep));
++   if (!req || !resp || !keep)
+    {
+-      int kept_full = 0, kept_hard = 0;
+-      unsigned hard = required_caps & ~MODEL_CAP_MODALITY_SOFT;
+-      for (int i = 0; i < cfg->agent_count; i++)
+-      {
+-         agent_t *ag = &cfg->agents[i];
+-         if (!ag->enabled || !agent_has_role(ag, role))
+-            continue;
+-         if (agent_meets_filter(ag, required_caps, min_context, drop_deprecated))
+-            kept_full++;
+-         if (agent_meets_filter(ag, hard, min_context, drop_deprecated))
+-            kept_hard++;
+-      }
+-      if (kept_full == 0 && kept_hard > 0)
+-      {
+-         char sc[128];
+-         model_capability_flags_string(required_caps & MODEL_CAP_MODALITY_SOFT, sc, sizeof(sc));
+-         aimee_log(LOG_WARN, "delegate.route",
+-                   "no model satisfies inferred modality caps (%s) for role '%s'; routing on hard "
+-                   "caps only",
+-                   sc[0] ? sc : "-", role);
+-         eff = hard;
+-      }
++      free(req);
++      free(resp);
++      free(keep);
++      return 0;
+    }
+ 
+-   int kept = 0;
+-   for (int i = 0; i < cfg->agent_count; i++)
++   if (aimee_delegates_routefilter_request_begin(count, required_caps, min_context, drop_deprecated,
++                                                 req, req_len) == 0)
++   {
++      free(req);
++      free(resp);
++      free(keep);
++      return 0;
++   }
++   for (unsigned i = 0; i < count; i++)
++   {
++      const agent_t *ag = &cfg->agents[i];
++      unsigned cap_flags = 0;
++      int catalog_ctx = 0, cli_ctx = 0;
++      unsigned flags =
++          route_agent_facts(ag, agent_has_role(ag, role), &cap_flags, &catalog_ctx, &cli_ctx);
++      aimee_delegates_routefilter_request_set(req, i, flags, cap_flags,
++                                              ag->middleware.context_window, catalog_ctx, cli_ctx);
++   }
++
++   size_t resp_len = 0;
++   int rc = delegate_route_filter_apply(req, req_len, resp, resp_cap, &resp_len);
++   free(req);
++
++   int kept = 0, relaxed = 0;
++   unsigned effective = required_caps;
++   if (rc == 0)
++      rc = aimee_delegates_routefilter_response_decode(resp, resp_len, count, &kept, &relaxed,
++                                                       &effective, keep, count);
++   free(resp);
++
++   if (rc != 0)
++   {
++      /* No verdict: refuse to route rather than route on requirements nothing
++       * checked. The whole point of the filter is that a packet needing tools
++       * or a large window does not land on an agent with neither. */
++      free(keep);
++      if (errbuf && errbuf_sz > 0)
++         snprintf(errbuf, errbuf_sz, "could not evaluate model capabilities for role '%s'", role);
++      return -1;
++   }
++
++   if (relaxed)
++   {
++      char sc[128];
++      model_capability_flags_string(required_caps & MODEL_CAP_MODALITY_SOFT, sc, sizeof(sc));
++      aimee_log(LOG_WARN, "delegate.route",
++                "no model satisfies inferred modality caps (%s) for role '%s'; routing on hard "
++                "caps only",
++                sc[0] ? sc : "-", role);
++   }
++
++   /* Apply the answer. Only role candidates are touched: an agent that does not
++    * serve this role keeps whatever state it had. */
++   for (unsigned i = 0; i < count; i++)
+    {
+       agent_t *ag = &cfg->agents[i];
+-      if (!ag->enabled)
++      if (!ag->enabled || !agent_has_role(ag, role))
+          continue;
+-      if (!agent_has_role(ag, role))
+-         continue;
+-      if (!agent_meets_filter(ag, eff, min_context, drop_deprecated))
+-      {
++      if (!keep[i])
+          ag->enabled = 0;
+-         continue;
+-      }
+-      kept++;
+    }
++   free(keep);
+ 
+    if (kept == 0)
+    {
+diff --git a/src/modules/delegates/include/aimee/delegates/delegate_launch_args.h b/src/modules/delegates/include/aimee/delegates/delegate_launch_args.h
+--- a/src/modules/delegates/include/aimee/delegates/delegate_launch_args.h
++++ b/src/modules/delegates/include/aimee/delegates/delegate_launch_args.h
+@@ -97,4 +97,19 @@ void delegate_register_image_gc_provider(delegate_image_gc_fn provider);
+ int delegate_image_gc_judge(const uint8_t *request, size_t request_len, uint8_t *response,
+                             size_t response_cap, size_t *response_len);
+ 
++/* Which agents in a fleet may serve this packet.
++ *
++ * FAILS CLOSED: with no provider there is no verdict and the caller must refuse
++ * to route, rather than routing on requirements nothing checked -- the point of
++ * the filter is that a packet needing tools or a large window does not land on
++ * an agent that has neither. */
++typedef int (*delegate_route_filter_fn)(const uint8_t *request, size_t request_len,
++                                        uint8_t *response, size_t response_cap,
++                                        size_t *response_len);
++
++void delegate_register_route_filter_provider(delegate_route_filter_fn provider);
++
++int delegate_route_filter_apply(const uint8_t *request, size_t request_len, uint8_t *response,
++                                size_t response_cap, size_t *response_len);
++
+ #endif
+diff --git a/src/modules/delegates/include/aimee/delegates/module_api.h b/src/modules/delegates/include/aimee/delegates/module_api.h
+--- a/src/modules/delegates/include/aimee/delegates/module_api.h
++++ b/src/modules/delegates/include/aimee/delegates/module_api.h
+@@ -919,4 +919,80 @@ static inline int aimee_delegates_imggc_response_at(const uint8_t *in, size_t le
+    return -1;
+ }
+ 
++/* --- Route filter (stage 17): which agents may serve this packet -----------
++ *
++ * The whole fleet at once. The modality relaxation is a decision ABOUT the
++ * fleet -- it fires only when requiring modality would leave nobody and
++ * dropping it would leave somebody -- so it cannot be asked per agent. */
++
++#define AIMEE_DELEGATES_EVENT_ROUTEFILTER          6673u
++#define AIMEE_DELEGATES_STAGE_ROUTEFILTER          17u
++#define AIMEE_DELEGATES_ROUTEFILTER_REQUEST_MAGIC  0x51525444u /* "DTRQ" */
++#define AIMEE_DELEGATES_ROUTEFILTER_RESPONSE_MAGIC 0x53525444u /* "DTRS" */
++#define AIMEE_DELEGATES_ROUTEFILTER_HEADER_LEN     24u
++#define AIMEE_DELEGATES_ROUTEFILTER_AGENT_LEN      32u
++#define AIMEE_DELEGATES_ROUTEFILTER_MAX_AGENTS     4096u
++
++#define AIMEE_DELEGATES_RF_ENABLED    1u
++#define AIMEE_DELEGATES_RF_HAS_ROLE   2u
++#define AIMEE_DELEGATES_RF_HAVE_CAP   4u
++#define AIMEE_DELEGATES_RF_DEPRECATED 8u
++#define AIMEE_DELEGATES_RF_TOOLS      16u
++
++static inline size_t aimee_delegates_routefilter_request_begin(unsigned count,
++                                                               unsigned required_caps,
++                                                               int min_context, int drop_deprecated,
++                                                               uint8_t *out, size_t cap)
++{
++   if (!out || count > AIMEE_DELEGATES_ROUTEFILTER_MAX_AGENTS ||
++       cap < AIMEE_DELEGATES_ROUTEFILTER_HEADER_LEN +
++                 (size_t)count * AIMEE_DELEGATES_ROUTEFILTER_AGENT_LEN)
++      return 0;
++   memset(out, 0, AIMEE_DELEGATES_ROUTEFILTER_HEADER_LEN);
++   aimee_delegates_put_u32(out, AIMEE_DELEGATES_ROUTEFILTER_REQUEST_MAGIC);
++   out[4] = (uint8_t)AIMEE_DELEGATES_WIRE_VERSION;
++   out[5] = drop_deprecated ? 1u : 0u;
++   aimee_delegates_put_u32(out + 8, count);
++   aimee_delegates_put_u32(out + 12, required_caps);
++   aimee_delegates_put_u32(out + 16, (uint32_t)min_context);
++   return AIMEE_DELEGATES_ROUTEFILTER_HEADER_LEN;
++}
++
++/* Every agent slot is fixed-width, so `index` addresses it directly. */
++static inline void aimee_delegates_routefilter_request_set(uint8_t *out, unsigned index,
++                                                           unsigned flags, unsigned cap_flags,
++                                                           int override_ctx, int catalog_ctx,
++                                                           int cli_ctx)
++{
++   uint8_t *at = out + AIMEE_DELEGATES_ROUTEFILTER_HEADER_LEN +
++                 (size_t)index * AIMEE_DELEGATES_ROUTEFILTER_AGENT_LEN;
++   memset(at, 0, AIMEE_DELEGATES_ROUTEFILTER_AGENT_LEN);
++   aimee_delegates_put_u32(at, flags);
++   aimee_delegates_put_u32(at + 4, cap_flags);
++   aimee_delegates_put_u32(at + 8, (uint32_t)override_ctx);
++   aimee_delegates_put_u32(at + 12, (uint32_t)catalog_ctx);
++   aimee_delegates_put_u32(at + 16, (uint32_t)cli_ctx);
++}
++
++/* `keep` receives one int per agent, in the order they were sent. */
++static inline int aimee_delegates_routefilter_response_decode(const uint8_t *in, size_t len,
++                                                              unsigned count, int *kept_out,
++                                                              int *relaxed_out,
++                                                              unsigned *effective_caps_out,
++                                                              int *keep, size_t keep_cap)
++{
++   if (!in || len != 16u + (size_t)count * 4u || !keep || keep_cap < count ||
++       aimee_delegates_get_u32(in) != AIMEE_DELEGATES_ROUTEFILTER_RESPONSE_MAGIC)
++      return -1;
++   if (kept_out)
++      *kept_out = (int)aimee_delegates_get_u32(in + 4);
++   if (relaxed_out)
++      *relaxed_out = aimee_delegates_get_u32(in + 8) ? 1 : 0;
++   if (effective_caps_out)
++      *effective_caps_out = aimee_delegates_get_u32(in + 12);
++   for (unsigned i = 0; i < count; i++)
++      keep[i] = aimee_delegates_get_u32(in + 16 + i * 4) ? 1 : 0;
++   return 0;
++}
++
+ #endif
+diff --git a/src/modules/delegates/module.yaml b/src/modules/delegates/module.yaml
+--- a/src/modules/delegates/module.yaml
++++ b/src/modules/delegates/module.yaml
+@@ -91,6 +91,8 @@
+     "server-go/modules/delegates/promptwrites_stage.go",
+     "server-go/modules/delegates/imagegc.go",
+     "server-go/modules/delegates/imagegc_stage.go",
++    "server-go/modules/delegates/routefilter.go",
++    "server-go/modules/delegates/routefilter_stage.go",
+     "server-go/modules/delegates/sandboximage.go",
+     "server-go/modules/delegates/sandboximage_stage.go",
+     "server-go/modules/delegates/dockerargs.go",
+@@ -125,6 +127,8 @@
+     "server-go/modules/delegates/promptwrites_stage_test.go",
+     "server-go/modules/delegates/imagegc_test.go",
+     "server-go/modules/delegates/imagegc_stage_test.go",
++    "server-go/modules/delegates/routefilter_test.go",
++    "server-go/modules/delegates/routefilter_stage_test.go",
+     "server-go/modules/delegates/sandboximage_test.go",
+     "server-go/modules/delegates/sandboximage_stage_test.go",
+     "server-go/modules/delegates/dockerargs_test.go",
+diff --git a/src/modules/process-contracts.json b/src/modules/process-contracts.json
+--- a/src/modules/process-contracts.json
++++ b/src/modules/process-contracts.json
+@@ -211,6 +211,11 @@
+           "id": 16,
+           "name": "delegate-image-gc",
+           "event_kind": 6672
++        },
++        {
++          "id": 17,
++          "name": "delegate-route-filter",
++          "event_kind": 6673
+         }
+       ]
+     },
+diff --git a/src/server/module_stage_adapters.c b/src/server/module_stage_adapters.c
+--- a/src/server/module_stage_adapters.c
++++ b/src/server/module_stage_adapters.c
+@@ -931,6 +931,18 @@ static int delegate_image_gc(const uint8_t *request, size_t request_len, uint8_t
+    return 0;
+ }
+ 
++/* Which agents may serve this packet. A wire. */
++static int delegate_route_filter(const uint8_t *request, size_t request_len, uint8_t *response,
++                                 size_t response_cap, size_t *response_len)
++{
++   uint32_t got = 0;
++   if (call_module(AIMEE_DELEGATES_EVENT_ROUTEFILTER, AIMEE_DELEGATES_STAGE_ROUTEFILTER, request,
++                   (uint32_t)request_len, response, (uint32_t)response_cap, &got) != 0)
++      return -1;
++   *response_len = got;
++   return 0;
++}
++
+ static int tool_classify(const char *name, int *classification)
+ {
+    uint8_t request[AIMEE_TOOLS_REQUEST_LEN], response[AIMEE_TOOLS_RESPONSE_LEN];
+@@ -1152,6 +1164,7 @@ void server_module_stage_adapters_configure(void)
+    delegate_register_isolation_provider(delegate_isolation);
+    delegate_register_may_write_provider(delegate_may_write_adapter);
+    delegate_register_image_gc_provider(delegate_image_gc);
++   delegate_register_route_filter_provider(delegate_route_filter);
+    agent_tools_register_classifier(tool_classify);
+    ws_scope_register_ref_validator(workspace_validate);
+    /* Same decision, same owner: webuser's runtime dir names a single path

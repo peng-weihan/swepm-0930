@@ -1,0 +1,3945 @@
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/HybridCgImEditor.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/HybridCgImEditor.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/HybridCgImEditor.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/HybridCgImEditor.java
+@@ -328,27 +328,25 @@ private void shareVarianceAcrossRows(int y) {
+ 
+     private void randomizeDiscreteTable(int y) {
+         if (y < 0 || !pm.isDiscrete(y)) return;
+-        Random rng = new Random();
+         int rows = pm.getNumRows(y);
+         int K = pm.getCardinality(y);
+         for (int r = 0; r < rows; r++) {
+             double[] e = new double[K];
+             double sum = 0.0;
+-            for (int k = 0; k < K; k++) { e[k] = -TMath.log(1.0 - rng.nextDouble()); sum += e[k]; }
++            for (int k = 0; k < K; k++) { e[k] = -TMath.log(1.0 - RandomUtil.getInstance().nextDouble()); sum += e[k]; }
+             for (int k = 0; k < K; k++) im.setProbability(y, r, k, e[k] / sum);
+         }
+         firePropertyChange("modelChanged", null, null);
+     }
+ 
+     private void randomizeContinuousTable(int y) {
+         if (y < 0 || pm.isDiscrete(y)) return;
+-        Random rng = new Random();
+         int rows = pm.getNumRows(y);
+         int m = pm.getContinuousParents(y).length;
+         for (int r = 0; r < rows; r++) {
+-            im.setMean(y, r, rng.nextGaussian() * 0.25);
++            im.setMean(y, r, RandomUtil.getInstance().nextGaussian(0, 1) * 0.25);
+             for (int j = 0; j < m; j++) im.setCoefficient(y, r, j, RandomUtil.getInstance().nextUniform(-1, 1));
+-            im.setVariance(y, r, 0.25 + 0.75 * rng.nextDouble());
++            im.setVariance(y, r, 0.25 + 0.75 * RandomUtil.getInstance().nextDouble());
+         }
+         firePropertyChange("modelChanged", null, null);
+     }
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/blocks/BlockClusteringWizard.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/blocks/BlockClusteringWizard.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/blocks/BlockClusteringWizard.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/blocks/BlockClusteringWizard.java
+@@ -26,14 +26,11 @@
+ import edu.cmu.tetrad.data.VerticalDoubleDataBox;
+ import edu.cmu.tetrad.graph.Node;
+ import edu.cmu.tetrad.search.blocks.*;
+-import edu.cmu.tetrad.util.JOptionUtils;
+-import edu.cmu.tetrad.util.Parameters;
+-import edu.cmu.tetrad.util.Params;
++import edu.cmu.tetrad.util.*;
+ import edu.cmu.tetradapp.editor.simulation.ParameterTab;
+ import edu.cmu.tetradapp.ui.PaddingPanel;
+ import edu.cmu.tetradapp.util.ParameterComponents;
+ import edu.cmu.tetradapp.util.WatchedProcess;
+-import edu.cmu.tetrad.util.TMath;
+ 
+ import javax.swing.*;
+ import javax.swing.border.TitledBorder;
+@@ -213,15 +210,14 @@ private static DataSet simulateMIM_Chain(int n, int m, double beta12, double bet
+         // Allocate data box
+         VerticalDoubleDataBox box = new VerticalDoubleDataBox(n, p);
+ 
+-        Random rnd = new Random(42);
+         double sdLatent = TMath.sqrt(latentVar);
+         double sdNoiseIndicator = TMath.sqrt(1.0 - loading * loading); // ensure Var(X) â 1
+ 
+         for (int t = 0; t < n; t++) {
+             // Latent disturbances (std normal scaled)
+-            double e1 = sdLatent * rnd.nextGaussian();
+-            double e2 = sdLatent * rnd.nextGaussian();
+-            double e3 = sdLatent * rnd.nextGaussian();
++            double e1 = sdLatent * RandomUtil.getInstance().nextGaussian(0, 1);
++            double e2 = sdLatent * RandomUtil.getInstance().nextGaussian(0, 1);
++            double e3 = sdLatent * RandomUtil.getInstance().nextGaussian(0, 1);
+ 
+             // Latents (structural)
+             double L1 = e1;
+@@ -231,15 +227,15 @@ private static DataSet simulateMIM_Chain(int n, int m, double beta12, double bet
+             // Indicators: m each
+             int col = 0;
+             for (int j = 0; j < m; j++, col++) {
+-                double x = loading * L1 + sdNoiseIndicator * rnd.nextGaussian();
++                double x = loading * L1 + sdNoiseIndicator * RandomUtil.getInstance().nextGaussian();
+                 box.set(t, col, x);
+             }
+             for (int j = 0; j < m; j++, col++) {
+-                double x = loading * L2 + sdNoiseIndicator * rnd.nextGaussian();
++                double x = loading * L2 + sdNoiseIndicator * RandomUtil.getInstance().nextGaussian();
+                 box.set(t, col, x);
+             }
+             for (int j = 0; j < m; j++, col++) {
+-                double x = loading * L3 + sdNoiseIndicator * rnd.nextGaussian();
++                double x = loading * L3 + sdNoiseIndicator * RandomUtil.getInstance().nextGaussian();
+                 box.set(t, col, x);
+             }
+         }
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/DataSubsetEditor.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/DataSubsetEditor.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/DataSubsetEditor.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/DataSubsetEditor.java
+@@ -3,6 +3,7 @@
+ import edu.cmu.tetrad.data.DataSet;
+ import edu.cmu.tetrad.graph.Node;
+ import edu.cmu.tetrad.util.JOptionUtils;
++import edu.cmu.tetrad.util.RandomUtil;
+ import edu.cmu.tetradapp.util.IntTextField;
+ import edu.cmu.tetrad.util.TMath;
+ 
+@@ -548,15 +549,14 @@ private List<Integer> applySampling(List<Integer> baseRows) {
+                 // If seed is invalid, just ignore and use default randomness.
+             }
+         }
+-        Random random = (seed == null) ? new Random() : new Random(seed);
+ 
+         switch (mode) {
+             case USE_AS_IS:
+                 return new ArrayList<>(baseRows);
+ 
+             case SHUFFLE: {
+                 List<Integer> shuffled = new ArrayList<>(baseRows);
+-                Collections.shuffle(shuffled, random);
++                RandomUtil.shuffle(shuffled);
+                 return shuffled;
+             }
+ 
+@@ -566,14 +566,14 @@ private List<Integer> applySampling(List<Integer> baseRows) {
+                     sampleSize = n;
+                 }
+                 List<Integer> temp = new ArrayList<>(baseRows);
+-                Collections.shuffle(temp, random);
++                RandomUtil.shuffle(temp);
+                 return new ArrayList<>(temp.subList(0, sampleSize));
+             }
+ 
+             case BOOTSTRAP: {
+                 List<Integer> boot = new ArrayList<>(sampleSize);
+                 for (int i = 0; i < sampleSize; i++) {
+-                    int idx = random.nextInt(n);
++                    int idx = RandomUtil.getInstance().nextInt(n);
+                     boot.add(baseRows.get(idx));
+                 }
+                 return boot;
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/UnmixParamsEditor.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/UnmixParamsEditor.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/UnmixParamsEditor.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/editor/datamanip/UnmixParamsEditor.java
+@@ -1,4 +1,4 @@
+-///////////////////////////////////////////////////////////////////////////////
++/// ////////////////////////////////////////////////////////////////////////////
+ // For information as to what this class does, see the Javadoc, below.       //
+ //                                                                           //
+ // Copyright (C) 2025 by Joseph Ramsey, Peter Spirtes, Clark Glymour,        //
+@@ -53,7 +53,7 @@ public class UnmixParamsEditor extends JPanel implements FinalizingParameterEdit
+ 
+     // EM stability
+     private JSpinner restartsSpinner, itersSpinner, ridgeSpinner, shrinkageSpinner,
+-            annealStepsSpinner, annealTSpinner, seedSpinner;
++            annealStepsSpinner, annealTSpinner;
+ 
+     // Diagnostics
+     private JCheckBox diagCheck;
+@@ -247,18 +247,12 @@ private JPanel buildEmPanel() {
+             pushToParams();
+         });
+ 
+-        seedSpinner = intSpinner((int) spec.getRandomSeed(), Integer.MIN_VALUE, Integer.MAX_VALUE, 1, v -> {
+-            spec.setRandomSeed(v);
+-            pushToParams();
+-        });
+-
+         JPanel row1 = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
+         row1.add(new JLabel("K-means restarts:"));
+         row1.add(restartsSpinner);
+         row1.add(new JLabel("EM iters:"));
+         row1.add(itersSpinner);
+         row1.add(new JLabel("Seed:"));
+-        row1.add(seedSpinner);
+ 
+         JPanel row2 = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
+         row2.add(new JLabel("Ridge:"));
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/HybridCgImWrapper.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/HybridCgImWrapper.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/HybridCgImWrapper.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/model/HybridCgImWrapper.java
+@@ -34,7 +34,6 @@
+ import java.io.Serializable;
+ import java.util.Locale;
+ import java.util.Objects;
+-import java.util.Random;
+ 
+ /**
+  * GUI wrapper for a {@link HybridCgIm}. Mirrors BayesImWrapper responsibilities: - Holds the instantiated parameters
+@@ -124,7 +123,6 @@ public HybridCgImWrapper(HybridCgPmWrapper pmWrapper, DataSet data, Parameters p
+      * rows get small random coefficients and positive variance.
+      */
+     private static void randomize(HybridCgIm im, long seed) {
+-        Random rng = new Random(seed);
+         HybridCgPm pm = im.getPm();
+         int n = pm.getNodes().length;
+ 
+@@ -137,7 +135,7 @@ private static void randomize(HybridCgIm im, long seed) {
+                     double sum = 0.0;
+                     double[] tmp = new double[K];
+                     for (int k = 0; k < K; k++) {
+-                        double v = -TMath.log(1.0 - rng.nextDouble());
++                        double v = -TMath.log(1.0 - RandomUtil.getInstance().nextDouble());
+                         tmp[k] = v;
+                         sum += v;
+                     }
+@@ -148,11 +146,11 @@ private static void randomize(HybridCgIm im, long seed) {
+             } else {
+                 int m = pm.getContinuousParents(y).length;
+                 for (int r = 0; r < rows; r++) {
+-                    im.setMean(y, r, rng.nextGaussian() * 0.25);
++                    im.setMean(y, r, RandomUtil.getInstance().nextGaussian(0, 1) * 0.25);
+                     for (int j = 0; j < m; j++) {
+                         im.setCoefficient(y, r, j, RandomUtil.getInstance().nextUniform(-1, 1));
+                     }
+-                    double var = 0.25 + 0.75 * rng.nextDouble(); // (0.25, 1.0]
++                    double var = 0.25 + 0.75 * RandomUtil.getInstance().nextDouble(); // (0.25, 1.0]
+                     im.setVariance(y, r, var);
+                 }
+             }
+diff --git a/tetrad-gui/src/main/java/edu/cmu/tetradapp/util/GraphUtils.java b/tetrad-gui/src/main/java/edu/cmu/tetradapp/util/GraphUtils.java
+--- a/tetrad-gui/src/main/java/edu/cmu/tetradapp/util/GraphUtils.java
++++ b/tetrad-gui/src/main/java/edu/cmu/tetradapp/util/GraphUtils.java
+@@ -34,7 +34,6 @@
+ import java.awt.event.KeyEvent;
+ import java.util.LinkedList;
+ import java.util.List;
+-import java.util.Random;
+ import java.util.Set;
+ 
+ /**
+@@ -96,8 +95,7 @@ public static Graph makeRandomGraph(Graph graph, Parameters parameters) {
+                         numLatentMeasuredImpureParents,
+                         numMeasuredMeasuredImpureParents,
+                         numMeasuredMeasuredImpureAssociations,
+-                        RandomMim.LatentLinkMode.values()[metaEdgeConnectionType - 1],
+-                        new Random());
++                        RandomMim.LatentLinkMode.values()[metaEdgeConnectionType - 1]);
+             }
+             case "ScaleFree" -> GraphUtils.makeRandomScaleFree(newGraphNumMeasuredNodes,
+                     newGraphNumLatents, alpha, beta, deltaIn, deltaOut);
+diff --git a/tetrad-lib/pom.xml b/tetrad-lib/pom.xml
+--- a/tetrad-lib/pom.xml
++++ b/tetrad-lib/pom.xml
+@@ -86,6 +86,11 @@
+             <artifactId>commons-text</artifactId>
+             <version>1.14.0</version>
+         </dependency>
++        <dependency>
++            <groupId>org.apache.commons</groupId>
++            <artifactId>commons-rng-simple</artifactId>
++            <version>1.6</version>
++        </dependency>
+         <dependency>
+             <groupId>colt</groupId>
+             <artifactId>colt</artifactId>
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/graph/RandomMim.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/graph/RandomMim.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/graph/RandomMim.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/graph/RandomMim.java
+@@ -27,7 +27,6 @@
+ import java.io.Serial;
+ import java.util.ArrayList;
+ import java.util.List;
+-import java.util.Random;
+ 
+ /**
+  * Creates a random graph by adding forward edges.
+@@ -62,8 +61,7 @@ public Graph createGraph(Parameters parameters) {
+                 numLatentMeasuredImpureParents,
+                 numMeasuredMeasuredImpureParents,
+                 numMeasuredMeasuredImpureAssociations,
+-                edu.cmu.tetrad.graph.RandomMim.LatentLinkMode.values()[metaEdgeConnectionType - 1],
+-                new Random());
++                edu.cmu.tetrad.graph.RandomMim.LatentLinkMode.values()[metaEdgeConnectionType - 1]);
+     }
+ 
+     /**
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/graph/RandomSingleFactorMim.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/graph/RandomSingleFactorMim.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/graph/RandomSingleFactorMim.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/graph/RandomSingleFactorMim.java
+@@ -1,4 +1,4 @@
+-///////////////////////////////////////////////////////////////////////////////
++/// ////////////////////////////////////////////////////////////////////////////
+ // For information as to what this class does, see the Javadoc, below.       //
+ //                                                                           //
+ // Copyright (C) 2025 by Joseph Ramsey, Peter Spirtes, Clark Glymour,        //
+@@ -27,7 +27,6 @@
+ import java.io.Serial;
+ import java.util.ArrayList;
+ import java.util.List;
+-import java.util.Random;
+ 
+ /**
+  * Creates a random graph by adding forward edges.
+@@ -63,8 +62,7 @@ public Graph createGraph(Parameters parameters) {
+                 numLatentMeasuredImpureParents,
+                 numMeasuredMeasuredImpureParents,
+                 numMeasuredMeasuredImpureAssociations,
+-                RandomMim.LatentLinkMode.CARTESIAN_PRODUCT,
+-                new Random());
++                RandomMim.LatentLinkMode.CARTESIAN_PRODUCT);
+     }
+ 
+     /**
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/graph/RandomTwoFactorMim.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/graph/RandomTwoFactorMim.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/graph/RandomTwoFactorMim.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/graph/RandomTwoFactorMim.java
+@@ -1,4 +1,4 @@
+-///////////////////////////////////////////////////////////////////////////////
++/// ////////////////////////////////////////////////////////////////////////////
+ // For information as to what this class does, see the Javadoc, below.       //
+ //                                                                           //
+ // Copyright (C) 2025 by Joseph Ramsey, Peter Spirtes, Clark Glymour,        //
+@@ -27,7 +27,6 @@
+ import java.io.Serial;
+ import java.util.ArrayList;
+ import java.util.List;
+-import java.util.Random;
+ 
+ /**
+  * Creates a random graph by adding forward edges.
+@@ -63,8 +62,7 @@ public Graph createGraph(Parameters parameters) {
+                 numLatentMeasuredImpureParents,
+                 numMeasuredMeasuredImpureParents,
+                 numMeasuredMeasuredImpureAssociations,
+-                RandomMim.LatentLinkMode.CARTESIAN_PRODUCT,
+-                new Random());
++                RandomMim.LatentLinkMode.CARTESIAN_PRODUCT);
+     }
+ 
+     /**
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/GeneralizedAdditiveModelSimulator.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/GeneralizedAdditiveModelSimulator.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/GeneralizedAdditiveModelSimulator.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/GeneralizedAdditiveModelSimulator.java
+@@ -369,9 +369,6 @@ private DataSet runModel(Graph graph, Parameters parameters) {
+             ).setFunctionFamily(family).setNumUnitsPerEdge(unitsPerEdge).setInputStandardize(standardizeParents)
+                     .setEdgeScale(edgeScale);
+ 
+-            long seed = parameters.getLong(Params.SEED);
+-            if (seed != -1L) gen.setSeed(seed);
+-
+             return gen.generate();
+         } catch (ParseException e) {
+             throw new RuntimeException(e);
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/HybridCgSimulation.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/HybridCgSimulation.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/HybridCgSimulation.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/algcomparison/simulation/HybridCgSimulation.java
+@@ -39,7 +39,6 @@
+ import java.io.Serial;
+ import java.util.ArrayList;
+ import java.util.List;
+-import java.util.Random;
+ 
+ /**
+  * This class represents a Simulation using Structural Equation Modeling (SEM).
+@@ -181,7 +180,7 @@ public void createData(Parameters parameters, boolean newModel) {
+             HybridCgModel.HybridCgIm im = this.im;
+ 
+ 
+-            HybridCgModel.HybridCgIm.Sample sample = im.sample(parameters.getInt(Params.SAMPLE_SIZE), new Random());
++            HybridCgModel.HybridCgIm.Sample sample = im.sample(parameters.getInt(Params.SAMPLE_SIZE));
+ 
+             List<Node> nodes = HybridCgVars.materializeDataVariables(im.getPm());
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/MlBayesIm.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/MlBayesIm.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/MlBayesIm.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/MlBayesIm.java
+@@ -82,10 +82,6 @@ public final class MlBayesIm implements BayesIm {
+      * Tolerance.
+      */
+     private static final double ALLOWABLE_DIFFERENCE = 1.0e-3;
+-    /**
+-     * Random number generator.
+-     */
+-    static private final Random random = new Random();
+     /**
+      * The associated Bayes PM model.
+      */
+@@ -316,7 +312,7 @@ private static double[] getRandomWeights(int size) {
+         double[] row = new double[size];
+         double sum = 0.0;
+ 
+-        int strong = (int) TMath.floor(random.nextDouble() * size);
++        int strong = (int) TMath.floor(RandomUtil.getInstance().nextDouble() * size);
+ 
+         for (int i = 0; i < size; i++) {
+             if (i == strong) {
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/MlBayesImObs.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/MlBayesImObs.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/MlBayesImObs.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/bayes/MlBayesImObs.java
+@@ -703,27 +703,6 @@ public DataSet simulateData(DataSet dataSet, boolean latentDataSaved) {
+         return simulateDataHelper(dataSet, latentDataSaved);
+     }
+ 
+-//    /**
+-//     * Simulates a sample with the given sample size.
+-//     *
+-//     * @param sampleSize the sample size.
+-//     * @param seed       the random number generator seed allows you recreate the
+-//     *                   simulated data by passing in the same seed (so you don't have to store
+-//     *                   the sample data
+-//     * @return the simulated sample as a DataSet.
+-//     */
+-//    public DataSet simulateData(int sampleSize, long seed, boolean latentDataSaved) {
+-//        RandomUtil random = RandomUtil.getInstance();
+-//        random.setSeed(seed);
+-//        return simulateData(sampleSize, latentDataSaved);
+-//    }
+-
+-//    public DataSet simulateData(DataSet dataSet, long seed, boolean latentDataSaved) {
+-//        RandomUtil random = RandomUtil.getInstance();
+-//        random.setSeed(seed);
+-//        return simulateDataHelper(dataSet, latentDataSaved);
+-//    }
+-
+     private DataSet simulateTimeSeries(int sampleSize) {
+         TimeLagGraph timeSeriesGraph = getBayesPm().getDag().getTimeLagGraph();
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/data/UnmixSpec.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/data/UnmixSpec.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/data/UnmixSpec.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/data/UnmixSpec.java
+@@ -608,26 +608,6 @@ public UnmixSpec setAnnealStartT(double t) {
+         return this;
+     }
+ 
+-    /**
+-     * Retrieves the random seed.
+-     *
+-     * @return the random seed.
+-     */
+-    public long getRandomSeed() {
+-        return randomSeed;
+-    }
+-
+-    /**
+-     * Sets the random seed.
+-     *
+-     * @param s the random seed to set; must be non-negative.
+-     * @return the current instance of UnmixSpec for method chaining.
+-     */
+-    public UnmixSpec setRandomSeed(long s) {
+-        this.randomSeed = s;
+-        return this;
+-    }
+-
+     /**
+      * Retrieves whether to save diagnostics.
+      *
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/graph/RandomMim.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/graph/RandomMim.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/graph/RandomMim.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/graph/RandomMim.java
+@@ -21,6 +21,7 @@
+ package edu.cmu.tetrad.graph;
+ 
+ import edu.cmu.tetrad.data.ContinuousVariable;
++import edu.cmu.tetrad.util.RandomUtil;
+ import edu.cmu.tetrad.util.TMath;
+ 
+ import java.util.*;
+@@ -63,9 +64,6 @@ private RandomMim() {
+      *                                              nodes.
+      * @param latentLinkMode                        the mode of linking latents between groups in the meta-DAG, either
+      *                                              via Cartesian product or corresponding positions.
+-     * @param rng                                   the random generator used to make stochastic decisions during graph
+-     *                                              construction; can be null to use a default Random instance with a
+-     *                                              seed of 0.
+      * @return the constructed graph representing the random MIM with all specified constraints and impurities.
+      * @throws IllegalArgumentException if the specifications are null, empty, or malformed, if the number of meta-edges
+      *                                  is out of valid range, or if the latentLinkMode is unrecognized.
+@@ -76,13 +74,11 @@ public static Graph constructRandomMim(
+             int numLatentMeasuredImpureParents,
+             int numMeasuredMeasuredImpureParents,
+             int numMeasuredMeasuredImpureAssociations,
+-            LatentLinkMode latentLinkMode,
+-            Random rng
++            LatentLinkMode latentLinkMode
+     ) {
+         if (specs == null || specs.isEmpty()) {
+             throw new IllegalArgumentException("Specs cannot be empty.");
+         }
+-        if (rng == null) rng = new Random(0);
+ 
+         // ----- 1) Expand specs into concrete groups (structural nodes in the meta-DAG)
+         final List<Group> groups = new ArrayList<>();
+@@ -108,14 +104,14 @@ public static Graph constructRandomMim(
+             // choose ~20% of forward pairs
+             double p = 0.20;
+             for (int[] e : possibleForward) {
+-                if (rng.nextDouble() < p) metaEdges.add(e);
++                if (RandomUtil.getInstance().nextDouble() < p) metaEdges.add(e);
+             }
+         } else {
+             // choose exactly metaEdgeCount forward edges without replacement
+             if (metaEdgeCount < 0 || metaEdgeCount > possibleForward.size()) {
+                 throw new IllegalArgumentException("metaEdgeCount out of range [0, " + possibleForward.size() + "]");
+             }
+-            Collections.shuffle(possibleForward, rng);
++            Collections.shuffle(possibleForward);
+             metaEdges.addAll(possibleForward.subList(0, metaEdgeCount));
+         }
+ 
+@@ -199,7 +195,7 @@ public static Graph constructRandomMim(
+                 }
+ 
+                 if (!candidates.isEmpty()) {
+-                    Collections.shuffle(candidates, rng);
++                    RandomUtil.shuffle(candidates);
+                     // âPatchyâ = pick about half of the possible connections, but at least one.
+                     final int k = TMath.max(1, candidates.size() / 2);
+                     for (int i = 0; i < k; i++) {
+@@ -217,13 +213,13 @@ public static Graph constructRandomMim(
+         // ----- 5) Add impurities
+ 
+         // 5a) extra latent -> measured cross-loadings (avoid duplicating existing parent edges)
+-        addLatentMeasuredImpurities(graph, allLatents, allMeasured, numLatentMeasuredImpureParents, rng);
++        addLatentMeasuredImpurities(graph, allLatents, allMeasured, numLatentMeasuredImpureParents);
+ 
+         // 5b) measured -> measured directed impurities (avoid cycles as much as possible by preferring âforwardâ indices)
+-        addMeasuredMeasuredParents(graph, allMeasured, numMeasuredMeasuredImpureParents, rng);
++        addMeasuredMeasuredParents(graph, allMeasured, numMeasuredMeasuredImpureParents);
+ 
+         // 5c) measured <-> measured bidirected âerror correlationsâ
+-        addMeasuredMeasuredAssociations(graph, allMeasured, numMeasuredMeasuredImpureAssociations, rng);
++        addMeasuredMeasuredAssociations(graph, allMeasured, numMeasuredMeasuredImpureAssociations);
+ 
+         // layout (nice to have)
+         try {
+@@ -235,12 +231,12 @@ public static Graph constructRandomMim(
+     }
+ 
+     private static void addLatentMeasuredImpurities(Graph g, List<Node> latents, List<Node> measured,
+-                                                    int count, Random rng) {
++                                                    int count) {
+         if (count <= 0 || latents.isEmpty() || measured.isEmpty()) return;
+         int tries = 0, added = 0, maxTries = count * 20;
+         while (added < count && tries++ < maxTries) {
+-            Node L = latents.get(rng.nextInt(latents.size()));
+-            Node X = measured.get(rng.nextInt(measured.size()));
++            Node L = latents.get(RandomUtil.getInstance().nextInt(latents.size()));
++            Node X = measured.get(RandomUtil.getInstance().nextInt(measured.size()));
+             if (g.isParentOf(L, X)) continue;              // already a parent
+             if (L == X) continue;
+             if (g.isAdjacentTo(X, L)) continue;
+@@ -249,12 +245,12 @@ private static void addLatentMeasuredImpurities(Graph g, List<Node> latents, Lis
+         }
+     }
+ 
+-    private static void addMeasuredMeasuredParents(Graph g, List<Node> measured, int count, Random rng) {
++    private static void addMeasuredMeasuredParents(Graph g, List<Node> measured, int count) {
+         if (count <= 0 || measured.size() < 2) return;
+         int tries = 0, added = 0, maxTries = count * 50;
+         while (added < count && tries++ < maxTries) {
+-            int i = rng.nextInt(measured.size());
+-            int j = rng.nextInt(measured.size());
++            int i = RandomUtil.getInstance().nextInt(measured.size());
++            int j = RandomUtil.getInstance().nextInt(measured.size());
+             if (i == j) continue;
+ 
+             Node A = measured.get(TMath.min(i, j)); // bias lower -> higher
+@@ -287,12 +283,12 @@ private static boolean hasDirectedPath(Graph g, Node from, Node to) {
+ 
+     // ========= helpers =========
+ 
+-    private static void addMeasuredMeasuredAssociations(Graph g, List<Node> measured, int count, Random rng) {
++    private static void addMeasuredMeasuredAssociations(Graph g, List<Node> measured, int count) {
+         if (count <= 0 || measured.size() < 2) return;
+         int tries = 0, added = 0, maxTries = count * 30;
+         while (added < count && tries++ < maxTries) {
+-            Node A = measured.get(rng.nextInt(measured.size()));
+-            Node B = measured.get(rng.nextInt(measured.size()));
++            Node A = measured.get(RandomUtil.getInstance().nextInt(measured.size()));
++            Node B = measured.get(RandomUtil.getInstance().nextInt(measured.size()));
+             if (A == B) continue;
+             if (g.isAdjacentTo(A, B)) continue;
+             g.addBidirectedEdge(A, B); // error correlation style impurity
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgModel.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgModel.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgModel.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgModel.java
+@@ -683,8 +683,8 @@ private static int[] topologicalOrder(Graph g, Node[] nodes) {
+             return order;
+         }
+ 
+-        private static int sampleCategorical(double[] probs, Random rng) {
+-            double u = rng.nextDouble();
++        private static int sampleCategorical(double[] probs) {
++            double u = RandomUtil.getInstance().nextDouble();
+             double c = 0.0;
+             for (int k = 0; k < probs.length; k++) {
+                 c += probs[k];
+@@ -904,11 +904,9 @@ public DataSet toDataSet(Sample sample) {
+          * </ul>
+          *
+          * @param n   number of rows to sample
+-         * @param rng random number generator
+          * @return sample
+          */
+-        public Sample sample(int n, Random rng) {
+-            if (rng == null) rng = new Random();
++        public Sample sample(int n) {
+             final int p = pm.nodes.length;
+ 
+             // Precompute topo order
+@@ -949,7 +947,7 @@ public Sample sample(int n, Random rng) {
+                             }
+                         }
+                         int rowIndex = pm.getRowIndex(y, discVals, contBins);
+-                        discCols[y][r] = sampleCategorical(discProbs[y][rowIndex], rng);
++                        discCols[y][r] = sampleCategorical(discProbs[y][rowIndex]);
+                     } else {
+                         // Continuous child
+                         int[] discVals = new int[dps[y].length];
+@@ -960,7 +958,7 @@ public Sample sample(int n, Random rng) {
+                             mean += getCoefficient(y, rowIndex, t) * contCols[cps[y][t]][r];
+                         double var = getVariance(y, rowIndex);
+                         double sd = var > 0 ? TMath.sqrt(var) : 0.0;
+-                        contCols[y][r] = mean + sd * rng.nextGaussian();
++                        contCols[y][r] = mean + sd * RandomUtil.getInstance().nextGaussian();
+                     }
+                 }
+             }
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/Cam.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/Cam.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/Cam.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/Cam.java
+@@ -6,6 +6,7 @@
+ import edu.cmu.tetrad.graph.Node;
+ import edu.cmu.tetrad.search.score.AdditiveLocalScorer;
+ import edu.cmu.tetrad.search.score.CamAdditivePsplineBic;
++import edu.cmu.tetrad.util.RandomUtil;
+ import edu.cmu.tetrad.util.TMath;
+ 
+ import java.util.*;
+@@ -44,7 +45,6 @@ protected boolean removeEldestEntry(Map.Entry<String, Double> e) {
+     private boolean verbose = false;
+ 
+     // Order search restarts
+-    private long seed = System.nanoTime();
+     private int restarts = 10;
+ 
+     // PNS candidates: top-k univariate per target
+@@ -136,18 +136,6 @@ public Cam setVerbose(boolean verbose) {
+         return this;
+     }
+ 
+-    /**
+-     * Sets the seed value for the random processes in the current {@code Cam} instance. The seed ensures
+-     * reproducibility in the algorithm's behavior across executions.
+-     *
+-     * @param seed the seed value to be set; must be a valid {@code long} value
+-     * @return the current instance of {@code Cam} to allow method chaining
+-     */
+-    public Cam setSeed(long seed) {
+-        this.seed = seed;
+-        return this;
+-    }
+-
+     /**
+      * Sets the number of restart attempts for the CAM algorithm. The value is constrained to be at least 1. If a number
+      * less than 1 is provided, it will be adjusted to 1 automatically.
+@@ -198,8 +186,7 @@ public Graph search() throws InterruptedException {
+         double bestScore = Double.POSITIVE_INFINITY;
+ 
+         for (int r = 0; r < restarts; r++) {
+-            Random rnd = new Random(seed + 31L * r);
+-            List<Node> order = incEdgeOrder(rnd);
++            List<Node> order = incEdgeOrder();
+             double total = permutationScore(order);
+             if (total < bestScore) {
+                 bestScore = total;
+@@ -249,9 +236,9 @@ private void computePnsCandidates() {
+      * Build an order greedily by appending the best next variable (IncEdge). Predecessors considered for candidate y
+      * are placed ∩ PNS(y).
+      */
+-    private List<Node> incEdgeOrder(Random rnd) {
++    private List<Node> incEdgeOrder() {
+         List<Node> all = new ArrayList<>(data.getVariables());
+-        Collections.shuffle(all, rnd); // randomized scan order; ties resolved deterministically below
++        RandomUtil.shuffle(all); // randomized scan order; ties resolved deterministically below
+ 
+         List<Node> order = new ArrayList<>(all.size());
+         Set<Node> placed = new LinkedHashSet<>();
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/score/LegendreBicScore.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/score/LegendreBicScore.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/score/LegendreBicScore.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/score/LegendreBicScore.java
+@@ -54,7 +54,6 @@
+  * where {@code logLik_hat} is the maximized penalized log-likelihood,
+  * {@code n} is the effective local sample size, and {@code edf}
+  * is the ridge-based effective degrees of freedom.
+- * </p>
+  *
+  * <p><b>Implementation notes:</b></p>
+  * <ul>
+@@ -859,12 +858,12 @@ public void setLegendreMapMode(String mode) {
+     /**
+      * Sets the lower and upper quantile thresholds for mapping. The specified quantiles are used
+      * to calculate the robust bounds for the data variables. This method validates the input quantiles
+-     * to ensure they satisfy the conditions: 0 <= loQ < hiQ <= 1.
++     * to ensure they satisfy the conditions: 0 &lt;= loQ &lt; hiQ &lt;= 1.
+      *
+      * @param loQ The lower quantile threshold, a value between 0 (inclusive) and 1 (exclusive).
+      * @param hiQ The upper quantile threshold, a value between 0 (exclusive) and 1 (inclusive),
+      *            and greater than the specified loQ.
+-     * @throws IllegalArgumentException If the quantiles do not satisfy 0 <= loQ < hiQ <= 1.
++     * @throws IllegalArgumentException If the quantiles do not satisfy 0 &lt;= loQ &lt; hiQ &lt;= 1.
+      */
+     public void setMapQuantiles(double loQ, double hiQ) {
+         if (!(loQ >= 0 && loQ < hiQ && hiQ <= 1)) {
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/GaussianMixtureEM.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/GaussianMixtureEM.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/GaussianMixtureEM.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/GaussianMixtureEM.java
+@@ -65,7 +65,7 @@ public static Model fit(double[][] X, Config cfg) {
+         if (n == 0 || cfg.K <= 0) throw new IllegalArgumentException("Empty data or K<=0");
+ 
+         // --- init via k-means (hard) then moments
+-        int[] z = KMeans.clusterWithRestarts(X, cfg.K, /*iters*/50, cfg.seed, cfg.kmeansRestarts).labels;
++        int[] z = KMeans.clusterWithRestarts(X, cfg.K, /*iters*/50, cfg.kmeansRestarts).labels;
+         double[] w = new double[cfg.K];
+         double[][] mu = new double[cfg.K][d];
+         double[][][] S = allocCov(cfg.K, d, cfg.covType);
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/KMeans.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/KMeans.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/KMeans.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/KMeans.java
+@@ -1,4 +1,4 @@
+-///////////////////////////////////////////////////////////////////////////////
++/// ////////////////////////////////////////////////////////////////////////////
+ // For information as to what this class does, see the Javadoc, below.       //
+ //                                                                           //
+ // Copyright (C) 2025 by Joseph Ramsey, Peter Spirtes, Clark Glymour,        //
+@@ -20,11 +20,11 @@
+ 
+ package edu.cmu.tetrad.search.unmix;
+ 
++import edu.cmu.tetrad.util.RandomUtil;
+ import edu.cmu.tetrad.util.StatUtils;
+ import edu.cmu.tetrad.util.TMath;
+ 
+ import java.util.Arrays;
+-import java.util.Random;
+ 
+ /**
+  * Implements the K-Means clustering algorithm using the k-means++ initialization method and iterative refinement. The
+@@ -33,7 +33,7 @@
+  */
+ public final class KMeans {
+ 
+-    private  KMeans() {
++    private KMeans() {
+ 
+     }
+ 
+@@ -45,21 +45,19 @@ private  KMeans() {
+      * @param K       The number of clusters to create. If K is greater than the number of data points, it will be
+      *                adjusted to the number of data points. K must be a positive integer.
+      * @param maxIter The maximum number of iterations the algorithm will run. Must be a positive integer.
+-     * @param seed    The seed for the random number generator used to initialize the cluster centroids.
+      * @return An instance of the {@code Result} class containing the cluster assignments (labels) for each data point
+      * and the coordinates of the centroids of the clusters.
+      */
+-    public static Result cluster(double[][] X, int K, int maxIter, long seed) {
++    public static Result cluster(double[][] X, int K, int maxIter) {
+         int n = X.length, d = (n == 0 ? 0 : X[0].length);
+         if (n == 0 || K <= 0) return new Result(new int[0], new double[TMath.max(K, 0)][d]);
+         if (K > n) K = n;
+ 
+-        Random rnd = new Random(seed);
+         double[][] C = new double[K][d];
+ 
+         // --- k-means++ init ---
+         int[] chosen = new int[K];
+-        chosen[0] = rnd.nextInt(n);
++        chosen[0] = RandomUtil.getInstance().nextInt(n);
+         C[0] = X[chosen[0]].clone();
+         double[] dist2 = new double[n];
+         Arrays.fill(dist2, Double.POSITIVE_INFINITY);
+@@ -75,9 +73,9 @@ public static Result cluster(double[][] X, int K, int maxIter, long seed) {
+             int pick;
+             if (sum == 0.0 || Double.isNaN(sum) || Double.isInfinite(sum)) {
+                 // All points are identical (or degenerate distances); pick uniformly
+-                pick = rnd.nextInt(n);
++                pick = RandomUtil.getInstance().nextInt(n);
+             } else {
+-                double r = rnd.nextDouble() * sum;
++                double r = RandomUtil.getInstance().nextDouble() * sum;
+                 double acc = 0.0;
+                 pick = n - 1;
+                 for (int i = 0; i < n - 1; i++) {
+@@ -141,21 +139,17 @@ public static Result cluster(double[][] X, int K, int maxIter, long seed) {
+      * @param K        The number of clusters to create. If K is greater than the number of data points, it
+      *                 will be adjusted to the number of data points. K must be a positive integer.
+      * @param maxIter  The maximum number of iterations the algorithm will run. Must be a positive integer.
+-     * @param seed     The seed for the random number generator used to initialize the cluster centroids for
+-     *                 each restart.
+      * @param restarts The number of times to restart the clustering process with different initial centroids.
+      *                 If set to a value less than or equal to 0, the clustering algorithm will run only once.
+      * @return An instance of the {@code Result} class containing the cluster assignments (labels) for each
+      *         data point and the coordinates of the centroids of the clusters from the best run (based on
+      *         the lowest within-cluster SSE).
+      */
+-    public static Result clusterWithRestarts(double[][] X, int K, int maxIter, long seed, int restarts) {
++    public static Result clusterWithRestarts(double[][] X, int K, int maxIter, int restarts) {
+         Result best = null;
+         double bestSse = Double.POSITIVE_INFINITY;
+-        Random seeder = new Random(seed);
+         for (int r = 0; r < TMath.max(1, restarts); r++) {
+-            long s = seeder.nextLong();
+-            Result res = cluster(X, K, maxIter, s);
++            Result res = cluster(X, K, maxIter);
+             double sse = withinSSE(X, res.labels, res.centroids);
+             if (sse < bestSse) {
+                 bestSse = sse;
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/ParentSupersetBuilder.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/ParentSupersetBuilder.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/ParentSupersetBuilder.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/ParentSupersetBuilder.java
+@@ -23,6 +23,7 @@
+ import edu.cmu.tetrad.data.DataSet;
+ import edu.cmu.tetrad.graph.Graph;
+ import edu.cmu.tetrad.graph.Node;
++import edu.cmu.tetrad.util.RandomUtil;
+ import edu.cmu.tetrad.util.TMath;
+ 
+ import java.util.*;
+@@ -87,11 +88,10 @@ public static Map<Node, List<Node>> build(DataSet data, Config cfg) {
+ 
+         // 2) Optional: union with shallow-search parents on bagged subsamples
+         if (cfg.useBagging && cfg.shallowSearch != null && cfg.bags > 0 && cfg.bagFraction > 0.0) {
+-            Random rnd = new Random(cfg.seed);
+             int n = data.getNumRows();
+             int m = TMath.max(1, (int) TMath.round(cfg.bagFraction * n));
+             for (int b = 0; b < cfg.bags; b++) {
+-                List<Integer> rows = sampleWithoutReplacement(n, m, rnd);
++                List<Integer> rows = sampleWithoutReplacement(n, m);
+                 int[] rowArray = rows.stream().mapToInt(Integer::intValue).toArray();
+                 DataSet sub = data.subsetRows(rowArray);
+                 Graph G = cfg.shallowSearch.apply(sub);
+@@ -142,11 +142,11 @@ private static List<Integer> argTopK(double[] s, int k, int skipIdx) {
+         return idxs;
+     }
+ 
+-    private static List<Integer> sampleWithoutReplacement(int n, int m, Random rnd) {
++    private static List<Integer> sampleWithoutReplacement(int n, int m) {
+         int[] arr = new int[n];
+         for (int i = 0; i < n; i++) arr[i] = i;
+         for (int i = 0; i < m; i++) {
+-            int j = i + rnd.nextInt(n - i);
++            int j = i + RandomUtil.getInstance().nextInt(n - i);
+             int tmp = arr[i];
+             arr[i] = arr[j];
+             arr[j] = tmp;
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/UnmixDiagnostics.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/UnmixDiagnostics.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/UnmixDiagnostics.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/UnmixDiagnostics.java
+@@ -22,6 +22,7 @@
+ 
+ import edu.cmu.tetrad.data.DataSet;
+ import edu.cmu.tetrad.graph.Graph;
++import edu.cmu.tetrad.util.RandomUtil;
+ import edu.cmu.tetrad.util.TMath;
+ 
+ import java.util.*;
+@@ -127,11 +128,10 @@ public static EntropyStats computeEntropyStats(double[][] responsibilities) {
+     public static StabilityResult stabilityAcrossRestarts(DataSet data, EmUnmix.Config cfg, ResidualRegressor regressor, Function<DataSet, Graph> pooled, Function<DataSet, Graph> perCluster, int repeats, long seedBase) {
+ 
+         List<int[]> labelings = new ArrayList<>(repeats);
+-        Random rnd = new Random(seedBase);
+ 
+         for (int r = 0; r < repeats; r++) {
+             EmUnmix.Config c = cfg.copy();
+-            c.randomSeed = rnd.nextLong();    // if you support seeds
++            c.randomSeed = RandomUtil.getInstance().nextLong();    // if you support seeds
+             UnmixResult res = EmUnmix.run(data, c, regressor, pooled, perCluster);
+             labelings.add(res.labels);
+         }
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/GaussianProcessRBF.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/GaussianProcessRBF.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/GaussianProcessRBF.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/GaussianProcessRBF.java
+@@ -1,4 +1,4 @@
+-///////////////////////////////////////////////////////////////////////////////
++/// ////////////////////////////////////////////////////////////////////////////
+ // For information as to what this class does, see the Javadoc, below.       //
+ //                                                                           //
+ // Copyright (C) 2025 by Joseph Ramsey, Peter Spirtes, Clark Glymour,        //
+@@ -20,10 +20,9 @@
+ 
+ package edu.cmu.tetrad.search.utils;
+ 
++import edu.cmu.tetrad.util.RandomUtil;
+ import edu.cmu.tetrad.util.TMath;
+ 
+-import java.util.Random;
+-
+ /**
+  * GaussianProcessRBF simulates a Gaussian Process (GP) with a Radial Basis Function (RBF) kernel. It provides
+  * functionality for generating simulated function values based on the covariance matrix of the RBF kernel and
+@@ -33,7 +32,6 @@ public class GaussianProcessRBF {
+     private final double[] xValues;        // Input points
+     private final double[][] covarianceMatrix; // Covariance matrix
+     private final double[] functionValues;     // Simulated function values
+-    private final Random random;               // Random number generator
+ 
+     private final double lengthScale;  // Length scale parameter for the RBF kernel
+     private final double amplitude;    // Amplitude parameter for the RBF kernel
+@@ -52,7 +50,6 @@ public GaussianProcessRBF(double[] xValues, double lengthScale, double amplitude
+         this.lengthScale = lengthScale;
+         this.amplitude = amplitude;
+         this.noiseStd = noiseStd;
+-        this.random = new Random();
+ 
+         // Compute the covariance matrix
+         this.covarianceMatrix = computeCovarianceMatrix(xValues);
+@@ -126,7 +123,7 @@ private double[] simulateFunction() {
+         // Generate random Gaussian noise
+         double[] noise = new double[n];
+         for (int i = 0; i < n; i++) {
+-            noise[i] = random.nextGaussian();
++            noise[i] = RandomUtil.getInstance().nextGaussian(0, 1);
+         }
+ 
+         // Simulate function values by applying the covariance matrix
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/LinearFunctionND.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/LinearFunctionND.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/LinearFunctionND.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/LinearFunctionND.java
+@@ -1,4 +1,4 @@
+-///////////////////////////////////////////////////////////////////////////////
++/// ////////////////////////////////////////////////////////////////////////////
+ // For information as to what this class does, see the Javadoc, below.       //
+ //                                                                           //
+ // Copyright (C) 2025 by Joseph Ramsey, Peter Spirtes, Clark Glymour,        //
+@@ -20,7 +20,7 @@
+ 
+ package edu.cmu.tetrad.search.utils;
+ 
+-import java.util.Random;
++import edu.cmu.tetrad.util.RandomUtil;
+ 
+ /**
+  * Represents a linear function in an n-dimensional space (R^n -> R). The function is defined as f(x) = c1*x1 + c2*x2 +
+@@ -38,28 +38,19 @@ public class LinearFunctionND {
+      * @param coefLow       Lower bound for the coefficients.
+      * @param coefHigh      Upper bound for the coefficients.
+      * @param coefSymmetric If true, coefficients may randomly switch sign.
+-     * @param seed          Random seed for reproducibility.
+      */
+-    public LinearFunctionND(int inputDim, double coefLow, double coefHigh, boolean coefSymmetric, long seed) {
++    public LinearFunctionND(int inputDim, double coefLow, double coefHigh, boolean coefSymmetric) {
+         if (coefLow > coefHigh) {
+             throw new IllegalArgumentException("coefLow must be less than or equal to coefHigh.");
+         }
+ 
+-        Random random;
+-
+-        if (seed == -1) {
+-            random = new Random();
+-        } else {
+-            random = new Random(seed);
+-        }
+-
+         this.coefficients = new double[inputDim];
+-        this.intercept = coefLow + (coefHigh - coefLow) * random.nextDouble(); // Random intercept
++        this.intercept = coefLow + (coefHigh - coefLow) * RandomUtil.getInstance().nextDouble(); // Random intercept
+ 
+         // Initialize coefficients randomly
+         for (int i = 0; i < inputDim; i++) {
+-            double coef = coefLow + (coefHigh - coefLow) * random.nextDouble(); // Random coefficient
+-            if (coefSymmetric && random.nextBoolean()) {
++            double coef = coefLow + (coefHigh - coefLow) * RandomUtil.getInstance().nextDouble(); // Random coefficient
++            if (coefSymmetric && RandomUtil.getInstance().nextBoolean()) {
+                 coef *= -1; // Randomly switch sign
+             }
+             this.coefficients[i] = coef;
+@@ -78,8 +69,7 @@ public static void main(String[] args) {
+                 3, // Input dimension
+                 -2.0, // CoefLow
+                 2.0, // CoefHigh
+-                true, // CoefSymmetric
+-                42 // Random seed
++                true // CoefSymmetric
+         );
+ 
+         // Print coefficients and intercept
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/MultiLayerPerceptron.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/MultiLayerPerceptron.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/MultiLayerPerceptron.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/MultiLayerPerceptron.java
+@@ -1,4 +1,4 @@
+-///////////////////////////////////////////////////////////////////////////////
++/// ////////////////////////////////////////////////////////////////////////////
+ // For information as to what this class does, see the Javadoc, below.       //
+ //                                                                           //
+ // Copyright (C) 2025 by Joseph Ramsey, Peter Spirtes, Clark Glymour,        //
+@@ -20,7 +20,8 @@
+ 
+ package edu.cmu.tetrad.search.utils;
+ 
+-import java.util.Random;
++import edu.cmu.tetrad.util.RandomUtil;
++
+ import java.util.function.Function;
+ 
+ /**
+@@ -41,11 +42,8 @@ public class MultiLayerPerceptron {
+      * @param hiddenLayers Array specifying the number of neurons in each hidden layer.
+      * @param activation   Activation function (e.g., Math::tanh or Math::sin).
+      * @param inputScale   Scaling factor for the input to create bumpiness.
+-     * @param seed         Random seed for reproducibility.
+      */
+-    public MultiLayerPerceptron(int inputDim, int[] hiddenLayers, Function<Double, Double> activation, double inputScale, long seed) {
+-        Random random = new Random(seed);
+-
++    public MultiLayerPerceptron(int inputDim, int[] hiddenLayers, Function<Double, Double> activation, double inputScale) {
+         int numLayers = hiddenLayers.length;
+         this.weights = new double[numLayers + 1][][]; // Includes input-to-hidden and hidden-to-output
+         this.biases = new double[numLayers + 1][];    // Includes all layer biases
+@@ -60,9 +58,9 @@ public MultiLayerPerceptron(int inputDim, int[] hiddenLayers, Function<Double, D
+             biases[layer] = new double[currentLayerSize];
+             for (int i = 0; i < currentLayerSize; i++) {
+                 for (int j = 0; j < prevLayerSize; j++) {
+-                    weights[layer][i][j] = random.nextGaussian();
++                    weights[layer][i][j] = RandomUtil.getInstance().nextGaussian(0, 1);
+                 }
+-                biases[layer][i] = random.nextGaussian();
++                biases[layer][i] = RandomUtil.getInstance().nextGaussian(0, 1);
+             }
+             prevLayerSize = currentLayerSize;
+         }
+@@ -71,9 +69,9 @@ public MultiLayerPerceptron(int inputDim, int[] hiddenLayers, Function<Double, D
+         weights[numLayers] = new double[1][prevLayerSize];
+         biases[numLayers] = new double[1];
+         for (int j = 0; j < prevLayerSize; j++) {
+-            weights[numLayers][0][j] = random.nextGaussian();
++            weights[numLayers][0][j] = RandomUtil.getInstance().nextGaussian(0, 1);
+         }
+-        biases[numLayers][0] = random.nextGaussian();
++        biases[numLayers][0] = RandomUtil.getInstance().nextGaussian(0, 1);
+     }
+ 
+     /**
+@@ -89,8 +87,7 @@ public static void main(String[] args) {
+                 3, // Input dimension (R^3 -> R)
+                 new int[]{10, 15, 5}, // Three hidden layers with specified neurons
+                 Math::tanh, // Activation function
+-                10.0, // Input scale for bumpiness
+-                42 // Random seed
++                10.0 // Input scale for bumpiness
+         );
+ 
+         double[][] sampleInputs = {
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/MultiLayerPerceptronFunction1D.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/MultiLayerPerceptronFunction1D.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/MultiLayerPerceptronFunction1D.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/MultiLayerPerceptronFunction1D.java
+@@ -1,4 +1,4 @@
+-///////////////////////////////////////////////////////////////////////////////
++/// ////////////////////////////////////////////////////////////////////////////
+ // For information as to what this class does, see the Javadoc, below.       //
+ //                                                                           //
+ // Copyright (C) 2025 by Joseph Ramsey, Peter Spirtes, Clark Glymour,        //
+@@ -20,7 +20,8 @@
+ 
+ package edu.cmu.tetrad.search.utils;
+ 
+-import java.util.Random;
++import edu.cmu.tetrad.util.RandomUtil;
++
+ import java.util.function.Function;
+ 
+ /**
+@@ -42,29 +43,20 @@ public class MultiLayerPerceptronFunction1D {
+      * @param hiddenDimension Number of neurons in the hidden layer.
+      * @param inputScale      Scaling factor for the input to create bumpiness.
+      * @param activation      Activation function (e.g., Math::sin or Math::tanh).
+-     * @param seed            Random seed for reproducibility.
+      */
+-    public MultiLayerPerceptronFunction1D(int hiddenDimension, double inputScale, Function<Double, Double> activation, long seed) {
+-        Random random;
+-
+-        if (seed == -1L) {
+-            random = new Random();
+-        } else {
+-            random = new Random(seed);
+-        }
+-
++    public MultiLayerPerceptronFunction1D(int hiddenDimension, double inputScale, Function<Double, Double> activation) {
+         this.W1 = new double[hiddenDimension][1];
+         this.b1 = new double[hiddenDimension];
+         this.W2 = new double[hiddenDimension];
+-        this.b2 = random.nextDouble() * 2 - 1; // Random value in [-1, 1]
++        this.b2 = RandomUtil.getInstance().nextDouble() * 2 - 1; // Random value in [-1, 1]
+         this.activation = activation;
+         this.inputScale = inputScale;
+ 
+         // Initialize weights and biases randomly
+         for (int i = 0; i < hiddenDimension; i++) {
+-            this.W1[i][0] = random.nextGaussian(); // Gaussian weights
+-            this.b1[i] = random.nextGaussian();   // Gaussian biases
+-            this.W2[i] = random.nextGaussian();   // Gaussian weights
++            this.W1[i][0] = RandomUtil.getInstance().nextGaussian(0, 1); // Gaussian weights
++            this.b1[i] = RandomUtil.getInstance().nextGaussian(0, 1);   // Gaussian biases
++            this.W2[i] = RandomUtil.getInstance().nextGaussian(0, 1);   // Gaussian weights
+         }
+     }
+ 
+@@ -78,9 +70,7 @@ public static void main(String[] args) {
+         // Define a random function with 20 hidden neurons, sine activation, and high bumpiness
+         MultiLayerPerceptronFunction1D randomFunction = new MultiLayerPerceptronFunction1D(
+                 20, // Number of hidden neurons
+-                10.0, Math::sin, // Activation function
+-                // Input scale for bumpiness
+-                42 // Random seed
++                10.0, Math::sin // Activation function
+         );
+ 
+         // Evaluate and print the random function for some inputs
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/MultiLayerPerceptronFunctionND.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/MultiLayerPerceptronFunctionND.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/MultiLayerPerceptronFunctionND.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/MultiLayerPerceptronFunctionND.java
+@@ -20,7 +20,8 @@
+ 
+ package edu.cmu.tetrad.search.utils;
+ 
+-import java.util.Random;
++import edu.cmu.tetrad.util.RandomUtil;
++
+ import java.util.function.Function;
+ 
+ /**
+@@ -41,25 +42,22 @@ public class MultiLayerPerceptronFunctionND {
+      * @param hiddenDimension Number of neurons in the hidden layer.
+      * @param activation      Activation function (e.g., Math::sin or Math::tanh).
+      * @param inputScale      Scaling factor for the input to create bumpiness.
+-     * @param seed            Random seed for reproducibility.
+      */
+-    public MultiLayerPerceptronFunctionND(int inputDim, int hiddenDimension, Function<Double, Double> activation, double inputScale, long seed) {
+-        Random random = new Random(seed);
+-
++    public MultiLayerPerceptronFunctionND(int inputDim, int hiddenDimension, Function<Double, Double> activation, double inputScale) {
+         this.W1 = new double[hiddenDimension][inputDim];
+         this.b1 = new double[hiddenDimension];
+         this.W2 = new double[hiddenDimension];
+-        this.b2 = random.nextDouble() * 2 - 1; // Random value in [-1, 1]
++        this.b2 = RandomUtil.getInstance().nextDouble() * 2 - 1; // Random value in [-1, 1]
+         this.activation = activation;
+         this.inputScale = inputScale;
+ 
+         // Initialize weights and biases randomly
+         for (int i = 0; i < hiddenDimension; i++) {
+             for (int j = 0; j < inputDim; j++) {
+-                this.W1[i][j] = random.nextGaussian(); // Gaussian weights
++                this.W1[i][j] = RandomUtil.getInstance().nextGaussian(0, 1); // Gaussian weights
+             }
+-            this.b1[i] = random.nextGaussian();       // Gaussian biases
+-            this.W2[i] = random.nextGaussian();       // Gaussian weights
++            this.b1[i] = RandomUtil.getInstance().nextGaussian(0, 1);      // Gaussian biases
++            this.W2[i] = RandomUtil.getInstance().nextGaussian(0, 1);       // Gaussian weights
+         }
+     }
+ 
+@@ -76,8 +74,7 @@ public static void main(String[] args) {
+                 3, // Input dimension (R^3 -> R)
+                 20, // Number of hidden neurons
+                 Math::tanh, // Activation function
+-                10.0, // Input scale for bumpiness
+-                42 // Random seed
++                10.0 // Input scale for bumpiness
+         );
+ 
+         // Evaluate and print the random function for some sample inputs
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomFourier.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomFourier.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomFourier.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomFourier.java
+@@ -20,9 +20,9 @@
+ 
+ package edu.cmu.tetrad.search.utils;
+ 
++import edu.cmu.tetrad.util.RandomUtil;
+ import edu.cmu.tetrad.util.TMath;
+ 
+-import java.util.Random;
+ import java.util.stream.DoubleStream;
+ 
+ /**
+@@ -54,11 +54,10 @@ public RandomFourier(int numTerms, double frequencyScale) {
+         this.sinAmplitudes = new double[numTerms];
+         this.frequencies = new double[numTerms];
+ 
+-        Random random = new Random();
+         for (int i = 0; i < numTerms; i++) {
+-            cosAmplitudes[i] = -2 + 4 * random.nextDouble(); // Random values in range [-2, 2]
+-            sinAmplitudes[i] = -2 + 4 * random.nextDouble(); // Random values in range [-2, 2]
+-            frequencies[i] = frequencyScale * (0.5 + random.nextDouble()); // Random frequencies > 0
++            cosAmplitudes[i] = -2 + 4 * RandomUtil.getInstance().nextDouble(); // Random values in range [-2, 2]
++            sinAmplitudes[i] = -2 + 4 * RandomUtil.getInstance().nextDouble(); // Random values in range [-2, 2]
++            frequencies[i] = frequencyScale * (0.5 + RandomUtil.getInstance().nextDouble()); // Random frequencies > 0
+         }
+     }
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomFunctions.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomFunctions.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomFunctions.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomFunctions.java
+@@ -1,4 +1,4 @@
+-///////////////////////////////////////////////////////////////////////////////
++/// ////////////////////////////////////////////////////////////////////////////
+ // For information as to what this class does, see the Javadoc, below.       //
+ //                                                                           //
+ // Copyright (C) 2025 by Joseph Ramsey, Peter Spirtes, Clark Glymour,        //
+@@ -20,14 +20,14 @@
+ 
+ package edu.cmu.tetrad.search.utils;
+ 
++import edu.cmu.tetrad.util.RandomUtil;
++import edu.cmu.tetrad.util.TMath;
+ import org.apache.commons.math3.distribution.MultivariateNormalDistribution;
+ import org.apache.commons.math3.linear.Array2DRowRealMatrix;
+ import org.apache.commons.math3.linear.CholeskyDecomposition;
+ import org.apache.commons.math3.linear.RealMatrix;
+-import edu.cmu.tetrad.util.TMath;
+ 
+ import java.util.Arrays;
+-import java.util.Random;
+ 
+ /**
+  * A utility class for generating and evaluating random mathematical functions, including polynomials, Fourier series,
+@@ -36,8 +36,6 @@
+  */
+ public class RandomFunctions {
+ 
+-    private static final Random RANDOM = new Random();
+-
+     private RandomFunctions() {
+         throw new IllegalStateException("Utility class");
+     }
+@@ -57,7 +55,7 @@ private RandomFunctions() {
+     public static double randomPolynomial(double x, int degree, double scale, boolean passThroughOrigin) {
+         double[] coefficients = new double[degree + 1];
+         for (int i = 0; i < coefficients.length; i++) {
+-            coefficients[i] = (passThroughOrigin && i == 0) ? 0 : scale * (2 * RANDOM.nextDouble() - 1);
++            coefficients[i] = (passThroughOrigin && i == 0) ? 0 : scale * (2 * RandomUtil.getInstance().nextDouble() - 1);
+         }
+         double result = 0;
+         for (int i = 0; i < coefficients.length; i++) {
+@@ -82,8 +80,8 @@ public static double randomFourier(double x, int numTerms, double scale, boolean
+         double[] a = new double[numTerms];
+         double[] b = new double[numTerms];
+         for (int i = 0; i < numTerms; i++) {
+-            a[i] = scale * (2 * RANDOM.nextDouble() - 1);
+-            b[i] = scale * (2 * RANDOM.nextDouble() - 1);
++            a[i] = scale * (2 * RandomUtil.getInstance().nextDouble() - 1);
++            b[i] = scale * (2 * RandomUtil.getInstance().nextDouble() - 1);
+         }
+         if (passThroughOrigin) {
+             b[0] = 0; // Adjust to pass through origin
+@@ -112,8 +110,8 @@ public static double randomPiecewiseLinear(double x, double min, double max, int
+         double[] yPoints = new double[numPoints];
+ 
+         for (int i = 0; i < numPoints; i++) {
+-            xPoints[i] = min + (max - min) * RANDOM.nextDouble();
+-            yPoints[i] = 2 * (RANDOM.nextDouble() - 0.5); // Random values in [-1, 1]
++            xPoints[i] = min + (max - min) * RandomUtil.getInstance().nextDouble();
++            yPoints[i] = 2 * (RandomUtil.getInstance().nextDouble() - 0.5); // Random values in [-1, 1]
+         }
+ 
+         if (passThroughOrigin) {
+@@ -152,8 +150,8 @@ public static double randomRBF(double x, double min, double max, int numCenters,
+         double[] amplitudes = new double[numCenters];
+ 
+         for (int i = 0; i < numCenters; i++) {
+-            centers[i] = min + (max - min) * RANDOM.nextDouble();
+-            amplitudes[i] = 2 * (RANDOM.nextDouble() - 0.5); // Random values in [-1, 1]
++            centers[i] = min + (max - min) * RandomUtil.getInstance().nextDouble();
++            amplitudes[i] = 2 * (RandomUtil.getInstance().nextDouble() - 0.5); // Random values in [-1, 1]
+         }
+ 
+         double fAtZero = 0;
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomPiecewiseLinear.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomPiecewiseLinear.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomPiecewiseLinear.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomPiecewiseLinear.java
+@@ -20,8 +20,9 @@
+ 
+ package edu.cmu.tetrad.search.utils;
+ 
++import edu.cmu.tetrad.util.RandomUtil;
++
+ import java.util.Arrays;
+-import java.util.Random;
+ 
+ /**
+  * Represents a piecewise linear function with randomly generated breakpoints and values. This class allows computation
+@@ -50,17 +51,15 @@ public RandomPiecewiseLinear(int numPoints, double minX, double maxX) {
+         this.xPoints = new double[numPoints];
+         this.yPoints = new double[numPoints];
+ 
+-        Random random = new Random();
+-
+         // Generate random breakpoints within the range [minX, maxX]
+         for (int i = 0; i < numPoints; i++) {
+-            xPoints[i] = minX + (maxX - minX) * random.nextDouble();
++            xPoints[i] = minX + (maxX - minX) * RandomUtil.getInstance().nextDouble();
+         }
+         Arrays.sort(xPoints); // Ensure xPoints are sorted
+ 
+         // Generate random y-values for the breakpoints
+         for (int i = 0; i < numPoints; i++) {
+-            yPoints[i] = -2 + 4 * random.nextDouble(); // Random values in range [-2, 2]
++            yPoints[i] = -2 + 4 * RandomUtil.getInstance().nextDouble(); // Random values in range [-2, 2]
+         }
+     }
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomPiecewiseSpline.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomPiecewiseSpline.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomPiecewiseSpline.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomPiecewiseSpline.java
+@@ -1,4 +1,4 @@
+-///////////////////////////////////////////////////////////////////////////////
++/// ////////////////////////////////////////////////////////////////////////////
+ // For information as to what this class does, see the Javadoc, below.       //
+ //                                                                           //
+ // Copyright (C) 2025 by Joseph Ramsey, Peter Spirtes, Clark Glymour,        //
+@@ -20,11 +20,10 @@
+ 
+ package edu.cmu.tetrad.search.utils;
+ 
++import edu.cmu.tetrad.util.RandomUtil;
+ import org.apache.commons.math3.analysis.interpolation.SplineInterpolator;
+ import org.apache.commons.math3.analysis.polynomials.PolynomialSplineFunction;
+ 
+-import java.util.Random;
+-
+ /**
+  * This class generates and evaluates a random piecewise cubic spline function. It uses a set of breakpoints and random
+  * y-values to create the spline. A cubic spline interpolator is then used to compute the interpolated values for input
+@@ -52,12 +51,10 @@ public RandomPiecewiseSpline(int numPoints, double xMin, double xMax, double yMi
+         this.xPoints = new double[numPoints];
+         this.yPoints = new double[numPoints];
+ 
+-        Random random = new Random();
+-
+         // Step 1: Generate random breakpoints and corresponding values
+         for (int i = 0; i < numPoints; i++) {
+             xPoints[i] = xMin + i * (xMax - xMin) / (numPoints - 1); // Evenly spaced x-points
+-            yPoints[i] = yMin + (yMax - yMin) * random.nextDouble(); // Random y-values in the range [yMin, yMax]
++            yPoints[i] = yMin + (yMax - yMin) * RandomUtil.getInstance().nextDouble(); // Random y-values in the range [yMin, yMax]
+         }
+ 
+         // Step 2: Create the cubic spline interpolator
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomRBF.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomRBF.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomRBF.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/RandomRBF.java
+@@ -1,4 +1,4 @@
+-///////////////////////////////////////////////////////////////////////////////
++/// ////////////////////////////////////////////////////////////////////////////
+ // For information as to what this class does, see the Javadoc, below.       //
+ //                                                                           //
+ // Copyright (C) 2025 by Joseph Ramsey, Peter Spirtes, Clark Glymour,        //
+@@ -20,10 +20,9 @@
+ 
+ package edu.cmu.tetrad.search.utils;
+ 
++import edu.cmu.tetrad.util.RandomUtil;
+ import edu.cmu.tetrad.util.TMath;
+ 
+-import java.util.Random;
+-
+ /**
+  * A class that represents a Random Radial Basis Function (RBF) system. This implementation generates RBFs using
+  * randomly chosen centers and amplitudes, with a specified width parameter (sigma).
+@@ -44,10 +43,9 @@ public RandomRBF(int numCenters, double sigma) {
+         this.amplitudes = new double[numCenters];
+         this.sigma = sigma;
+ 
+-        Random random = new Random();
+         for (int i = 0; i < numCenters; i++) {
+-            centers[i] = -2 + 4 * random.nextDouble(); // Random values in range [-2, 2]
+-            amplitudes[i] = -2 + 4 * random.nextDouble(); // Random amplitudes in range [-2, 2]
++            centers[i] = -2 + 4 * RandomUtil.getInstance().nextDouble(); // Random values in range [-2, 2]
++            amplitudes[i] = -2 + 4 * RandomUtil.getInstance().nextDouble(); // Random amplitudes in range [-2, 2]
+         }
+     }
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/Demixer.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/Demixer.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/Demixer.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/work_in_progress/Demixer.java
+@@ -22,13 +22,13 @@
+ 
+ import edu.cmu.tetrad.data.DataSet;
+ import edu.cmu.tetrad.util.Matrix;
++import edu.cmu.tetrad.util.RandomUtil;
+ import edu.cmu.tetrad.util.Vector;
+ import edu.cmu.tetrad.util.TMath;
+ 
+ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.Collections;
+-import java.util.Random;
+ 
+ /**
+  * Uses expectation-maximization to sort a a data set with data sampled from two or more multivariate Gaussian
+@@ -79,12 +79,10 @@ public Demixer(DataSet data, int k) {
+         variances = new Matrix[k];
+         gammaArray = new double[k][numCases];
+ 
+-        Random rand = new Random();
+-
+         //  initialize the means array to the mean of each variable plus noise
+         for (int i = 0; i < numVars; i++) {
+             for (int j = 0; j < k; j++) {
+-                meansArray[j][i] = calcMean(data.getDoubleData().getColumn(i)) + (rand.nextGaussian());
++                meansArray[j][i] = calcMean(data.getDoubleData().getColumn(i)) + (RandomUtil.getInstance().nextGaussian());
+             }
+         }
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/AdditiveAnmSimulator.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/AdditiveAnmSimulator.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/AdditiveAnmSimulator.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/AdditiveAnmSimulator.java
+@@ -5,6 +5,7 @@
+ import edu.cmu.tetrad.data.DoubleDataBox;
+ import edu.cmu.tetrad.graph.Graph;
+ import edu.cmu.tetrad.graph.Node;
++import edu.cmu.tetrad.util.RandomUtil;
+ import org.apache.commons.math3.distribution.RealDistribution;
+ import edu.cmu.tetrad.util.TMath;
+ 
+@@ -37,9 +38,9 @@
+  *       .setNumUnitsPerEdge(6)
+  *       .setInputStandardize(true)
+  *       .setEdgeScale(1.0)
+- *       .setSeed(1234L);
+  *   DataSet ds = gen.generate();
+  * </pre>
++ * </pre>
+  */
+ public class AdditiveAnmSimulator {
+     private final Graph graph;
+@@ -49,9 +50,6 @@ public class AdditiveAnmSimulator {
+     private int numUnitsPerEdge = 6;      // K: #basis per edge
+     private boolean inputStandardize = true; // z-score inputs before f(x)
+     private double edgeScale = 1.0;       // global multiplier for sum_k f_{jk}(x_k)
+-    private long seed = System.nanoTime();
+-    // internal
+-    private Random rng;
+ 
+     /**
+      * Constructs an AdditiveAnmSimulator, which generates synthetic datasets
+@@ -77,7 +75,6 @@ public AdditiveAnmSimulator(Graph graph,
+         this.graph = Objects.requireNonNull(graph, "graph");
+         this.numSamples = numSamples;
+         this.noise = Objects.requireNonNull(sampler, "sampler");
+-        this.rng = new Random(seed);
+     }
+ 
+     private static void zscoreInPlace(double[] x) {
+@@ -180,9 +177,9 @@ private EdgeFunction randomRbf() {
+         double[] s = new double[K];
+ 
+         for (int u = 0; u < K; u++) {
+-            a[u] = rng.nextGaussian() / TMath.sqrt(K);     // variance-normalized
+-            c[u] = rng.nextGaussian() * 0.75;             // centers near 0
+-            s[u] = 0.4 + TMath.abs(rng.nextGaussian()) * 0.6; // widths in [~0.1, ~1.5]
++            a[u] = RandomUtil.getInstance().nextGaussian() / TMath.sqrt(K);     // variance-normalized
++            c[u] = RandomUtil.getInstance().nextGaussian() * 0.75;             // centers near 0
++            s[u] = 0.4 + TMath.abs(RandomUtil.getInstance().nextGaussian()) * 0.6; // widths in [~0.1, ~1.5]
+         }
+         return x -> {
+             double sum = 0.0;
+@@ -202,9 +199,9 @@ private EdgeFunction randomTanh() {
+         double[] b = new double[K];
+ 
+         for (int u = 0; u < K; u++) {
+-            a[u] = rng.nextGaussian() / TMath.sqrt(K);
+-            w[u] = rng.nextGaussian();
+-            b[u] = rng.nextGaussian();
++            a[u] = RandomUtil.getInstance().nextGaussian() / TMath.sqrt(K);
++            w[u] = RandomUtil.getInstance().nextGaussian();
++            b[u] = RandomUtil.getInstance().nextGaussian();
+         }
+         return x -> {
+             double sum = 0.0;
+@@ -219,7 +216,7 @@ private EdgeFunction randomTanh() {
+     private EdgeFunction randomPoly() {
+         int deg = TMath.max(1, numUnitsPerEdge);
+         double[] a = new double[deg + 1]; // a[0] unused to avoid constant shift
+-        for (int r = 1; r <= deg; r++) a[r] = rng.nextGaussian() / TMath.pow(2.0, r); // damp high degrees
++        for (int r = 1; r <= deg; r++) a[r] = RandomUtil.getInstance().nextGaussian() / TMath.pow(2.0, r); // damp high degrees
+         return x -> {
+             double xr = x, sum = 0.0;
+             for (int r = 1; r <= deg; r++) {
+@@ -298,28 +295,6 @@ public AdditiveAnmSimulator setEdgeScale(double s) {
+         return this;
+     }
+ 
+-    /**
+-     * Retrieves the seed used for random number generation in the simulator.
+-     *
+-     * @return the seed value currently used by the simulator.
+-     */
+-    public long getSeed() {
+-        return seed;
+-    }
+-
+-    /**
+-     * Sets the seed for the random number generator used in the simulator. This ensures reproducibility of random
+-     * processes within the simulation.
+-     *
+-     * @param seed the seed value to initialize the random number generator.
+-     * @return this simulator instance, allowing for method chaining.
+-     */
+-    public AdditiveAnmSimulator setSeed(long seed) {
+-        this.seed = seed;
+-        this.rng = new Random(seed);
+-        return this;
+-    }
+-
+     /**
+      * Represents the type of function family used in the additive noise model (ANM) simulation. The function family
+      * determines the mathematical form of the functions applied on graph edges during the simulation. Each family
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/AdditiveNoiseSimulation.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/AdditiveNoiseSimulation.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/AdditiveNoiseSimulation.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/AdditiveNoiseSimulation.java
+@@ -5,6 +5,7 @@
+ import edu.cmu.tetrad.data.DoubleDataBox;
+ import edu.cmu.tetrad.graph.Graph;
+ import edu.cmu.tetrad.graph.Node;
++import edu.cmu.tetrad.util.RandomUtil;
+ import org.apache.commons.math3.distribution.RealDistribution;
+ import edu.cmu.tetrad.util.TMath;
+ import org.ejml.data.DMatrixRMaj;
+@@ -37,9 +38,6 @@ public class AdditiveNoiseSimulation {
+     private final Function<Double, Double> activationFunction;
+     private final boolean useFastTanh;
+ 
+-    // Keep simple per-node seeding (still random overall)
+-    private final Random seeder = new Random();
+-
+     /**
+      * Constructs a new AdditiveNoiseSimulation instance with the specified parameters.
+      *
+@@ -226,7 +224,7 @@ public DataSet generateData() {
+                 applyActivationInPlace(A, activationFunction, useFastTanh);
+ 
+                 // Random MLP for this node
+-                RandomMLP mlp = new RandomMLP(Din, hiddenDimensions, 1, inputScale, seeder);
++                RandomMLP mlp = new RandomMLP(Din, hiddenDimensions, 1, inputScale);
+ 
+                 // signal = f_j(Pa)
+                 Y = mlp.forward(A, Z, Y, activationFunction, useFastTanh);
+@@ -245,7 +243,7 @@ private static final class RandomMLP {
+         final DMatrixRMaj[] W;   // layer weights: (out x in)
+         final double[][] b;      // biases per layer
+ 
+-        RandomMLP(int Din, int[] hidden, int Dout, double inputScale, Random r) {
++        RandomMLP(int Din, int[] hidden, int Dout, double inputScale) {
+             this.Din = Din;
+             this.Dout = Dout;
+             this.H = hidden == null ? new int[0] : hidden.clone();
+@@ -257,22 +255,22 @@ private static final class RandomMLP {
+             for (int l = 0; l < H.length; l++) {
+                 W[l] = new DMatrixRMaj(H[l], prev);
+                 b[l] = new double[H[l]];
+-                heInit(W[l], r, inputScale, true);  // tanh-friendly
++                heInit(W[l], inputScale, true);  // tanh-friendly
+                 prev = H[l];
+             }
+             W[L - 1] = new DMatrixRMaj(Dout, prev);
+             b[L - 1] = new double[Dout];
+ //            heInit(W[L - 1], r, inputScale * 0.5);
+-            heInit(W[L - 1], r, inputScale * 0.5, true);
++            heInit(W[L - 1],inputScale * 0.5, true);
+ 
+         }
+ 
+-        private static void heInit(DMatrixRMaj W, Random r, double scale, boolean tanhLike) {
++        private static void heInit(DMatrixRMaj W, double scale, boolean tanhLike) {
+             // tanh prefers sqrt(1 / fan_in), ReLU prefers sqrt(2 / fan_in)
+             double base = tanhLike ? 1.0 : 2.0;
+             double s = scale * TMath.sqrt(base / TMath.max(1, W.numCols));
+             for (int i = 0, n = W.getNumElements(); i < n; i++) {
+-                W.data[i] = r.nextGaussian() * s;
++                W.data[i] = RandomUtil.getInstance().nextGaussian(0, 1) * s;
+             }
+         }
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/AdditiveNoiseSimulationOld.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/AdditiveNoiseSimulationOld.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/AdditiveNoiseSimulationOld.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/AdditiveNoiseSimulationOld.java
+@@ -217,8 +217,7 @@ public DataSet generateData() {
+                     parents.size() + 1, // Input dimension (R^3 -> R)
+                     hiddenDimensions, // Number of hidden neurons
+                     this.activationFunction, // Activation function
+-                    this.inputScale, // Input scale for bumpiness
+-                    -1 // Random seed
++                    this.inputScale // Input scale for bumpiness
+             );
+ 
+             for (int sample = 0; sample < numSamples; sample++) {
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/CyclicStableUtils.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/CyclicStableUtils.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/CyclicStableUtils.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/CyclicStableUtils.java
+@@ -47,19 +47,12 @@ private CyclicStableUtils() {
+      * @param s the fixed spectral radius for each SCC
+      * @param coefLow the lower bound for coefficient values
+      * @param coefHigh the upper bound for coefficient values
+-     * @param seed the random seed for reproducibility, or -1 for random seed
+      * @param params the parameters for the SEM model
+      * @return the simulated data and SEM model
+      */
+     public static SemIm.CyclicSimResult simulateStableFixedRadius(
+             Graph g, int n, double s, double coefLow, double coefHigh,
+-            long seed, Parameters params) {
+-
+-        if (seed != -1) {
+-            RandomUtil.getInstance().setSeed(seed);
+-        } else {
+-            RandomUtil.getInstance().setSeed(RandomUtil.getInstance().nextLong());
+-        }
++            Parameters params) {
+ 
+         SemPm pm = new SemPm(g);
+         SemIm im = new SemIm(pm, params);
+@@ -86,7 +79,7 @@ public static SemIm.CyclicSimResult simulateStableProductCapped(
+             long seed, Parameters params) {
+ 
+         double targetRadius = TMath.sqrt(maxProd); // exact for 2-node cycles; safe upper bound otherwise
+-        return simulateStableFixedRadius(g, n, targetRadius, coefLow, coefHigh, seed, params);
++        return simulateStableFixedRadius(g, n, targetRadius, coefLow, coefHigh, params);
+     }
+ 
+     // Scale-only: do not redraw; just rescale SCCs to target radius
+@@ -341,6 +334,6 @@ public static edu.cmu.tetrad.sem.SemIm.CyclicSimResult quickDemo() {
+ 
+         Parameters p = new Parameters();
+         long seed = 42L;
+-        return simulateStableFixedRadius(g, 10000, 0.6, 0.2, 1.0, seed, p);
++        return simulateStableFixedRadius(g, 10000, 0.6, 0.2, 1.0, p);
+     }
+ }
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/GeneralNoiseSimulation.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/GeneralNoiseSimulation.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/GeneralNoiseSimulation.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/GeneralNoiseSimulation.java
+@@ -5,6 +5,7 @@
+ import edu.cmu.tetrad.data.DoubleDataBox;
+ import edu.cmu.tetrad.graph.Graph;
+ import edu.cmu.tetrad.graph.Node;
++import edu.cmu.tetrad.util.RandomUtil;
+ import edu.cmu.tetrad.util.TMath;
+ import org.ejml.data.DMatrixRMaj;
+ import org.ejml.dense.row.CommonOps_DDRM;
+@@ -28,10 +29,6 @@ public class GeneralNoiseSimulation {
+     private final double inputScale;
+     private final Function<Double, Double> activationFunction;
+     private final boolean useFastTanh;
+-
+-    // Keep simple per-node seeding (still random overall)
+-    private final Random seeder = new Random();
+-
+     private final boolean reportSaturation;
+     private final double saturationAbsActivationThreshold;
+ 
+@@ -207,7 +204,7 @@ public DataSet generateData() {
+             for (int i = 0; i < N; i++, k += Din) A.data[k] = noise[i];
+ 
+             // Random MLP for this node, supports H=[] (no hidden) too
+-            RandomMLP mlp = new RandomMLP(Din, hiddenDimensions, 1, inputScale, seeder);
++            RandomMLP mlp = new RandomMLP(Din, hiddenDimensions, 1, inputScale);
+ 
+             // Forward pass: Y = mlp(A)
+ //            Y = mlp.forward(A, S1, S2, Y, activationFunction, useFastTanh);
+@@ -233,7 +230,7 @@ private static final class RandomMLP {
+         final DMatrixRMaj[] W;   // layer weights: (out x in)
+         final double[][] b;      // biases per layer
+ 
+-        RandomMLP(int Din, int[] hidden, int Dout, double inputScale, Random r) {
++        RandomMLP(int Din, int[] hidden, int Dout, double inputScale) {
+             this.Din = Din;
+             this.Dout = Dout;
+             this.H = hidden == null ? new int[0] : hidden.clone();
+@@ -245,30 +242,30 @@ private static final class RandomMLP {
+             for (int l = 0; l < H.length; l++) {
+                 W[l] = new DMatrixRMaj(H[l], prev);
+                 b[l] = new double[H[l]];
+-                xavierInit(W[l], r, inputScale);
++                xavierInit(W[l], inputScale);
+                 // biases default to 0; you can randomize later if you want
+                 prev = H[l];
+             }
+             W[L - 1] = new DMatrixRMaj(Dout, prev);
+             b[L - 1] = new double[Dout];
+-            xavierInit(W[L - 1], r, inputScale * 0.5);
++            xavierInit(W[L - 1], inputScale * 0.5);
+         }
+ 
+-        private static void heInit(DMatrixRMaj W, Random r, double scale) {
++        private static void heInit(DMatrixRMaj W, SplittableRandom r, double scale) {
+             double s = scale * TMath.sqrt(2.0 / TMath.max(1, W.numCols));
+             for (int i = 0, n = W.getNumElements(); i < n; i++) {
+                 W.data[i] = r.nextGaussian() * s;
+             }
+         }
+ 
+-        private static void xavierInit(DMatrixRMaj W, Random r, double scale) {
++        private static void xavierInit(DMatrixRMaj W, double scale) {
+             int fanIn = TMath.max(1, W.numCols);
+             int fanOut = TMath.max(1, W.numRows);
+ 
+             double std = scale * TMath.sqrt(2.0 / (fanIn + fanOut));
+ 
+             for (int i = 0, n = W.getNumElements(); i < n; i++) {
+-                W.data[i] = r.nextGaussian() * std;
++                W.data[i] = RandomUtil.getInstance().nextGaussian(0, 1) * std;
+             }
+         }
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/NonlinearFunctionOfLinear.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/NonlinearFunctionOfLinear.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/NonlinearFunctionOfLinear.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/NonlinearFunctionOfLinear.java
+@@ -320,8 +320,7 @@ private void distort(Node node, DataSet data, Map<Node, Integer> nodeToIndex) {
+         Function<Double, Double> g = new MultiLayerPerceptronFunction1D(
+                 this.hiddenDimension, // Number of hidden neurons
+                 this.inputScale, // Input scaling, affects bumpiness of function
+-                Math::tanh, // Activation function
+-                -1 // Random seed
++                Math::tanh // Activation function
+         )::evaluate;
+ 
+ //        g = Math::tanh;
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/PostnonlinearSem.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/PostnonlinearSem.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/PostnonlinearSem.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/PostnonlinearSem.java
+@@ -1,4 +1,4 @@
+-///////////////////////////////////////////////////////////////////////////////
++/// ////////////////////////////////////////////////////////////////////////////
+ // For information as to what this class does, see the Javadoc, below.       //
+ //                                                                           //
+ // Copyright (C) 2025 by Joseph Ramsey, Peter Spirtes, Clark Glymour,        //
+@@ -16,24 +16,22 @@
+ //                                                                           //
+ // You should have received a copy of the GNU General Public License         //
+ // along with this program.  If not, see <https://www.gnu.org/licenses/>.    //
+-///////////////////////////////////////////////////////////////////////////////
++/// ////////////////////////////////////////////////////////////////////////////
+ 
+ package edu.cmu.tetrad.sem;
+ 
+ import edu.cmu.tetrad.data.BoxDataSet;
+ import edu.cmu.tetrad.data.DataSet;
+-import edu.cmu.tetrad.data.DataTransforms;
+ import edu.cmu.tetrad.data.DoubleDataBox;
+ import edu.cmu.tetrad.graph.Graph;
+ import edu.cmu.tetrad.graph.Node;
+ import edu.cmu.tetrad.search.utils.MultiLayerPerceptronFunctionND;
+-import edu.cmu.tetrad.util.TetradLogger;
+-import org.apache.commons.math3.distribution.RealDistribution;
++import edu.cmu.tetrad.util.RandomUtil;
+ import edu.cmu.tetrad.util.TMath;
++import org.apache.commons.math3.distribution.RealDistribution;
+ 
+ import java.util.List;
+ import java.util.Map;
+-import java.util.Random;
+ import java.util.function.Function;
+ import java.util.stream.Collectors;
+ import java.util.stream.IntStream;
+@@ -120,12 +118,6 @@ public class PostnonlinearSem {
+      */
+     private Function<Double, Double> activationFunction = Math::tanh;
+ 
+-    /**
+-     * Random source used to generate independent function parameters (MLPs) per variable and per layer (f1, f2).
+-     * Using a single Random instance here avoids hardcoding a seed and ensures different mechanisms per node.
+-     */
+-    private final Random functionRng;
+-
+     /**
+      * Constructs a PostnonlinearCausalModel object. This model generates synthetic data based on a directed acyclic
+      * graph (DAG) with causal relationships, utilizing post-nonlinear causal mechanisms of the form
+@@ -158,9 +150,6 @@ public PostnonlinearSem(Graph graph, int numSamples, RealDistribution noiseDistr
+         this.noiseDistribution = noiseDistribution;
+         this.hiddenDimension = hiddenDimension;
+         this.inputScale = inputScale;
+-
+-        // Use a fresh Random instance so each model instance gets its own independent mechanisms.
+-        this.functionRng = new Random();
+     }
+ 
+     /**
+@@ -193,14 +182,11 @@ public DataSet generateData() {
+                     data.setDouble(sample, colIndex, value);
+                 }
+             } else {
+-                int f1Seed = functionRng.nextInt();
+-
+                 Function<double[], Double> f1 = new MultiLayerPerceptronFunctionND(
+                         parents.size(),           // Input dimension
+                         this.hiddenDimension,     // Hidden neurons
+                         this.activationFunction,  // Activation
+-                        this.inputScale,          // Input scale
+-                        f1Seed                    // Seed
++                        this.inputScale          // Input scale
+                 )::evaluateAdjusted;
+ 
+                 for (int sample = 0; sample < numSamples; sample++) {
+@@ -221,12 +207,12 @@ public DataSet generateData() {
+             int colIndex = nodeToIndex.get(node);
+ 
+             // Draw parameters for this node's f2
+-            double a = 0.5 + TMath.abs(functionRng.nextGaussian()); // ensure strictly positive
+-            double b = functionRng.nextGaussian();
++            double a = 0.5 + TMath.abs(RandomUtil.getInstance().nextGaussian(0, 1)); // ensure strictly positive
++            double b = RandomUtil.getInstance().nextGaussian(0, 1);
+ 
+             // g is the activationFunction (default  cubic-perturbation-of-identity), assumed strictly monotone
+ 
+-            double c = TMath.abs(functionRng.nextGaussian()) * 0.3; // e.g. 0..~1
++            double c = TMath.abs(RandomUtil.getInstance().nextGaussian(0, 1)) * 0.3; // e.g. 0..~1
+             Function<Double, Double> g = x -> x + c * x * x * x;   // strictly increasing
+             Function<Double, Double> f2 = x -> a * g.apply(x) + b;
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/SemEstimatorGibbsParams.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/SemEstimatorGibbsParams.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/SemEstimatorGibbsParams.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/SemEstimatorGibbsParams.java
+@@ -69,14 +69,10 @@ public final class SemEstimatorGibbsParams implements TetradSerializable {
+      * <p>Constructor for SemEstimatorGibbsParams.</p>
+      */
+     private SemEstimatorGibbsParams(SemIm startIm) {
+-
+-        // note that seed is never used... just as well to get rid of it?
+-
+         this.startIm = startIm;
+         this.flatPrior = false;
+         this.stretch = 0.0;
+         this.numIterations = 1;
+-
+         this.tolerance = 0.0001;
+     }
+ 
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/SemIm.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/SemIm.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/SemIm.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/sem/SemIm.java
+@@ -597,7 +597,6 @@ private static double traceAInvB_SPD(Matrix A, Matrix B) {
+                         params.getDouble(Params.CYCLIC_RADIUS),
+                         params.getDouble(Params.CYCLIC_COEF_LOW),
+                         params.getDouble(Params.CYCLIC_COEF_HIGH),
+-                        params.getLong(Params.SEED),
+                         params);
+                 ds = result.dataSet();
+                 im = result.semIm();
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/util/EssLikePython.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/util/EssLikePython.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/util/EssLikePython.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/util/EssLikePython.java
+@@ -20,11 +20,8 @@
+ 
+ package edu.cmu.tetrad.util;
+ 
+-import edu.cmu.tetrad.util.TMath;
+ import org.ejml.simple.SimpleMatrix;
+ 
+-import java.util.Random;
+-
+ /**
+  * The EssLikePython class provides methods for estimating the Effective Sample Size (ESS) of a dataset using procedures
+  * that closely mimic functionality found my Python script. This includes column standardization, row sampling, and
+@@ -46,12 +43,9 @@ public EssLikePython() {
+      * @param X                the input data matrix where rows represent observations and columns represent variables
+      * @param sampleSize       the number of rows to sample without replacement during the estimation process
+      * @param clampNonnegative a flag indicating whether to clamp avgRowCorr to nonnegative values
+-     * @param rng              a Random object to control the random sampling of rows (if null, a default seed is used)
+      * @return a Result object containing the estimated avgRowCorr, computed ESS, and the number of rows used
+      */
+-    public static Result estimateLikePython(SimpleMatrix X, int sampleSize, boolean clampNonnegative, Random rng) {
+-        if (rng == null) rng = new Random(0);
+-
++    public static Result estimateLikePython(SimpleMatrix X, int sampleSize, boolean clampNonnegative) {
+         final int N = X.getNumRows();
+         final int P = X.getNumCols();
+         if (N < 2 || P < 1) return new Result(0.0, N, TMath.max(0, N));
+@@ -98,7 +92,7 @@ public static Result estimateLikePython(SimpleMatrix X, int sampleSize, boolean
+ 
+         // 2) Sample m rows without replacement (like df.sample(..., random_state=0))
+         int m = TMath.min(sampleSize, N);
+-        int[] rows = shuffledRange(N, rng);
++        int[] rows = shuffledRange(N);
+         int[] pick = new int[m];
+         System.arraycopy(rows, 0, pick, 0, m);
+ 
+@@ -155,11 +149,11 @@ public static Result estimateLikePython(SimpleMatrix X, int sampleSize, boolean
+         return new Result(avgCorr, ess, m);
+     }
+ 
+-    private static int[] shuffledRange(int n, Random rng) {
++    private static int[] shuffledRange(int n) {
+         int[] idx = new int[n];
+         for (int i = 0; i < n; i++) idx[i] = i;
+         for (int i = n - 1; i > 0; i--) {
+-            int j = rng.nextInt(i + 1);
++            int j = RandomUtil.getInstance().nextInt(i + 1);
+             int tmp = idx[i];
+             idx[i] = idx[j];
+             idx[j] = tmp;
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/util/RandomPiecewiseLinearBijective.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/util/RandomPiecewiseLinearBijective.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/util/RandomPiecewiseLinearBijective.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/util/RandomPiecewiseLinearBijective.java
+@@ -63,15 +63,14 @@ public class RandomPiecewiseLinearBijective {
+      * generation. This constructor generates control points that define the piecewise linear bijective function.
+      *
+      * @param numSegments the number of segments to divide the function into; must be at least 1
+-     * @param seed        the seed value for random number generation, ensuring reproducibility
+      * @throws IllegalArgumentException if the number of segments is less than 1
+      */
+-    public RandomPiecewiseLinearBijective(int numSegments, long seed) {
++    public RandomPiecewiseLinearBijective(int numSegments) {
+         if (numSegments < 1) {
+             throw new IllegalArgumentException("Number of segments must be at least 1.");
+         }
+ 
+-        this.controlPoints = generateControlPoints(numSegments, seed);
++        this.controlPoints = generateControlPoints(numSegments);
+     }
+ 
+     /**
+@@ -83,9 +82,8 @@ public RandomPiecewiseLinearBijective(int numSegments, long seed) {
+      */
+     public static void main(String[] args) {
+         int numSegments = 5;
+-        long seed = new Date().getTime();
+ 
+-        RandomPiecewiseLinearBijective function = new RandomPiecewiseLinearBijective(numSegments, seed);
++        RandomPiecewiseLinearBijective function = new RandomPiecewiseLinearBijective(numSegments);
+         System.out.println("Control Points:");
+         for (double[] point : function.getControlPoints()) {
+             System.out.printf("(%.4f, %.4f)%n", point[0], point[1]);
+@@ -111,22 +109,14 @@ public static void main(String[] args) {
+      * determined randomly based on the provided number of segments and a random seed for reproducibility.
+      *
+      * @param numSegments the number of segments into which the function is divided; must be at least 1
+-     * @param seed        the seed value for the random number generator for reproducibility
+      * @return a list of control points, where each control point is represented as a two-element double array
+      */
+-    private List<double[]> generateControlPoints(int numSegments, long seed) {
+-        Random random;
+-
+-        if (seed == -1) {
+-            random = new Random();
+-        } else {
+-            random = new Random(seed);
+-        }
++    private List<double[]> generateControlPoints(int numSegments) {
+ 
+         // Generate random x-coordinates in (0, 1), ensuring they are strictly increasing
+         List<Double> xValues = new ArrayList<>();
+         for (int i = 0; i < numSegments - 1; i++) {
+-            xValues.add(random.nextDouble());
++            xValues.add(RandomUtil.getInstance().nextDouble());
+         }
+         xValues.add(0.0);
+         xValues.add(1.0);
+@@ -135,14 +125,14 @@ private List<double[]> generateControlPoints(int numSegments, long seed) {
+         // Generate random y-coordinates in (0, 1), ensuring they are strictly increasing
+         List<Double> yValues = new ArrayList<>();
+         for (int i = 0; i < numSegments - 1; i++) {
+-            yValues.add(random.nextDouble());
++            yValues.add(RandomUtil.getInstance().nextDouble());
+         }
+         yValues.add(0.0);
+         yValues.add(1.0);
+         Collections.sort(yValues);
+ 
+         // Determine if the function should be increasing or decreasing
+-        boolean isIncreasing = random.nextBoolean();
++        boolean isIncreasing = RandomUtil.getInstance().nextBoolean();
+         if (!isIncreasing) {
+             yValues.replaceAll(aDouble -> 1.0 - aDouble);
+         }
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/util/RandomUtil.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/util/RandomUtil.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/util/RandomUtil.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/util/RandomUtil.java
+@@ -22,8 +22,8 @@
+ 
+ import org.apache.commons.math3.distribution.*;
+ import org.apache.commons.math3.random.RandomGenerator;
+-import org.apache.commons.math3.random.SynchronizedRandomGenerator;
+-import org.apache.commons.math3.random.Well44497b;
++import org.apache.commons.rng.UniformRandomProvider;
++import org.apache.commons.rng.simple.RandomSource;
+ 
+ import java.util.*;
+ 
+@@ -36,78 +36,161 @@
+  * be repeated under different conditions. The seed for an experiment can be printed using the <code>getSeed</code>
+  * method.
+  * <p>
+- * The 64-bit Mersenne Twister implementation from the COLT library is used to generate random numbers.
++ * Uses Apache Commons RNG XoRoShiRo128++ as the underlying generator.
+  * <p>
+- * To see what distributions are currently supported, look at the methods of the class. These many change over time.
++ * To see what distributions are currently supported, look at the methods of the class. These may change over time.
+  *
+  * @author josephramsey
+  * @version $Id: $Id
+  */
+ public class RandomUtil {
+ 
+     /**
+-     * The singleton instance.
++     * Per-thread singleton instances.
+      */
+     private static final Map<Thread, RandomUtil> randomUtils = new HashMap<>();
++
+     private static final int SHUFFLE_THRESHOLD = 5;
+-    private RandomGenerator randomGenerator;
++
++    /**
++     * Underlying RNG used everywhere in this class.
++     */
++    private UniformRandomProvider randomGenerator;
++
++    /**
++     * Adapter for Commons Math distributions that still require a RandomGenerator.
++     * All randomness is delegated to the underlying UniformRandomProvider above.
++     */
++    private final RandomGenerator math3RandomGenerator = new RandomGenerator() {
++
++        @Override
++        public void setSeed(int seed) {
++            RandomUtil.this.setSeed(seed);
++        }
++
++        @Override
++        public void setSeed(int[] seed) {
++            long s = 0L;
++            if (seed != null) {
++                for (int x : seed) {
++                    s = 31L * s + x;
++                }
++            }
++            RandomUtil.this.setSeed(s);
++        }
++
++        @Override
++        public void setSeed(long seed) {
++            RandomUtil.this.setSeed(seed);
++        }
++
++        @Override
++        public void nextBytes(byte[] bytes) {
++            if (bytes == null) {
++                throw new NullPointerException("bytes");
++            }
++            randomGenerator.nextBytes(bytes);
++        }
++
++        @Override
++        public int nextInt() {
++            return randomGenerator.nextInt();
++        }
++
++        @Override
++        public int nextInt(int n) {
++            return randomGenerator.nextInt(n);
++        }
++
++        @Override
++        public long nextLong() {
++            return randomGenerator.nextLong();
++        }
++
++        @Override
++        public boolean nextBoolean() {
++            return randomGenerator.nextBoolean();
++        }
++
++        @Override
++        public float nextFloat() {
++            return randomGenerator.nextFloat();
++        }
++
++        @Override
++        public double nextDouble() {
++            return randomGenerator.nextDouble();
++        }
++
++        @Override
++        public double nextGaussian() {
++            // Box-Muller transform.
++            double u1 = randomGenerator.nextDouble();
++            while (u1 <= 0.0) {
++                u1 = randomGenerator.nextDouble();
++            }
++
++            double u2 = randomGenerator.nextDouble();
++
++            return TMath.sqrt(-2.0 * TMath.log(u1)) *
++                    TMath.cos(2.0 * TMath.PI * u2);
++        }
++    };
+ 
+     //========================================CONSTRUCTORS===================================//
+ 
+     /**
+-     * Constructs a new random number generator based on the getModel date in milliseconds.
++     * Constructs a new random number generator based on current time in nanoseconds.
+      */
+     private RandomUtil() {
+         setSeed(System.nanoTime());
+     }
+ 
+     /**
+-     * <p>getInstance.</p>
++     * Retrieves the singleton instance of RandomUtil associated with the current thread.
++     * If no instance exists for the current thread, a new one is created and stored.
+      *
+-     * @return the singleton instance of this class.
++     * @return the RandomUtil instance associated with the current thread
+      */
+     public static RandomUtil getInstance() {
+-        if (!randomUtils.containsKey(Thread.currentThread())) {
+-//            System.out.println("new thread");
+-            randomUtils.put(Thread.currentThread(), new RandomUtil());
++        Thread thread = Thread.currentThread();
++
++        if (!randomUtils.containsKey(thread)) {
++            randomUtils.put(thread, new RandomUtil());
+         }
+-        return randomUtils.get(Thread.currentThread());
++
++        return randomUtils.get(thread);
+     }
+ 
+     /**
+-     * This is just the RandomUtil.shuffle method (thanks!) but using the Tetrad RandomUtil to get random numbers. The
+-     * purpose of this copying is to allow shuffles to happen deterministically given the Randomutils seed.
++     * This is just the Collections.shuffle logic but using Tetrad RandomUtil to get random numbers.
++     * The purpose is to allow shuffles to happen deterministically given the RandomUtil seed.
+      *
+      * @param list The list to be shuffled.
+      */
+     public static synchronized void shuffle(List<?> list) {
+         int size = list.size();
++
+         if (size < SHUFFLE_THRESHOLD || list instanceof RandomAccess) {
+-            for (int i = size; i > 1; i--)
++            for (int i = size; i > 1; i--) {
+                 swap(list, i - 1, getInstance().nextInt(i));
++            }
+         } else {
+             Object[] arr = list.toArray();
+ 
+-            // Shuffle array
+-            for (int i = size; i > 1; i--)
++            for (int i = size; i > 1; i--) {
+                 swap(arr, i - 1, getInstance().nextInt(i));
++            }
+ 
+-            // Dump array back into list
+-            // instead of using a raw type here, it's possible to capture
+-            // the wildcard but it will require a call to a supplementary
+-            // private method
+-            ListIterator it = list.listIterator();
++            ListIterator<?> it = list.listIterator();
+             for (Object e : arr) {
+                 it.next();
+-                it.set(e);
++                ((ListIterator) it).set(e);
+             }
+         }
+     }
+ 
+     private static void swap(List<?> list, int i, int j) {
+-        // instead of using a raw type here, it's possible to capture
+-        // the wildcard but it will require a call to a supplementary
+-        // private method
+         final List l = list;
+         l.set(i, l.set(j, l.get(i)));
+     }
+@@ -121,82 +204,132 @@ private static void swap(Object[] arr, int i, int j) {
+     //=======================================PUBLIC METHODS=================================//
+ 
+     private static void testDeterminism() {
+-        int length = 10000000;
++        int length = 10_000_000;
+         long seed = 392949394L;
+ 
+         RandomUtil.getInstance().setSeed(seed);
+         List<Double> d1 = new ArrayList<>();
+-        for (int i = 0; i < length; i++) d1.add(RandomUtil.getInstance().nextDouble());
++        for (int i = 0; i < length; i++) {
++            d1.add(RandomUtil.getInstance().nextDouble());
++        }
+ 
+         RandomUtil.getInstance().setSeed(seed);
+         List<Double> d2 = new ArrayList<>();
+-        for (int i = 0; i < length; i++) d2.add(RandomUtil.getInstance().nextDouble());
++        for (int i = 0; i < length; i++) {
++            d2.add(RandomUtil.getInstance().nextDouble());
++        }
+ 
+         boolean deterministic = d1.equals(d2);
+         System.out.println(deterministic ? "Deterministic" : "Not deterministic");
+     }
+ 
+-    /**
+-     * <p>main.</p>
+-     *
+-     * @param args an array of {@link java.lang.String} objects
+-     */
+     public static void main(String[] args) {
+         testDeterminism();
+     }
+ 
+     /**
+-     * <p>nextInt.</p>
++     * Generates a random integer between 0 (inclusive) and the specified value (exclusive).
+      *
+-     * @param n Ibid.
+-     * @return Ibid.
++     * @param n the upper bound (exclusive) for the random number; must be greater than 0
++     * @return a random integer between 0 (inclusive) and n (exclusive)
++     * @throws IllegalArgumentException if n is less than or equal to 0
+      */
+     public int nextInt(int n) {
+         return this.randomGenerator.nextInt(n);
+     }
+ 
+     /**
+-     * <p>nextDouble.</p>
++     * Generates the next pseudorandom integer.
++     *
++     * @return A pseudorandom integer produced by the internal random number generator.
++     */
++    public int nextInt() {
++        return this.randomGenerator.nextInt();
++    }
++
++    /**
++     * Generates the next pseudorandom double value between 0.0 (inclusive) and 1.0 (exclusive)
++     * from the underlying random number generator.
+      *
+-     * @return a double
++     * @return a pseudorandom double value between 0.0 (inclusive) and 1.0 (exclusive)
+      */
+     public double nextDouble() {
+         return this.randomGenerator.nextDouble();
+     }
+ 
+     /**
+-     * <p>nextUniform.</p>
++     * Generates a random float value uniformly distributed in the range [0, 1).
++     *
++     * @return a random float value in the range [0, 1)
++     */
++    public float nextFloat() {
++        return this.randomGenerator.nextFloat();
++    }
++
++    /**
++     * Generates a random boolean value.
+      *
+-     * @param low  Ibid.
+-     * @param high Ibid.
+-     * @return Ibid.
++     * @return a randomly generated boolean value. The result is either {@code true} or {@code false}.
++     */
++    public boolean nextBoolean() {
++        return this.randomGenerator.nextBoolean();
++    }
++
++    /**
++     * Generates a random double value uniformly distributed within the specified range [low, high].
++     *
++     * @param low the lower bound of the range (inclusive).
++     * @param high the upper bound of the range (inclusive when low equals high).
++     *             Must be greater than or equal to {@code low}.
++     * @return a random double value within the range [low, high].
++     * @throws IllegalArgumentException if {@code low > high}.
+      */
+     public double nextUniform(double low, double high) {
+-        if (low == high) return low;
+-        else {
+-            return new UniformRealDistribution(this.randomGenerator, low, high).sample();
++        if (low > high) {
++            throw new IllegalArgumentException("Low must be <= high: low=" + low + ", high=" + high);
++        }
++
++        if (low == high) {
++            return low;
+         }
++
++        return this.randomGenerator.nextDouble() * (high - low) + low;
+     }
+ 
+     /**
+-     * <p>nextNormal.</p>
++     * Generates a random value from a normal (Gaussian) distribution with the specified mean and standard deviation.
+      *
+-     * @param mean The mean of the Normal.
+-     * @param sd   The standard deviation of the Normal.
+-     * @return Ibid.
++     * @param mean the mean (or expectation) of the normal distribution.
++     * @param sd the standard deviation of the normal distribution. Must be non-negative.
++     * @return a randomly generated double value from the normal distribution with the given parameters.
++     * @throws IllegalArgumentException if {@code sd} is negative.
+      */
+     public double nextGaussian(double mean, double sd) {
+-        return new NormalDistribution(randomGenerator, mean, sd).sample();
++        if (sd < 0) {
++            throw new IllegalArgumentException("Standard deviation must be non-negative: " + sd);
++        }
++
++        if (sd == 0) {
++            return mean;
++        }
++
++        return new NormalDistribution(this.math3RandomGenerator, mean, sd).sample();
+     }
+ 
+     /**
+-     * <p>nextTruncatedNormal.</p>
++     * Generates a random value from a truncated normal (Gaussian) distribution
++     * with the specified mean, standard deviation, lower bound, and upper bound.
++     * The generated value will be within the range [low, high].
+      *
+-     * @param mean The mean of the Normal.
+-     * @param sd   The standard deviation of the Normal.
+-     * @param low  a double
+-     * @param high a double
+-     * @return Ibid.
++     * @param mean the mean (or expectation) of the normal distribution.
++     * @param sd the standard deviation of the normal distribution. Must be non-negative.
++     * @param low the lower bound of the truncation interval. Must be less than {@code high}.
++     * @param high the upper bound of the truncation interval. Must be greater than {@code low}.
++     * @return a randomly generated double value from the truncated normal distribution
++     *         with the given parameters, constrained to the interval [low, high].
++     * @throws IllegalArgumentException if {@code sd} is negative, or if {@code low >= high},
++     *                                  or if {@code mean} is outside the interval [low, high]
++     *                                  when {@code sd} is zero.
+      */
+     public double nextTruncatedNormal(double mean, double sd, double low, double high) {
+         if (sd < 0) {
+@@ -207,154 +340,221 @@ public double nextTruncatedNormal(double mean, double sd, double low, double hig
+             throw new IllegalArgumentException("Low must be less than high.");
+         }
+ 
+-        double d;
++        if (sd == 0) {
++            if (mean < low || mean > high) {
++                throw new IllegalArgumentException("Degenerate normal mean is outside truncation interval.");
++            }
++            return mean;
++        }
+ 
++        double d;
+         do {
+             d = nextGaussian(mean, sd);
+-        } while (!(d >= low) || !(d <= high));
++        } while (d < low || d > high);
+ 
+         return d;
+     }
+ 
+     /**
+-     * <p>revertSeed.</p>
++     * Resets the internal random number generator with the specified seed value,
++     * ensuring deterministic behavior for subsequent random operations starting from this seed.
+      *
+-     * @param seed a long
++     * @param seed the seed value to initialize the random generator. Must be a long value.
+      */
+     public void revertSeed(long seed) {
+-        this.randomGenerator = new Well44497b(seed);
++        this.randomGenerator = RandomSource.XO_RO_SHI_RO_128_PP.create(seed);
+     }
+ 
+     /**
+-     * <p>nextPoisson.</p>
++     * Generates a random value sampled from a Poisson distribution with the specified mean (lambda).
+      *
+-     * @param lambda A positive real number equal to the expected number of occurrences during a given interval. See
+-     *               Wikipedia.
+-     * @return Ibid.
++     * @param lambda the mean (expected value) of the Poisson distribution. Must be greater than 0.
++     * @return a random double value sampled from the Poisson distribution with the specified mean (lambda).
++     * @throws IllegalArgumentException if {@code lambda} is not greater than 0.
+      */
+     public double nextPoisson(double lambda) {
+-        return new PoissonDistribution(this.randomGenerator, lambda, 1.0E-12D, 100000).sample();
++        if (!(lambda > 0.0)) {
++            throw new IllegalArgumentException("Lambda must be > 0: " + lambda);
++        }
++
++        return new PoissonDistribution(this.math3RandomGenerator, lambda, 1.0E-12D, 100000).sample();
+     }
+ 
+     /**
+-     * <p>normalPdf.</p>
++     * Computes the value of the Probability Density Function (PDF) of a normal (Gaussian)
++     * distribution with the specified mean and standard deviation at the given value.
+      *
+-     * @param mean  The mean of the normal to be used.
+-     * @param sd    The standard deviation of the normal to be used.
+-     * @param value The domain value for the PDF.
+-     * @return Ibid.
++     * @param mean the mean (or expectation) of the normal distribution
++     * @param sd the standard deviation of the normal distribution. Must be greater than 0
++     * @param value the point at which the PDF is evaluated
++     * @return the value of the normal distribution's PDF at the given point
++     * @throws IllegalArgumentException if {@code sd} is not greater than 0
+      */
+     public double normalPdf(double mean, double sd, double value) {
+-        return new NormalDistribution(this.randomGenerator, mean, sd).density(value);
++        if (!(sd > 0.0)) {
++            throw new IllegalArgumentException("Standard deviation must be > 0: " + sd);
++        }
++
++        return new NormalDistribution(this.math3RandomGenerator, mean, sd).density(value);
+     }
+ 
+     /**
+-     * <p>normalCdf.</p>
++     * Computes the cumulative distribution function (CDF) of a normal (Gaussian) distribution
++     * with the specified mean and standard deviation at the given value.
+      *
+-     * @param mean  The mean of the normal to be used.
+-     * @param sd    The standard deviation of the normal to be used.
+-     * @param value The domain value for the CDF.
+-     * @return Ibid.
++     * @param mean the mean (or expectation) of the normal distribution.
++     * @param sd the standard deviation of the normal distribution. Must be greater than 0.
++     * @param value the point at which the CDF is evaluated.
++     * @return the cumulative probability of the normal distribution at the given point.
++     * @throws IllegalArgumentException if {@code sd} is not greater than 0.
+      */
+     public double normalCdf(double mean, double sd, double value) {
++        if (!(sd > 0.0)) {
++            throw new IllegalArgumentException("Standard deviation must be > 0: " + sd);
++        }
++
+         return new NormalDistribution(0, 1).cumulativeProbability((value - mean) / sd);
+     }
+ 
+     /**
+-     * <p>nextBeta.</p>
++     * Generates a random value sampled from a Beta distribution with the specified shape parameters.
+      *
+-     * @param alpha See Wikipedia. This is the first parameter.
+-     * @param beta  See Wikipedia. This is the second parameter.
+-     * @return Ibid.
++     * @param alpha the first shape parameter of the Beta distribution. Must be greater than 0.
++     * @param beta the second shape parameter of the Beta distribution. Must be greater than 0.
++     * @return a random double value sampled from the Beta(alpha, beta) distribution.
++     * @throws IllegalArgumentException if {@code alpha <= 0} or {@code beta <= 0}.
+      */
+     public double nextBeta(double alpha, double beta) {
+-        return new BetaDistribution(this.randomGenerator, alpha, beta).sample();
++        if (!(alpha > 0.0) || !(beta > 0.0)) {
++            throw new IllegalArgumentException("Alpha and beta must both be > 0: alpha=" + alpha + ", beta=" + beta);
++        }
++
++        return new BetaDistribution(this.math3RandomGenerator, alpha, beta).sample();
+     }
+ 
+     /**
+-     * <p>nextT.</p>
++     * Generates a random value sampled from a Student's t-distribution with the specified degrees of freedom.
+      *
+-     * @param df The degrees of freedom. See any stats book.
+-     * @return Ibid.
++     * @param df the degrees of freedom for the t-distribution. Must be greater than 0.
++     * @return a random double value sampled from the t-distribution with the given degrees of freedom.
++     * @throws IllegalArgumentException if {@code df <= 0}.
+      */
+     public double nextT(double df) {
+-        return new TDistribution(this.randomGenerator, df).sample();
++        if (!(df > 0.0)) {
++            throw new IllegalArgumentException("Degrees of freedom must be > 0: " + df);
++        }
++
++        return new TDistribution(this.math3RandomGenerator, df).sample();
+     }
+ 
+     /**
+-     * <p>nextExponential.</p>
++     * Generates a random value following an exponential distribution with the specified scale parameter.
+      *
+-     * @param lambda The rate parameter. See Wikipedia.
+-     * @return Ibid.
++     * @param scale the scale parameter of the exponential distribution; must be greater than 0
++     * @return a randomly generated value from the exponential distribution
++     * @throws IllegalArgumentException if the scale parameter is not greater than 0
+      */
+-    public double nextExponential(double lambda) {
+-        return new ExponentialDistribution(this.randomGenerator, lambda).sample();
++    public double nextExponential(double scale) {
++        if (!(scale > 0.0)) {
++            throw new IllegalArgumentException("Scale must be > 0: " + scale);
++        }
++
++        return new ExponentialDistribution(this.math3RandomGenerator, scale).sample();
+     }
+ 
+     /**
+-     * <p>nextGumbel.</p>
++     * Generates a random sample from the Gumbel distribution with the specified location and scale parameters.
+      *
+-     * @param mu   a double
+-     * @param beta a double
+-     * @return Ibid.
++     * @param mu the location parameter of the Gumbel distribution
++     * @param beta the scale parameter of the Gumbel distribution; must be greater than 0
++     * @return a random sample from the Gumbel distribution
++     * @throws IllegalArgumentException if the scale parameter beta is not greater than 0
+      */
+     public double nextGumbel(double mu, double beta) {
+-        return new GumbelDistribution(this.randomGenerator, mu, beta).sample();
++        if (!(beta > 0.0)) {
++            throw new IllegalArgumentException("Beta must be > 0: " + beta);
++        }
++
++        return new GumbelDistribution(this.math3RandomGenerator, mu, beta).sample();
+     }
+ 
+     /**
+-     * <p>nextChiSquare.</p>
++     * Generates a random value from a chi-squared distribution with the specified degrees of freedom.
+      *
+-     * @param df The degrees of freedom.
+-     * @return Ibid.
++     * @param df The degrees of freedom for the chi-squared distribution. Must be greater than zero.
++     * @return A random value sampled from the chi-squared distribution.
++     * @throws IllegalArgumentException If the degrees of freedom (df) is less than or equal to zero.
+      */
+     public double nextChiSquare(double df) {
+-        return new ChiSquaredDistribution(this.randomGenerator, df).sample();
++        if (!(df > 0.0)) {
++            throw new IllegalArgumentException("Degrees of freedom must be > 0: " + df);
++        }
++
++        return new ChiSquaredDistribution(this.math3RandomGenerator, df).sample();
+     }
+ 
+     /**
+-     * <p>nextGamma.</p>
++     * Generates a random value following a Gamma distribution parameterized
++     * by the given shape and scale.
+      *
+-     * @param shape The shape parameter.
+-     * @param scale The scale parameter.
+-     * @return Ibid.
++     * @param shape the shape parameter of the Gamma distribution; must be greater than 0
++     * @param scale the scale parameter of the Gamma distribution; must be greater than 0
++     * @return a random value sampled from the Gamma distribution
++     * @throws IllegalArgumentException if the shape or scale parameter is not greater than 0
+      */
+     public double nextGamma(double shape, double scale) {
+-        return new GammaDistribution(this.randomGenerator, shape, scale).sample();
++        if (!(shape > 0.0) || !(scale > 0.0)) {
++            throw new IllegalArgumentException("Shape and scale must both be > 0: shape=" + shape + ", scale=" + scale);
++        }
++
++        return new GammaDistribution(this.math3RandomGenerator, shape, scale).sample();
+     }
+ 
+     /**
+      * Sets the seed to the given value.
+      *
+-     * @param seed A long value. Once this seed is set, the behavior of the random number generator is deterministic, so
+-     *             setting the seed can be used to repeat previous behavior.
++     * @param seed A long value. Once this seed is set, behavior is deterministic.
+      */
+     public void setSeed(long seed) {
+-        this.randomGenerator = new SynchronizedRandomGenerator(new Well44497b(seed));
+-//        this.randomGenerator = new SynchronizedRandomGenerator(new JDKRandomGenerator((int) seed));
++        this.randomGenerator = RandomSource.XO_RO_SHI_RO_128_PP.create(seed);
+     }
+ 
+     /**
+-     * <p>Getter for the field <code>randomGenerator</code>.</p>
++     * Retrieves the RandomGenerator instance being used.
+      *
+-     * @return a {@link org.apache.commons.math3.random.RandomGenerator} object
++     * @return the RandomGenerator instance maintained by this class
+      */
+     public RandomGenerator getRandomGenerator() {
+-        return this.randomGenerator;
++        return this.math3RandomGenerator;
+     }
+ 
+     /**
+-     * <p>nextLong.</p>
++     * Generates and returns the next pseudorandom long value from the underlying random number generator.
+      *
+-     * @return a long
++     * @return a pseudorandom long value generated by the random number generator.
+      */
+     public long nextLong() {
+         return this.randomGenerator.nextLong();
+     }
+-}
+-
+-
+-
+-
+ 
++    /**
++     * Fills the given byte array with random bytes.
++     *
++     * @param bytes target array
++     */
++    public void nextBytes(byte[] bytes) {
++        this.randomGenerator.nextBytes(bytes);
++    }
+ 
++    /**
++     * Generates the next pseudorandom, Gaussian ("normally") distributed
++     * double value with mean 0.0 and standard deviation 1.0 from this random
++     * number generator's sequence.
++     *
++     * @return a pseudorandom, Gaussian-distributed double value with mean 0.0
++     *         and standard deviation 1.0
++     */
++    public double nextGaussian() {
++        return this.math3RandomGenerator.nextGaussian();
++    }
++}
+\ No newline at end of file
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/util/TMath.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/util/TMath.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/util/TMath.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/util/TMath.java
+@@ -13,17 +13,49 @@
+  */
+ public final class TMath {
+ 
++    /**
++     * A constant holding the value of π (pi), the ratio of a circle's circumference
++     * to its diameter. This value is approximately 3.14159.
++     */
+     public static final double PI = Math.PI;
++
++    /**
++     * The mathematical constant e, which is the base of the natural logarithm.
++     * This constant is approximately equal to 2.718281828459045 and is defined in {@link Math#E}.
++     */
+     public static final double E = Math.E;
++
++    /**
++     * A constant representing the default implementation strategy for
++     * mathematical computations in the TMath class.
++     * <p>
++     * This field is initialized to {@code Impl.MATH}, which specifies
++     * the use of the default mathematical implementation strategy.
++     * The chosen strategy impacts the behavior and performance of
++     * mathematical operations provided by the TMath class, balancing
++     * between precision and efficiency.
++     */
+     private static final Impl IMPL = Impl.MATH;
+ 
+     // ----------------------------------------------------------------
+     // constants
+     // ----------------------------------------------------------------
+ 
++    /**
++     * Private constructor to prevent instantiation of the TMath class.
++     *
++     * This class is designed to provide utility methods for mathematical
++     * operations and cannot be instantiated.
++     */
+     private TMath() {
+     }
+ 
++    /**
++     * Computes the absolute value of the given integer using the specified implementation.
++     *
++     * @param x the integer value for which the absolute value is to be computed
++     * @return the absolute value of the input integer
++     */
+     public static int abs(int x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -35,10 +67,12 @@ public static int abs(int x) {
+         }
+     }
+ 
+-    // ----------------------------------------------------------------
+-    // abs
+-    // ----------------------------------------------------------------
+-
++    /**
++     * Computes the absolute value of the given long integer using the specified implementation.
++     *
++     * @param x the long integer value for which the absolute value is to be computed
++     * @return the absolute value of the input long integer
++     */
+     public static long abs(long x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -50,6 +84,12 @@ public static long abs(long x) {
+         }
+     }
+ 
++    /**
++     * Computes the absolute value of the given float using the specified implementation.
++     *
++     * @param x the float value for which the absolute value is to be computed
++     * @return the absolute value of the input float
++     */
+     public static float abs(float x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -61,6 +101,12 @@ public static float abs(float x) {
+         }
+     }
+ 
++    /**
++     * Computes the absolute value of the given double using the specified implementation.
++     *
++     * @param x the double value for which the absolute value is to be computed
++     * @return the absolute value of the input double
++     */
+     public static double abs(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -72,6 +118,13 @@ public static double abs(double x) {
+         }
+     }
+ 
++    /**
++     * Computes the maximum of two integers using the specified implementation.
++     *
++     * @param a the first integer value
++     * @param b the second integer value
++     * @return the maximum of the two input integers
++     */
+     public static int max(int a, int b) {
+         switch (IMPL) {
+             case STRICT:
+@@ -87,6 +140,13 @@ public static int max(int a, int b) {
+     // max / min
+     // ----------------------------------------------------------------
+ 
++    /**
++     * Computes the maximum of two long integers using the specified implementation.
++     *
++     * @param a the first long integer value
++     * @param b the second long integer value
++     * @return the maximum of the two input long integers
++     */
+     public static long max(long a, long b) {
+         switch (IMPL) {
+             case STRICT:
+@@ -98,6 +158,13 @@ public static long max(long a, long b) {
+         }
+     }
+ 
++    /**
++     * Computes the maximum of two float values using the specified implementation.
++     *
++     * @param a the first float value
++     * @param b the second float value
++     * @return the maximum of the two input float values
++     */
+     public static float max(float a, float b) {
+         switch (IMPL) {
+             case STRICT:
+@@ -109,6 +176,13 @@ public static float max(float a, float b) {
+         }
+     }
+ 
++    /**
++     * Computes the maximum of two double values using the specified implementation.
++     *
++     * @param a the first double value
++     * @param b the second double value
++     * @return the maximum of the two input double values
++     */
+     public static double max(double a, double b) {
+         switch (IMPL) {
+             case STRICT:
+@@ -120,6 +194,13 @@ public static double max(double a, double b) {
+         }
+     }
+ 
++    /**
++     * Computes the minimum of two integer values using the specified implementation.
++     *
++     * @param a the first integer value
++     * @param b the second integer value
++     * @return the minimum of the two input integer values
++     */
+     public static int min(int a, int b) {
+         switch (IMPL) {
+             case STRICT:
+@@ -131,6 +212,13 @@ public static int min(int a, int b) {
+         }
+     }
+ 
++    /**
++     * Computes the minimum of two long integers using the specified implementation.
++     *
++     * @param a the first long integer value
++     * @param b the second long integer value
++     * @return the minimum of the two input long integers
++     */
+     public static long min(long a, long b) {
+         switch (IMPL) {
+             case STRICT:
+@@ -142,6 +230,13 @@ public static long min(long a, long b) {
+         }
+     }
+ 
++    /**
++     * Computes the minimum of two float values using the specified implementation.
++     *
++     * @param a the first float value
++     * @param b the second float value
++     * @return the minimum of the two input float values
++     */
+     public static float min(float a, float b) {
+         switch (IMPL) {
+             case STRICT:
+@@ -153,6 +248,13 @@ public static float min(float a, float b) {
+         }
+     }
+ 
++    /**
++     * Computes the minimum of two double values using the specified implementation.
++     *
++     * @param a the first double value
++     * @param b the second double value
++     * @return the minimum of the two input double values
++     */
+     public static double min(double a, double b) {
+         switch (IMPL) {
+             case STRICT:
+@@ -164,6 +266,12 @@ public static double min(double a, double b) {
+         }
+     }
+ 
++    /**
++     * Computes the absolute value of a double value using the specified implementation.
++     *
++     * @param x the input double value
++     * @return the absolute value of the input double value
++     */
+     public static double exp(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -179,6 +287,12 @@ public static double exp(double x) {
+     // exponentials and logs
+     // ----------------------------------------------------------------
+ 
++    /**
++     * Computes the natural logarithm of a double value using the specified implementation.
++     *
++     * @param x the input double value
++     * @return the natural logarithm of the input double value
++     */
+     public static double expm1(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -190,6 +304,12 @@ public static double expm1(double x) {
+         }
+     }
+ 
++    /**
++     * Computes the base-2 logarithm of a double value using the specified implementation.
++     *
++     * @param x the input double value
++     * @return the base-2 logarithm of the input double value
++     */
+     public static double log(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -201,6 +321,12 @@ public static double log(double x) {
+         }
+     }
+ 
++    /**
++     * Computes the base-10 logarithm of a double value using the specified implementation.
++     *
++     * @param x the input double value
++     * @return the base-10 logarithm of the input double value
++     */
+     public static double log10(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -212,6 +338,12 @@ public static double log10(double x) {
+         }
+     }
+ 
++    /**
++     * Computes the logarithm of a double value using the specified implementation.
++     *
++     * @param x the input double value
++     * @return the logarithm of the input double value
++     */
+     public static double log1p(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -223,6 +355,14 @@ public static double log1p(double x) {
+         }
+     }
+ 
++    /**
++     * Computes the value of the first argument raised to the power of the second argument
++     * using the specified internal implementation.
++     *
++     * @param a the base value
++     * @param b the exponent value
++     * @return the result of raising the base value to the power of the exponent
++     */
+     public static double pow(double a, double b) {
+         switch (IMPL) {
+             case STRICT:
+@@ -234,6 +374,16 @@ public static double pow(double a, double b) {
+         }
+     }
+ 
++    /**
++     * Computes the square root of the given double value using the specified implementation.
++     *
++     * Depending on the underlying implementation, this method may use {@code StrictMath.sqrt},
++     * {@code FastMath.sqrt}, or {@code Math.sqrt} to calculate the result.
++     *
++     * @param x the double value for which the square root is to be computed
++     * @return the square root of the input value
++     *         or NaN if the input value is negative
++     */
+     public static double sqrt(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -245,6 +395,12 @@ public static double sqrt(double x) {
+         }
+     }
+ 
++    /**
++     * Computes the cube root of a given double value using the specified implementation strategy.
++     *
++     * @param x the value for which the cube root is to be calculated
++     * @return the cube root of the input value
++     */
+     public static double cbrt(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -256,6 +412,14 @@ public static double cbrt(double x) {
+         }
+     }
+ 
++    /**
++     * Calculates the square root of the sum of the squares of two arguments
++     * without intermediate overflow or underflow.
++     *
++     * @param x the first value
++     * @param y the second value
++     * @return the square root of (x² + y²)
++     */
+     public static double hypot(double x, double y) {
+         switch (IMPL) {
+             case STRICT:
+@@ -267,6 +431,12 @@ public static double hypot(double x, double y) {
+         }
+     }
+ 
++    /**
++     * Computes the trigonometric sine of an angle given in radians.
++     *
++     * @param x the angle in radians for which the sine value is to be calculated
++     * @return the sine of the specified angle
++     */
+     public static double sin(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -282,6 +452,12 @@ public static double sin(double x) {
+     // trig
+     // ----------------------------------------------------------------
+ 
++    /**
++     * Computes the cosine of a given angle in radians.
++     *
++     * @param x the angle in radians for which the cosine is to be calculated
++     * @return the cosine of the specified angle
++     */
+     public static double cos(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -293,6 +469,12 @@ public static double cos(double x) {
+         }
+     }
+ 
++    /**
++     * Computes the trigonometric tangent of an angle.
++     *
++     * @param x The angle, in radians, for which the tangent is to be calculated.
++     * @return The tangent of the specified angle.
++     */
+     public static double tan(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -304,6 +486,13 @@ public static double tan(double x) {
+         }
+     }
+ 
++    /**
++     * Computes the arc sine (inverse sine) of the given value. The returned angle is in radians
++     * and lies in the range -π/2 through π/2.
++     *
++     * @param x the value whose arc sine is to be computed, must be in the range -1 to 1
++     * @return the arc sine of the argument, in radians
++     */
+     public static double asin(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -315,6 +504,14 @@ public static double asin(double x) {
+         }
+     }
+ 
++    /**
++     * Calculates the arc cosine (inverse cosine) of a given value.
++     * The method returns the angle in radians whose cosine is the specified value.
++     *
++     * @param x the value whose arc cosine is to be calculated.
++     *          The value must be within the range -1.0 to 1.0, inclusive.
++     * @return the arc cosine of the specified value, in the range 0.0 through π (inclusive).
++     */
+     public static double acos(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -326,6 +523,13 @@ public static double acos(double x) {
+         }
+     }
+ 
++    /**
++     * Computes the arc tangent of a value. This method returns the angle
++     * in radians whose tangent is the given value.
++     *
++     * @param x the value whose arc tangent is to be calculated.
++     * @return the arc tangent of the specified value, in radians.
++     */
+     public static double atan(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -337,6 +541,14 @@ public static double atan(double x) {
+         }
+     }
+ 
++    /**
++     * Computes the angle θ (in radians) between the positive x-axis of a plane and the point (x, y) on it.
++     * The angle is measured counterclockwise from the positive x-axis, and it is within the range of -π to π.
++     *
++     * @param y the ordinate (y-coordinate) of the point
++     * @param x the abscissa (x-coordinate) of the point
++     * @return the angle θ in radians between the positive x-axis and the line segment from the origin to the point (x, y)
++     */
+     public static double atan2(double y, double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -348,6 +560,12 @@ public static double atan2(double y, double x) {
+         }
+     }
+ 
++    /**
++     * Computes the hyperbolic sine of a given angle in radians.
++     *
++     * @param x the angle in radians for which the hyperbolic sine is to be computed
++     * @return the hyperbolic sine of the specified angle
++     */
+     public static double sinh(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -363,6 +581,12 @@ public static double sinh(double x) {
+     // hyperbolic
+     // ----------------------------------------------------------------
+ 
++    /**
++     * Computes the hyperbolic cosine of a given value.
++     *
++     * @param x the value for which the hyperbolic cosine is to be computed
++     * @return the hyperbolic cosine of the specified value
++     */
+     public static double cosh(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -374,6 +598,13 @@ public static double cosh(double x) {
+         }
+     }
+ 
++    /**
++     * Computes the hyperbolic tangent of a given value. The method delegates the computation
++     * to one of the available implementations depending on the current setting (STRICT, FAST, or default).
++     *
++     * @param x the value for which the hyperbolic tangent is to be computed
++     * @return the hyperbolic tangent of the specified value
++     */
+     public static double tanh(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -385,6 +616,14 @@ public static double tanh(double x) {
+         }
+     }
+ 
++    /**
++     * Computes the largest (closest to positive infinity) double value that
++     * is less than or equal to the argument and is equal to a mathematical integer.
++     *
++     * @param x The value to be floored.
++     * @return The largest double value less than or equal to {@code x}
++     *         that is equal to a mathematical integer.
++     */
+     public static double floor(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -400,6 +639,14 @@ public static double floor(double x) {
+     // rounding
+     // ----------------------------------------------------------------
+ 
++    /**
++     * Returns the smallest (closest to negative infinity) double value that is
++     * greater than or equal to the argument and is equal to a mathematical integer.
++     *
++     * @param x the value to be rounded up to the nearest integer
++     * @return the smallest double value that is greater than or equal to x
++     *         and is equal to a mathematical integer
++     */
+     public static double ceil(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -411,6 +658,13 @@ public static double ceil(double x) {
+         }
+     }
+ 
++    /**
++     * Returns the closest value to the argument, with ties rounding to the even neighbor.
++     * The method behavior depends on the implementation mode being used.
++     *
++     * @param x the value to be rounded to the nearest integer value
++     * @return the value nearest to the argument, with ties rounded to the even neighbor
++     */
+     public static double rint(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -422,6 +676,13 @@ public static double rint(double x) {
+         }
+     }
+ 
++    /**
++     * Rounds the specified floating-point value to the nearest long value.
++     * The rounding method depends on the current implementation mode: STRICT, FAST, or the default.
++     *
++     * @param x the double value to be rounded
++     * @return the value of the argument rounded to the nearest {@code long} value
++     */
+     public static long round(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -433,6 +694,13 @@ public static long round(double x) {
+         }
+     }
+ 
++    /**
++     * Rounds the given floating-point value to the nearest integer.
++     * The rounding behavior depends on the implementation strategy.
++     *
++     * @param x the floating-point value to be rounded
++     * @return the rounded integer value
++     */
+     public static int round(float x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -444,6 +712,13 @@ public static int round(float x) {
+         }
+     }
+ 
++    /**
++     * Converts an angle measured in degrees to an approximately equivalent angle in radians.
++     * This method provides flexibility in selecting the underlying implementation for conversion.
++     *
++     * @param x the angle in degrees
++     * @return the angle in radians
++     */
+     public static double toRadians(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -459,6 +734,14 @@ public static double toRadians(double x) {
+     // angle conversions
+     // ----------------------------------------------------------------
+ 
++    /**
++     * Converts an angle measured in radians to an approximately equivalent angle measured in degrees.
++     * The conversion from radians to degrees is generally performed by multiplying the input value
++     * by the factor of 180 divided by π.
++     *
++     * @param x the angle in radians to be converted to degrees
++     * @return the converted angle in degrees
++     */
+     public static double toDegrees(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -470,6 +753,15 @@ public static double toDegrees(double x) {
+         }
+     }
+ 
++    /**
++     * Returns the size of an ulp (unit in the last place) of the argument.
++     * The ulp of a floating-point value is the positive distance between
++     * this floating-point value and the next larger value representable
++     * in the same precision.
++     *
++     * @param x the floating-point value whose ulp is to be determined
++     * @return the size of an ulp of the argument
++     */
+     public static double ulp(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -485,6 +777,12 @@ public static double ulp(double x) {
+     // floating-point helpers
+     // ----------------------------------------------------------------
+ 
++    /**
++     * Returns the floating-point value adjacent to the input in the direction of positive infinity.
++     *
++     * @param x the floating-point value for which the next higher value is to be returned
++     * @return the smallest floating-point value that is greater than x and representable as a double
++     */
+     public static double nextUp(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -496,6 +794,12 @@ public static double nextUp(double x) {
+         }
+     }
+ 
++    /**
++     * Returns the floating-point value adjacent to the argument in the direction of negative infinity.
++     *
++     * @param x the floating-point value whose adjacent value in the direction of negative infinity is to be returned
++     * @return the adjacent floating-point value in the direction of negative infinity
++     */
+     public static double nextDown(double x) {
+         switch (IMPL) {
+             case STRICT:
+@@ -507,6 +811,16 @@ public static double nextDown(double x) {
+         }
+     }
+ 
++    /**
++     * Returns the floating-point number that is adjacent to the first argument
++     * in the direction of the second argument. This method determines the result
++     * based on the current implementation strategy.
++     *
++     * @param start the starting floating-point value.
++     * @param direction the floating-point value indicating the direction of the adjacent value.
++     * @return the floating-point number adjacent to {@code start} in the
++     *         direction of {@code direction}.
++     */
+     public static double nextAfter(double start, double direction) {
+         switch (IMPL) {
+             case STRICT:
+@@ -518,6 +832,15 @@ public static double nextAfter(double start, double direction) {
+         }
+     }
+ 
++    /**
++     * Returns a floating-point value obtained by scaling the specified floating-point value `d`
++     * by an integer power of two specified by `scaleFactor`. This operation multiplies `d` by
++     * 2 to the power of `scaleFactor`.
++     *
++     * @param d the floating-point value to be scaled
++     * @param scaleFactor the power of two by which to scale the floating-point value
++     * @return the scaled floating-point value, which is `d * 2^scaleFactor`
++     */
+     public static double scalb(double d, int scaleFactor) {
+         switch (IMPL) {
+             case STRICT:
+@@ -529,6 +852,13 @@ public static double scalb(double d, int scaleFactor) {
+         }
+     }
+ 
++    /**
++     * Returns the unbiased exponent used in the representation of the floating-point value.
++     * The method delegates the computation to different implementations depending on the configured mode.
++     *
++     * @param d the floating-point value whose exponent is to be extracted
++     * @return the unbiased exponent of the given floating-point value
++     */
+     public static int getExponent(double d) {
+         switch (IMPL) {
+             case STRICT:
+@@ -540,6 +870,16 @@ public static int getExponent(double d) {
+         }
+     }
+ 
++    /**
++     * Calculates the signum function of the specified double value.
++     * The signum function returns:
++     * - 1.0 if the input is positive.
++     * - -1.0 if the input is negative.
++     * - 0.0 if the input is zero.
++     *
++     * @param d the input value whose signum is to be computed
++     * @return  the signum of the input value as a double, which can be 1.0, -1.0, or 0.0
++     */
+     public static double signum(double d) {
+         switch (IMPL) {
+             case STRICT:
+@@ -551,6 +891,13 @@ public static double signum(double d) {
+         }
+     }
+ 
++    /**
++     * Generates a random double value between 0.0 (inclusive) and 1.0 (exclusive).
++     * The method selected for generating the random value depends on the implementation mode:
++     * STRICT, FAST, or the default Math.random().
++     *
++     * @return a pseudorandom double greater than or equal to 0.0 and less than 1.0
++     */
+     public static double random() {
+         switch (IMPL) {
+             case STRICT:
+@@ -562,6 +909,15 @@ public static double random() {
+         }
+     }
+ 
++    /**
++     * Returns the first floating-point argument with the sign of the second
++     * floating-point argument. This method ensures the sign of the result matches
++     * the sign of the second argument, while the magnitude matches the first argument.
++     *
++     * @param magnitude the value whose magnitude is to be returned
++     * @param sign the value whose sign is to be assigned to the result
++     * @return a floating-point value with the magnitude of {@code magnitude} and the sign of {@code sign}
++     */
+     public static double copySign(double magnitude, double sign) {
+         switch (IMPL) {
+             case STRICT:
+@@ -573,9 +929,31 @@ public static double copySign(double magnitude, double sign) {
+         }
+     }
+ 
++    /**
++     * Enumerates the available implementation strategies for mathematical computations.
++     * Each strategy represents a distinct approach to balancing precision, performance,
++     * and adherence to mathematical standards.
++     */
+     public enum Impl {
++
++        /**
++         * Represents the default mathematical implementation strategy in the system.
++         * This option is used when no specific preference between precision and performance is required.
++         */
+         MATH,
++
++        /**
++         * Represents the strict implementation strategy for mathematical computations.
++         * This option prioritizes precision and strict adherence to mathematical standards,
++         * potentially at the cost of computational performance.
++         */
+         STRICT,
++
++        /**
++         * Represents the fast implementation strategy for mathematical computations.
++         * This option is optimized for performance and may prioritize speed over precision
++         * or strict adherence to mathematical standards.
++         */
+         FAST
+     }
+ }
+\ No newline at end of file
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgRowShapeTest.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgRowShapeTest.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgRowShapeTest.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/HybridCgRowShapeTest.java
+@@ -80,7 +80,7 @@ public void testDiscChildWithContParent() {
+             }
+         }
+ 
+-        DataSet simulated = im.toDataSet(im.sample(50, new Random(123)));
++        DataSet simulated = im.toDataSet(im.sample(50));
+         assertNotNull(simulated);
+         assertEquals(2, simulated.getNumColumns()); // X and Y present
+     }
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/TestHybridCgModel.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/TestHybridCgModel.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/TestHybridCgModel.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/hybridcg/TestHybridCgModel.java
+@@ -53,10 +53,9 @@ public TestHybridCgModel() {
+      * Generates a random HybridCgIm model.
+      *
+      * @param pm the HybridCgPm
+-     * @param rng the random number generator
+      * @return the generated HybridCgIm model
+      */
+-    public static HybridCgModel.HybridCgIm randomIm(HybridCgModel.HybridCgPm pm, Random rng) {
++    public static HybridCgModel.HybridCgIm randomIm(HybridCgModel.HybridCgPm pm) {
+         HybridCgModel.HybridCgIm im = new HybridCgModel.HybridCgIm(pm);
+         int n = pm.getNodes().length;
+ 
+@@ -69,7 +68,7 @@ public static HybridCgModel.HybridCgIm randomIm(HybridCgModel.HybridCgPm pm, Ran
+                     double[] probs = new double[K];
+                     double sum = 0.0;
+                     for (int k = 0; k < K; k++) {
+-                        probs[k] = rng.nextDouble();
++                        probs[k] = RandomUtil.getInstance().nextDouble();
+                         sum += probs[k];
+                     }
+                     for (int k = 0; k < K; k++) {
+@@ -79,11 +78,11 @@ public static HybridCgModel.HybridCgIm randomIm(HybridCgModel.HybridCgPm pm, Ran
+             } else {
+                 int m = pm.getContinuousParents(y).length;
+                 for (int r = 0; r < rows; r++) {
+-                    im.setMean(y, r, rng.nextGaussian());         // random mean offset
++                    im.setMean(y, r, RandomUtil.getInstance().nextGaussian());         // random mean offset
+                     for (int j = 0; j < m; j++) {
+                         im.setCoefficient(y, r, j, RandomUtil.getInstance().nextUniform(-1, 1)); // random slope
+                     }
+-                    im.setVariance(y, r, 1.0 + rng.nextDouble());      // variance > 0
++                    im.setVariance(y, r, 1.0 + RandomUtil.getInstance().nextDouble());      // variance > 0
+                 }
+             }
+         }
+@@ -141,9 +140,9 @@ public void test() {
+         }
+ 
+         // ----- Simulate from a random IM (deterministic seeds)
+-        HybridCgModel.HybridCgIm im = randomIm(pm, new Random(12345));
++        HybridCgModel.HybridCgIm im = randomIm(pm);
+         int n = 5000;
+-        HybridCgModel.HybridCgIm.Sample draw = im.sample(n, new Random(42));
++        HybridCgModel.HybridCgIm.Sample draw = im.sample(n);
+ 
+         // Convert to a Tetrad DataSet
+         DataSet simulated = im.toDataSet(draw);
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/KciSmokeTest.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/KciSmokeTest.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/KciSmokeTest.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/KciSmokeTest.java
+@@ -23,13 +23,13 @@
+ import edu.cmu.tetrad.graph.GraphNode;
+ import edu.cmu.tetrad.graph.Node;
+ import edu.cmu.tetrad.search.test.Kci;
++import edu.cmu.tetrad.util.RandomUtil;
+ import org.ejml.simple.SimpleMatrix;
+ import org.junit.Test;
+ 
+ import java.util.ArrayList;
+ import java.util.List;
+ import java.util.Map;
+-import java.util.Random;
+ 
+ import static org.ejml.UtilEjml.assertTrue;
+ 
+@@ -73,12 +73,11 @@ public KciSmokeTest() {
+     }
+ 
+     private static SimpleMatrix makeDataVxN(int n, double depNoise) {
+-        Random r = new Random(42);
+         double[] x = new double[n], z = new double[n], e = new double[n], y = new double[n];
+         for (int i = 0; i < n; i++) {
+-            x[i] = r.nextGaussian();
+-            z[i] = r.nextGaussian();
+-            e[i] = r.nextGaussian();
++            x[i] = RandomUtil.getInstance().nextGaussian(0, 1);
++            z[i] = RandomUtil.getInstance().nextGaussian(0, 1);
++            e[i] = RandomUtil.getInstance().nextGaussian(0, 1);
+         }
+         // independent case uses depNoise = +Inf sentinel (we'll overwrite y below)
+         if (Double.isInfinite(depNoise)) System.arraycopy(e, 0, y, 0, n);
+@@ -198,7 +197,6 @@ public void nonApprox_independent_vs_dependent() {
+         // independent: Y = e  (Y â X | Z)
+         Kci kInd = makeKci(makeDataVxN(600, Double.POSITIVE_INFINITY), /*approximate=*/false);
+         kInd.setNumPermutations(4000);    // min p â 1/4001 â 2.5e-4
+-        kInd.rng = new Random(123);     // determinism
+         double pInd = kInd.isIndependenceConditional(new GraphNode("X"), new GraphNode("Y"),
+                 List.of(new GraphNode("Z")));
+         assertTrue(0.0 <= pInd && pInd <= 1.0, "p in [0,1]");
+@@ -207,7 +205,6 @@ public void nonApprox_independent_vs_dependent() {
+         // dependent: Y = X + 0.05*e  (strong dependence)
+         Kci kDep = makeKci(makeDataVxN(600, 0.05), /*approximate=*/false);
+         kDep.setNumPermutations(4000);
+-        kDep.rng = new Random(123);
+         double pDep = kDep.isIndependenceConditional(new GraphNode("X"), new GraphNode("Y"),
+                 List.of(new GraphNode("Z")));
+         // Can't be smaller than 1/(B+1); use a realistic bound or just alpha
+@@ -256,13 +253,11 @@ public void nonApprox_independent_vs_dependent() {
+     public void permutation_independent_vs_dependent() {
+         double alpha = 0.01;
+         Kci kInd = makeKci(makeDataVxN(400, Double.POSITIVE_INFINITY), false);
+-        kInd.rng = new Random(123); // determinism
+         double pInd = kInd.isIndependenceConditional(new GraphNode("X"), new GraphNode("Y"),
+                 List.of(new GraphNode("Z")));
+         assertTrue(pInd > alpha, "perm: independent should fail to reject");
+ 
+         Kci kDep = makeKci(makeDataVxN(400, 0.05), false);
+-        kDep.rng = new Random(123);
+         double pDep = kDep.isIndependenceConditional(new GraphNode("X"), new GraphNode("Y"),
+                 List.of(new GraphNode("Z")));
+         assertTrue(pDep < 1e-3, "perm: dependent should be significant");
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/TscHarnessTest.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/TscHarnessTest.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/TscHarnessTest.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/TscHarnessTest.java
+@@ -258,13 +258,12 @@ private static double[][] equicorrelatedSPD(int d, double rho) {
+     private static double[][] impuritiesWithinBlocks(List<List<Integer>> blocks, long seed, int P, double eps) {
+         double[][] R = new double[P][P];
+         if (eps <= 0) return R;
+-        Random rng = new Random(seed ^ 0x9E3779B97F4A7C15L);
+         for (List<Integer> B : blocks) {
+             List<int[]> pairs = new ArrayList<>();
+             for (int i = 0; i < B.size(); i++)
+                 for (int j = i + 1; j < B.size(); j++)
+                     pairs.add(new int[]{B.get(i), B.get(j)});
+-            Collections.shuffle(pairs, rng);
++            RandomUtil.shuffle(pairs);
+             int keep = TMath.max(1, (int) TMath.round(0.10 * pairs.size()));
+             for (int k = 0; k < keep; k++) {
+                 int i = pairs.get(k)[0], j = pairs.get(k)[1];
+@@ -397,11 +396,9 @@ private static java.util.function.Function<Integer, CovarianceMatrix> bootstrapC
+      */
+     @Test
+     public void tsc_onMixedRankMIMs_hasHighQuality() {
+-        Random topRng = new Random(SEED);
+-
+         for (int[] ranks : RANK_SPECS) {
+             for (int t = 0; t < TRIALS; t++) {
+-                long seed = topRng.nextLong();
++                long seed = RandomUtil.getInstance().nextLong();
+                 RunSpec spec = new RunSpec(ranks, seed);
+ 
+                 // Build truth vars & blocks
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/ntad_test/NtadTest.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/ntad_test/NtadTest.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/ntad_test/NtadTest.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/ntad_test/NtadTest.java
+@@ -20,13 +20,13 @@
+ 
+ package edu.cmu.tetrad.search.ntad_test;
+ 
++import edu.cmu.tetrad.util.RandomUtil;
+ import edu.cmu.tetrad.util.TMath;
+ import org.ejml.simple.SimpleMatrix;
+ 
+ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.List;
+-import java.util.Random;
+ import java.util.stream.Collectors;
+ import java.util.stream.IntStream;
+ 
+@@ -213,10 +213,9 @@ protected SimpleMatrix computeCorrelations(SimpleMatrix data) {
+     protected SimpleMatrix sampleRows(SimpleMatrix matrix, double frac) {
+         int numSamples = (int) TMath.ceil(frac * matrix.getNumRows());
+         List<Integer> sampledIndices = new ArrayList<>();
+-        Random rand = new Random();
+ 
+         while (sampledIndices.size() < numSamples) {
+-            int idx = rand.nextInt(matrix.getNumRows());
++            int idx = RandomUtil.getInstance().nextInt(matrix.getNumRows());
+             if (!sampledIndices.contains(idx)) {
+                 sampledIndices.add(idx);
+             }
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/IndTestBlocksTs.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/IndTestBlocksTs.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/IndTestBlocksTs.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/IndTestBlocksTs.java
+@@ -26,13 +26,9 @@
+ import edu.cmu.tetrad.graph.Node;
+ import edu.cmu.tetrad.search.blocks.BlockSpec;
+ import edu.cmu.tetrad.search.utils.LogUtilsSearch;
+-import edu.cmu.tetrad.util.EffectiveSampleSizeSettable;
+-import edu.cmu.tetrad.util.RankTests;
+-import edu.cmu.tetrad.util.TetradLogger;
+-import edu.cmu.tetrad.util.TMath;
++import edu.cmu.tetrad.util.*;
+ import org.ejml.simple.SimpleMatrix;
+ 
+-import javax.net.ssl.SSLContext;
+ import java.util.*;
+ import java.util.concurrent.locks.ReentrantLock;
+ 
+@@ -147,35 +143,19 @@ private static String zNames(Set<Node> z) {
+     /**
+      * Deterministic alternating split; if rng!=null, shuffle then half/half.
+      */
+-    private static int[][] splitCols(int[] cols, Random rng, boolean leftGetsSmaller) {
++    private static int[][] splitCols(int[] cols, boolean leftGetsSmaller) {
+         if (cols == null || cols.length == 0) return new int[][]{new int[0], new int[0]};
+         int[] idx = Arrays.copyOf(cols, cols.length);
+-        if (rng == null) {
+-            // Alternate indices. If leftGetsSmaller and odd length, give left the smaller half (floor).
+-            boolean leftGetsOddPositions = leftGetsSmaller; // odd positions count = floor(n/2)
+-            int aCount = leftGetsOddPositions ? (idx.length / 2) : ((idx.length + 1) / 2);
+-            int bCount = idx.length - aCount;
+-            int[] A = new int[aCount];
+-            int[] B = new int[bCount];
+-            int ai = 0, bi = 0;
+-            for (int i = 0; i < idx.length; i++) {
+-                boolean toA = ((i & 1) == 1) == leftGetsOddPositions;
+-                if (toA) A[ai++] = idx[i];
+-                else B[bi++] = idx[i];
+-            }
+-            return new int[][]{A, B};
+-        } else {
+-            for (int i = idx.length - 1; i > 0; i--) {
+-                int j = rng.nextInt(i + 1);
+-                int tmp = idx[i];
+-                idx[i] = idx[j];
+-                idx[j] = tmp;
+-            }
+-            int half = idx.length / 2; // smaller half size when odd
+-            int[] A = Arrays.copyOfRange(idx, 0, half);
+-            int[] B = Arrays.copyOfRange(idx, half, idx.length);
+-            return new int[][]{A, B};
++        for (int i = idx.length - 1; i > 0; i--) {
++            int j = RandomUtil.getInstance().nextInt(i + 1);
++            int tmp = idx[i];
++            idx[i] = idx[j];
++            idx[j] = tmp;
+         }
++        int half = idx.length / 2; // smaller half size when odd
++        int[] A = Arrays.copyOfRange(idx, 0, half);
++        int[] B = Arrays.copyOfRange(idx, half, idx.length);
++        return new int[][]{A, B};
+     }
+ 
+     private static List<Node> indicesToNodes(int[] idxs, List<Node> all) {
+@@ -422,10 +402,9 @@ private Build buildSides(Node x, Node y, Set<Node> z) {
+         Rb.addAll(allCols[yiVar]);
+ 
+         // Split each Zi into (Ai,Bi) and append
+-        Random rng = randomizeSplits ? new Random(splitSeed) : null;
+         for (int zv : zVars) {
+             int[] Zcols = allCols[zv];
+-            int[][] AB = splitCols(Zcols, rng, leftGetsSmallerHalfWhenOdd);
++            int[][] AB = splitCols(Zcols, leftGetsSmallerHalfWhenOdd);
+             Lb.addAll(AB[0]);
+             Rb.addAll(AB[1]);
+         }
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/Kci.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/Kci.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/Kci.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/test/Kci.java
+@@ -24,6 +24,7 @@
+ import edu.cmu.tetrad.graph.IndependenceFact;
+ import edu.cmu.tetrad.graph.Node;
+ import edu.cmu.tetrad.search.RawMarginalIndependenceTest;
++import edu.cmu.tetrad.util.RandomUtil;
+ import edu.cmu.tetrad.util.TetradLogger;
+ import org.apache.commons.math3.distribution.GammaDistribution;
+ import edu.cmu.tetrad.util.TMath;
+@@ -70,10 +71,6 @@ protected boolean removeEldestEntry(Map.Entry<Integer, SimpleMatrix> e) {
+      * framework.
+      */
+     private final List<Node> variables;
+-    /**
+-     * RNG for permutations; can be null (seeded later).
+-     */
+-    public Random rng = new Random(0);
+     /**
+      * Specifies the degree of the polynomial in the polynomial kernel function.
+      * <p>
+@@ -280,12 +277,12 @@ private static String keyForZ(List<Node> z, List<Integer> rows, Map<Node, Intege
+         return sb.toString();
+     }
+ 
+-    private static int[] uniformSample(int n, int m, Random rng) {
++    private static int[] uniformSample(int n, int m) {
+         int[] idx = new int[n];
+         for (int i = 0; i < n; i++) idx[i] = i;
+         // Partial FisherâYates
+         for (int i = 0; i < m; i++) {
+-            int j = i + rng.nextInt(n - i);
++            int j = i + RandomUtil.getInstance().nextInt(n - i);
+             int t = idx[i];
+             idx[i] = idx[j];
+             idx[j] = t;
+@@ -305,7 +302,6 @@ private static double pValueGammaConditional(SimpleMatrix RX, SimpleMatrix RY, d
+ 
+         // --- 1) Estimate null mean and variance via a small number of permutations
+         final int Bmom = 500;               // 128â512 is a good range
+-        final Random rng = new Random(7);   // fixed seed for stability in tests
+ 
+         double mean = 0.0, m2 = 0.0;
+         int[] idx = new int[N];
+@@ -314,7 +310,7 @@ private static double pValueGammaConditional(SimpleMatrix RX, SimpleMatrix RY, d
+         for (int b = 0; b < Bmom; b++) {
+             // FisherâYates shuffle of idx
+             for (int i = N - 1; i > 0; i--) {
+-                int j = rng.nextInt(i + 1);
++                int j = RandomUtil.getInstance().nextInt(i + 1);
+                 int t = idx[i];
+                 idx[i] = idx[j];
+                 idx[j] = t;
+@@ -359,9 +355,8 @@ private static double pValueGammaConditional(SimpleMatrix RX, SimpleMatrix RY, d
+      * Permutation p-value for conditional KCI. Permute Y (equivalently, conjugate RY by P) and recompute S_perm = (1/n)
+      * tr(RX * P RY Páµ).
+      */
+-    private static double permutationPValueConditional(SimpleMatrix RX, SimpleMatrix RY, double stat, int N, int numPermutations, Random rng) {
++    private static double permutationPValueConditional(SimpleMatrix RX, SimpleMatrix RY, double stat, int N, int numPermutations) {
+         if (N <= 1 || numPermutations <= 0) return 1.0;
+-        if (rng == null) rng = new Random(0);
+ 
+         final double[] rx = RX.getDDRM().data;
+         final double[] ry = RY.getDDRM().data;
+@@ -374,7 +369,7 @@ private static double permutationPValueConditional(SimpleMatrix RX, SimpleMatrix
+         for (int b = 0; b < numPermutations; b++) {
+             // Shuffle idx
+             for (int i = N - 1; i > 0; i--) {
+-                int j = rng.nextInt(i + 1);
++                int j = RandomUtil.getInstance().nextInt(i + 1);
+                 int t = idx[i];
+                 idx[i] = idx[j];
+                 idx[j] = t;
+@@ -637,7 +632,7 @@ public double isIndependenceConditional(Node x, Node y, List<Node> z) {
+             p = pValueGammaConditional(RX, RY, stat, n);
+         } else {
+             p = permutationPValueConditional(
+-                    RX, RY, stat, n, getNumPermutations(), rng);
++                    RX, RY, stat, n, getNumPermutations());
+         }
+ 
+         if (verbose) {
+@@ -919,7 +914,7 @@ private double bandwidthGaussian(List<Integer> varRows) {
+         DMatrixRMaj X = buildX(varRows, true, null);
+ 
+         int m = TMath.min(n, 256);
+-        int[] idx = uniformSample(n, m, rng);
++        int[] idx = uniformSample(n, m);
+ 
+         List<Double> dists = new ArrayList<>(m * (m - 1) / 2);
+         for (int a = 0; a < m; a++) {
+@@ -1125,7 +1120,7 @@ private SimpleMatrix kernelMatrixXHalfZ(Node x, List<Node> z) {
+                 DMatrixRMaj X = buildX(cols, true, scales);
+ 
+                 int m = TMath.min(n, 256);
+-                int[] idx = uniformSample(n, m, rng);
++                int[] idx = uniformSample(n, m);
+                 List<Double> dists = new ArrayList<>(m * (m - 1) / 2);
+                 for (int a = 0; a < m; a++) {
+                     int ii = idx[a];
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/RoadmapTest.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/RoadmapTest.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/RoadmapTest.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/RoadmapTest.java
+@@ -304,7 +304,7 @@ private static MixOut shuffleWithLabels(DataSet concat, int[] labels, long seed)
+         int n = concat.getNumRows();
+         List<Integer> perm = new ArrayList<>(n);
+         for (int i = 0; i < n; i++) perm.add(i);
+-        Collections.shuffle(perm, new Random(seed));
++        Collections.shuffle(perm);
+         DataSet shuffled = concat.subsetRows(perm);
+         int[] y = new int[n];
+         for (int i = 0; i < n; i++) y[i] = labels[perm.get(i)];
+@@ -314,11 +314,11 @@ private static MixOut shuffleWithLabels(DataSet concat, int[] labels, long seed)
+         return out;
+     }
+ 
+-    private static @NotNull Graph copyWithFlippedDirections(Graph g, int flips, Random rnd) {
++    private static @NotNull Graph copyWithFlippedDirections(Graph g, int flips) {
+         Graph h = new EdgeListGraph(g);
+         List<Edge> dir = h.getEdges().stream().filter(Edge::isDirected).collect(Collectors.toList());
+         if (dir.isEmpty()) return h;
+-        Collections.shuffle(dir, rnd);
++        Collections.shuffle(dir);
+         int done = 0;
+         for (Edge e : dir) {
+             if (done >= flips) break;
+@@ -650,7 +650,7 @@ public void phase3_semisynthetic() {
+         // Now create two regimes by injecting controlled shifts on top of Drealâs covariance:
+         // (A) keep backbone; (B) flip edges & scale some parameters â simulate from shifted SEMs.
+         Graph gA = gBackbone.copy();
+-        Graph gB = copyWithFlippedDirections(gBackbone, flips, new Random(seed));
++        Graph gB = copyWithFlippedDirections(gBackbone, flips);
+         SemIm imA = new SemIm(new SemPm(gA), params);
+         SemIm imB = new SemIm(new SemPm(gB), params);
+         // Scale B
+@@ -782,7 +782,7 @@ private static Scenario topoFlip(String name, Kind kind, int p, int n1, int n2,
+             List<Node> vars = new ArrayList<>();
+             for (int i = 0; i < p; i++) vars.add(new ContinuousVariable("X" + i));
+             Graph gA = RandomGraph.randomGraph(vars, 0, 14, 100, 100, 100, false);
+-            Graph gB = copyWithFlippedDirections(gA, flips, new Random(seed));
++            Graph gB = copyWithFlippedDirections(gA, flips);
+             Parameters par = new Parameters();
+             setNoise(par, nf);
+             SemIm imA = new SemIm(new SemPm(gA), par);
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/TestCausalUnmixer.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/TestCausalUnmixer.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/TestCausalUnmixer.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/unmix/TestCausalUnmixer.java
+@@ -87,12 +87,11 @@ private static double comb2(int m) {
+      */
+     private static @NotNull TestCausalUnmixer.LabeledData getMixOutTopoDiff() {
+         int p = 12, n1 = 800, n2 = 800;
+-        long seed = 7;
+ 
+         List<Node> vars = new ArrayList<>();
+         for (int i = 0; i < p; i++) vars.add(new ContinuousVariable("X" + i));
+         Graph gA = RandomGraph.randomGraph(vars, 0, 14, 100, 100, 100, false);
+-        Graph gB = copyWithFlippedDirections(gA, 4, new Random(seed)); // flip ~4 edges
++        Graph gB = copyWithFlippedDirections(gA, 4); // flip ~4 edges
+ 
+         // Non-Gaussian errors (e.g., Laplace): SIMULATION_ERROR_TYPE = 3
+         Parameters params = new Parameters();
+@@ -110,17 +109,17 @@ private static double comb2(int m) {
+         Arrays.fill(labels, 0, n1, 0);
+         Arrays.fill(labels, n1, n1 + n2, 1);
+ 
+-        return shuffleWithLabels(concat, labels, seed);
++        return shuffleWithLabels(concat, labels);
+     }
+ 
+     /**
+      * Correctly copy g and flip a few directions while preserving skeleton.
+      */
+-    private static Graph copyWithFlippedDirections(Graph g, int flips, Random rnd) {
++    private static Graph copyWithFlippedDirections(Graph g, int flips) {
+         Graph h = new EdgeListGraph(g); // copy nodes + edges (or: new EdgeListGraph(g))
+         List<Edge> dir = h.getEdges().stream().filter(Edge::isDirected).collect(Collectors.toList());
+         if (dir.isEmpty()) return h;
+-        Collections.shuffle(dir, rnd);
++        Collections.shuffle(dir);
+         int done = 0;
+         for (Edge e : dir) {
+             if (done >= flips) break;
+@@ -309,11 +308,11 @@ private static GraphMetrics graphMetrics(Graph[] truth, List<Graph> found) {
+     }
+ 
+     // Shuffle helper identical to your earlier version
+-    private static LabeledData shuffleWithLabels(DataSet concat, int[] labels, long seed) {
++    private static LabeledData shuffleWithLabels(DataSet concat, int[] labels) {
+         int n = concat.getNumRows();
+         List<Integer> perm = new ArrayList<>(n);
+         for (int i = 0; i < n; i++) perm.add(i);
+-        Collections.shuffle(perm, new Random(seed));
++        Collections.shuffle(perm);
+         DataSet shuffled = concat.subsetRows(perm);
+         int[] y = new int[n];
+         for (int i = 0; i < n; i++) y[i] = labels[perm.get(i)];
+@@ -355,7 +354,6 @@ private static LabeledData shuffleWithLabels(DataSet concat, int[] labels, long
+     public void phase3_semisynthetic() {
+         // Use a backbone covariance from a single SEM sample, then inject shifts.
+         int p = 15, n1 = 900, n2 = 900, flips = 10;
+-        long seed = 33;
+ 
+         // Backbone DAG & sample (Laplace errors for heavier tails)
+         List<Node> vars = new ArrayList<>();
+@@ -371,7 +369,7 @@ public void phase3_semisynthetic() {
+ 
+         // Two regimes: (A) keep backbone; (B) flip edges & scale some parameters
+         Graph gA = gBackbone.copy();
+-        Graph gB = copyWithFlippedDirections(gBackbone, flips, new Random(seed));
++        Graph gB = copyWithFlippedDirections(gBackbone, flips);
+         SemIm imA = new SemIm(new SemPm(gA), params);
+         SemIm imB = new SemIm(new SemPm(gB), params);
+ 
+@@ -395,7 +393,7 @@ public void phase3_semisynthetic() {
+         Arrays.fill(lab, n1, n1 + n2, 1);
+ 
+         // Shuffle rows + labels together (local helper)
+-        LabeledData mixed = shuffleWithLabels(concat, lab, seed);
++        LabeledData mixed = shuffleWithLabels(concat, lab);
+ 
+         // === Run the causal unmixer (EM-based) ===
+         UnmixResult rEM = CausalUnmixer.getUnmixedResult(mixed.data, CausalUnmixer.defaults());
+diff --git a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/NonlinearityTests.java b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/NonlinearityTests.java
+--- a/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/NonlinearityTests.java
++++ b/tetrad-lib/src/main/java/edu/cmu/tetrad/search/utils/NonlinearityTests.java
+@@ -1,5 +1,6 @@
+ package edu.cmu.tetrad.search.utils;
+ 
++import edu.cmu.tetrad.util.RandomUtil;
+ import org.apache.commons.math3.distribution.ChiSquaredDistribution;
+ import org.apache.commons.math3.distribution.FDistribution;
+ import org.apache.commons.math3.distribution.TDistribution;
+@@ -14,7 +15,6 @@
+ import org.ejml.interfaces.linsol.LinearSolverDense;
+ 
+ import java.util.Arrays;
+-import java.util.Random;
+ 
+ /**
+  * Practical nonlinearity tests for conditional mean E(Y|X).
+@@ -474,9 +474,8 @@ private static double[] predict(double[][] X, double[] beta) {
+     private static int[] shuffledIndices(int n, long seed) {
+         int[] idx = new int[n];
+         for (int i = 0; i < n; i++) idx[i] = i;
+-        Random r = new Random(seed);
+         for (int i = n - 1; i > 0; i--) {
+-            int j = r.nextInt(i + 1);
++            int j = RandomUtil.getInstance().nextInt(i + 1);
+             int t = idx[i];
+             idx[i] = idx[j];
+             idx[j] = t;
+@@ -564,14 +563,13 @@ private static double[][] rffCosSin(double[][] X, int m, double sigma, long seed
+         int mf = TMath.max(1, m / 2);
+         int outM = 2 * mf;
+ 
+-        Random rng = new Random(seed);
+         double[][] W = new double[mf][d];
+         double[] b = new double[mf];
+ 
+         double wStd = 1.0 / sigma;
+         for (int i = 0; i < mf; i++) {
+-            for (int j = 0; j < d; j++) W[i][j] = rng.nextGaussian() * wStd;
+-            b[i] = rng.nextDouble() * 2.0 * TMath.PI;
++            for (int j = 0; j < d; j++) W[i][j] = RandomUtil.getInstance().nextGaussian(0, 1) * wStd;
++            b[i] = RandomUtil.getInstance().nextDouble() * 2.0 * TMath.PI;
+         }
+ 
+         double scale = TMath.sqrt(2.0 / outM);
+@@ -708,7 +706,7 @@ public static TestResult cvAdditiveVsRff(double[] y, double[][] X, int kfold, do
+         // ---- make folds ----
+         int[] perm = new int[n];
+         for (int i = 0; i < n; i++) perm[i] = i;
+-        shuffleInPlace(perm, new Random(seed));
++        shuffleInPlace(perm);
+ 
+         int[] foldId = new int[n];
+         for (int i = 0; i < n; i++) foldId[perm[i]] = i % folds;
+@@ -761,8 +759,7 @@ public static TestResult cvAdditiveVsRff(double[] y, double[][] X, int kfold, do
+             double sigma = medianPairwiseDistanceND(XTr, TMath.min(400, XTr.length));
+             if (!(sigma > 0) || !Double.isFinite(sigma)) sigma = 1.0;
+ 
+-            Random rng = new Random(mix64(seed ^ (long) f));
+-            RffMap rff = new RffMap(d, rffFeatures, sigma, rng, useCosSinPairs);
++            RffMap rff = new RffMap(d, rffFeatures, sigma, useCosSinPairs);
+ 
+             DMatrixRMaj PhiTr = rff.transform(XTr);
+             DMatrixRMaj PhiTe = rff.transform(XTe);
+@@ -977,9 +974,9 @@ private static double erfApprox(double x) {
+         return sign * y;
+     }
+ 
+-    private static void shuffleInPlace(int[] a, Random rng) {
++    private static void shuffleInPlace(int[] a) {
+         for (int i = a.length - 1; i > 0; i--) {
+-            int j = rng.nextInt(i + 1);
++            int j = RandomUtil.getInstance().nextInt(i + 1);
+             int tmp = a[i]; a[i] = a[j]; a[j] = tmp;
+         }
+     }
+@@ -1103,7 +1100,7 @@ private static final class RffMap {
+         final boolean useCosSinPairs;
+         final double scale;
+ 
+-        RffMap(int d, int m, double sigma, Random rng, boolean useCosSinPairs) {
++        RffMap(int d, int m, double sigma, boolean useCosSinPairs) {
+             this.d = d;
+             this.useCosSinPairs = useCosSinPairs;
+ 
+@@ -1113,8 +1110,8 @@ private static final class RffMap {
+                 this.b = new double[outM];
+                 double wStd = 1.0 / sigma;
+                 for (int i = 0; i < outM; i++) {
+-                    for (int j = 0; j < d; j++) W[i][j] = rng.nextGaussian() * wStd;
+-                    b[i] = rng.nextDouble() * 2.0 * TMath.PI;
++                    for (int j = 0; j < d; j++) W[i][j] = RandomUtil.getInstance().nextGaussian(0, 1) * wStd;
++                    b[i] = RandomUtil.getInstance().nextDouble() * 2.0 * TMath.PI;
+                 }
+                 this.scale = TMath.sqrt(2.0 / outM);
+             } else {
+@@ -1124,8 +1121,8 @@ private static final class RffMap {
+                 this.b = new double[mf];
+                 double wStd = 1.0 / sigma;
+                 for (int i = 0; i < mf; i++) {
+-                    for (int j = 0; j < d; j++) W[i][j] = rng.nextGaussian() * wStd;
+-                    b[i] = rng.nextDouble() * 2.0 * TMath.PI;
++                    for (int j = 0; j < d; j++) W[i][j] = RandomUtil.getInstance().nextGaussian(0, 1) * wStd;
++                    b[i] = RandomUtil.getInstance().nextDouble() * 2.0 * TMath.PI;
+                 }
+                 this.scale = TMath.sqrt(2.0 / outM);
+             }

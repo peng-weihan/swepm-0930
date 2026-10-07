@@ -1,0 +1,1151 @@
+diff --git a/tests/test_async_subagent_factory.py b/tests/test_async_subagent_factory.py
+index 9d35bd8..f8e0c3c 100644
+--- a/tests/test_async_subagent_factory.py
++++ b/tests/test_async_subagent_factory.py
+@@ -12,6 +12,7 @@ from __future__ import annotations
+ from unittest.mock import MagicMock, patch
+ 
+ from EvoScientist.config import MemoryObservationWriter
++from EvoScientist.memory import MemorySourceType
+ 
+ 
+ def _single_middleware(subagent: dict, class_name: str):
+@@ -21,8 +22,6 @@ def _single_middleware(subagent: dict, class_name: str):
+ 
+ 
+ def _assert_subagent_memory_middleware(subagent: dict, *, source_agent: str) -> None:
+-    from EvoScientist.middleware.memory_lifecycle import MemoryLifecycleRole
+-
+     memory_middleware = _single_middleware(subagent, "EvoMemoryMiddleware")
+     lifecycle_middleware = _single_middleware(
+         subagent,
+@@ -34,7 +33,7 @@ def _assert_subagent_memory_middleware(subagent: dict, *, source_agent: str) ->
+         "read_memory",
+         "record_observation",
+     ]
+-    assert lifecycle_middleware._role == MemoryLifecycleRole.SUBAGENT
++    assert lifecycle_middleware._source_type == MemorySourceType.SUBAGENT
+     assert lifecycle_middleware._source_agent == source_agent
+     assert lifecycle_middleware._project_id == memory_middleware.project_id
+ 
+@@ -164,7 +163,6 @@ def test_inject_subagent_worker_only_observation_writer_keeps_live_tool_off(
+     mock_config.return_value = cfg
+ 
+     from EvoScientist.EvoScientist import _inject_subagent_middleware
+-    from EvoScientist.middleware.memory_lifecycle import MemoryLifecycleRole
+ 
+     workspace = tmp_path / "workspace"
+     workspace.mkdir()
+@@ -181,7 +179,7 @@ def test_inject_subagent_worker_only_observation_writer_keeps_live_tool_off(
+         "search_observations",
+         "read_memory",
+     ]
+-    assert lifecycle_middleware._role == MemoryLifecycleRole.SUBAGENT
++    assert lifecycle_middleware._source_type == MemorySourceType.SUBAGENT
+ 
+ 
+ @patch(
+@@ -222,7 +220,7 @@ def test_all_observation_writer_schedules_turn_worker_without_profile_memory(
+     lifecycle_middleware = next(
+         m for m in middleware if type(m).__name__ == "EvoMemoryLifecycleMiddleware"
+     )
+-    assert lifecycle_middleware._role.value == "turn"
++    assert lifecycle_middleware._source_type == MemorySourceType.TURN
+ 
+ 
+ # ---------------------------------------------------------------------------
+diff --git a/tests/test_backends.py b/tests/test_backends.py
+index 4460ec2..5d7fee2 100644
+--- a/tests/test_backends.py
++++ b/tests/test_backends.py
+@@ -10,6 +10,7 @@ import pytest
+ from EvoScientist import backends, paths
+ from EvoScientist.backends import (
+     CustomSandboxBackend,
++    MemoryFilesystemBackend,
+     MergedSkillsBackend,
+     convert_virtual_paths_in_command,
+     prepare_sandbox_command,
+@@ -804,6 +805,93 @@ class TestVirtualMountResolution:
+         assert "global-tier-fix-works" in resp.output
+ 
+ 
++# === MemoryFilesystemBackend ===
++
++
++class TestMemoryFilesystemBackend:
++    def test_blocks_raw_file_creation(self, tmp_path):
++        backend = MemoryFilesystemBackend(root_dir=str(tmp_path), virtual_mode=True)
++
++        result = backend.write("/observations/projects/P-1/O-1.md", "content")
++
++        assert result.error is not None
++        assert "Raw writes to /memories are blocked" in result.error
++        assert not (tmp_path / "observations" / "projects" / "P-1" / "O-1.md").exists()
++
++    def test_allows_existing_profile_edits(self, tmp_path):
++        profile = tmp_path / "profile" / "USER_PROFILE.md"
++        profile.parent.mkdir()
++        profile.write_text("old preference\n", encoding="utf-8")
++        backend = MemoryFilesystemBackend(root_dir=str(tmp_path), virtual_mode=True)
++
++        result = backend.edit(
++            "/profile/USER_PROFILE.md",
++            "old preference",
++            "new preference",
++        )
++
++        assert result.error is None
++        assert result.occurrences == 1
++        assert profile.read_text(encoding="utf-8") == "new preference\n"
++
++    def test_blocks_observation_file_edits(self, tmp_path):
++        observation = tmp_path / "observations" / "projects" / "P-1" / "O-1.md"
++        observation.parent.mkdir(parents=True)
++        observation.write_text("old fact\n", encoding="utf-8")
++        backend = MemoryFilesystemBackend(root_dir=str(tmp_path), virtual_mode=True)
++
++        result = backend.edit(
++            "/observations/projects/P-1/O-1.md",
++            "old fact",
++            "new fact",
++        )
++
++        assert result.error is not None
++        assert "Raw edits under /memories are limited" in result.error
++        assert observation.read_text(encoding="utf-8") == "old fact\n"
++
++    def test_blocks_uploads(self, tmp_path):
++        backend = MemoryFilesystemBackend(root_dir=str(tmp_path), virtual_mode=True)
++
++        responses = backend.upload_files(
++            [
++                ("/profile/NEW.md", b"profile"),
++                ("/observations/projects/P-1/O-1.md", b"observation"),
++            ]
++        )
++
++        assert [response.error for response in responses] == [
++            backend._RAW_WRITE_ERROR,
++            backend._RAW_WRITE_ERROR,
++        ]
++        assert not (tmp_path / "profile" / "NEW.md").exists()
++        assert not (tmp_path / "observations" / "projects" / "P-1" / "O-1.md").exists()
++
++    def test_build_memory_agent_backend_routes_guarded_memories(self, tmp_path):
++        workspace = tmp_path / "workspace"
++        memories = tmp_path / "memories"
++        workspace.mkdir()
++        memories.mkdir()
++        (workspace / "README.md").write_text("workspace text", encoding="utf-8")
++
++        backend = backends.build_memory_agent_backend(
++            workspace_dir=workspace,
++            memory_dir=memories,
++        )
++
++        read_result = backend.read("/README.md")
++        text = (
++            read_result
++            if isinstance(read_result, str)
++            else getattr(read_result, "content", str(read_result))
++        )
++        blocked_write = backend.write("/memories/observations/global/O-1.md", "raw")
++
++        assert "workspace text" in text
++        assert blocked_write.error == MemoryFilesystemBackend._RAW_WRITE_ERROR
++        assert not (memories / "observations" / "global" / "O-1.md").exists()
++
++
+ # === CustomSandboxBackend._resolve_path ===
+ 
+ 
+diff --git a/tests/test_gateway_background_runs.py b/tests/test_gateway_background_runs.py
+new file mode 100644
+index 0000000..27ff1a0
+--- /dev/null
++++ b/tests/test_gateway_background_runs.py
+@@ -0,0 +1,344 @@
++from __future__ import annotations
++
++import asyncio
++from types import SimpleNamespace
++from unittest.mock import MagicMock
++
++import pytest
++
++import EvoScientist.gateway.background_runs as background_runs
++
++
++def _run_payload(thread_id: str) -> background_runs.BackgroundRunPayload:
++    return {
++        "assistant_id": "graph-1",
++        "input": {"messages": []},
++        "metadata": {"run_kind": "test"},
++        "config": {"configurable": {"thread_id": thread_id}},
++    }
++
++
++def _request(
++    *,
++    run_payload=_run_payload,
++    thread_metadata: dict[str, str] | None = None,
++) -> background_runs.BackgroundRunRequest:
++    return background_runs.BackgroundRunRequest(
++        graph_id="graph-1",
++        run_payload=run_payload,
++        thread_metadata=thread_metadata,
++        url="http://x",
++        name="test worker",
++    )
++
++
++def _install_sync_launcher(
++    monkeypatch,
++    *,
++    run_create_result: object | None = None,
++    run_create_error: Exception | None = None,
++) -> MagicMock:
++    monkeypatch.setattr(
++        "EvoScientist.langgraph_dev.manager.is_langgraph_dev_running",
++        lambda **_kwargs: True,
++    )
++    fake_client = MagicMock()
++    fake_client.threads.create.return_value = {"thread_id": "thread-1"}
++    if run_create_error is not None:
++        fake_client.runs.create.side_effect = run_create_error
++    else:
++        fake_client.runs.create.return_value = run_create_result or {
++            "run_id": "run-1",
++            "status": "pending",
++        }
++    monkeypatch.setattr("langgraph_sdk.get_sync_client", lambda **_kwargs: fake_client)
++    return fake_client
++
++
++def _install_sync_watcher(monkeypatch, *, status: str | Exception, deleted: list[str]):
++    class _Runs:
++        def get(self, **_kwargs):
++            if isinstance(status, Exception):
++                raise status
++            return {"status": status}
++
++    class _Threads:
++        def delete(self, thread_id: str):
++            deleted.append(thread_id)
++
++    monkeypatch.setattr(
++        "langgraph_sdk.get_sync_client",
++        lambda **_kwargs: SimpleNamespace(runs=_Runs(), threads=_Threads()),
++    )
++
++
++def _watch_sync(
++    *,
++    hooks: background_runs.BackgroundRunHooks,
++    max_poll_failures: int = 3,
++) -> None:
++    background_runs.watch_background_run_sync(
++        url="http://x",
++        thread_id="thread-1",
++        run_id="run-1",
++        name="test worker",
++        hooks=hooks,
++        watcher_config=background_runs.BackgroundRunWatcherConfig(
++            poll_interval_seconds=0,
++            max_poll_failures=max_poll_failures,
++        ),
++    )
++
++
++def test_launch_background_run_submits_run_and_invokes_hooks(monkeypatch):
++    fake_client = _install_sync_launcher(
++        monkeypatch,
++        run_create_result={
++            "run_id": "run-1",
++            "status": "pending",
++        },
++    )
++
++    payload_calls: list[str] = []
++    before_calls: list[str] = []
++    started: list[background_runs.BackgroundRun] = []
++    watchers: list[background_runs.BackgroundRun] = []
++
++    def build_payload(thread_id: str) -> background_runs.BackgroundRunPayload:
++        payload_calls.append(thread_id)
++        return {
++            "assistant_id": "graph-1",
++            "input": {"messages": [{"role": "user", "content": "go"}]},
++            "metadata": {"run_kind": "test"},
++            "config": {"configurable": {"thread_id": thread_id}},
++        }
++
++    handle = background_runs.launch_background_run(
++        _request(
++            run_payload=build_payload,
++            thread_metadata={"thread_kind": "test"},
++        ),
++        hooks=background_runs.BackgroundRunHooks(
++            on_before_run=before_calls.append,
++            on_started=started.append,
++        ),
++        spawn_status_watcher=watchers.append,
++    )
++
++    assert handle is not None
++    assert handle.thread_id == "thread-1"
++    assert handle.run_id == "run-1"
++    assert payload_calls == ["thread-1"]
++    assert before_calls == ["thread-1"]
++    assert started == [handle]
++    assert watchers == [handle]
++    fake_client.threads.create.assert_called_once_with(
++        graph_id="graph-1",
++        metadata={"thread_kind": "test"},
++    )
++    fake_client.runs.create.assert_called_once_with(
++        thread_id="thread-1",
++        assistant_id="graph-1",
++        input={"messages": [{"role": "user", "content": "go"}]},
++        metadata={"run_kind": "test"},
++        config={"configurable": {"thread_id": "thread-1"}},
++    )
++
++
++def test_launch_background_run_routes_watcher_start_failure_to_hook(monkeypatch):
++    _install_sync_launcher(monkeypatch)
++    watcher_failures: list[background_runs.BackgroundRun] = []
++    aborted: list[background_runs.BackgroundRun] = []
++
++    def fail_to_start_watcher(_run: background_runs.BackgroundRun) -> None:
++        raise RuntimeError("watcher failed")
++
++    handle = background_runs.launch_background_run(
++        _request(),
++        hooks=background_runs.BackgroundRunHooks(
++            on_watcher_start_failed=watcher_failures.append,
++            on_aborted=aborted.append,
++        ),
++        spawn_status_watcher=fail_to_start_watcher,
++    )
++
++    assert handle is not None
++    assert watcher_failures == [handle]
++    assert aborted == []
++
++
++def test_launch_background_run_deletes_thread_when_run_creation_fails(monkeypatch):
++    fake_client = _install_sync_launcher(
++        monkeypatch,
++        run_create_error=RuntimeError("run creation failed"),
++    )
++
++    with pytest.raises(RuntimeError, match="run creation failed"):
++        background_runs.launch_background_run(_request())
++
++    fake_client.threads.delete.assert_called_once_with("thread-1")
++
++
++def test_async_launch_background_run_deletes_thread_when_run_creation_fails(
++    monkeypatch,
++):
++    monkeypatch.setattr(
++        "EvoScientist.langgraph_dev.manager.is_langgraph_dev_running",
++        lambda **_kwargs: True,
++    )
++    deleted: list[str] = []
++
++    class _Threads:
++        async def create(self, **_kwargs):
++            return {"thread_id": "thread-1"}
++
++        async def delete(self, thread_id: str):
++            deleted.append(thread_id)
++
++    class _Runs:
++        async def create(self, **_kwargs):
++            raise RuntimeError("run creation failed")
++
++    monkeypatch.setattr(
++        "langgraph_sdk.get_client",
++        lambda **_kwargs: SimpleNamespace(threads=_Threads(), runs=_Runs()),
++    )
++
++    async def run() -> None:
++        with pytest.raises(RuntimeError, match="run creation failed"):
++            await background_runs.alaunch_background_run(_request())
++
++    asyncio.run(run())
++
++    assert deleted == ["thread-1"]
++
++
++@pytest.mark.parametrize(
++    ("status", "expected_finished", "expected_aborted"),
++    [
++        ("success", ["run-1"], []),
++        ("error", [], ["run-1"]),
++    ],
++)
++def test_sync_status_watcher_handles_terminal_statuses(
++    monkeypatch,
++    status: str,
++    expected_finished: list[str],
++    expected_aborted: list[str],
++):
++    finished: list[background_runs.BackgroundRun] = []
++    aborted: list[background_runs.BackgroundRun] = []
++    deleted: list[str] = []
++    _install_sync_watcher(monkeypatch, status=status, deleted=deleted)
++
++    _watch_sync(
++        hooks=background_runs.BackgroundRunHooks(
++            on_finished=finished.append,
++            on_aborted=aborted.append,
++        ),
++    )
++
++    assert [run.run_id for run in finished] == expected_finished
++    assert [run.run_id for run in aborted] == expected_aborted
++    assert deleted == ["thread-1"]
++
++
++@pytest.mark.parametrize(
++    ("use_status_unknown", "expected_unknown", "expected_aborted"),
++    [
++        (False, [], ["run-1"]),
++        (True, ["run-1"], []),
++    ],
++)
++def test_sync_status_watcher_preserves_thread_on_poll_failure(
++    monkeypatch,
++    use_status_unknown: bool,
++    expected_unknown: list[str],
++    expected_aborted: list[str],
++):
++    status_unknown: list[background_runs.BackgroundRun] = []
++    aborted: list[background_runs.BackgroundRun] = []
++    deleted: list[str] = []
++    _install_sync_watcher(
++        monkeypatch,
++        status=RuntimeError("poll failed"),
++        deleted=deleted,
++    )
++
++    _watch_sync(
++        hooks=background_runs.BackgroundRunHooks(
++            on_status_unknown=status_unknown.append if use_status_unknown else None,
++            on_aborted=aborted.append,
++        ),
++        max_poll_failures=1,
++    )
++
++    assert [run.run_id for run in status_unknown] == expected_unknown
++    assert [run.run_id for run in aborted] == expected_aborted
++    assert deleted == []
++
++
++def test_async_status_watcher_aborts_and_deletes_thread_on_error_status():
++    finished: list[background_runs.BackgroundRun] = []
++    aborted: list[background_runs.BackgroundRun] = []
++    deleted: list[str] = []
++
++    class _Runs:
++        async def get(self, **_kwargs):
++            return {"status": "error"}
++
++    class _Threads:
++        async def delete(self, thread_id: str):
++            deleted.append(thread_id)
++
++    async def run() -> None:
++        await background_runs.awatch_background_run(
++            SimpleNamespace(runs=_Runs(), threads=_Threads()),
++            thread_id="thread-1",
++            run_id="run-1",
++            name="test worker",
++            hooks=background_runs.BackgroundRunHooks(
++                on_finished=finished.append,
++                on_aborted=aborted.append,
++            ),
++            watcher_config=background_runs.BackgroundRunWatcherConfig(
++                poll_interval_seconds=0,
++            ),
++        )
++
++    asyncio.run(run())
++
++    assert finished == []
++    assert [run.run_id for run in aborted] == ["run-1"]
++    assert deleted == ["thread-1"]
++
++
++def test_async_status_watcher_preserves_run_url():
++    finished: list[background_runs.BackgroundRun] = []
++
++    class _Runs:
++        async def get(self, **_kwargs):
++            return {"status": "success"}
++
++    class _Threads:
++        async def delete(self, _thread_id: str):
++            return None
++
++    async def run() -> None:
++        await background_runs.awatch_background_run(
++            SimpleNamespace(runs=_Runs(), threads=_Threads()),
++            url="http://worker.example",
++            thread_id="thread-1",
++            run_id="run-1",
++            name="test worker",
++            hooks=background_runs.BackgroundRunHooks(
++                on_finished=finished.append,
++            ),
++            watcher_config=background_runs.BackgroundRunWatcherConfig(
++                poll_interval_seconds=0,
++            ),
++        )
++
++    asyncio.run(run())
++
++    assert [run.url for run in finished] == ["http://worker.example"]
+diff --git a/tests/test_graph_gateway.py b/tests/test_graph_gateway.py
+index 7fc9055..a773a48 100644
+--- a/tests/test_graph_gateway.py
++++ b/tests/test_graph_gateway.py
+@@ -314,12 +314,8 @@ def test_langgraph_server_thread_store_delegates_to_sdk_threads():
+     )
+     client = FakeLangGraphClient(threads)
+ 
+-    def _client_factory(_base_url, _headers):
+-        return client
+-
+     store = LangGraphServerThreadStore(
+-        base_url="http://localhost:2024",
+-        client_factory=_client_factory,
++        client=client,
+     )
+ 
+     async def _run():
+@@ -393,8 +389,7 @@ def test_langgraph_server_thread_store_limit_zero_pages_all_threads():
+     ]
+     threads = FakeLangGraphThreadsClient(threads=rows)
+     store = LangGraphServerThreadStore(
+-        base_url="http://localhost:2024",
+-        client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++        client=FakeLangGraphClient(threads),
+     )
+ 
+     result = run_async(store.list_threads(limit=0))
+@@ -419,8 +414,7 @@ def test_langgraph_server_thread_store_positive_limit_uses_single_search():
+         ]
+     )
+     store = LangGraphServerThreadStore(
+-        base_url="http://localhost:2024",
+-        client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++        client=FakeLangGraphClient(threads),
+     )
+ 
+     result = run_async(store.list_threads(limit=2))
+@@ -441,8 +435,7 @@ def test_langgraph_server_thread_store_prefix_resolution_skips_exact_lookup():
+         ]
+     )
+     store = LangGraphServerThreadStore(
+-        base_url="http://localhost:2024",
+-        client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++        client=FakeLangGraphClient(threads),
+     )
+ 
+     result = run_async(store.resolve_thread_id_prefix("abc"))
+@@ -468,8 +461,7 @@ def test_langgraph_server_thread_store_prefix_resolution_pages_all_threads():
+     )
+     threads = FakeLangGraphThreadsClient(threads=rows)
+     store = LangGraphServerThreadStore(
+-        base_url="http://localhost:2024",
+-        client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++        client=FakeLangGraphClient(threads),
+     )
+ 
+     result = run_async(store.resolve_thread_id_prefix("older-thread"))
+@@ -492,8 +484,7 @@ def test_langgraph_server_thread_store_uuid_resolution_uses_exact_lookup():
+         ]
+     )
+     store = LangGraphServerThreadStore(
+-        base_url="http://localhost:2024",
+-        client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++        client=FakeLangGraphClient(threads),
+     )
+ 
+     result = run_async(store.resolve_thread_id_prefix(thread_id))
+@@ -514,8 +505,7 @@ def test_langgraph_server_thread_store_uuid_resolution_filters_graph_id():
+         ]
+     )
+     store = LangGraphServerThreadStore(
+-        base_url="http://localhost:2024",
+-        client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++        client=FakeLangGraphClient(threads),
+     )
+ 
+     result = run_async(store.resolve_thread_id_prefix(thread_id))
+@@ -541,8 +531,7 @@ def test_langgraph_server_thread_store_clones_thread_with_metadata():
+         ]
+     )
+     store = LangGraphServerThreadStore(
+-        base_url="http://localhost:2024",
+-        client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++        client=FakeLangGraphClient(threads),
+     )
+ 
+     cloned_thread_id = run_async(
+@@ -569,8 +558,7 @@ def test_langgraph_server_thread_store_rejects_copy_without_thread_id():
+         copy_response=None,
+     )
+     store = LangGraphServerThreadStore(
+-        base_url="http://localhost:2024",
+-        client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++        client=FakeLangGraphClient(threads),
+     )
+ 
+     async def _run():
+@@ -586,8 +574,7 @@ def test_langgraph_server_gateway_clones_thread():
+     )
+     gateway = LangGraphServerGateway(
+         LangGraphServerThreadStore(
+-            base_url="http://localhost:2024",
+-            client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++            client=FakeLangGraphClient(threads),
+         )
+     )
+ 
+@@ -617,13 +604,9 @@ def test_runtime_gateways_can_use_langgraph_server_backend():
+     threads = FakeLangGraphThreadsClient()
+     client = FakeLangGraphClient(threads)
+ 
+-    def _client_factory(_base_url, _headers):
+-        return client
+-
+     runtime_gateways = create_runtime_gateways(
+         backend="langgraph_server",
+-        base_url="http://localhost:2024",
+-        client_factory=_client_factory,
++        langgraph_client=client,
+     )
+ 
+     gateway = runtime_gateways.graph_gateway
+@@ -640,8 +623,7 @@ def test_langgraph_server_gateway_reads_state_values():
+     )
+     gateway = LangGraphServerGateway(
+         LangGraphServerThreadStore(
+-            base_url="http://localhost:2024",
+-            client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++            client=FakeLangGraphClient(threads),
+         )
+     )
+ 
+@@ -672,8 +654,7 @@ def test_langgraph_server_gateway_messages_apply_summarization_event():
+     )
+     gateway = LangGraphServerGateway(
+         LangGraphServerThreadStore(
+-            base_url="http://localhost:2024",
+-            client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++            client=FakeLangGraphClient(threads),
+         )
+     )
+ 
+@@ -692,8 +673,7 @@ def test_langgraph_server_gateway_updates_state_values():
+     )
+     gateway = LangGraphServerGateway(
+         LangGraphServerThreadStore(
+-            base_url="http://localhost:2024",
+-            client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++            client=FakeLangGraphClient(threads),
+         )
+     )
+ 
+@@ -740,8 +720,7 @@ def test_langgraph_server_gateway_streams_root_protocol_events():
+     )
+     gateway = LangGraphServerGateway(
+         LangGraphServerThreadStore(
+-            base_url="http://localhost:2024",
+-            client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++            client=FakeLangGraphClient(threads),
+         )
+     )
+ 
+@@ -841,8 +820,7 @@ def _collect_server_gateway_stream(
+     )
+     gateway = LangGraphServerGateway(
+         LangGraphServerThreadStore(
+-            base_url="http://localhost:2024",
+-            client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++            client=FakeLangGraphClient(threads),
+         )
+     )
+ 
+@@ -940,8 +918,7 @@ def test_langgraph_server_gateway_emits_state_interrupt_before_done():
+     )
+     gateway = LangGraphServerGateway(
+         LangGraphServerThreadStore(
+-            base_url="http://localhost:2024",
+-            client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++            client=FakeLangGraphClient(threads),
+         )
+     )
+ 
+@@ -1014,8 +991,7 @@ def test_langgraph_server_gateway_streams_subagent_protocol_events():
+     )
+     gateway = LangGraphServerGateway(
+         LangGraphServerThreadStore(
+-            base_url="http://localhost:2024",
+-            client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++            client=FakeLangGraphClient(threads),
+         )
+     )
+ 
+@@ -1067,8 +1043,7 @@ def test_langgraph_server_gateway_resumes_interrupt_with_thread_stream():
+     )
+     gateway = LangGraphServerGateway(
+         LangGraphServerThreadStore(
+-            base_url="http://localhost:2024",
+-            client_factory=lambda _base_url, _headers: FakeLangGraphClient(threads),
++            client=FakeLangGraphClient(threads),
+         )
+     )
+ 
+diff --git a/tests/test_profile_memory_middleware.py b/tests/test_profile_memory_middleware.py
+index 2179978..6101424 100644
+--- a/tests/test_profile_memory_middleware.py
++++ b/tests/test_profile_memory_middleware.py
+@@ -12,6 +12,8 @@ from EvoScientist.memory.observations import (
+     MemoryScope,
+     MemorySourceType,
+     MemoryType,
++    build_observation_index_context,
++    list_observation_documents,
+     record_observation_file,
+ )
+ 
+@@ -33,7 +35,7 @@ def _request():
+ 
+ 
+ def _path_project_id(workspace) -> str:
+-    return memory_module._resolve_project_id(workspace)
++    return memory_module.resolve_project_id(workspace)
+ 
+ 
+ def _profile_texts(memories):
+@@ -47,32 +49,22 @@ def _sorted_tool_names(middleware) -> list[str]:
+     return sorted(tool.name for tool in middleware.tools)
+ 
+ 
+-def test_profile_memory_bootstraps_and_injects_profile_files(tmp_path, monkeypatch):
++def test_profile_memory_bootstraps_profiles_without_observation_project_dirs(
++    tmp_path, monkeypatch
++):
+     memories = tmp_path / "memories"
+     workspace = tmp_path / "workspace"
+     workspace.mkdir()
+     monkeypatch.setattr(paths, "WORKSPACE_ROOT", workspace)
+ 
+     middleware = memory_module.create_memory_middleware(str(memories))
+-    modified = middleware.modify_request(_request())
+-    content = str(modified.system_message.content)
++    middleware.modify_request(_request())
+ 
+-    assert _sorted_tool_names(middleware) == [
+-        "read_memory",
+-        "record_observation",
+-        "search_observations",
+-    ]
+-    assert (memories / "profile" / "SOUL.md").exists()
+-    assert (memories / "profile" / "USER_PROFILE.md").exists()
+-    assert (memories / "profile" / "RESEARCH_TASTE.md").exists()
+-    assert list((memories / "profile" / "projects").glob("*/PROJECT_PROFILE.md"))
++    assert (
++        memories / "profile" / "projects" / middleware.project_id / "PROJECT_PROFILE.md"
++    ).exists()
+     assert (memories / "observations" / "global").is_dir()
+-    assert list((memories / "observations" / "projects").glob("P-*"))
+-    assert content.index("base system") < content.index("<memory_instructions>")
+-    assert content.index("<memory_instructions>") < content.index(
+-        "<observation_memory>"
+-    )
+-    assert content.index("<observation_memory>") < content.index("<profile_memory>")
++    assert not (memories / "observations" / "projects").exists()
+ 
+ 
+ def test_append_to_system_message_preserves_metadata():
+@@ -159,7 +151,6 @@ def test_observation_memory_can_be_read_only_without_profile(tmp_path, monkeypat
+     ]
+     assert not (memories / "profile").exists()
+     assert (memories / "observations" / "global").is_dir()
+-    assert list((memories / "observations" / "projects").glob("P-*"))
+     assert "<observation_memory>" in content
+     assert "search_observations" in content
+     assert "read_memory" in content
+@@ -215,8 +206,15 @@ def test_observation_index_refreshes_summary_frontmatter(tmp_path, monkeypatch):
+ 
+     middleware = memory_module.create_memory_middleware(str(memories))
+     indexed = {
+-        record.observation_id: (record.memory_type, record.scope, record.summary)
+-        for record in middleware._observation_index_records
++        document.observation_id: (
++            document.memory_type,
++            document.scope,
++            document.summary,
++        )
++        for document in list_observation_documents(
++            memory_dir=memories,
++            project_id=project_id,
++        )
+     }
+     later_result = record_observation_file(
+         memory_dir=memories,
+@@ -232,7 +230,11 @@ def test_observation_index_refreshes_summary_frontmatter(tmp_path, monkeypatch):
+     )
+     modified = middleware.modify_request(_request())
+     refreshed_ids = {
+-        record.observation_id for record in middleware._observation_index_records
++        document.observation_id
++        for document in list_observation_documents(
++            memory_dir=memories,
++            project_id=project_id,
++        )
+     }
+ 
+     assert indexed == {
+@@ -258,25 +260,71 @@ def test_observation_index_omits_summaries_when_budget_exceeded(tmp_path, monkey
+     workspace = tmp_path / "workspace"
+     workspace.mkdir()
+     monkeypatch.setattr(paths, "WORKSPACE_ROOT", workspace)
+-    middleware = memory_module.create_memory_middleware(str(memories))
+-    records = [
+-        memory_module.ObservationIndexRecord(
+-            observation_id="O-large",
+-            memory_path="/observations/global/O-large.md",
+-            memory_type=MemoryType.PROCEDURAL,
+-            scope=MemoryScope.GLOBAL,
+-            summary="Do not inline this summary when the index exceeds budget.",
+-        )
+-    ]
++    memory_module.create_memory_middleware(str(memories))
++    record_observation_file(
++        memory_dir=memories,
++        project_id=_path_project_id(workspace),
++        memory_type=MemoryType.PROCEDURAL,
++        summary="Do not inline this summary when the index exceeds budget.",
++        observation="A large-index observation exists.",
++        why_it_matters="Future prompts should fall back to search hints.",
++        scope=MemoryScope.GLOBAL,
++        source_type=MemorySourceType.SUBAGENT,
++        source_session_id="thread-1",
++        source_agent="research-agent",
++    )
+ 
+-    context = middleware._observation_index_context_from_records(
+-        records,
++    context = build_observation_index_context(
++        memory_dir=memories,
++        project_id=_path_project_id(workspace),
+         max_inline_chars=1,
+     )
+ 
+     assert "Do not inline this summary" not in context
+ 
+ 
++def test_observation_index_over_budget_keeps_entries_that_fit(tmp_path, monkeypatch):
++    memories = tmp_path / "memories"
++    workspace = tmp_path / "workspace"
++    workspace.mkdir()
++    monkeypatch.setattr(paths, "WORKSPACE_ROOT", workspace)
++    project_id = _path_project_id(workspace)
++    record_observation_file(
++        memory_dir=memories,
++        project_id=project_id,
++        memory_type=MemoryType.PROCEDURAL,
++        summary="First over-budget observation " + ("x" * 320),
++        observation="First large-index observation.",
++        why_it_matters="Index truncation should retain entries when possible.",
++        scope=MemoryScope.GLOBAL,
++        source_type=MemorySourceType.SUBAGENT,
++        source_session_id="thread-1",
++        source_agent="research-agent",
++    )
++    record_observation_file(
++        memory_dir=memories,
++        project_id=project_id,
++        memory_type=MemoryType.PROCEDURAL,
++        summary="Second over-budget observation " + ("y" * 320),
++        observation="Second large-index observation.",
++        why_it_matters="Index truncation should retain entries when possible.",
++        scope=MemoryScope.GLOBAL,
++        source_type=MemorySourceType.SUBAGENT,
++        source_session_id="thread-2",
++        source_agent="research-agent",
++    )
++
++    context = build_observation_index_context(
++        memory_dir=memories,
++        project_id=project_id,
++        max_inline_chars=1_350,
++    )
++
++    assert "Observation index truncated to entries that fit." in context
++    assert len(context) <= 1_350
++    assert "over-budget observation" in context
++
++
+ def test_profile_memory_uses_path_pointers_when_profiles_exceed_budget(
+     tmp_path, monkeypatch
+ ):
+@@ -494,11 +542,11 @@ def test_profile_memory_resolves_project_id_once_per_middleware(
+     workspace.mkdir()
+     calls = []
+ 
+-    def _resolve_project_id(workspace_dir):
++    def resolve_project_id(workspace_dir):
+         calls.append(workspace_dir)
+         return "P-cached-project"
+ 
+-    monkeypatch.setattr(memory_module, "_resolve_project_id", _resolve_project_id)
++    monkeypatch.setattr(memory_module, "resolve_project_id", resolve_project_id)
+ 
+     middleware = memory_module.create_memory_middleware(
+         str(memories), workspace_dir=str(workspace), max_inline_profile_chars=10
+diff --git a/tests/test_status_bar.py b/tests/test_status_bar.py
+index 405b142..271afb1 100644
+--- a/tests/test_status_bar.py
++++ b/tests/test_status_bar.py
+@@ -4,9 +4,9 @@ from __future__ import annotations
+ 
+ import asyncio
+ from datetime import datetime, timedelta
+-from types import SimpleNamespace
+ from typing import ClassVar
+ 
++import pytest
+ from langchain_core.messages import HumanMessage
+ 
+ from EvoScientist.cli.status_bar import (
+@@ -21,6 +21,7 @@ from EvoScientist.cli.status_bar import (
+     status_style_name,
+     trim_status_text,
+ )
++from EvoScientist.memory import worker_activity
+ from tests.fakes import FakeGraphGateway, FakeThreadStore
+ 
+ 
+@@ -28,6 +29,23 @@ def _render_fragments(fragments: list[tuple[str, str]]) -> str:
+     return "".join(text for _, text in fragments)
+ 
+ 
++@pytest.fixture
++def reset_memory_activity():
++    worker_activity.reset_memory_worker_status_for_tests()
++    yield
++    worker_activity.reset_memory_worker_status_for_tests()
++
++
++def _default_snapshot() -> SessionStatusSnapshot:
++    return SessionStatusSnapshot(
++        model_full="openai/gpt-6",
++        model_short="gpt-6",
++        context_tokens=12_345,
++        context_window=128_000,
++        context_percent=10,
++    )
++
++
+ def test_build_status_fragments_wide_layout():
+     snapshot = SessionStatusSnapshot(
+         model_full="openai/gpt-5.4",
+@@ -52,83 +70,100 @@ def test_build_status_fragments_wide_layout():
+     assert "3m" in rendered
+ 
+ 
+-def test_build_status_fragments_shows_memory_worker_indicator(monkeypatch):
+-    monkeypatch.setattr(
+-        "EvoScientist.cli.status_bar.get_memory_worker_status",
+-        lambda: SimpleNamespace(
+-            is_running=False,
+-            profile_updates=4,
+-            observations_recorded=5,
+-        ),
+-    )
+-    snapshot = SessionStatusSnapshot(
+-        model_full="openai/gpt-6",
+-        model_short="gpt-6",
+-        context_tokens=12_345,
+-        context_window=128_000,
+-        context_percent=10,
++def test_build_status_fragments_shows_saved_memory_counts(
++    tmp_path,
++    reset_memory_activity,
++):
++    memory_dir = tmp_path / "memories"
++    before = worker_activity.snapshot_memory_outputs(memory_dir)
++    worker_activity.mark_memory_worker_started(
++        thread_id="thread-1",
++        run_id="run-1",
++        memory_dir=memory_dir,
++        before_outputs=before,
+     )
++    profile = memory_dir / "profile" / "USER_PROFILE.md"
++    profile.parent.mkdir(parents=True)
++    profile.write_text("# User profile\n\n- remembered\n", encoding="utf-8")
++    observation = memory_dir / "observations" / "global" / "O-1.md"
++    observation.parent.mkdir(parents=True)
++    observation.write_text("# Observation\n", encoding="utf-8")
++    worker_activity.mark_memory_worker_finished("thread-1", "run-1")
+ 
+-    fragments = build_status_fragments(
+-        snapshot,
+-        datetime.now() - timedelta(minutes=3),
+-        100,
++    rendered = _render_fragments(
++        build_status_fragments(
++            _default_snapshot(),
++            datetime.now() - timedelta(minutes=3),
++            100,
++        )
+     )
+ 
+-    assert any(
+-        style == "class:status-bar-warn" and text.strip() for style, text in fragments
+-    )
++    assert "Saved 1 profile edit, 1 observation" in rendered
+ 
+ 
+ def test_build_status_fragments_shows_memory_worker_indicator_when_running(
+-    monkeypatch,
++    tmp_path,
++    reset_memory_activity,
+ ):
+-    monkeypatch.setattr(
+-        "EvoScientist.cli.status_bar.get_memory_worker_status",
+-        lambda: SimpleNamespace(
+-            is_running=True,
+-            profile_updates=0,
+-            observations_recorded=0,
+-        ),
++    worker_activity.mark_memory_worker_started(
++        thread_id="thread-1",
++        run_id="run-1",
++        memory_dir=tmp_path / "memories",
+     )
+-    snapshot = SessionStatusSnapshot(
+-        model_full="openai/gpt-6",
+-        model_short="gpt-6",
+-        context_tokens=12_345,
+-        context_window=128_000,
+-        context_percent=10,
++
++    rendered = _render_fragments(
++        build_status_fragments(
++            _default_snapshot(),
++            datetime.now() - timedelta(minutes=3),
++            100,
++        )
+     )
+ 
+-    fragments = build_status_fragments(
+-        snapshot,
+-        datetime.now() - timedelta(minutes=3),
+-        100,
++    assert "🧠" in rendered
++
++
++def test_build_status_fragments_shows_observation_linker_indicator_when_running(
++    reset_memory_activity,
++):
++    worker_activity.mark_observation_linker_started(
++        thread_id="thread-1",
++        run_id="run-1",
+     )
+ 
+-    assert any(
+-        style == "class:status-bar-warn" and text.strip() for style, text in fragments
++    rendered = _render_fragments(
++        build_status_fragments(
++            _default_snapshot(),
++            datetime.now() - timedelta(minutes=3),
++            100,
++        )
+     )
+ 
++    assert "🔗" in rendered
++    assert "🧠" not in rendered
+ 
+-def test_build_status_fragments_hides_memory_indicator_when_idle(monkeypatch):
+-    monkeypatch.setattr(
+-        "EvoScientist.cli.status_bar.get_memory_worker_status",
+-        lambda: SimpleNamespace(
+-            is_running=False,
+-            profile_updates=0,
+-            observations_recorded=0,
+-        ),
+-    )
+-    snapshot = SessionStatusSnapshot(
+-        model_full="openai/gpt-6",
+-        model_short="gpt-6",
+-        context_tokens=12_345,
+-        context_window=128_000,
+-        context_percent=10,
++
++def test_build_status_fragments_shows_linked_relation_count(
++    reset_memory_activity,
++):
++    worker_activity.mark_observation_relations_linked(1)
++
++    rendered = _render_fragments(
++        build_status_fragments(
++            _default_snapshot(),
++            datetime.now() - timedelta(minutes=3),
++            100,
++        )
+     )
+ 
++    assert "Created 1 memory link" in rendered
++    assert "🔗" not in rendered
++
++
++def test_build_status_fragments_hides_memory_indicator_when_idle(
++    reset_memory_activity,
++):
+     fragments = build_status_fragments(
+-        snapshot,
++        _default_snapshot(),
+         datetime.now() - timedelta(minutes=3),
+         100,
+     )
+diff --git a/tests/test_stream_events.py b/tests/test_stream_events.py
+index e9a280d..d3489ac 100644
+--- a/tests/test_stream_events.py
++++ b/tests/test_stream_events.py
+@@ -226,10 +226,10 @@ class TestV3ProtocolStreaming:
+         assert len(text_events) == 1
+         assert text_events[0]["content"] == "should appear"
+ 
+-    def test_user_message_clears_memory_worker_saved_counts(self, monkeypatch):
++    def test_user_message_clears_completed_memory_activity_counts(self, monkeypatch):
+         calls = []
+         monkeypatch.setattr(
+-            "EvoScientist.stream.events.clear_memory_worker_saved_counts",
++            "EvoScientist.stream.events.clear_completed_memory_activity_counts",
+             lambda: calls.append(True),
+         )
+         agent = FakeV3Agent([])
+@@ -238,10 +238,10 @@ class TestV3ProtocolStreaming:
+ 
+         assert calls == [True]
+ 
+-    def test_command_message_clears_memory_worker_saved_counts(self, monkeypatch):
++    def test_command_message_clears_completed_memory_activity_counts(self, monkeypatch):
+         calls = []
+         monkeypatch.setattr(
+-            "EvoScientist.stream.events.clear_memory_worker_saved_counts",
++            "EvoScientist.stream.events.clear_completed_memory_activity_counts",
+             lambda: calls.append(True),
+         )
+         agent = FakeV3Agent([])

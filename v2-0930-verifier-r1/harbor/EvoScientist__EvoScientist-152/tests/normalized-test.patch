@@ -1,0 +1,1472 @@
+diff --git a/tests/test_ask_user.py b/tests/test_ask_user.py
+index b7b5c97..f5d1cb2 100644
+--- a/tests/test_ask_user.py
++++ b/tests/test_ask_user.py
+@@ -1,6 +1,6 @@
+ """Tests for the ask_user middleware, stream events, state, and UI helpers."""
+ 
+-from unittest.mock import patch
++from unittest.mock import MagicMock, patch
+ 
+ import pytest
+ 
+@@ -388,6 +388,56 @@ class TestConfig:
+         cfg = EvoScientistConfig(enable_ask_user=False)
+         assert cfg.enable_ask_user is False
+ 
++    def test_auto_mode_default_is_false(self):
++        from EvoScientist.config.settings import EvoScientistConfig
++
++        cfg = EvoScientistConfig()
++        assert cfg.auto_mode is False
++
++    def test_auto_mode_set_to_true(self):
++        from EvoScientist.config.settings import EvoScientistConfig
++
++        cfg = EvoScientistConfig(auto_mode=True)
++        assert cfg.auto_mode is True
++
++
++@patch("EvoScientist.middleware.create_tool_selector_middleware", return_value=[])
++@patch("EvoScientist.EvoScientist._ensure_chat_model")
++@patch("EvoScientist.EvoScientist._ensure_config")
++def test_auto_approve_still_includes_ask_user_middleware(
++    mock_config, mock_model, mock_tool_selector
++):
++    cfg = MagicMock()
++    cfg.enable_ask_user = True
++    cfg.auto_approve = True
++    cfg.auto_mode = False
++    mock_config.return_value = cfg
++    mock_model.return_value = MagicMock(profile={"max_input_tokens": 200_000})
++
++    from EvoScientist.EvoScientist import _get_default_middleware
++
++    type_names = [type(m).__name__ for m in _get_default_middleware()]
++    assert "AskUserMiddleware" in type_names
++
++
++@patch("EvoScientist.middleware.create_tool_selector_middleware", return_value=[])
++@patch("EvoScientist.EvoScientist._ensure_chat_model")
++@patch("EvoScientist.EvoScientist._ensure_config")
++def test_auto_mode_disables_ask_user_middleware(
++    mock_config, mock_model, mock_tool_selector
++):
++    cfg = MagicMock()
++    cfg.enable_ask_user = True
++    cfg.auto_approve = True
++    cfg.auto_mode = True
++    mock_config.return_value = cfg
++    mock_model.return_value = MagicMock(profile={"max_input_tokens": 200_000})
++
++    from EvoScientist.EvoScientist import _get_default_middleware
++
++    type_names = [type(m).__name__ for m in _get_default_middleware()]
++    assert "AskUserMiddleware" not in type_names
++
+ 
+ # ---------------------------------------------------------------------------
+ # Rich CLI prompt (mocking input)
+diff --git a/tests/test_cli_serve.py b/tests/test_cli_serve.py
+index d6c56db..d40cd59 100644
+--- a/tests/test_cli_serve.py
++++ b/tests/test_cli_serve.py
+@@ -14,6 +14,9 @@ def _make_config(
+     channel_send_thinking: bool = True,
+     log_level: str = "warning",
+     channel_debug_tracing: bool = False,
++    auto_approve: bool = False,
++    auto_mode: bool = False,
++    enable_ask_user: bool = True,
+ ):
+     return SimpleNamespace(
+         channel_enabled="telegram",
+@@ -21,6 +24,9 @@ def _make_config(
+         channel_send_thinking=channel_send_thinking,
+         log_level=log_level,
+         channel_debug_tracing=channel_debug_tracing,
++        auto_approve=auto_approve,
++        auto_mode=auto_mode,
++        enable_ask_user=enable_ask_user,
+         provider="anthropic",
+         anthropic_auth_mode="api_key",
+         openai_auth_mode="api_key",
+@@ -35,6 +41,9 @@ def _run_serve_once(
+     no_thinking: bool = False,
+     debug: bool = False,
+     cwd: str | None = None,
++    auto_approve: bool = False,
++    auto_mode: bool = False,
++    ask_user: bool = False,
+ ):
+     import EvoScientist.config as config_mod
+ 
+@@ -90,8 +99,9 @@ def _run_serve_once(
+         no_thinking=no_thinking,
+         workdir=workdir,
+         debug=debug,
+-        auto_approve=False,
+-        ask_user=False,
++        auto_approve=auto_approve,
++        auto_mode=auto_mode,
++        ask_user=ask_user,
+     )
+     return order, captured
+ 
+@@ -195,3 +205,38 @@ def test_serve_debug_sets_log_level_and_channel_trace(monkeypatch, tmp_path):
+         "channel_debug_tracing": True,
+     }
+     assert configure_calls == [("DEBUG", "true")]
++
++
++def test_serve_auto_approve_only_sets_auto_approve(monkeypatch, tmp_path):
++    ws = str((tmp_path / "ws").resolve())
++    config = _make_config(default_workdir=ws, enable_ask_user=True)
++
++    _, captured = _run_serve_once(
++        monkeypatch,
++        config,
++        workdir=ws,
++        auto_approve=True,
++    )
++
++    assert captured["cli_overrides"] == {"auto_approve": True}
++
++
++def test_serve_auto_mode_implies_auto_approve_and_disables_ask_user(
++    monkeypatch, tmp_path
++):
++    ws = str((tmp_path / "ws").resolve())
++    config = _make_config(default_workdir=ws, enable_ask_user=True)
++
++    _, captured = _run_serve_once(
++        monkeypatch,
++        config,
++        workdir=ws,
++        auto_mode=True,
++        ask_user=True,
++    )
++
++    assert captured["cli_overrides"] == {
++        "auto_mode": True,
++        "auto_approve": True,
++        "enable_ask_user": False,
++    }
+diff --git a/tests/test_compact_command.py b/tests/test_compact_command.py
+index c78d211..027b809 100644
+--- a/tests/test_compact_command.py
++++ b/tests/test_compact_command.py
+@@ -61,11 +61,10 @@ class TestCompactCutoffZero:
+         mock_middleware_inst._determine_cutoff_index.return_value = 0
+ 
+         mock_middleware_cls = MagicMock(return_value=mock_middleware_inst)
++        model = SimpleNamespace(profile={"max_input_tokens": 1000})
+ 
+         with (
+-            patch(
+-                "EvoScientist.EvoScientist._ensure_chat_model", return_value=MagicMock()
+-            ),
++            patch("EvoScientist.EvoScientist._ensure_chat_model", return_value=model),
+             patch(
+                 "EvoScientist.EvoScientist._get_default_backend",
+                 return_value=MagicMock(),
+@@ -110,14 +109,13 @@ class TestCompactNegligibleSavings:
+         mock_middleware_inst._partition_messages.return_value = (msgs[:1], msgs[1:])
+ 
+         mock_middleware_cls = MagicMock(return_value=mock_middleware_inst)
++        model = SimpleNamespace(profile={"max_input_tokens": 50_000})
+ 
+-        # to_summarize=200, to_keep=22000 → total=22200, 200/22200 < 2%
+-        token_values = iter([200, 22000])
++        # effective=22200 (44%), to_summarize=200, to_keep=22000 → 200/22200 < 2%
++        token_values = iter([22_200, 200, 22_000])
+ 
+         with (
+-            patch(
+-                "EvoScientist.EvoScientist._ensure_chat_model", return_value=MagicMock()
+-            ),
++            patch("EvoScientist.EvoScientist._ensure_chat_model", return_value=model),
+             patch(
+                 "EvoScientist.EvoScientist._get_default_backend",
+                 return_value=MagicMock(),
+@@ -168,14 +166,13 @@ class TestCompactNegligibleSavings:
+         mock_middleware_inst._compute_state_cutoff.return_value = 2
+ 
+         mock_middleware_cls = MagicMock(return_value=mock_middleware_inst)
++        model = SimpleNamespace(profile={"max_input_tokens": 40_000})
+ 
+-        # to_summarize=5000, to_keep=15000 → total=20000, 5000/20000=25% > 2%
+-        token_values = iter([5000, 15000, 500])
++        # effective=20000 (50%), to_summarize=5000, to_keep=15000 → 25% > 2%
++        token_values = iter([20_000, 5_000, 15_000, 500])
+ 
+         with (
+-            patch(
+-                "EvoScientist.EvoScientist._ensure_chat_model", return_value=MagicMock()
+-            ),
++            patch("EvoScientist.EvoScientist._ensure_chat_model", return_value=model),
+             patch(
+                 "EvoScientist.EvoScientist._get_default_backend",
+                 return_value=MagicMock(),
+@@ -202,6 +199,48 @@ class TestCompactNegligibleSavings:
+ class TestCompactSuccess:
+     """Normal compaction flow."""
+ 
++    def test_manual_threshold_blocks_low_context_compaction(self):
++        from EvoScientist.cli.commands import compact_conversation
++
++        agent = MagicMock()
++        msgs = [MagicMock() for _ in range(20)]
++        snapshot = SimpleNamespace(
++            values={"messages": msgs, "_summarization_event": None}
++        )
++        agent.aget_state = AsyncMock(return_value=snapshot)
++
++        mock_middleware_inst = MagicMock()
++        mock_middleware_inst._apply_event_to_messages.return_value = msgs
++        mock_middleware_cls = MagicMock(return_value=mock_middleware_inst)
++        model = SimpleNamespace(profile={"max_input_tokens": 100_000})
++
++        with (
++            patch("EvoScientist.EvoScientist._ensure_chat_model", return_value=model),
++            patch(
++                "EvoScientist.EvoScientist._get_default_backend",
++                return_value=MagicMock(),
++            ),
++            patch(
++                "deepagents.middleware.summarization.SummarizationMiddleware",
++                mock_middleware_cls,
++            ),
++            patch(
++                "deepagents.middleware.summarization.compute_summarization_defaults",
++                return_value={"keep": ("messages", 6)},
++            ),
++            patch(
++                "langchain_core.messages.utils.count_tokens_approximately",
++                return_value=30_000,
++            ),
++        ):
++            result = _run(compact_conversation(agent=agent, thread_id="tid-1"))
++
++        assert result.status == "noop"
++        assert "40%" in result.message
++        assert result.context_percent == 30
++        mock_middleware_inst._determine_cutoff_index.assert_not_called()
++        mock_middleware_inst._acreate_summary.assert_not_called()
++
+     def test_successful_compaction(self):
+         from langchain_core.messages import HumanMessage
+ 
+@@ -231,14 +270,13 @@ class TestCompactSuccess:
+         mock_middleware_inst._compute_state_cutoff.return_value = 15
+ 
+         mock_middleware_cls = MagicMock(return_value=mock_middleware_inst)
++        model = SimpleNamespace(profile={"max_input_tokens": 10_000})
+ 
+-        # count_tokens_approximately returns different values per call
+-        token_values = iter([5000, 1000, 200])
++        # effective=6000 (60%), then summarize/keep/summary accounting
++        token_values = iter([6000, 5000, 1000, 200])
+ 
+         with (
+-            patch(
+-                "EvoScientist.EvoScientist._ensure_chat_model", return_value=MagicMock()
+-            ),
++            patch("EvoScientist.EvoScientist._ensure_chat_model", return_value=model),
+             patch(
+                 "EvoScientist.EvoScientist._get_default_backend",
+                 return_value=MagicMock(),
+@@ -264,6 +302,9 @@ class TestCompactSuccess:
+         assert result.tokens_before == 6000
+         assert result.tokens_after == 1200
+         assert result.pct_decrease == 80
++        # context_percent reflects usage AFTER compact (12%), not before (60%)
++        assert result.context_percent == 12
++        assert result.summary_text == "Summary text"
+         agent.aupdate_state.assert_awaited_once()
+ 
+         # Verify the event structure passed to aupdate_state
+@@ -300,11 +341,10 @@ class TestCompactSuccess:
+         mock_middleware_inst._compute_state_cutoff.return_value = 7
+ 
+         mock_middleware_cls = MagicMock(return_value=mock_middleware_inst)
++        model = SimpleNamespace(profile={"max_input_tokens": 2_000})
+ 
+         with (
+-            patch(
+-                "EvoScientist.EvoScientist._ensure_chat_model", return_value=MagicMock()
+-            ),
++            patch("EvoScientist.EvoScientist._ensure_chat_model", return_value=model),
+             patch(
+                 "EvoScientist.EvoScientist._get_default_backend",
+                 return_value=MagicMock(),
+@@ -360,6 +400,75 @@ class TestRenderCompactResult:
+         text = render_compact_result(result)
+         assert "Failed to read state" in text.plain
+ 
++
++class TestCompactCommandUI:
++    """TUI-specific compact progress indicator behavior."""
++
++    def test_command_uses_tui_indicator_when_available(self):
++        from EvoScientist.cli.commands import CompactResult
++        from EvoScientist.commands.base import CommandContext
++        from EvoScientist.commands.implementation.session import CompactCommand
++
++        class _UI:
++            supports_interactive = True
++
++            def __init__(self) -> None:
++                self.system_messages: list[str] = []
++                self.renderables: list[object] = []
++                self.started = 0
++                self.stopped = 0
++                self.updated_tokens: list[int] = []
++
++            def append_system(self, text: str, style: str = "dim") -> None:
++                self.system_messages.append(text)
++
++            def mount_renderable(self, renderable):
++                self.renderables.append(renderable)
++
++            async def start_compacting_indicator(self) -> None:
++                self.started += 1
++
++            async def stop_compacting_indicator(self) -> None:
++                self.stopped += 1
++
++            def update_status_after_compact(self, tokens_after: int) -> None:
++                self.updated_tokens.append(tokens_after)
++
++        ui = _UI()
++        # input_tokens_hint must be set for update_status_after_compact to fire
++        # (without it, tokens_after is message-level and the unit would be wrong)
++        ctx = CommandContext(
++            agent=MagicMock(), thread_id="tid-1", ui=ui, input_tokens_hint=5000
++        )
++        result = CompactResult(
++            "ok",
++            "Compacted",
++            tokens_after=1200,
++            summary_text="summary body",
++        )
++
++        with (
++            patch(
++                "EvoScientist.cli.commands.compact_conversation",
++                AsyncMock(return_value=result),
++            ),
++            patch(
++                "EvoScientist.cli.commands.render_compact_result",
++                return_value="result-panel",
++            ),
++            patch(
++                "EvoScientist.cli.commands.build_compact_summary_renderable",
++                return_value="summary-panel",
++            ),
++        ):
++            _run(CompactCommand().execute(ctx, []))
++
++        assert ui.started == 1
++        assert ui.stopped == 1
++        assert ui.system_messages == []
++        assert ui.renderables == ["result-panel", "summary-panel"]
++        assert ui.updated_tokens == [1200]
++
+     def test_render_ok(self):
+         from EvoScientist.cli.commands import CompactResult, render_compact_result
+ 
+@@ -373,6 +482,8 @@ class TestRenderCompactResult:
+             tokens_summarized=5000,
+             tokens_summary=200,
+             pct_decrease=80,
++            context_window=10_000,
++            context_percent=60,
+         )
+         text = render_compact_result(result)
+         plain = text.plain
+@@ -381,6 +492,19 @@ class TestRenderCompactResult:
+         assert "1,200" in plain
+         assert "80%" in plain
+         assert "5 messages unchanged" in plain
++        assert "60% used" in plain
++
++    def test_build_compact_summary_renderable(self):
++        from EvoScientist.cli.commands import (
++            CompactResult,
++            build_compact_summary_renderable,
++        )
++
++        result = CompactResult("ok", "Compacted", summary_text="Summary body")
++        renderable = build_compact_summary_renderable(result)
++
++        assert renderable is not None
++        assert renderable.summary_text == "Summary body"
+ 
+     def test_str_fallback(self):
+         from EvoScientist.cli.commands import CompactResult
+diff --git a/tests/test_context_editing_middleware.py b/tests/test_context_editing_middleware.py
+index 3b8ef41..8779473 100644
+--- a/tests/test_context_editing_middleware.py
++++ b/tests/test_context_editing_middleware.py
+@@ -23,6 +23,20 @@ def test_compute_trigger_with_1m_profile():
+     assert compute_context_editing_trigger(model) == 500_000  # 50%
+ 
+ 
++def test_compute_trigger_with_context_length_attr():
++    model = MagicMock(spec=["context_length", "profile"])
++    model.context_length = 1_000_000
++    model.profile = None
++    assert compute_context_editing_trigger(model) == 500_000  # 50%
++
++
++def test_compute_trigger_with_num_ctx():
++    model = MagicMock(spec=["num_ctx", "profile"])
++    model.num_ctx = 32_768
++    model.profile = None
++    assert compute_context_editing_trigger(model) == 16_384  # 50%
++
++
+ def test_compute_trigger_without_profile():
+     model = MagicMock()
+     model.profile = None
+diff --git a/tests/test_context_window.py b/tests/test_context_window.py
+new file mode 100644
+index 0000000..70a676a
+--- /dev/null
++++ b/tests/test_context_window.py
+@@ -0,0 +1,61 @@
++"""Tests for provider-agnostic context-window resolution."""
++
++from types import SimpleNamespace
++
++from EvoScientist.llm.context_window import (
++    DEFAULT_CONTEXT_WINDOW_FALLBACK,
++    get_context_window,
++    resolve_context_window,
++)
++
++
++def test_prefers_direct_context_window_over_profile():
++    model = SimpleNamespace(
++        context_window=512_000,
++        profile={"max_input_tokens": 200_000},
++    )
++
++    assert get_context_window(model) == 512_000
++
++
++def test_uses_direct_context_length_attribute():
++    model = SimpleNamespace(context_length=1_000_000)
++
++    assert get_context_window(model) == 1_000_000
++
++
++def test_uses_ollama_num_ctx():
++    model = SimpleNamespace(model="llama3.2", num_ctx=65_536, profile=None)
++
++    assert get_context_window(model) == 65_536
++
++
++def test_uses_profile_context_length_before_max_input_tokens():
++    model = SimpleNamespace(
++        profile={
++            "context_length": 1_000_000,
++            "max_input_tokens": 128_000,
++        }
++    )
++
++    assert get_context_window(model) == 1_000_000
++
++
++def test_uses_profile_max_input_tokens_when_needed():
++    model = SimpleNamespace(profile={"max_input_tokens": 200_000})
++
++    assert get_context_window(model) == 200_000
++
++
++def test_accepts_numeric_string_values():
++    model = SimpleNamespace(profile={"context_length": "1_048_576"})
++
++    assert get_context_window(model) == 1_048_576
++
++
++def test_resolve_context_window_falls_back_when_missing():
++    model = SimpleNamespace(profile=None)
++
++    assert get_context_window(model) is None
++    assert resolve_context_window(model) == DEFAULT_CONTEXT_WINDOW_FALLBACK
++    assert resolve_context_window(model, fallback=42_000) == 42_000
+diff --git a/tests/test_hitl.py b/tests/test_hitl.py
+index 8796964..2f7c99e 100644
+--- a/tests/test_hitl.py
++++ b/tests/test_hitl.py
+@@ -273,6 +273,12 @@ class TestHitlConfig:
+         cfg = EvoScientistConfig()
+         assert cfg.auto_approve is False
+ 
++    def test_auto_mode_default(self):
++        from EvoScientist.config.settings import EvoScientistConfig
++
++        cfg = EvoScientistConfig()
++        assert cfg.auto_mode is False
++
+     def test_shell_allow_list_default(self):
+         from EvoScientist.config.settings import EvoScientistConfig
+ 
+@@ -285,6 +291,12 @@ class TestHitlConfig:
+         cfg = EvoScientistConfig(auto_approve=True)
+         assert cfg.auto_approve is True
+ 
++    def test_auto_mode_set(self):
++        from EvoScientist.config.settings import EvoScientistConfig
++
++        cfg = EvoScientistConfig(auto_mode=True)
++        assert cfg.auto_mode is True
++
+     def test_shell_allow_list_set(self):
+         from EvoScientist.config.settings import EvoScientistConfig
+ 
+diff --git a/tests/test_llm.py b/tests/test_llm.py
+index c5e7425..94972c0 100644
+--- a/tests/test_llm.py
++++ b/tests/test_llm.py
+@@ -144,7 +144,7 @@ class TestGetModelInfo:
+     def test_returns_correct_info(self):
+         """Test that get_model_info returns correct info."""
+         model_id, provider = get_model_info("gpt-5-nano")
+-        assert model_id == "gpt-5-nano-2025-08-07"
++        assert model_id == "gpt-5-nano"
+         assert provider == "openai"
+ 
+ 
+@@ -187,7 +187,7 @@ class TestGetChatModel:
+         get_chat_model("gpt-5-mini")
+ 
+         call_kwargs = mock_init.call_args[1]
+-        assert call_kwargs["model"] == "gpt-5-mini-2025-08-07"
++        assert call_kwargs["model"] == "gpt-5-mini"
+         assert call_kwargs["model_provider"] == "openai"
+ 
+     @patch("EvoScientist.llm.models.init_chat_model")
+diff --git a/tests/test_sessions.py b/tests/test_sessions.py
+index 26449ad..fa0f5f1 100644
+--- a/tests/test_sessions.py
++++ b/tests/test_sessions.py
+@@ -7,6 +7,9 @@ import unittest
+ from datetime import UTC
+ from unittest.mock import patch
+ 
++from langchain_core.messages import AIMessage, HumanMessage
++from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
++
+ from EvoScientist.sessions import (
+     AGENT_NAME,
+     _format_relative_time,
+@@ -15,6 +18,7 @@ from EvoScientist.sessions import (
+     generate_thread_id,
+     get_db_path,
+     get_most_recent,
++    get_thread_messages,
+     get_thread_metadata,
+     list_threads,
+     thread_exists,
+@@ -249,6 +253,71 @@ class TestThreadFunctions(unittest.TestCase):
+     def test_delete_nonexistent(self):
+         assert not _run(delete_thread("nope1234"))
+ 
++    def test_get_thread_messages_applies_summarization_event(self):
++        async def _insert():
++            import aiosqlite
++
++            serde = JsonPlusSerializer()
++            messages = [
++                HumanMessage(content="first"),
++                AIMessage(content="second"),
++                HumanMessage(content="third"),
++            ]
++            summary_message = AIMessage(content="summary")
++            checkpoint = {
++                "channel_values": {
++                    "messages": messages,
++                    "_summarization_event": {
++                        "cutoff_index": 2,
++                        "summary_message": summary_message,
++                        "file_path": None,
++                    },
++                }
++            }
++            meta = json.dumps(
++                {
++                    "agent_name": AGENT_NAME,
++                    "updated_at": "2025-01-25T10:00:00+00:00",
++                }
++            )
++
++            async with aiosqlite.connect(self._db_path) as conn:
++                await conn.execute(
++                    """
++                    INSERT INTO checkpoints (
++                        thread_id, checkpoint_ns, checkpoint_id, type, checkpoint, metadata
++                    ) VALUES (?, '', ?, ?, ?, ?)
++                    """,
++                    (
++                        "sum12345",
++                        "cp_sum",
++                        *serde.dumps_typed(checkpoint),
++                        meta,
++                    ),
++                )
++                await conn.commit()
++
++        async def _cleanup():
++            import aiosqlite
++
++            async with aiosqlite.connect(self._db_path) as conn:
++                await conn.execute(
++                    "DELETE FROM checkpoints WHERE thread_id = ?",
++                    ("sum12345",),
++                )
++                await conn.commit()
++
++        _run(_insert())
++        try:
++            messages = _run(get_thread_messages("sum12345"))
++            assert len(messages) == 2
++            assert isinstance(messages[0], AIMessage)
++            assert messages[0].content == "summary"
++            assert isinstance(messages[1], HumanMessage)
++            assert messages[1].content == "third"
++        finally:
++            _run(_cleanup())
++
+     # -- Agent isolation: OtherAgent data should never be visible --
+ 
+     def test_thread_exists_ignores_other_agent(self):
+diff --git a/tests/test_status_bar.py b/tests/test_status_bar.py
+new file mode 100644
+index 0000000..3a97400
+--- /dev/null
++++ b/tests/test_status_bar.py
+@@ -0,0 +1,225 @@
++"""Tests for shared persistent status-bar helpers."""
++
++from __future__ import annotations
++
++import asyncio
++from datetime import datetime, timedelta
++from typing import ClassVar
++
++from langchain_core.messages import HumanMessage
++
++from EvoScientist.cli.status_bar import (
++    SessionStatusSnapshot,
++    apply_assistant_text_to_snapshot,
++    apply_user_text_to_snapshot,
++    build_session_status_snapshot,
++    build_status_fragments,
++    build_status_text,
++    make_usage_status_snapshot,
++    shorten_model_name,
++    status_style_name,
++    trim_status_text,
++)
++
++
++def _render_fragments(fragments: list[tuple[str, str]]) -> str:
++    return "".join(text for _, text in fragments)
++
++
++def test_build_status_fragments_wide_layout():
++    snapshot = SessionStatusSnapshot(
++        model_full="openai/gpt-5.4",
++        model_short="gpt-5.4",
++        context_tokens=12_345,
++        context_window=128_000,
++        context_percent=10,
++    )
++
++    rendered = _render_fragments(
++        build_status_fragments(
++            snapshot,
++            datetime.now() - timedelta(minutes=3),
++            100,
++        )
++    )
++
++    assert "gpt-5.4" in rendered
++    assert "12.3K/128K" in rendered
++    assert "[█" in rendered
++    assert "10%" in rendered
++    assert "3m" in rendered
++
++
++def test_build_status_fragments_medium_layout():
++    snapshot = SessionStatusSnapshot(
++        model_full="openai/gpt-5.4",
++        model_short="gpt-5.4",
++        context_tokens=48_000,
++        context_window=100_000,
++        context_percent=48,
++    )
++
++    rendered = _render_fragments(
++        build_status_fragments(
++            snapshot,
++            datetime.now() - timedelta(seconds=40),
++            60,
++        )
++    )
++
++    assert "gpt-5.4" in rendered
++    assert "48%" in rendered
++    assert "40s" in rendered
++    assert "/" not in rendered
++
++
++def test_build_status_fragments_narrow_layout():
++    snapshot = SessionStatusSnapshot(
++        model_full="anthropic/claude-sonnet-4-20250514",
++        model_short=shorten_model_name("anthropic/claude-sonnet-4-20250514"),
++        context_tokens=95_000,
++        context_window=100_000,
++        context_percent=95,
++    )
++
++    rendered = _render_fragments(
++        build_status_fragments(
++            snapshot,
++            datetime.now() - timedelta(hours=2),
++            40,
++        )
++    )
++
++    assert snapshot.model_short in rendered
++    assert "2h" in rendered
++    assert "%" not in rendered
++
++
++def test_trim_status_text_adds_ellipsis():
++    assert trim_status_text("abcdefghijk", 8) == "abcde..."
++
++
++def test_status_style_name_thresholds():
++    assert status_style_name(49) == "good"
++    assert status_style_name(50) == "warn"
++    assert status_style_name(80) == "warn"
++    assert status_style_name(81) == "bad"
++    assert status_style_name(95) == "critical"
++
++
++def test_build_status_text_uses_rich_styles():
++    snapshot = SessionStatusSnapshot(
++        model_full="openai/gpt-5.4",
++        model_short="gpt-5.4",
++        context_tokens=10_000,
++        context_window=100_000,
++        context_percent=10,
++    )
++
++    text = build_status_text(snapshot, datetime.now(), 100)
++
++    assert str(text)
++    assert text.spans
++
++
++def test_build_session_status_snapshot_uses_fallback_window(monkeypatch):
++    async def _fake_messages(thread_id: str):
++        assert thread_id == "thread-1"
++        return [HumanMessage(content="existing")]
++
++    class _FakeModel:
++        model_name: ClassVar[str] = "provider/demo-model"
++        profile: ClassVar[dict[str, object]] = {}
++
++    def _fake_count(messages):
++        assert len(messages) == 2
++        assert messages[-1].content == "pending"
++        return 42_000
++
++    monkeypatch.setattr(
++        "EvoScientist.cli.status_bar.get_thread_messages",
++        _fake_messages,
++    )
++    monkeypatch.setattr(
++        "EvoScientist.cli.status_bar._get_default_chat_model",
++        lambda: _FakeModel(),
++    )
++    monkeypatch.setattr(
++        "EvoScientist.cli.status_bar.count_tokens_approximately",
++        _fake_count,
++    )
++
++    snapshot = asyncio.run(
++        build_session_status_snapshot(
++            "thread-1",
++            pending_user_text="pending",
++        )
++    )
++
++    assert snapshot.model_full == "provider/demo-model"
++    assert snapshot.model_short == "demo-model"
++    assert snapshot.context_tokens == 42_000
++    assert snapshot.context_window == 200_000
++    assert snapshot.context_percent == 21
++
++
++def test_apply_assistant_text_to_snapshot_updates_context(monkeypatch):
++    snapshot = SessionStatusSnapshot(
++        model_full="provider/demo-model",
++        model_short="demo-model",
++        context_tokens=10_000,
++        context_window=100_000,
++        context_percent=10,
++    )
++
++    monkeypatch.setattr(
++        "EvoScientist.cli.status_bar.estimate_message_tokens",
++        lambda text, message_type="ai": 550,
++    )
++
++    updated = apply_assistant_text_to_snapshot(snapshot, "streamed response")
++
++    assert updated.context_tokens == 10_550
++    assert updated.context_percent == 11
++
++
++def test_apply_user_text_to_snapshot_updates_context(monkeypatch):
++    snapshot = SessionStatusSnapshot(
++        model_full="provider/demo-model",
++        model_short="demo-model",
++        context_tokens=46_751,
++        context_window=163_840,
++        context_percent=29,
++        context_source="usage",
++    )
++
++    monkeypatch.setattr(
++        "EvoScientist.cli.status_bar.estimate_message_tokens",
++        lambda text, message_type="human": 320,
++    )
++
++    updated = apply_user_text_to_snapshot(snapshot, "good")
++
++    assert updated.context_tokens == 47_071
++    assert updated.context_percent == 29
++    assert updated.context_source == "usage"
++
++
++def test_make_usage_status_snapshot_marks_usage_source(monkeypatch):
++    class _FakeModel:
++        model_name: ClassVar[str] = "provider/demo-model"
++        profile: ClassVar[dict[str, object]] = {"max_input_tokens": 128_000}
++
++    monkeypatch.setattr(
++        "EvoScientist.cli.status_bar._get_default_chat_model",
++        lambda: _FakeModel(),
++    )
++
++    snapshot = make_usage_status_snapshot(42_000)
++
++    assert snapshot.model_full == "provider/demo-model"
++    assert snapshot.model_short == "demo-model"
++    assert snapshot.context_tokens == 42_000
++    assert snapshot.context_window == 128_000
++    assert snapshot.context_percent == 33
++    assert snapshot.context_source == "usage"
+diff --git a/tests/test_stream_display.py b/tests/test_stream_display.py
+new file mode 100644
+index 0000000..70f3722
+--- /dev/null
++++ b/tests/test_stream_display.py
+@@ -0,0 +1,11 @@
++"""Tests for Rich streaming display helpers."""
++
++from EvoScientist.stream.display import resolve_final_status_footer
++
++
++def test_resolve_final_status_footer_hides_footer_for_interactive_cli():
++    assert resolve_final_status_footer(True, lambda: "footer") is None
++
++
++def test_resolve_final_status_footer_keeps_footer_for_noninteractive():
++    assert resolve_final_status_footer(False, lambda: "footer") == "footer"
+diff --git a/tests/test_stream_events.py b/tests/test_stream_events.py
+index de6a4ac..747a4b7 100644
+--- a/tests/test_stream_events.py
++++ b/tests/test_stream_events.py
+@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, MagicMock
+ from langchain_core.messages import AIMessageChunk
+ 
+ from EvoScientist.stream.events import (
++    _extract_summary_message_text,
+     _extract_tool_content,
++    _find_summarization_event_payload,
+     _process_chunk_content,
+     stream_agent_events,
+ )
+@@ -247,10 +249,133 @@ class TestMultiModeChunkUnpacking:
+             )
+         )
+         events = _collect_events(mock_agent)
++        summary_start_events = [
++            e for e in events if e.get("type") == "summarization_start"
++        ]
++        assert len(summary_start_events) == 1
++        summary_events = [e for e in events if e.get("type") == "summarization"]
++        assert len(summary_events) == 1
++        assert summary_events[0]["content"] == "synthetic summary"
+         text_events = [e for e in events if e.get("type") == "text"]
+         assert len(text_events) == 1
+         assert text_events[0]["content"] == "real content"
+ 
++    def test_updates_mode_summarization_event_emitted(self):
++        """_summarization_event updates should emit a summarization event."""
++        summary_message = SimpleNamespace(
++            content="Here is a summary of the conversation to date:\n\nKey facts",
++        )
++        chunk_real = _make_ai_chunk("real content")
++        mock_agent = AsyncMock()
++        mock_agent.astream = MagicMock(
++            return_value=_async_iter(
++                [
++                    (
++                        (),
++                        "updates",
++                        {
++                            "agent": {
++                                "_summarization_event": {
++                                    "summary_message": summary_message,
++                                    "cutoff_index": 12,
++                                    "file_path": None,
++                                }
++                            }
++                        },
++                    ),
++                    ((), "messages", (chunk_real, {})),
++                ]
++            )
++        )
++        events = _collect_events(mock_agent)
++        summary_start_events = [
++            e for e in events if e.get("type") == "summarization_start"
++        ]
++        assert len(summary_start_events) == 1
++        summary_events = [e for e in events if e.get("type") == "summarization"]
++        assert len(summary_events) == 1
++        assert summary_events[0]["content"] == "Key facts"
++
++    def test_updates_mode_does_not_duplicate_streamed_summarization(self):
++        """If streamed summarization already emitted, updates fallback should not duplicate it."""
++        chunk_synth = _make_ai_chunk("synthetic summary")
++        summary_message = SimpleNamespace(
++            content="Here is a summary of the conversation to date:\n\nKey facts"
++        )
++        chunk_real = _make_ai_chunk("real content")
++        mock_agent = AsyncMock()
++        mock_agent.astream = MagicMock(
++            return_value=_async_iter(
++                [
++                    ((), "messages", (chunk_synth, {"lc_source": "summarization"})),
++                    (
++                        (),
++                        "updates",
++                        {
++                            "_summarization_event": {
++                                "summary_message": summary_message,
++                                "cutoff_index": 12,
++                                "file_path": None,
++                            }
++                        },
++                    ),
++                    ((), "messages", (chunk_real, {})),
++                ]
++            )
++        )
++        events = _collect_events(mock_agent)
++        summary_start_events = [
++            e for e in events if e.get("type") == "summarization_start"
++        ]
++        assert len(summary_start_events) == 1
++        summary_events = [e for e in events if e.get("type") == "summarization"]
++        assert len(summary_events) == 1
++        assert summary_events[0]["content"] == "synthetic summary"
++
++    def test_updates_mode_does_not_reemit_existing_summarization_event(self):
++        """Persisted _summarization_event from a prior turn should not be replayed."""
++        summary_message = SimpleNamespace(
++            content="Here is a summary of the conversation to date:\n\nKey facts",
++        )
++        chunk_real = _make_ai_chunk("real content")
++        mock_agent = AsyncMock()
++        mock_agent.aget_state = AsyncMock(
++            return_value=SimpleNamespace(
++                values={
++                    "_summarization_event": {
++                        "summary_message": summary_message,
++                        "cutoff_index": 12,
++                        "file_path": None,
++                    }
++                }
++            )
++        )
++        mock_agent.astream = MagicMock(
++            return_value=_async_iter(
++                [
++                    (
++                        (),
++                        "updates",
++                        {
++                            "_summarization_event": {
++                                "summary_message": summary_message,
++                                "cutoff_index": 12,
++                                "file_path": None,
++                            }
++                        },
++                    ),
++                    ((), "messages", (chunk_real, {})),
++                ]
++            )
++        )
++        events = _collect_events(mock_agent)
++        summary_start_events = [
++            e for e in events if e.get("type") == "summarization_start"
++        ]
++        assert summary_start_events == []
++        summary_events = [e for e in events if e.get("type") == "summarization"]
++        assert summary_events == []
++
+ 
+ class TestUsageStatsExtraction:
+     """Test token usage extraction from AIMessageChunk."""
+@@ -294,6 +419,36 @@ class TestUsageStatsExtraction:
+         usage_events = [e for e in events if e.get("type") == "usage_stats"]
+         assert len(usage_events) == 0
+ 
++
++class TestSummarizationHelpers:
++    """Summarization extraction helpers."""
++
++    def test_extract_summary_message_text_from_summary_tag(self):
++        message = SimpleNamespace(
++            content="Before\n<summary>\nImportant facts\n</summary>\nAfter",
++        )
++        assert _extract_summary_message_text(message) == "Important facts"
++
++    def test_extract_summary_message_text_accepts_output_text_blocks(self):
++        message = SimpleNamespace(
++            content=[{"type": "output_text", "text": "Summary body"}],
++        )
++        assert _extract_summary_message_text(message) == "Summary body"
++
++    def test_find_summarization_event_payload_nested(self):
++        payload = {
++            "node": {
++                "response": {
++                    "_summarization_event": {
++                        "summary_message": SimpleNamespace(content="Summary body"),
++                    }
++                }
++            }
++        }
++        event = _find_summarization_event_payload(payload)
++        assert event is not None
++        assert event["summary_message"].content == "Summary body"
++
+     def test_zero_tokens_not_emitted(self):
+         """Zero input and output tokens should not emit usage_stats."""
+         chunk = _make_ai_chunk(
+diff --git a/tests/test_stream_state.py b/tests/test_stream_state.py
+index 0fe8b14..dd41425 100644
+--- a/tests/test_stream_state.py
++++ b/tests/test_stream_state.py
+@@ -664,6 +664,8 @@ class TestUsageStatsAccumulated:
+         )
+         assert state.total_input_tokens == 100
+         assert state.total_output_tokens == 50
++        assert state.last_input_tokens == 100
++        assert state.last_output_tokens == 50
+ 
+     def test_multiple_usage_events_accumulate(self):
+         state = StreamState()
+@@ -675,6 +677,21 @@ class TestUsageStatsAccumulated:
+         )
+         assert state.total_input_tokens == 300
+         assert state.total_output_tokens == 130
++        assert state.last_input_tokens == 200
++        assert state.last_output_tokens == 80
++
++    def test_zero_usage_event_does_not_clear_last_seen_values(self):
++        state = StreamState()
++        state.handle_event(
++            {"type": "usage_stats", "input_tokens": 100, "output_tokens": 50}
++        )
++        state.handle_event(
++            {"type": "usage_stats", "input_tokens": 0, "output_tokens": 0}
++        )
++        assert state.total_input_tokens == 100
++        assert state.total_output_tokens == 50
++        assert state.last_input_tokens == 100
++        assert state.last_output_tokens == 50
+ 
+     def test_usage_stats_in_display_args(self):
+         state = StreamState()
+diff --git a/tests/test_stream_utils.py b/tests/test_stream_utils.py
+index 1ac5f67..e009033 100644
+--- a/tests/test_stream_utils.py
++++ b/tests/test_stream_utils.py
+@@ -4,6 +4,7 @@ from EvoScientist.stream.utils import (
+     _shorten_path,
+     count_lines,
+     format_tool_compact,
++    format_tool_compact_with_result,
+     has_args,
+     is_success,
+     truncate,
+@@ -99,6 +100,14 @@ class TestFormatToolCompact:
+         result = format_tool_compact("read_file", {"path": "/memory/MEMORY.md"})
+         assert result == "Reading memory"
+ 
++    def test_read_file_memory_file_path_alias(self):
++        result = format_tool_compact("read_file", {"file_path": "/memory/MEMORY.md"})
++        assert result == "Reading memory"
++
++    def test_read_file_any_memory_file(self):
++        result = format_tool_compact("read_file", {"path": "/memory/history.md"})
++        assert result == "Reading memory"
++
+     def test_write_file_memory(self):
+         result = format_tool_compact("write_file", {"path": "/MEMORY.md"})
+         assert result == "Updating memory"
+@@ -110,6 +119,36 @@ class TestFormatToolCompact:
+         result = format_tool_compact("edit_file", {"path": "/memory/MEMORY.md"})
+         assert result == "Updating memory"
+ 
++    def test_write_edit_any_memory_file(self):
++        write_result = format_tool_compact("write_file", {"path": "/memory/soul.md"})
++        edit_result = format_tool_compact(
++            "edit_file", {"path": "/memory/skills-context.md"}
++        )
++        assert write_result == "Updating memory"
++        assert edit_result == "Updating memory"
++
++    def test_memory_display_inferred_from_result_when_args_sparse(self):
++        read_result = format_tool_compact_with_result(
++            "read_file",
++            {},
++            "# EvoScientist Memory\n\nFounder: Zachary",
++        )
++        assert read_result == "Reading memory"
++
++        edit_result = format_tool_compact_with_result(
++            "edit_file",
++            {},
++            "Successfully replaced 1 instance(s) of the string in '/memory/MEMORY.md'",
++        )
++        assert edit_result == "Updating memory"
++
++        write_result = format_tool_compact_with_result(
++            "write_file",
++            {},
++            "Wrote updated content to '/memory/history.md'",
++        )
++        assert write_result == "Updating memory"
++
+     def test_glob(self):
+         result = format_tool_compact("glob", {"pattern": "*.py"})
+         assert result == "glob(*.py)"
+diff --git a/tests/test_summarization.py b/tests/test_summarization.py
+index 4fbfa4f..ddc5367 100644
+--- a/tests/test_summarization.py
++++ b/tests/test_summarization.py
+@@ -25,6 +25,11 @@ class TestSummarizationEmitter:
+         ev = StreamEventEmitter.summarization("")
+         assert ev.data["content"] == ""
+ 
++    def test_start_event(self):
++        ev = StreamEventEmitter.summarization_start()
++        assert ev.type == "summarization_start"
++        assert ev.data["type"] == "summarization_start"
++
+ 
+ # ---------------------------------------------------------------------------
+ # StreamState
+@@ -37,12 +42,20 @@ class TestSummarizationState:
+     def test_initial_state(self):
+         state = StreamState()
+         assert state.summarization_text == ""
++        assert state.is_summarizing is False
++
++    def test_handle_summarization_start(self):
++        state = StreamState()
++        etype = state.handle_event({"type": "summarization_start"})
++        assert etype == "summarization_start"
++        assert state.is_summarizing is True
+ 
+     def test_handle_summarization(self):
+         state = StreamState()
+         etype = state.handle_event({"type": "summarization", "content": "summary"})
+         assert etype == "summarization"
+         assert state.summarization_text == "summary"
++        assert state.is_summarizing is True
+ 
+     def test_accumulates_chunks(self):
+         """Summarization chunks are accumulated (streaming)."""
+@@ -57,6 +70,7 @@ class TestSummarizationState:
+         args = state.get_display_args()
+         assert "summarization_text" in args
+         assert args["summarization_text"] == "ctx"
++        assert args["is_summarizing"] is True
+ 
+     def test_does_not_affect_thinking(self):
+         state = StreamState()
+@@ -72,6 +86,13 @@ class TestSummarizationState:
+         assert state.response_text == "hello"
+         assert state.summarization_text == "sum"
+ 
++    def test_text_ends_summarizing_state(self):
++        state = StreamState()
++        state.handle_event({"type": "summarization_start"})
++        state.handle_event({"type": "summarization", "content": "sum"})
++        state.handle_event({"type": "text", "content": "hello"})
++        assert state.is_summarizing is False
++
+ 
+ # ---------------------------------------------------------------------------
+ # Rich CLI display
+@@ -110,6 +131,28 @@ class TestSummarizationRichDisplay:
+         rendered = _render_group(group)
+         assert "Context Summarized" in rendered
+ 
++    def test_panel_rendered_while_summarizing(self):
++        from EvoScientist.stream.display import create_streaming_display
++
++        group = create_streaming_display(
++            summarization_text="The conversation was about ML.",
++            is_summarizing=True,
++            response_text="ok",
++        )
++        rendered = _render_group(group)
++        assert "Context Summarizing..." in rendered
++
++    def test_panel_rendered_start_placeholder(self):
++        from EvoScientist.stream.display import create_streaming_display
++
++        group = create_streaming_display(
++            summarization_text="",
++            is_summarizing=True,
++            response_text="ok",
++        )
++        rendered = _render_group(group)
++        assert "Context Summarizing..." in rendered
++
+     def test_long_text_truncated(self):
+         from EvoScientist.stream.display import create_streaming_display
+ 
+@@ -136,6 +179,8 @@ class TestSummarizationWidget:
+         w = SummarizationWidget()
+         assert w._collapsed is True
+         assert w._content == ""
++        assert w._elapsed == 0.0
++        assert w._timer_handle is None
+ 
+     def test_set_content(self):
+         from EvoScientist.cli.widgets.summarization_widget import SummarizationWidget
+@@ -170,11 +215,22 @@ class TestSummarizationWidget:
+     def test_finalize(self):
+         from EvoScientist.cli.widgets.summarization_widget import SummarizationWidget
+ 
++        class _Timer:
++            def __init__(self) -> None:
++                self.stopped = False
++
++            def stop(self) -> None:
++                self.stopped = True
++
+         w = SummarizationWidget()
+         w.append_text("some summary")
++        timer = _Timer()
++        w._timer_handle = timer
+         w.finalize()
+         assert w._is_active is False
+         assert w._collapsed is True
++        assert timer.stopped is True
++        assert w._timer_handle is None
+ 
+     def test_toggle_collapsed(self):
+         from EvoScientist.cli.widgets.summarization_widget import SummarizationWidget
+@@ -187,6 +243,31 @@ class TestSummarizationWidget:
+         assert w._collapsed is True
+ 
+ 
++class TestCompactSummaryWidget:
++    """CompactSummaryWidget (manual /compact result panel)."""
++
++    def test_init_collapsed(self):
++        from EvoScientist.cli.widgets.compact_summary_widget import CompactSummaryWidget
++
++        w = CompactSummaryWidget("summary content")
++        assert w._collapsed is True
++        assert w._content == "summary content"
++
++    def test_char_count_label(self):
++        from EvoScientist.cli.widgets.compact_summary_widget import CompactSummaryWidget
++
++        w = CompactSummaryWidget("hello")
++        assert w._char_count_label() == "5 chars"
++
++    def test_toggle_collapsed(self):
++        from EvoScientist.cli.widgets.compact_summary_widget import CompactSummaryWidget
++
++        w = CompactSummaryWidget("hello world")
++        assert w._collapsed is True
++        w._collapsed = not w._collapsed
++        assert w._collapsed is False
++
++
+ # ---------------------------------------------------------------------------
+ # _extract_summarization_text helper
+ # ---------------------------------------------------------------------------
+diff --git a/tests/test_tui_widgets.py b/tests/test_tui_widgets.py
+index f11592d..15dc384 100644
+--- a/tests/test_tui_widgets.py
++++ b/tests/test_tui_widgets.py
+@@ -8,6 +8,7 @@ from __future__ import annotations
+ 
+ import importlib
+ import unittest
++from unittest.mock import AsyncMock
+ 
+ # ---------------------------------------------------------------------------
+ # Textual might not be installed — skip entire module if missing
+@@ -21,8 +22,10 @@ class TestLoadingWidget(unittest.TestCase):
+ 
+     def test_construction(self):
+         from EvoScientist.cli.widgets.loading_widget import LoadingWidget
++        from EvoScientist.cli.widgets.timed_status_widget import TimedStatusWidget
+ 
+         w = LoadingWidget()
++        assert isinstance(w, TimedStatusWidget)
+         assert w._frame == 0
+         assert w._elapsed == 0.0
+         assert w._timer_handle is None
+@@ -32,6 +35,49 @@ class TestLoadingWidget(unittest.TestCase):
+ 
+         assert len(_SPINNER_FRAMES) > 0
+ 
++    def test_tick_advances_spinner_and_elapsed(self):
++        from EvoScientist.cli.widgets.loading_widget import LoadingWidget
++
++        w = LoadingWidget()
++        w._tick()
++        assert w._frame == 1
++        assert w._elapsed == 0.1
++
++    def test_cleanup_stops_timer_and_removes(self):
++        from EvoScientist.cli.widgets.loading_widget import LoadingWidget
++
++        class _Timer:
++            def __init__(self) -> None:
++                self.stopped = False
++
++            def stop(self) -> None:
++                self.stopped = True
++
++        w = LoadingWidget()
++        timer = _Timer()
++        w._timer_handle = timer
++        w.remove = AsyncMock()
++
++        import asyncio
++
++        asyncio.run(w.cleanup())
++
++        assert timer.stopped is True
++        assert w._timer_handle is None
++        w.remove.assert_awaited_once()
++
++
++@unittest.skipUnless(_has_textual, "textual not installed")
++class TestCompactingWidget(unittest.TestCase):
++    """CompactingWidget construction and cleanup."""
++
++    def test_construction(self):
++        from EvoScientist.cli.widgets.compacting_widget import CompactingWidget
++
++        w = CompactingWidget()
++        assert w._elapsed == 0.0
++        assert w._timer_handle is None
++
+ 
+ @unittest.skipUnless(_has_textual, "textual not installed")
+ class TestThinkingWidget(unittest.TestCase):
+@@ -71,6 +117,40 @@ class TestThinkingWidget(unittest.TestCase):
+         assert w._is_active is False
+ 
+ 
++class TestSummarizationStateMachine(unittest.TestCase):
++    """Summary panel lifecycle decisions in the TUI event loop."""
++
++    def test_summary_continuation_events_do_not_finalize(self):
++        from EvoScientist.cli.tui_interactive import (
++            _should_finalize_active_summarization,
++        )
++
++        for event_type in ("summarization_start", "summarization", "usage_stats"):
++            assert _should_finalize_active_summarization(event_type) is False
++
++    def test_non_summary_events_finalize_active_summary(self):
++        from EvoScientist.cli.tui_interactive import (
++            _should_finalize_active_summarization,
++        )
++
++        for event_type in (
++            "thinking",
++            "text",
++            "tool_call",
++            "tool_result",
++            "tool_selection",
++            "subagent_start",
++            "subagent_tool_call",
++            "subagent_tool_result",
++            "subagent_end",
++            "ask_user",
++            "interrupt",
++            "done",
++            "error",
++        ):
++            assert _should_finalize_active_summarization(event_type) is True
++
++
+ @unittest.skipUnless(_has_textual, "textual not installed")
+ class TestAssistantMessage(unittest.TestCase):
+     """AssistantMessage construction."""
+@@ -121,6 +201,28 @@ class TestToolCallWidget(unittest.TestCase):
+         w._status = "interrupted"
+         assert w._status == "interrupted"
+ 
++    def test_memory_tool_header_uses_result_inference(self):
++        from EvoScientist.cli.widgets.tool_call_widget import ToolCallWidget
++
++        w = ToolCallWidget("edit_file", {}, "mem-1")
++        w._result_content = (
++            "Successfully replaced 1 instance(s) of the string in '/memory/MEMORY.md'"
++        )
++
++        class _Header:
++            def __init__(self) -> None:
++                self.updated = None
++
++            def update(self, value) -> None:
++                self.updated = value
++
++        header = _Header()
++        w.query_one = lambda selector, cls=None: header  # type: ignore[assignment]
++        w._status = "success"
++        w._render_header()
++
++        assert "Updating memory" in header.updated.plain
++
+     def test_result_summary_truncation(self):
+         from EvoScientist.cli.widgets.tool_call_widget import ToolCallWidget
+ 

@@ -1,0 +1,311 @@
+diff --git a/server-go/cmd/aimee-module/main_test.go b/server-go/cmd/aimee-module/main_test.go
+index ab0ced50f..a382aaf3c 100644
+--- a/server-go/cmd/aimee-module/main_test.go
++++ b/server-go/cmd/aimee-module/main_test.go
+@@ -18,7 +18,7 @@ func TestModuleRegistryMatchesProcessContracts(t *testing.T) {
+ 		{"memory", 7, []uint32{5889, 5890, 5891, 5892, 5893, 5894}},
+ 		{"learning", 8, []uint32{6145}},
+ 		{"routing", 9, []uint32{6401}},
+-		{"delegates", 10, []uint32{6657, 6658, 6659, 6660, 6661, 6662, 6663, 6664, 6665, 6666, 6667, 6668, 6669, 6670}},
++		{"delegates", 10, []uint32{6657, 6658, 6659, 6660, 6661, 6662, 6663, 6664, 6665, 6666, 6667, 6668, 6669, 6670, 6671}},
+ 		{"tools", 11, []uint32{6913}},
+ 		{"workspace", 12, []uint32{7169, 7170, 7171}},
+ 		{"git", 13, []uint32{7425, 7426, 7427, 7428, 7429, 7430}},
+diff --git a/server-go/modules/delegates/promptwrites_stage_test.go b/server-go/modules/delegates/promptwrites_stage_test.go
+new file mode 100644
+index 000000000..509f49b34
+--- /dev/null
++++ b/server-go/modules/delegates/promptwrites_stage_test.go
+@@ -0,0 +1,116 @@
++package delegates
++
++import (
++	"encoding/binary"
++	"strings"
++	"testing"
++
++	"github.com/JBailes/aimee/server-go/bus"
++)
++
++func mayWriteRequest(role, prompt string) []byte {
++	out := make([]byte, mayWriteReqHeaderLen)
++	binary.LittleEndian.PutUint32(out[0:4], mayWriteRequestMagic)
++	out[4] = wireVersion
++	binary.LittleEndian.PutUint32(out[8:12], uint32(len(role)))
++	binary.LittleEndian.PutUint32(out[12:16], uint32(len(prompt)))
++	out = append(out, role...)
++	return append(out, prompt...)
++}
++
++func callMayWrite(t *testing.T, role, prompt string) (may, byRole, byPrompt bool) {
++	t.Helper()
++	response, status := Handle(bus.ModuleInvocation{StageID: StageMayWrite},
++		mayWriteRequest(role, prompt))
++	if status != bus.ModuleStatusOK {
++		t.Fatalf("status = %v, want OK", status)
++	}
++	if len(response) != mayWriteResponseLen ||
++		binary.LittleEndian.Uint32(response[0:4]) != mayWriteResponseMagic {
++		t.Fatal("bad response")
++	}
++	return binary.LittleEndian.Uint32(response[4:8]) == 1,
++		binary.LittleEndian.Uint32(response[8:12]) == 1,
++		binary.LittleEndian.Uint32(response[12:16]) == 1
++}
++
++func TestMayWriteStageComposesBothInputs(t *testing.T) {
++	may, byRole, byPrompt := callMayWrite(t, "code", "fix the parser")
++	if !may || !byRole || !byPrompt {
++		t.Errorf("may=%v role=%v prompt=%v, want all true", may, byRole, byPrompt)
++	}
++
++	// The role permits it; the brief does not ask for it.
++	may, byRole, byPrompt = callMayWrite(t, "code", "read-only: review the parser")
++	if may {
++		t.Error("a write role told to read was allowed to write")
++	}
++	if !byRole || byPrompt {
++		t.Errorf("halves wrong: role=%v prompt=%v", byRole, byPrompt)
++	}
++
++	// The brief asks; the role does not permit.
++	may, byRole, byPrompt = callMayWrite(t, "review", "fix the parser")
++	if may {
++		t.Error("a read-only role was allowed to write by its brief")
++	}
++	if byRole || !byPrompt {
++		t.Errorf("halves wrong: role=%v prompt=%v", byRole, byPrompt)
++	}
++}
++
++// The halves are what make a refusal debuggable: "the delegate could not edit
++// anything" is otherwise a mystery.
++func TestMayWriteStageReportsWhichHalfWithheld(t *testing.T) {
++	_, byRole, byPrompt := callMayWrite(t, "review", "summarise it")
++	if byRole || byPrompt {
++		t.Errorf("both halves should be false: role=%v prompt=%v", byRole, byPrompt)
++	}
++}
++
++// A brief is carried whole, so a large one must still be answered.
++func TestMayWriteStageHandlesALargeBrief(t *testing.T) {
++	prompt := strings.Repeat("context. ", 20000) + "implement the fix"
++	if may, _, _ := callMayWrite(t, "code", prompt); !may {
++		t.Error("a large brief that asks for a change was refused")
++	}
++}
++
++func TestMayWriteStageRejectsMalformedRequests(t *testing.T) {
++	good := mayWriteRequest("code", "fix it")
++
++	cases := map[string][]byte{
++		"empty":         {},
++		"short header":  good[:8],
++		"trailing byte": append(append([]byte{}, good...), 0),
++		"truncated":     good[:len(good)-1],
++	}
++	badMagic := append([]byte{}, good...)
++	binary.LittleEndian.PutUint32(badMagic[0:4], 0xDEADBEEF)
++	cases["wrong magic"] = badMagic
++
++	badVersion := append([]byte{}, good...)
++	badVersion[4] = wireVersion + 1
++	cases["wrong version"] = badVersion
++
++	longRole := append([]byte{}, good...)
++	binary.LittleEndian.PutUint32(longRole[8:12], uint32(roleMax+1))
++	cases["oversized role"] = longRole
++
++	overrun := append([]byte{}, good...)
++	binary.LittleEndian.PutUint32(overrun[12:16], 1<<20)
++	cases["prompt length overruns"] = overrun
++
++	for name, request := range cases {
++		if _, status := Handle(bus.ModuleInvocation{StageID: StageMayWrite}, request); status != bus.ModuleStatusInvalidRequest {
++			t.Errorf("%s: status = %v, want InvalidRequest", name, status)
++		}
++	}
++}
++
++func TestMayWriteStageHonoursCancellation(t *testing.T) {
++	invocation := bus.ModuleInvocation{StageID: StageMayWrite, DeadlineNS: 1}
++	if _, status := Handle(invocation, mayWriteRequest("code", "fix it")); status != bus.ModuleStatusCancelled {
++		t.Errorf("status = %v, want Cancelled", status)
++	}
++}
+diff --git a/server-go/modules/delegates/promptwrites_test.go b/server-go/modules/delegates/promptwrites_test.go
+new file mode 100644
+index 000000000..679156604
+--- /dev/null
++++ b/server-go/modules/delegates/promptwrites_test.go
+@@ -0,0 +1,95 @@
++package delegates
++
++import "testing"
++
++// The plain cases: a brief that asks for a change allows one.
++func TestPromptAllowsWritesOnAsk(t *testing.T) {
++	for _, prompt := range []string{
++		"implement the retry logic",
++		"fix the null deref in parser.c",
++		"refactor the handler into two functions",
++		"create a new file for the adapter",
++		"delete the dead branch",
++		"UPDATE THE README", // case-insensitive
++	} {
++		if !PromptAllowsWrites(prompt) {
++			t.Errorf("%q should allow writes", prompt)
++		}
++	}
++}
++
++// A brief with no ask at all does not get a writable tree just because its role
++// could write.
++func TestPromptWithoutAskDoesNotAllowWrites(t *testing.T) {
++	for _, prompt := range []string{
++		"what does this function do?",
++		"summarise the architecture",
++		"which tests cover the parser",
++	} {
++		if PromptAllowsWrites(prompt) {
++			t.Errorf("%q should not allow writes", prompt)
++		}
++	}
++}
++
++// A whole-prompt prohibition wins outright. "read-only: fix the typo" is a
++// contradiction, and the safe reading of a contradiction is the one that does
++// not edit the user's files.
++func TestWholePromptProhibitionIsNotRescued(t *testing.T) {
++	for _, prompt := range []string{
++		"read-only: fix the typo in the header",
++		"analysis only. implement nothing, just report",
++		"do not edit files, but tell me how you would refactor it",
++		"inspect only -- update me on what you find",
++		"read only: create a plan for the migration",
++	} {
++		if PromptAllowsWrites(prompt) {
++			t.Errorf("%q must not allow writes: the prohibition covers the whole task", prompt)
++		}
++	}
++}
++
++// A SCOPED prohibition forbids something specific. Alone it means no writing;
++// alongside a real ask it is a boundary on a task that is still a write task.
++func TestScopedProhibitionNarrowsRatherThanForbids(t *testing.T) {
++	if PromptAllowsWrites("do not edit the generated files") {
++		t.Error("a scoped prohibition with no ask should not allow writes")
++	}
++	for _, prompt := range []string{
++		"implement the parser, but do not edit the generated files",
++		"fix the leak; do not modify the public header",
++	} {
++		if !PromptAllowsWrites(prompt) {
++			t.Errorf("%q is a write task with a boundary, not a read-only task", prompt)
++		}
++	}
++}
++
++// Nothing to read means this rule abstains: it can only take permission away.
++func TestEmptyPromptAbstains(t *testing.T) {
++	if !PromptAllowsWrites("") {
++		t.Error("an empty prompt should leave the decision to the role")
++	}
++}
++
++// The composed answer needs BOTH. The role alone would hand a writable tree to
++// a review running under a write role; the prompt alone would let any brief
++// mentioning "fix" write from a role with no business doing so.
++func TestDelegateMayWriteNeedsBoth(t *testing.T) {
++	if !DelegateMayWrite("code", "fix the parser") {
++		t.Error("a write role with a write ask should be allowed to write")
++	}
++	if DelegateMayWrite("code", "read-only: review the parser") {
++		t.Error("a write role told to read must not get a writable tree")
++	}
++	if DelegateMayWrite("review", "fix the parser") {
++		t.Error("a read-only role must not write however the brief is worded")
++	}
++	if DelegateMayWrite("review", "summarise the parser") {
++		t.Error("neither input allows writing")
++	}
++	// An alias resolves through the role rule, so it behaves as what it names.
++	if !DelegateMayWrite("implement", "fix the parser") {
++		t.Error("an alias for a write role should behave as that role")
++	}
++}
+diff --git a/src/tests/test_server_compute.c b/src/tests/test_server_compute.c
+index bf60d3c8a..cbb1e751e 100644
+--- a/src/tests/test_server_compute.c
++++ b/src/tests/test_server_compute.c
+@@ -18,6 +18,7 @@
+ #include "platform_path.h"
+ #include "platform_test_util.h"
+ #include <aimee/delegates/delegate_backend.h>
++#include <aimee/delegates/delegate_launch_args.h>
+ 
+ /* A delegate runs in its own container or not at all, so a delegation with no
+  * container runtime now REFUSES rather than falling back to running in-process
+@@ -3671,9 +3672,31 @@ static int compute_test_handoff_provider(const char *text, const char *owned_fil
+    return 0;
+ }
+ 
++/* The composed write permission, as the module answers it.
++ *
++ * Composed here from the SAME two inputs the module uses -- the role policy
++ * stub these tests already link, and the prompt rule -- rather than restating
++ * either, so this harness cannot drift from what it is standing in for. */
++int delegate_prompt_allows_writes(const char *prompt);
++
++static int compute_test_may_write(const char *role, const char *prompt, int *may_write,
++                                  int *by_role, int *by_prompt)
++{
++   int r = delegate_role_is_write(role);
++   int pw = delegate_prompt_allows_writes(prompt);
++   if (by_role)
++      *by_role = r;
++   if (by_prompt)
++      *by_prompt = pw;
++   if (may_write)
++      *may_write = r && pw;
++   return 0;
++}
++
+ int main(void)
+ {
+    register_test_workspace_root();
++   delegate_register_may_write_provider(compute_test_may_write);
+    assert(delegate_backend_register(&g_fake_docker) == 0);
+    delegate_register_handoff_provider(compute_test_handoff_provider);
+    test_codex_oauth_vault_server_principal_fallback();
+diff --git a/tests/baselines/refactor/index.json b/tests/baselines/refactor/index.json
+index 4ad024768..40b07c88d 100644
+--- a/tests/baselines/refactor/index.json
++++ b/tests/baselines/refactor/index.json
+@@ -1435,7 +1435,7 @@
+         },
+         {
+           "path": "src/modules/delegates/include/aimee/delegates/delegate_launch_args.h",
+-          "sha256": "e2262e25e9592c484715441e5459385c39235241be9045f6e7a08c6435df8743"
++          "sha256": "2a71cc06acbc90b6809c188ebecda279202e5923ea1c18e8dce151a10ccd9c73"
+         },
+         {
+           "path": "src/modules/delegates/include/aimee/delegates/delegate_patch_coordinator.h",
+@@ -1471,7 +1471,7 @@
+         },
+         {
+           "path": "src/modules/delegates/include/aimee/delegates/module_api.h",
+-          "sha256": "728664a607d7d7eb34745d9c399b522ef86d79ef73cb3994aa2cbe923a2e1bfc"
++          "sha256": "6465eb017346abe673c2270963906c3d668960718e3b4104614183f532609865"
+         },
+         {
+           "path": "src/modules/delegates/include/aimee/delegates/panel_provider.h",
+@@ -1628,7 +1628,7 @@
+       ]
+     },
+     "public-symbols": {
+-      "sha256": "957d4e14f526695672fe06b64c11f1683b6d8be820e5d5fa5595a1dc0d6d552f",
++      "sha256": "1c33eadcf6522a7cbc06bfa02942885197d5ed19320bcb417a81c787d87c9cec",
+       "source": "complete normalized contents of public-headers"
+     },
+     "routes": {

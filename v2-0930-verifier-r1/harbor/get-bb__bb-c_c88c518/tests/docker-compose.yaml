@@ -1,0 +1,541 @@
+{
+  "services": {
+    "main": {
+      "pull_policy": "never",
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${CONTEXT_DIR}",
+          "target": "/tests",
+          "read_only": true
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/tmp",
+          "target": "/tmp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/0/.vite",
+          "target": "/testbed/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/0/.vite-temp",
+          "target": "/testbed/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/1/.vite",
+          "target": "/testbed/apps/app/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/1/.vite-temp",
+          "target": "/testbed/apps/app/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/2/.vite",
+          "target": "/testbed/apps/cli/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/2/.vite-temp",
+          "target": "/testbed/apps/cli/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/3/.vite",
+          "target": "/testbed/apps/host-daemon/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/3/.vite-temp",
+          "target": "/testbed/apps/host-daemon/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/4/.vite",
+          "target": "/testbed/apps/server/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/4/.vite-temp",
+          "target": "/testbed/apps/server/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/5/.vite",
+          "target": "/testbed/packages/agent-fixtures/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/5/.vite-temp",
+          "target": "/testbed/packages/agent-fixtures/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/6/.vite",
+          "target": "/testbed/packages/agent-provider-auth/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/6/.vite-temp",
+          "target": "/testbed/packages/agent-provider-auth/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/7/.vite",
+          "target": "/testbed/packages/agent-providers/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/7/.vite-temp",
+          "target": "/testbed/packages/agent-providers/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/8/.vite",
+          "target": "/testbed/packages/agent-runtime/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/8/.vite-temp",
+          "target": "/testbed/packages/agent-runtime/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/9/.vite",
+          "target": "/testbed/packages/config/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/9/.vite-temp",
+          "target": "/testbed/packages/config/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/10/.vite",
+          "target": "/testbed/packages/core-ui/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/10/.vite-temp",
+          "target": "/testbed/packages/core-ui/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/11/.vite",
+          "target": "/testbed/packages/db/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/11/.vite-temp",
+          "target": "/testbed/packages/db/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/12/.vite",
+          "target": "/testbed/packages/dev-env/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/12/.vite-temp",
+          "target": "/testbed/packages/dev-env/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/13/.vite",
+          "target": "/testbed/packages/domain/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/13/.vite-temp",
+          "target": "/testbed/packages/domain/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/14/.vite",
+          "target": "/testbed/packages/fuzzy-match/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/14/.vite-temp",
+          "target": "/testbed/packages/fuzzy-match/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/15/.vite",
+          "target": "/testbed/packages/hono-typed-routes/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/15/.vite-temp",
+          "target": "/testbed/packages/hono-typed-routes/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/16/.vite",
+          "target": "/testbed/packages/host-daemon-contract/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/16/.vite-temp",
+          "target": "/testbed/packages/host-daemon-contract/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/17/.vite",
+          "target": "/testbed/packages/host-runtime-material/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/17/.vite-temp",
+          "target": "/testbed/packages/host-runtime-material/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/18/.vite",
+          "target": "/testbed/packages/host-watcher/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/18/.vite-temp",
+          "target": "/testbed/packages/host-watcher/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/19/.vite",
+          "target": "/testbed/packages/host-workspace/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/19/.vite-temp",
+          "target": "/testbed/packages/host-workspace/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/20/.vite",
+          "target": "/testbed/packages/logger/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/20/.vite-temp",
+          "target": "/testbed/packages/logger/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/21/.vite",
+          "target": "/testbed/packages/process-utils/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/21/.vite-temp",
+          "target": "/testbed/packages/process-utils/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/22/.vite",
+          "target": "/testbed/packages/replay-capture/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/22/.vite-temp",
+          "target": "/testbed/packages/replay-capture/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/23/.vite",
+          "target": "/testbed/packages/sandbox-host/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/23/.vite-temp",
+          "target": "/testbed/packages/sandbox-host/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/24/.vite",
+          "target": "/testbed/packages/sandbox-image/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/24/.vite-temp",
+          "target": "/testbed/packages/sandbox-image/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/25/.vite",
+          "target": "/testbed/packages/scripts/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/25/.vite-temp",
+          "target": "/testbed/packages/scripts/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/26/.vite",
+          "target": "/testbed/packages/secret-storage/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/26/.vite-temp",
+          "target": "/testbed/packages/secret-storage/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/27/.vite",
+          "target": "/testbed/packages/server-contract/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/27/.vite-temp",
+          "target": "/testbed/packages/server-contract/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/28/.vite",
+          "target": "/testbed/packages/templates/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/28/.vite-temp",
+          "target": "/testbed/packages/templates/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/29/.vite",
+          "target": "/testbed/packages/thread-view/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/29/.vite-temp",
+          "target": "/testbed/packages/thread-view/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/30/.vite",
+          "target": "/testbed/tests/integration/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/30/.vite-temp",
+          "target": "/testbed/tests/integration/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/31/.vite",
+          "target": "/testbed/tests/qa/node_modules/.vite",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${HOST_VERIFIER_LOGS_PATH:?missing verifier log bind}/cache/bb-vite/31/.vite-temp",
+          "target": "/testbed/tests/qa/node_modules/.vite-temp",
+          "bind": {
+            "create_host_path": true
+          }
+        }
+      ]
+    }
+  },
+  "networks": {
+    "default": {
+      "external": true,
+      "name": "swepm-verifier-r1"
+    }
+  }
+}

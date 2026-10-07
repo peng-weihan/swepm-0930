@@ -1,0 +1,79 @@
+diff --git a/test/src/emulator.rs b/test/src/emulator.rs
+index 3927219..8093092 100644
+--- a/test/src/emulator.rs
++++ b/test/src/emulator.rs
+@@ -90,11 +90,7 @@ impl<P: Program + 'static> Emulator<P> {
+         let executor = P::Executor::new().expect("Create emulator executor");
+ 
+         let renderer = executor
+-            .block_on(P::Renderer::new(
+-                settings.default_font,
+-                settings.default_text_size,
+-                None,
+-            ))
++            .block_on(P::Renderer::new(renderer::Settings::from(&settings), None))
+             .expect("Create emulator renderer");
+ 
+         let runtime = Runtime::new(executor, sender);
+@@ -172,12 +168,6 @@ impl<P: Program + 'static> Emulator<P> {
+                 runtime::Action::Output(message) => {
+                     self.update(program, message);
+                 }
+-                runtime::Action::LoadFont { .. } => {
+-                    // TODO
+-                }
+-                iced_runtime::Action::ListFonts { .. } => {
+-                    // TODO
+-                }
+                 runtime::Action::Widget(operation) => {
+                     let mut user_interface = UserInterface::build(
+                         program.view(&self.state, self.window),
+@@ -257,6 +247,10 @@ impl<P: Program + 'static> Emulator<P> {
+                     // TODO
+                     dbg!(action);
+                 }
++                runtime::Action::Font(action) => {
++                    // TODO
++                    dbg!(action);
++                }
+                 runtime::Action::Image(action) => {
+                     // TODO
+                     dbg!(action);
+diff --git a/test/src/simulator.rs b/test/src/simulator.rs
+index f8633c2..1d06f24 100644
+--- a/test/src/simulator.rs
++++ b/test/src/simulator.rs
+@@ -7,7 +7,7 @@ use crate::core::theme;
+ use crate::core::time;
+ use crate::core::widget;
+ use crate::core::window;
+-use crate::core::{Element, Event, Font, Point, Settings, Size, SmolStr};
++use crate::core::{Element, Event, Point, Settings, Size, SmolStr};
+ use crate::renderer;
+ use crate::runtime::UserInterface;
+ use crate::runtime::user_interface;
+@@ -56,11 +56,6 @@ where
+     ) -> Self {
+         let size = size.into();
+ 
+-        let default_font = match settings.default_font {
+-            Font::DEFAULT => Font::new("Fira Sans"),
+-            _ => settings.default_font,
+-        };
+-
+         for font in settings.fonts {
+             load_font(font).expect("Font must be valid");
+         }
+@@ -69,8 +64,10 @@ where
+             let backend = env::var("ICED_TEST_BACKEND").ok();
+ 
+             crate::futures::futures::executor::block_on(Renderer::new(
+-                default_font,
+-                settings.default_text_size,
++                core::renderer::Settings {
++                    default_font: settings.default_font,
++                    default_text_size: settings.default_text_size,
++                },
+                 backend.as_deref(),
+             ))
+             .expect("Create new headless renderer")

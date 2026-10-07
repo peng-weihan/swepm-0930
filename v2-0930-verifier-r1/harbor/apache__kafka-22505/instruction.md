@@ -1,0 +1,13 @@
+The KRaft request/response handling API should be refactored so asynchronous completion is exposed through method return values rather than mutable completion futures embedded in message objects.
+
+Currently `RaftRequest` and `RaftResponse` objects act both as data carriers and as asynchronous completion handles through a public `completion` field. This creates unclear ownership of the future lifecycle and allows external code to complete request/response futures incorrectly. The observable API should instead make asynchronous behavior explicit by returning `CompletionStage` from request-handling and network-send methods.
+
+Update the KRaft APIs so `RaftRequest` and `RaftResponse` remain pure message/data objects and no longer expose a mutable `completion` field. `NetworkChannel.send(RaftRequest.Outbound)` should return `CompletionStage<RaftResponse.Inbound>` representing the eventual inbound response. Implementations such as `KafkaNetworkChannel` and test implementations must complete the returned stage when the response is received or when an immediate error response is generated. For example, sending to an unavailable destination should return an already-completed stage containing a `RaftResponse.Inbound` with the original correlation id, destination/source information, matching API key, and an error response such as `Errors.BROKER_NOT_AVAILABLE`.
+
+Similarly, `KafkaRaftClient.handle(RaftRequest.Inbound)` should return `CompletionStage<RaftResponse.Outbound>` representing the eventual outbound response instead of relying on a completion future stored inside the inbound request. Callers that need a `CompletableFuture` should convert the returned `CompletionStage` using `toCompletableFuture()`.
+
+The request queue abstraction should also avoid nullable polling and embedded completion fields. `RaftMessageQueue` should enqueue a wrapper entry pairing the `RaftMessage` with its completion future, `add` should accept that entry, and `poll` should return `Optional` of the entry rather than returning a nullable message.
+
+The higher-level Raft manager API should follow the same pattern: `RaftManager.handleRequest(...)` and implementations such as `KafkaRaftManager.handleRequest(...)` should return `CompletionStage<ApiMessage>` rather than `CompletableFuture<ApiMessage>`. Existing callers such as controller request handling should continue to send the same responses and error responses, converting to `CompletableFuture` only where necessary for callback handling.
+
+This is intended as an internal refactoring only. External behavior, request/response contents, error handling, correlation ids, API keys, and wire protocol behavior must remain unchanged.

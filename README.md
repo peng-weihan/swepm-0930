@@ -1,4 +1,17 @@
-# SWEPM v2-0930 实验、轨迹与审查记录
+# SWEPM v2-0930 修复任务、健康报告与实验记录
+
+## 最新修复版：2026-10-07
+
+已发布 [82 个修复后的 Harbor instance](v2-0930-verifier-r1/README.md) 和 [逐题修改、执行健康报告](verifier_repair/reports/20261007-instance-health/REPORT.md)。其中 **53 题有专项修改；60 题没问题、1 题有问题、21 题待定**。健康判断限于明确的环境与 verifier 执行问题，测试契约、覆盖范围等质量争议仍单独保留。
+
+- [全部任务目录](v2-0930-verifier-r1/harbor/)、[逐题索引和当前指纹](v2-0930-verifier-r1/task-index.json)、[报告 CSV](verifier_repair/reports/20261007-instance-health/instances.csv)。
+- [两个修复镜像的 Docker Hub 仓库](https://hub.docker.com/r/raymone23/swepm-0930)、[推送、匿名拉取和引用迁移证明](verifier_repair/image_publish/README.md)。
+- [执行前的镜像、Docker network 与 Enola 离线缓存准备](v2-0930-verifier-r1/README.md#运行前准备)。
+- [本次发布校验](verifier_repair/github-release-validation.json)、[新增文件清单](verifier_repair/github-release-manifest.json)。
+
+本次上传保持 82 个任务与开发区文件一致；没有重新求解或验证全部 82 题。报告、验证摘要及 Docker Hub 地址迁移均注明各自时间和证据边界。
+
+## 历史实验快照：2026-10-02
 
 本仓库保存 82 道题的运行结果、标准化轨迹、原生 session、verifier 日志、配置与分析。包含 Qwen、GLM、Kimi、GPT-6-Luna 四组主要实验，以及 DeepSeek 失败批次、网络恢复、32 GiB 补跑、smoke 和修正 workdir 后的 Luna 重跑快照。
 
@@ -74,13 +87,13 @@ python3 scripts/build_index.py
 
 该汇总的 turns 指 native `token_usage_record` 中去重的 `response_id` 数，不是顶层 `turn.completed` 次数。Claude Code 的 SDK turns 与此口径不能直接混用。`cost_usd` 是 Harbor 估值，不是账号实际账单；缓存输入属于总输入的一部分，reasoning 输出属于总输出的一部分。
 
-Harbor 为 0.23.0；新版 Codex 与 code-mode host 为 0.159.0，具体配置以各批次文件为准。workdir 修复使用 Harbor 现有 `environment.workdir`，没有改 Harbor 核心。**只修复 workdir，没有修复已识别的 verifier 缺陷。**
+历史快照的 Harbor 为 0.23.0；新版 Codex 与 code-mode host 为 0.159.0，具体配置以各批次文件为准。workdir 修复使用 Harbor 现有 `environment.workdir`，没有改 Harbor 核心。**2026-10-02 的原始快照只修复 workdir；后续 verifier 修复请查看上方独立发布的 `v2-0930-verifier-r1/` 和报告。**
 
 ## 脱敏与复现边界
 
 不包含 API key、ChatGPT auth 文件、账号缓存、`.env` 或 Docker 镜像。JSON 中的认证/账号字段、原生 session 的账号限额数据和识别到的 token 字符串被替换为占位符，日志结构和评测事件保留。源码测试中符合 token 模式的示例字符串也可能被保守替换：`v2-0930/v2.json` 的两个 instance 的 `test_patch` 共 6 处被替换，因此该源文件不是原始文件的逐字节副本。相应 Harbor task 文件未因这 6 处发生变化。
 
-文件清单和校验和见 [file-manifest.json](file-manifest.json)、[local-file-manifest.json](local-file-manifest.json)；校验和针对发布后的文件。源路径只用于追溯，在其他机器上并不存在。Docker 镜像仍需按 task.toml 获取，且三题原始镜像缺少 `/tmp/test.patch` 的已知问题仍未补齐。
+历史快照文件清单见 [file-manifest.json](file-manifest.json)、[local-file-manifest.json](local-file-manifest.json)；本次新增内容单列发布清单，`checksums.sha256` 覆盖当前发布文件。源路径只用于追溯，在其他机器上并不存在。Docker 镜像仍需按 task.toml 获取。原 `v2-0930/` 中三题镜像缺少 `/tmp/test.patch` 的问题属于历史快照，修复版的处理和未决状态按最新逐题报告判断。
 
 发布校验见 [publish-validation.json](publish-validation.json)：检查了 1,707 个 gzip 文件、3,833 个 JSON、612 个 JSONL，并逐条核对 328 条主批次结果；未发现解析、文件哈希或所检查的凭据模式残留问题。项目测试中的 29 处私钥块也已替换。克隆后可运行 `sha256sum -c checksums.sha256` 校验发布文件。
 

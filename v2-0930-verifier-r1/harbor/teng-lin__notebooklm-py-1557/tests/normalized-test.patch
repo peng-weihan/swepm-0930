@@ -1,0 +1,1016 @@
+diff --git a/tests/_guardrails/test_module_size_ratchet.py b/tests/_guardrails/test_module_size_ratchet.py
+index 4db5b5c5..fd3dee61 100644
+--- a/tests/_guardrails/test_module_size_ratchet.py
++++ b/tests/_guardrails/test_module_size_ratchet.py
+@@ -75,7 +75,19 @@ ALLOWLISTED_CEILINGS: dict[str, int] = {
+     # without forking the public exception home. Irreducible for this feature.
+     "exceptions.py": 1546,
+     "_artifacts.py": 1447,
+-    "_source/upload.py": 1236,
++    # +3 LOC: the #1491 single-level positional-RPC drain for the sources domain
++    # replaced the file's raw ``name[int]`` reads (``result[0]`` / ``node[0]`` /
++    # ``value[0]`` / ``upload_ids[0]`` / ``matches[0]``) with unpack /
++    # ``next(iter(...))`` forms that lift the heuristic ADD_SOURCE_FILE id-envelope
++    # walks off the type-blind ratchet. The residual growth is irreducible
++    # in-place (an extra unpack-binding line in the two-element prefix and id/name
++    # pair reads); splitting the module for 3 lines is disproportionate. New
++    # ceiling is the measured post-drain LOC.
++    # +3 LOC: PR #1557 review (gemini) — the three guaranteed-single id picks
++    # switched from ``next(iter(x))`` to explicit ``(x,) = ...`` unpacking (one
++    # extra binding line each), which makes the single-element invariant explicit
++    # and sidesteps the PEP 479 ``StopIteration`` nuance. Irreducible in-place.
++    "_source/upload.py": 1242,
+     "_sources.py": 1007,
+     # _artifact/downloads.py: raised for the #1521 per-redirect-hop revalidation
+     # fix. The new *logic* (host+scheme hop guard + httpx event-hook factory) was
+@@ -87,11 +99,15 @@ ALLOWLISTED_CEILINGS: dict[str, int] = {
+     # parser-differential bypass the re-review caught (dropping the ``unquote``
+     # decode + rejecting any ``%`` in the host). New ceiling is the measured
+     # post-fix LOC.
+-    "_artifact/downloads.py": 1041,
++    # +2 LOC: PR #1557 (the #1491 positional drain + its gemini-review unpacking
++    # of the typed ``completed``/``Artifact`` list heads). Irreducible in-place.
++    "_artifact/downloads.py": 1043,
+     # client.py dropped below the budget when its ``__init__`` body moved to
+     # ``_client_assembly.py`` (the shared constructor/test-factory seam), so
+     # its ceiling entry was removed per the one-way-ratchet rule.
+-    "_research.py": 936,
++    # +1 LOC: PR #1557 (the #1491 positional drain + its gemini-review unpacking
++    # of the typed ``parsed_tasks``/``list[ResearchTask]`` head). Irreducible.
++    "_research.py": 937,
+     "_chat/api.py": 955,
+ }
+ 
+diff --git a/tests/_guardrails/test_no_raw_positional_rpc_indexing.py b/tests/_guardrails/test_no_raw_positional_rpc_indexing.py
+index 74d42d38..df094329 100644
+--- a/tests/_guardrails/test_no_raw_positional_rpc_indexing.py
++++ b/tests/_guardrails/test_no_raw_positional_rpc_indexing.py
+@@ -134,51 +134,20 @@ SINGLE_LEVEL_EXCLUDED_FILES = frozenset({"utils.py", "_version_check.py"})
+ 
+ # Baseline of BELOW-FACADE feature files that open-code a *single-level*
+ # integer-literal subscript (``x[i]``) of a decoded RPC payload (issue #1491).
+-# Many of these reads are genuine but already-guarded inner reads -- the
+-# single-level gate is a RATCHET, not an immediate ban: these files are
+-# grandfathered so the gate is green on ``main``, but a single-level subscript
+-# in any in-scope file NOT on this list fails the gate. Above-facade files
+-# (``cli/`` / ``_app/`` / ``_auth/`` / ``utils.py`` / ``_version_check.py``)
+-# are excluded from the scan entirely (see the scope constants above) and MUST
+-# NOT appear here (pinned by
++# FULLY DRAINED (#1501 burndown): every below-facade file that open-coded a
++# ``name[int]`` read has been migrated behind ``_row_adapters/`` + ``safe_index``
++# (or had its already-guarded inner read routed through ``safe_index`` so the leaf
++# can no longer drift silently), so this list is now EMPTY and the single-level
++# gate re-protects the whole below-facade feature tree with no exceptions.
++# Above-facade files (``cli/`` / ``_app/`` / ``_auth/`` / ``utils.py`` /
++# ``_version_check.py``) remain excluded from the scan entirely (see the scope
++# constants above) and MUST NOT appear here (pinned by
+ # ``test_single_level_allowlist_has_no_above_facade_entries``).
+ #
+-# The chat wire parser (``_chat/wire.py``) and the ``suggest_reports`` row decode
+-# in ``_artifacts.py`` were the largest un-adapted surfaces; ``_chat/wire.py`` is
+-# fully migrated behind ``_row_adapters/chat.py`` and is DELIBERATELY ABSENT from
+-# this list so the gate re-protects it. ``_artifacts.py`` keeps its remaining
+-# envelope-unwrap / request-param reads (only its ``suggest_reports`` row decode
+-# moved behind ``ReportSuggestionRow``), so it stays listed for now.
+-# ``_types/artifacts.py`` is likewise ABSENT: ``Artifact.from_mind_map``'s last
+-# inline ``[1][2][2][0]`` timestamp descent moved behind ``NoteRow.created_at``
+-# (issue #1529), so the gate re-protects it.
+-#
+-# DO NOT add new entries to grow the debt. The burndown (drain this list by
+-# migrating each file behind ``_row_adapters/`` + ``safe_index``, or binding the
+-# already-guarded inner list to a named local) is a follow-up to #1491.
+-SINGLE_LEVEL_ALLOWLIST: frozenset[str] = frozenset(
+-    {
+-        "_artifact/downloads.py",
+-        "_artifact/formatters.py",
+-        "_artifact/listing.py",
+-        "_artifact/polling.py",
+-        "_artifacts.py",
+-        "_chat/api.py",
+-        "_chat/notes.py",
+-        "_labels.py",
+-        "_mind_maps_api.py",
+-        "_note_service.py",
+-        "_notebooks.py",
+-        "_research.py",
+-        "_source/add.py",
+-        "_source/content.py",
+-        "_source/listing.py",
+-        "_source/upload.py",
+-        "_types/notebooks.py",
+-        "_types/sharing.py",
+-        "_types/sources.py",
+-    }
+-)
++# DO NOT add new entries to grow the debt -- a new ``name[int]`` read in an
++# in-scope file means new code that should decode through ``safe_index`` / a row
++# adapter instead.
++SINGLE_LEVEL_ALLOWLIST: frozenset[str] = frozenset()
+ 
+ # The enumerated facade methods that return RAW (untyped / positional) RPC
+ # payloads instead of typed objects. Verified by introspection at
+diff --git a/tests/unit/test_artifacts_helpers.py b/tests/unit/test_artifacts_helpers.py
+index 0e9efb4e..1b0c813e 100644
+--- a/tests/unit/test_artifacts_helpers.py
++++ b/tests/unit/test_artifacts_helpers.py
+@@ -149,3 +149,26 @@ def test_parse_data_table_happy_path() -> None:
+ 
+     assert headers == ["Col1", "Col2"]
+     assert rows == [["A", "B"]]
++
++
++def test_parse_data_table_skips_malformed_row_sections() -> None:
++    """Per-row malformed sections are skipped, not fatal: a non-list row, a
++    short (<3) row, and a row whose cell-array slot is a non-list are all
++    dropped while the valid header + data rows parse. Pins the soft per-row
++    skip contract preserved across the #1491 ``safe_index`` migration of the
++    ``row_section[2]`` read (the ``len(row_section) < 3`` guard keeps it a
++    no-op; a present non-list ``cell_array`` is also skipped)."""
++    rows_array = [
++        [0, 1, ["H1", "H2"]],  # header (valid)
++        "not-a-list",  # non-list row_section -> skip
++        [0, 1],  # short (<3) row_section -> skip
++        [0, 1, "non-list-cell-array"],  # cell_array not a list -> skip
++        [0, 1, ["v1", "v2"]],  # data row (valid)
++    ]
++    # rows_array lives at raw_data[0][0][0][0][4][2] (mirrors the happy-path test).
++    raw_data = [[[[[0, 100, None, None, [6, 7, rows_array]]]]]]
++
++    headers, rows = _parse_data_table(raw_data, cell_text_extractor=lambda cell: cell)
++
++    assert headers == ["H1", "H2"]
++    assert rows == [["v1", "v2"]]
+diff --git a/tests/unit/test_artifacts_row_adapter.py b/tests/unit/test_artifacts_row_adapter.py
+new file mode 100644
+index 00000000..83ec0a58
+--- /dev/null
++++ b/tests/unit/test_artifacts_row_adapter.py
+@@ -0,0 +1,199 @@
++"""Behavioral replacement for new artifact-envelope helper ABI checks.
++
++Use pre-existing ArtifactsAPI + real note service and a fake wire RPC only.
++No new row-adapter symbol or sentinel identity is part of this acceptance.
++The unrelated adapter and LOC-ratchet issues are outside this draft's scope.
++"""
++from __future__ import annotations
++
++import json
++from copy import deepcopy
++from unittest.mock import AsyncMock, MagicMock
++
++import pytest
++
++from notebooklm._artifacts import ArtifactsAPI
++from notebooklm._mind_map import NoteBackedMindMapService
++from notebooklm._note_service import NoteService
++from notebooklm.exceptions import DecodingError
++from notebooklm.rpc import ArtifactTypeCode
++from notebooklm.types import ArtifactType
++from tests._fixtures.fake_core import make_fake_core
++
++
++class Wire:
++    def __init__(self, responses):
++        self.responses = responses
++        self.calls = []
++
++    async def call(self, method, params, **kwargs):
++        name = getattr(method, "name", str(method))
++        self.calls.append((name, deepcopy(params)))
++        if name in self.responses:
++            return deepcopy(self.responses[name])
++        if name == "CREATE_NOTE":
++            return [["created-note-marker"]]
++        if name == "UPDATE_NOTE":
++            return None
++        if name == "GET_NOTES_AND_MIND_MAPS":
++            return []
++        raise AssertionError(f"Unexpected wire method in this fixture: {name}")
++
++
++def make_api(responses):
++    wire = Wire(responses)
++    core = make_fake_core(rpc_call=AsyncMock(side_effect=wire.call))
++    notebooks = MagicMock(get_source_ids=AsyncMock(return_value=["source-marker"]))
++    note_service = NoteService(core)
++    api = ArtifactsAPI(
++        rpc=core,
++        drain=core,
++        lifecycle=core,
++        notebooks=notebooks,
++        mind_maps=NoteBackedMindMapService(note_service),
++        note_service=note_service,
++    )
++    return api, wire
++
++
++def strings_in(value):
++    """Observe serialized wire content without requiring new internal fields."""
++    if isinstance(value, str):
++        yield value
++    elif isinstance(value, (tuple, list)):
++        for item in value:
++            yield from strings_in(item)
++    elif isinstance(value, dict):
++        for item in value.values():
++            yield from strings_in(item)
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("payload", [None, [], [[]], [None], "scalar", 0, ["inner"], [0]])
++async def test_absent_mind_map_leaf_has_no_note_side_effect(payload):
++    api, wire = make_api({"GENERATE_MIND_MAP": payload})
++    result = await api.generate_mind_map("notebook-marker", source_ids=["source-marker"])
++    assert result.mind_map is None
++    assert result.note_id is None
++    assert not any(name in {"CREATE_NOTE", "UPDATE_NOTE"} for name, _ in wire.calls)
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize(
++    "leaf, expected_tree, expected_title",
++    [
++        (None, None, "Mind Map"),
++        ("", "", "Mind Map"),
++        (123, 123, "Mind Map"),
++        ('{"name":"Tree marker","children":[]}', {"name": "Tree marker", "children": []}, "Tree marker"),
++        ({"name": "Dictionary marker", "children": []}, {"name": "Dictionary marker", "children": []}, "Dictionary marker"),
++        ({"name": None}, {"name": None}, "Mind Map"),
++        ("not-json-marker", "not-json-marker", "Mind Map"),
++    ],
++)
++async def test_present_mind_map_leaf_is_persisted(leaf, expected_tree, expected_title):
++    api, wire = make_api({"GENERATE_MIND_MAP": [[leaf]]})
++    result = await api.generate_mind_map("notebook-marker", source_ids=["source-marker"])
++    assert result.mind_map == expected_tree
++    assert result.note_id == "created-note-marker"
++    assert any(name == "CREATE_NOTE" for name, _ in wire.calls)
++    updates = [params for name, params in wire.calls if name == "UPDATE_NOTE"]
++    assert updates, "Present leaves must reach the existing note persistence path"
++    values = [s for params in updates for s in strings_in(params)]
++    assert expected_title in values
++    if isinstance(leaf, str):
++        assert leaf in values
++    else:
++        # Compare parsed JSON content rather than its whitespace/key ordering.
++        decoded = []
++        for value in values:
++            try:
++                decoded.append(json.loads(value))
++            except (TypeError, ValueError):
++                continue
++        assert leaf in decoded, "The leaf must be serialized as the note content"
++        if leaf is None:
++            assert "null" in values, "A present None is JSON null, not an absent leaf"
++
++
++def artifact_rows():
++    return [
++        ["artifact-a", "Title A", ArtifactTypeCode.REPORT.value, None, 3],
++        ["artifact-b", "Title B", ArtifactTypeCode.REPORT.value, None, 3],
++    ]
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("shape", ["wrapped", "flat", "single-flat"])
++async def test_artifact_list_wrapped_and_flat_rows_have_same_public_meaning(shape):
++    rows = artifact_rows()
++    if shape == "wrapped":
++        payload, expected = [rows], rows
++    elif shape == "single-flat":
++        payload, expected = rows[:1], rows[:1]
++    else:
++        payload, expected = rows, rows
++    api, _ = make_api({"LIST_ARTIFACTS": payload})
++    result = await api.list("notebook-marker", artifact_type=ArtifactType.REPORT)
++    assert [(item.id, item.title) for item in result] == [(row[0], row[1]) for row in expected]
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("payload", [None, [], [[]], 0, ""])
++async def test_artifact_list_soft_empty_payloads(payload):
++    api, _ = make_api({"LIST_ARTIFACTS": payload})
++    assert await api.list("notebook-marker", artifact_type=ArtifactType.REPORT) == []
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("payload", ["truthy-schema-drift", {"unexpected": 1}])
++async def test_artifact_list_keeps_existing_strict_drift_policy(payload):
++    api, _ = make_api({"LIST_ARTIFACTS": payload})
++    with pytest.raises(DecodingError):
++        await api.list("notebook-marker", artifact_type=ArtifactType.REPORT)
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("shape", ["wrapped", "flat", "single-flat"])
++async def test_report_suggestions_preserve_wrapped_and_flat_meaning(shape):
++    rows = [
++        ["Title A", "Description A", None, None, "Prompt A", 1],
++        ["Title B", "Description B", None, None, "Prompt B"],
++    ]
++    if shape == "wrapped":
++        payload, expected = [rows], rows
++    elif shape == "single-flat":
++        payload, expected = rows[:1], rows[:1]
++    else:
++        payload, expected = rows, rows
++    api, _ = make_api({"GET_SUGGESTED_REPORTS": payload})
++    result = await api.suggest_reports("notebook-marker")
++    assert [(v.title, v.description, v.prompt, v.audience_level) for v in result] == [
++        (row[0], row[1], row[4], row[5] if len(row) > 5 else 2) for row in expected
++    ]
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("payload", [None, [], [[]], "scalar", 0, ["scalar-row"]])
++async def test_report_suggestions_soft_empty_and_malformed_inputs(payload):
++    api, _ = make_api({"GET_SUGGESTED_REPORTS": payload})
++    assert await api.suggest_reports("notebook-marker") == []
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize(
++    "payload",
++    [
++        [["first-leaf-marker", "ignored-inner-marker"]],
++        [["first-leaf-marker"], ["ignored-outer-marker"]],
++    ],
++)
++async def test_mind_map_uses_first_leaf_with_extra_envelope_slots(payload):
++    api, wire = make_api({"GENERATE_MIND_MAP": payload})
++    result = await api.generate_mind_map("notebook-marker", source_ids=["source-marker"])
++    assert result.mind_map == "first-leaf-marker"
++    assert result.note_id == "created-note-marker"
++    values = [s for name, params in wire.calls if name == "UPDATE_NOTE" for s in strings_in(params)]
++    assert "first-leaf-marker" in values
++    assert "ignored-inner-marker" not in values
++    assert "ignored-outer-marker" not in values
+diff --git a/tests/unit/test_chat_row_adapter.py b/tests/unit/test_chat_row_adapter.py
+index b94aad33..b53bfaa3 100644
+--- a/tests/unit/test_chat_row_adapter.py
++++ b/tests/unit/test_chat_row_adapter.py
+@@ -442,3 +442,90 @@ class TestUnwrapConversationTurns:
+             unwrap_conversation_turns(payload, source="test-source")
+         assert exc_info.value.method_id == RPCMethod.GET_CONVERSATION_TURNS.value
+         assert exc_info.value.source == "test-source"
++
++# Public behavior replaces only the two gold-new decode seams. Existing
++# base row-adapter tests above remain unchanged except the two new imports.
++from unittest.mock import AsyncMock, MagicMock
++
++from notebooklm._chat import ChatAPI
++from notebooklm.types import AskResult, ChatReference
++
++
++def make_public_chat(response):
++    rpc = MagicMock(rpc_call=AsyncMock(return_value=response))
++    return ChatAPI(
++        rpc=rpc,
++        transport=MagicMock(),
++        reqid=MagicMock(),
++        loop_guard=MagicMock(),
++        notebooks=MagicMock(get_source_ids=AsyncMock(return_value=[])),
++    )
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize(
++    "payload,expected",
++    [
++        ([[["conv-abc"]]], "conv-abc"),
++        ([[["first"], ["second"]]], "first"),
++        (["noise", [None, [], [42], ["winner"]]], "winner"),
++        ([[[""]]], ""),
++        ([[[" spaced "]]], " spaced "),
++    ],
++)
++async def test_public_conversation_id_preserves_first_string(payload, expected):
++    assert await make_public_chat(payload).get_conversation_id("nb-marker") == expected
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize(
++    "payload", [None, [], "str", 42, {}, [[]], [[[]]], [[[42]]], {"unexpected": "dict"}]
++)
++async def test_public_conversation_id_soft_absence_keeps_diagnostics(payload, caplog):
++    with caplog.at_level("WARNING"):
++        result = await make_public_chat(payload).get_conversation_id("nb-marker")
++    assert result is None
++    # None is ordinary absence. Other unsuccessful shapes retain a warning,
++    # without fixing the logger name or exact diagnostic wording.
++    if payload is not None:
++        assert any(record.levelno >= 30 for record in caplog.records)
++
++
++def cited_answer():
++    return AskResult(
++        answer="Public answer marker [1].",
++        conversation_id="conversation-marker",
++        turn_number=1,
++        is_follow_up=False,
++        references=[ChatReference(source_id="source-marker", citation_number=1, chunk_id="chunk-marker", cited_text="A cited passage.", start_char=0, end_char=16)],
++        raw_response="",
++    )
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize(
++    "payload,expected_id,expected_title",
++    [
++        ([["note-1", "content", None, None, "Server Title", "rich"]], "note-1", "Server Title"),
++        (["note-2", "content", None, None, "Flat Title"], "note-2", "Flat Title"),
++        ([["note-3", "content"]], "note-3", "Requested Title"),
++        ([["note-4", "c", None, None, 99]], "note-4", "Requested Title"),
++        ([["note-5", "c", None, None, None]], "note-5", "Requested Title"),
++        ([["note-6", "c", None, None, ""]], "note-6", ""),
++        ([["note-7", 1, 2]], "note-7", "Requested Title"),
++    ],
++)
++async def test_public_saved_chat_note_id_title_and_content(payload, expected_id, expected_title):
++    answer = cited_answer()
++    note = await make_public_chat(payload).save_answer_as_note("nb-marker", answer, title="Requested Title")
++    assert note.id == expected_id
++    assert note.title == expected_title
++    assert note.notebook_id == "nb-marker"
++    assert note.content == answer.answer
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("payload", [None, [], "str", 42, {}, {"k": 1}, [None], [42], [[]], [[7]], [[""]]])
++async def test_public_saved_chat_note_missing_id_keeps_error(payload):
++    with pytest.raises(RuntimeError):
++        await make_public_chat(payload).save_answer_as_note("nb-marker", cited_answer(), title="Requested Title")
+diff --git a/tests/unit/test_mind_maps_api.py b/tests/unit/test_mind_maps_api.py
+index aeee623a..47df25b5 100644
+--- a/tests/unit/test_mind_maps_api.py
++++ b/tests/unit/test_mind_maps_api.py
+@@ -610,3 +610,27 @@ async def test_delete_auto_detect_missing_is_idempotent():
+     assert await api.delete("nb", "ghost") is None
+     mind_maps.delete_mind_map.assert_not_awaited()
+     artifacts.delete.assert_not_awaited()
++
++
++@pytest.mark.parametrize(
++    "create_response, expected",
++    [
++        ([["artifact_abc"]], "artifact_abc"),  # happy: [[id, ...]]
++        ([["artifact_abc", "extra"]], "artifact_abc"),  # id is slot 0
++        (None, None),  # null response
++        ([], None),  # empty response
++        ("nope", None),  # non-list response
++        ([[]], None),  # empty inner row
++        ([None], None),  # non-list inner row
++        ([[123]], None),  # non-str id
++    ],
++)
++def test_new_artifact_id_degenerate_shapes(create_response, expected):
++    """``_new_artifact_id`` keeps its soft ``CREATE_ARTIFACT`` contract after the
++    #1491 ``safe_index`` migration: every degenerate response shape returns
++    ``None`` (never raises ``UnknownRPCMethodError``), and a well-formed
++    ``[[id, ...]]`` yields the id. Pins the empty / non-list / non-str paths the
++    two guarded ``safe_index`` descents must keep soft."""
++    from notebooklm._mind_maps_api import _new_artifact_id
++
++    assert _new_artifact_id(create_response) == expected
+diff --git a/tests/unit/test_research_row_adapter.py b/tests/unit/test_research_row_adapter.py
+index 362e141f..3095aadc 100644
+--- a/tests/unit/test_research_row_adapter.py
++++ b/tests/unit/test_research_row_adapter.py
+@@ -212,3 +212,144 @@ class TestUnwrapPollTasks:
+         # treated as wrapped; a flat list of task rows (first element's first is
+         # a str id) is returned unchanged.
+         assert unwrap_poll_tasks(flat) == flat
++
++
++# ---------------------------------------------------------------------------
++# 6. Public research decode parity (no newly introduced helper ABI)
++# ---------------------------------------------------------------------------
++
++from copy import deepcopy
++from unittest.mock import AsyncMock
++
++from notebooklm._research import ResearchAPI
++from notebooklm.exceptions import DecodingError
++from notebooklm.rpc import RPCMethod
++from tests._fixtures.fake_core import make_fake_core
++
++
++def _public_research_api(payload):
++    """Inject only RPC transport; execute the candidate's real public methods."""
++    rpc_call = AsyncMock(return_value=deepcopy(payload))
++    return ResearchAPI(make_fake_core(rpc_call=rpc_call)), rpc_call
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("mode", ["fast", "deep"])
++@pytest.mark.parametrize(
++    "payload, task_id, report_id",
++    [
++        (["task-marker", "report-marker"], "task-marker", "report-marker"),
++        (["task-only"], "task-only", None),
++        (["task-marker", None], "task-marker", None),
++        (["task-marker", ""], "task-marker", ""),
++        (["task-marker", 0], "task-marker", 0),
++        ([42, {"raw": "report-marker"}], 42, {"raw": "report-marker"}),
++    ],
++)
++async def test_public_start_preserves_task_and_optional_report(payload, task_id, report_id, mode):
++    api, rpc_call = _public_research_api(payload)
++    result = await api.start("notebook-marker", "query-marker", mode=mode)
++    assert result.task_id == task_id
++    assert result.report_id == report_id
++    assert result.notebook_id == "notebook-marker"
++    assert result.query == "query-marker"
++    assert result.mode == mode
++    rpc_call.assert_awaited_once()
++    method = RPCMethod.START_FAST_RESEARCH if mode == "fast" else RPCMethod.START_DEEP_RESEARCH
++    assert rpc_call.await_args.args[0] == method
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("mode", ["fast", "deep"])
++@pytest.mark.parametrize(
++    "payload",
++    [None, [], 0, "not-a-row", {}, {"task": "marker"}, [None], [""], [0], [False], [[]]],
++)
++async def test_public_start_invalid_result_preserves_decoding_error(payload, mode):
++    api, rpc_call = _public_research_api(payload)
++    with pytest.raises(DecodingError):
++        await api.start("notebook-marker", "query-marker", mode=mode)
++    rpc_call.assert_awaited_once()
++
++
++async def _public_import(payload):
++    api, rpc_call = _public_research_api(payload)
++    result = await api.import_sources(
++        "notebook-marker",
++        "task-marker",
++        [{"url": "https://example.invalid/source", "title": "Requested source"}],
++    )
++    rpc_call.assert_awaited_once()
++    assert rpc_call.await_args.args[0] == RPCMethod.IMPORT_RESEARCH
++    return result
++
++
++@pytest.mark.asyncio
++async def test_public_import_wrapped_rows_preserve_ids_titles_and_order():
++    rows = [
++        [["source-a", "ignored-envelope-tail"], "Title A", "ignored-row-tail"],
++        [["source-b"], "Title B"],
++    ]
++    assert await _public_import([rows]) == [
++        {"id": "source-a", "title": "Title A"},
++        {"id": "source-b", "title": "Title B"},
++    ]
++
++
++@pytest.mark.asyncio
++async def test_public_import_flat_rows_keep_legacy_unwrap_predicate():
++    # Base unwraps only when the first row's first value is itself a list.
++    # A malformed string-headed leading row leaves later flat rows visible.
++    rows = [["not-an-id-envelope", "Skip"], [["source-a"], "Title A"], [["source-b"], "Title B"]]
++    assert await _public_import(rows) == [
++        {"id": "source-a", "title": "Title A"},
++        {"id": "source-b", "title": "Title B"},
++    ]
++
++
++@pytest.mark.asyncio
++async def test_public_import_single_flat_row_keeps_legacy_soft_result():
++    # The base implementation interprets this ambiguous shape as an envelope,
++    # leaving two malformed children. Preserve [] rather than silently fixing
++    # this unrelated wire-shape ambiguity during the positional-read refactor.
++    assert await _public_import([[["source-marker"], "Title"]]) == []
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("payload", [None, [], "not-rows", 0, 42, {}, {"rows": []}, [None], [[]]])
++async def test_public_import_soft_top_level_shapes(payload):
++    assert await _public_import(payload) == []
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize(
++    "bad_row",
++    [
++        None,
++        42,
++        "not-row",
++        [],
++        [["missing-title"]],
++        [None, "Title"],
++        [[], "Title"],
++        ["not-list", "Title"],
++        [[None], "Title"],
++        [[""], "Title"],
++        [[0], "Title"],
++        [[False], "Title"],
++        {"id": "not-a-list", "title": "Title"},
++    ],
++)
++async def test_public_import_skips_malformed_rows_without_losing_valid_rows(bad_row):
++    rows = [[["source-before"], "Before"], bad_row, [["source-after"], "After"]]
++    assert await _public_import([rows]) == [
++        {"id": "source-before", "title": "Before"},
++        {"id": "source-after", "title": "After"},
++    ]
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("source_id, title", [(42, "Title"), ("id", None), ("id", 0), ("id", "")])
++async def test_public_import_preserves_truthy_raw_id_and_raw_title(source_id, title):
++    # Base checks id truthiness, not string type, and does not coerce the title.
++    assert await _public_import([[[[source_id], title]]]) == [{"id": source_id, "title": title}]
+diff --git a/tests/unit/test_sharing_types.py b/tests/unit/test_sharing_types.py
+index fa2bd47f..4b533112 100644
+--- a/tests/unit/test_sharing_types.py
++++ b/tests/unit/test_sharing_types.py
+@@ -1,5 +1,7 @@
+ """Unit tests for sharing types and API."""
+ 
++from typing import Any
++
+ import pytest
+ 
+ from notebooklm.rpc.types import ShareAccess, SharePermission, ShareViewLevel
+@@ -177,6 +179,114 @@ class TestShareStatus:
+         assert status.access == ShareAccess.RESTRICTED
+ 
+ 
++def _legacy_shared_user_from_api_response(data: list[Any]) -> dict[str, Any]:
++    """Verbatim copy of the PRE-DRAIN ``SharedUser.from_api_response`` decode.
++
++    Mirrors the hand-rolled ``data[i]`` reads that the ``safe_index`` migration
++    replaced, so the differential test below can prove byte-for-byte parity on
++    present / empty / too-short / malformed inputs. Returns only the decoded
++    fields (no warning side-effect) as a dict.
++    """
++    email = ""
++    if data:
++        raw_email = data[0]
++        if isinstance(raw_email, str):
++            email = raw_email
++    perm_value = data[1] if len(data) > 1 else 3
++    try:
++        permission = SharePermission(perm_value)
++    except (TypeError, ValueError):
++        permission = SharePermission.VIEWER
++
++    display_name = None
++    avatar_url = None
++    if len(data) > 3 and isinstance(data[3], list):
++        user_info = data[3]
++        display_name = user_info[0] if user_info else None
++        avatar_url = user_info[1] if len(user_info) > 1 else None
++
++    return {
++        "email": email,
++        "permission": permission,
++        "display_name": display_name,
++        "avatar_url": avatar_url,
++    }
++
++
++def _legacy_share_status_from_api_response(data: list[Any], notebook_id: str) -> dict[str, Any]:
++    """Verbatim copy of the PRE-DRAIN ``ShareStatus.from_api_response`` decode.
++
++    Only the positionally-decoded fields (``is_public`` and the parsed
++    shared-user count) are returned — enough to assert parity against the
++    ``safe_index`` migration without re-deriving the URL/access logic, which
++    flows deterministically from ``is_public``.
++    """
++    users: list[Any] = []
++    if data and isinstance(data[0], list):
++        for user_data in data[0]:
++            if isinstance(user_data, list):
++                users.append(user_data)
++
++    is_public = False
++    public_block = data[1] if len(data) > 1 and isinstance(data[1], list) else None
++    if public_block:
++        is_public = bool(public_block[0])
++
++    return {"is_public": is_public, "user_count": len(users)}
++
++
++# Inputs spanning present / empty / too-short / malformed shapes. The
++# ``safe_index`` migration must decode each identically to the legacy logic
++# above — soft reads stay soft (each ``safe_index`` sits after the guard that
++# proves its slot present, so it never raises on these).
++_SHARED_USER_DIFFERENTIAL_INPUTS: list[Any] = [
++    ["user@example.com", 3, [], ["Name", "https://avatar"]],  # full
++    ["user@example.com", 2, []],  # minimal (no user_info slot)
++    ["user@example.com", 3, [], ["Just Name"]],  # partial user_info (no avatar)
++    ["user@example.com", 99, []],  # unknown permission
++    ["user@example.com", {"k": 1}, []],  # malformed (unhashable) permission
++    [],  # empty
++    [None, 2],  # null email slot
++    [12345, 2],  # malformed (non-str) email slot
++    ["only-email"],  # too-short (no permission slot)
++    ["e", 2, [], []],  # empty user_info list
++    ["e", 2, [], "not-a-list"],  # slot 3 present but non-list
++]
++
++_SHARE_STATUS_DIFFERENTIAL_INPUTS: list[Any] = [
++    [[["owner@example.com", 1, [], ["Owner", "a"]]], [True], 1000],  # public, 1 user
++    [[["o@e.com", 1, []], ["e@e.com", 2, []]], [False], 1000],  # private, 2 users
++    [[], [False], 1000],  # empty users
++    [[], [], 1000],  # empty is_public block
++    [[], [True], 1000],  # public, no users
++    [],  # fully empty payload
++    [[]],  # only users slot present (too-short)
++    ["not-a-list", [True]],  # users slot non-list
++    [[], "not-a-list", 1000],  # is_public slot non-list
++    [[None, "x"], [True]],  # a non-list user entry is skipped
++]
++
++
++class TestSharingDecodeDifferential:
++    """``safe_index`` migration preserves the legacy positional-decode semantics."""
++
++    @pytest.mark.parametrize("data", _SHARED_USER_DIFFERENTIAL_INPUTS)
++    def test_shared_user_matches_legacy(self, data: Any) -> None:
++        legacy = _legacy_shared_user_from_api_response(data)
++        actual = SharedUser.from_api_response(data)
++        assert actual.email == legacy["email"]
++        assert actual.permission == legacy["permission"]
++        assert actual.display_name == legacy["display_name"]
++        assert actual.avatar_url == legacy["avatar_url"]
++
++    @pytest.mark.parametrize("data", _SHARE_STATUS_DIFFERENTIAL_INPUTS)
++    def test_share_status_matches_legacy(self, data: Any) -> None:
++        legacy = _legacy_share_status_from_api_response(data, "nb_diff")
++        actual = ShareStatus.from_api_response(data, "nb_diff")
++        assert actual.is_public == legacy["is_public"]
++        assert len(actual.shared_users) == legacy["user_count"]
++
++
+ class TestShareEnums:
+     """Tests for share-related enums."""
+ 
+diff --git a/tests/unit/test_sources_row_adapter.py b/tests/unit/test_sources_row_adapter.py
+new file mode 100644
+index 00000000..759eb79f
+--- /dev/null
++++ b/tests/unit/test_sources_row_adapter.py
+@@ -0,0 +1,260 @@
++"""Source decode parity through pre-existing public helpers and SourcesAPI.
++
++Protocol fixtures/reference walks preserve legacy semantics; new row-adapter
++names and private method signatures are not acceptance requirements.
++"""
++from __future__ import annotations
++from unittest.mock import AsyncMock, MagicMock
++import pytest
++from notebooklm._sources import SourcesAPI
++from datetime import datetime, timezone
++from notebooklm.types import SourceNotFoundError, SourceType, _extract_source_url, _extract_source_created_at
++
++def _legacy_extract_source_url(metadata, *, allow_bare_http=True):
++    """Pre-drain ``_extract_source_url`` body, copied verbatim."""
++    if not isinstance(metadata, list):
++        return None
++    url = None
++    if len(metadata) > 7:
++        url_list = metadata[7]
++        if isinstance(url_list, list) and len(url_list) > 0:
++            url = url_list[0]
++    if not url and len(metadata) > 5:
++        yt_data = metadata[5]
++        if isinstance(yt_data, list) and len(yt_data) > 0 and isinstance(yt_data[0], str):
++            url = yt_data[0]
++    if not url and allow_bare_http and len(metadata) > 0:
++        candidate = metadata[0]
++        if isinstance(candidate, str) and candidate.startswith("http"):
++            url = candidate
++    return url
++
++
++def _legacy_extract_source_created_at(metadata):
++    """Freeze base conversion semantics without calling candidate helpers.
++
++    The cached base explicitly uses aware UTC, not process-local time.
++    Equality checks the datetime value, not the timezone object's identity.
++    """
++    if not isinstance(metadata, list) or len(metadata) <= 2:
++        return None
++    timestamp_list = metadata[2]
++    if not isinstance(timestamp_list, list) or not timestamp_list:
++        return None
++    try:
++        return datetime.fromtimestamp(timestamp_list[0], tz=timezone.utc)
++    except (TypeError, ValueError, OSError, OverflowError):
++        return None
++
++
++def _legacy_guide(result):
++    """Pre-drain ``get_guide`` decode body, copied verbatim."""
++    summary = ""
++    keywords: list = []
++    if result and isinstance(result, list) and len(result) > 0:
++        outer = result[0]
++        if isinstance(outer, list) and len(outer) > 0:
++            inner = outer[0]
++            if isinstance(inner, list):
++                summary_block = inner[1] if len(inner) > 1 and isinstance(inner[1], list) else None
++                if summary_block:
++                    summary = summary_block[0] if isinstance(summary_block[0], str) else ""
++                keyword_block = inner[2] if len(inner) > 2 and isinstance(inner[2], list) else None
++                if keyword_block:
++                    keywords = keyword_block[0] if isinstance(keyword_block[0], list) else []
++    return summary, keywords
++
++
++def _legacy_fulltext(result):
++    """Pre-drain ``get_fulltext`` title/metadata/html/text decode, verbatim.
++
++    Returns ``(title, metadata, html_content, text_content_blocks)`` — the
++    four positional values the adapter now owns.
++    """
++    title = ""
++    metadata = None
++    html = None
++    text_blocks = None
++    descriptor = result[0]
++    if isinstance(descriptor, list) and len(descriptor) > 1:
++        title = descriptor[1] if isinstance(descriptor[1], str) else ""
++        if len(descriptor) > 2 and isinstance(descriptor[2], list):
++            metadata = descriptor[2]
++    html_block = result[4] if len(result) > 4 and isinstance(result[4], list) else None
++    if html_block is not None and len(html_block) > 1:
++        candidate = html_block[1]
++        if isinstance(candidate, str):
++            html = candidate
++    text_block = result[3] if len(result) > 3 and isinstance(result[3], list) else None
++    if text_block:
++        content_blocks = text_block[0]
++        if isinstance(content_blocks, list):
++            text_blocks = content_blocks
++    return title, metadata, html, text_blocks
++
++
++_URL_CASES = [
++    # (metadata, allow_bare_http)
++    ([0, 1, 2, 3, 4, 5, 6, ["https://canonical/"]], True),  # present canonical
++    ([0, 1, 2, 3, 4, 5, 6, [""]], True),  # falsy canonical -> raw "" (legacy quirk)
++    ([0, 1, 2, 3, 4, 5, 6, [0]], True),  # falsy zero canonical -> raw 0
++    ([0, 1, 2, 3, 4, 5, 6, [42]], True),  # non-str truthy -> raw int 42, no coercion
++    ([0, 1, 2, 3, 4, 5, 6, []], True),  # empty canonical block
++    ([0, 1, 2, 3, 4, 5, 6, "notlist"], True),  # non-list canonical block
++    ([0, 1, 2, 3, 4, ["https://yt/"]], True),  # youtube string fallback
++    ([0, 1, 2, 3, 4, [42]], True),  # youtube non-string ignored
++    ([0, 1, 2, 3, 4, []], True),  # empty youtube block
++    (["https://bare/"], True),  # bare http honored
++    (["https://bare/"], False),  # bare http suppressed
++    (["ftp://bare/"], True),  # bare non-http ignored
++    ([42], True),  # bare non-string ignored
++    ([], True),  # empty metadata
++    ("notalist", True),  # non-list metadata
++    (None, True),  # None metadata
++    ([0, 1, 2, 3, 4, 5, 6, ["a", "b"]], True),  # canonical multi -> first
++]
++
++
++_CREATED_CASES = [
++    [0, 1, [1_700_000_000]],  # present numeric
++    [0, 1, [1_700_000_000.5]],  # float
++    [0, 1, [True]],  # bool subclass of int -> 1s
++    [0, 1, []],  # empty timestamp block
++    [0, 1, None],  # None timestamp block
++    [0, 1, ["abc"]],  # non-numeric string inner
++    [0, 1, [None]],  # None inner
++    [0, 1, "notlist"],  # non-list timestamp block
++    [0, 1],  # too short (no idx 2)
++    [],  # empty metadata
++    "notalist",  # non-list metadata
++    None,  # None metadata
++    [0, 1, [1_700_000_000, 99]],  # multi -> first
++]
++
++
++_GUIDE_CASES = [
++    [[["id", ["the summary"], [["kw1", "kw2"]]]]],  # present, full
++    [[["id", [42], [["kw"]]]]],  # summary[0] non-str -> ""
++    [[["id", ["s"], ["notlist"]]]],  # keyword[0] non-list -> []
++    [[["id", [], []]]],  # empty blocks
++    [[["id", "notlist", "notlist"]]],  # blocks non-list
++    [[["id"]]],  # inner too short
++    [[["id", ["s"]]]],  # no keyword block
++    [[None]],  # inner None
++    [None],  # outer None
++    [[]],  # empty outer
++    [],  # empty result
++    None,  # None result
++    "x",  # scalar result
++    [[["id", ["s", "extra"], [["kw"], "extra"]]]],  # multi-elem blocks -> first
++]
++
++
++_FULLTEXT_CASES = [
++    [["id"]],  # descriptor too short
++    [[["id"], "Title", [0, 1, 2, 3, 4]]],  # descriptor present, metadata present
++    [[["id"], 42, [0, 1, 2, 3, 4]]],  # title non-str -> ""
++    [[["id"], "T", "notmeta"]],  # metadata non-list
++    [[["id"], "T"]],  # no metadata slot
++    [[["id"], "T", [0, 1, 2, 3, 9]], None, None, [["a", "b"]], [None, "<html>"]],  # full
++    [[["id"], "T", []], None, None, [], []],  # empty text & html blocks
++    [[["id"], "T", []], None, None, ["notlist"], [None, 42]],  # text[0] non-list, html non-str
++    [[["id"], "T", []], None, None, [["txt"]], [None]],  # html block too short
++    ["notdesc"],  # descriptor non-list
++]
++
++
++@pytest.mark.parametrize("metadata,allow", _URL_CASES + [
++    ([0, 1, 2, 3, 4, ["https://fallback/"], 6, ["https://canonical/"]], True),
++    ([0, 1, 2, 3, 4, ["https://fallback/"], 6, [""]], True),
++])
++def test_public_url_helper_keeps_legacy_precedence_and_types(metadata, allow):
++    expected = _legacy_extract_source_url(metadata, allow_bare_http=allow)
++    actual = _extract_source_url(metadata, allow_bare_http=allow)
++    assert actual == expected
++    assert type(actual) is type(expected)
++
++
++@pytest.mark.parametrize("metadata", _CREATED_CASES)
++def test_public_created_at_helper_keeps_legacy_conversion(metadata):
++    assert _extract_source_created_at(metadata) == _legacy_extract_source_created_at(metadata)
++
++
++def make_sources(payload):
++    # Upload is not exercised; fake only the pre-existing collaborators.
++    rpc = MagicMock(rpc_call=AsyncMock(return_value=payload))
++    return SourcesAPI(rpc, uploader=MagicMock())
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("payload", _GUIDE_CASES)
++async def test_public_source_guide_preserves_soft_decode(payload):
++    expected_summary, expected_keywords = _legacy_guide(payload)
++    result = await make_sources(payload).get_guide("notebook-marker", "source-marker")
++    assert result.summary == expected_summary
++    assert tuple(result.keywords) == tuple(expected_keywords)
++
++
++def legacy_text_strings(items):
++    for item in items:
++        if isinstance(item, str) and item:
++            yield item
++        elif isinstance(item, list):
++            yield from legacy_text_strings(item)
++
++
++_FULLTEXT_PUBLIC_CASES = _FULLTEXT_CASES + [
++    [[["id"], "Doc title", [None, None, None, None, 5]], None, None,
++     [["chunk-a", "chunk-b"]], [None, "<p>html</p>"]],
++    [[["id"], "Type and URL", [0, 1, 2, 3, 5, ["https://fallback/"], 6, ["https://canonical/"]]],
++     None, None, [[["first", "", 42], ["second"]]], [None, "<p>HTML marker</p>"]],
++    [[["id"], "Malformed type", [0, 1, 2, 3, "five"]], None, None, [["diagnostic content marker"]]],
++]
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("payload", _FULLTEXT_PUBLIC_CASES)
++async def test_public_fulltext_preserves_title_metadata_and_text(payload):
++    title, metadata, _, blocks = _legacy_fulltext(payload)
++    result = await make_sources(payload).get_fulltext("notebook-marker", "source-marker")
++    assert result.source_id == "source-marker"
++    assert result.title == title
++    expected_text = "\n".join(legacy_text_strings(blocks)) if blocks is not None else ""
++    assert result.content == expected_text
++    assert result.char_count == len(expected_text)
++    assert result.url == _legacy_extract_source_url(metadata, allow_bare_http=False)
++    code = metadata[4] if isinstance(metadata, list) and len(metadata) > 4 else None
++    # These fixtures cover existing public kinds, never new private row fields.
++    assert result.kind == {4: SourceType.PASTED_TEXT, 5: SourceType.WEB_PAGE, 9: SourceType.YOUTUBE}.get(code, SourceType.UNKNOWN)
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("payload,expected", [
++    (_FULLTEXT_PUBLIC_CASES[10], "html"),
++    (_FULLTEXT_PUBLIC_CASES[11], "HTML marker"),
++    ([[["id"], "No HTML"]], ""),
++    ([[["id"], "Short HTML"], None, None, [], [None]], ""),
++    ([[["id"], "Non-string HTML"], None, None, [], [None, 42]], ""),
++    ([[["id"], "Non-list HTML"], None, None, [], "not-a-block"], ""),
++])
++async def test_public_fulltext_html_slot_and_soft_absence(payload, expected):
++    result = await make_sources(payload).get_fulltext("notebook-marker", "source-marker", output_format="markdown")
++    assert result.content.strip() == expected
++    assert result.char_count == len(result.content)
++
++
++@pytest.mark.asyncio
++@pytest.mark.parametrize("payload", [None, [], "not-a-list", {"wrong": "shape"}])
++async def test_public_fulltext_preserves_missing_source_error(payload):
++    # The public API already raises before attempting its soft descriptor walk.
++    # A new private helper's return value is not a public requirement here.
++    with pytest.raises(SourceNotFoundError):
++        await make_sources(payload).get_fulltext("notebook-marker", "source-marker")
++
++
++@pytest.mark.asyncio
++async def test_public_fulltext_malformed_type_keeps_diagnostic(caplog):
++    with caplog.at_level("WARNING"):
++        result = await make_sources(_FULLTEXT_PUBLIC_CASES[12]).get_fulltext("notebook-marker", "source-marker")
++    assert result.kind == SourceType.UNKNOWN
++    assert any(record.levelno >= 30 for record in caplog.records)

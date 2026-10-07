@@ -1,0 +1,809 @@
+diff --git a/server-go/cmd/aimee-module/main_test.go b/server-go/cmd/aimee-module/main_test.go
+index 194bbc618..758d4662d 100644
+--- a/server-go/cmd/aimee-module/main_test.go
++++ b/server-go/cmd/aimee-module/main_test.go
+@@ -15,7 +15,7 @@ func TestModuleRegistryMatchesProcessContracts(t *testing.T) {
+ 		{"memory", 7, []uint32{5889, 5890, 5891, 5892, 5893}},
+ 		{"learning", 8, []uint32{6145}},
+ 		{"routing", 9, []uint32{6401}},
+-		{"delegates", 10, []uint32{6657, 6658, 6659, 6660}},
++		{"delegates", 10, []uint32{6657, 6658, 6659, 6660, 6661}},
+ 		{"tools", 11, []uint32{6913}},
+ 		{"workspace", 12, []uint32{7169, 7170, 7171}},
+ 		{"git", 13, []uint32{7425, 7426, 7427, 7430}},
+diff --git a/server-go/modules/delegates/handoff_test.go b/server-go/modules/delegates/handoff_test.go
+new file mode 100644
+index 000000000..abc553447
+--- /dev/null
++++ b/server-go/modules/delegates/handoff_test.go
+@@ -0,0 +1,216 @@
++package delegates
++
++import (
++	"encoding/binary"
++	"strings"
++	"testing"
++
++	"github.com/JBailes/aimee/server-go/bus"
++)
++
++const validHandoff = `{"schema_version":"delegate_result_v1","status":"done",` +
++	`"changed_files":["src/foo.c"],"outside_ownership_touches":[],` +
++	`"tests":[{"name":"unit-test-foo","status":"passed"}],` +
++	`"commands_run":["make unit-tests"],"supervisor_actions":[],` +
++	`"summary":"Did the thing."}`
++
++func handoffRequest(text, owned string, requireVerification bool) []byte {
++	request := make([]byte, handoffHeaderLen+len(text)+len(owned))
++	binary.LittleEndian.PutUint32(request[0:4], handoffRequestMagic)
++	request[4] = wireVersion
++	if requireVerification {
++		request[5] = 1
++	}
++	binary.LittleEndian.PutUint32(request[8:12], uint32(len(text)))
++	binary.LittleEndian.PutUint32(request[12:16], uint32(len(owned)))
++	copy(request[handoffHeaderLen:], text)
++	copy(request[handoffHeaderLen+len(text):], owned)
++	return request
++}
++
++func decodeFixed(b []byte) string {
++	if i := strings.IndexByte(string(b), 0); i >= 0 {
++		return string(b[:i])
++	}
++	return string(b)
++}
++
++func handoffCall(t *testing.T, text, owned string, requireVerification bool) HandoffVerdict {
++	t.Helper()
++	response, status := Handle(bus.ModuleInvocation{StageID: StageHandoff},
++		handoffRequest(text, owned, requireVerification))
++	if status != bus.ModuleStatusOK || len(response) != handoffResponseLen ||
++		binary.LittleEndian.Uint32(response[0:4]) != handoffResponseMagic {
++		t.Fatalf("response len %d status %d", len(response), status)
++	}
++	return HandoffVerdict{
++		Valid:                   binary.LittleEndian.Uint32(response[4:8]) == 1,
++		RepairAttempted:         binary.LittleEndian.Uint32(response[8:12]) == 1,
++		DoneWithoutVerification: binary.LittleEndian.Uint32(response[12:16]) == 1,
++		NeedsSupervisorReview:   binary.LittleEndian.Uint32(response[16:20]) == 1,
++		ChangedFilesCount:       int(binary.LittleEndian.Uint32(response[20:24])),
++		OutsideOwnershipCount:   int(binary.LittleEndian.Uint32(response[24:28])),
++		PassedTests:             int(binary.LittleEndian.Uint32(response[28:32])),
++		CommandsRun:             int(binary.LittleEndian.Uint32(response[32:36])),
++		Status:                  decodeFixed(response[36 : 36+handoffStatusLen]),
++		RawStatus:               decodeFixed(response[36+handoffStatusLen : 36+2*handoffStatusLen]),
++		Error:                   decodeFixed(response[36+2*handoffStatusLen:]),
++	}
++}
++
++// Ported from test_delegate_handoff.c.
++func TestValidHandoffParses(t *testing.T) {
++	v := handoffCall(t, validHandoff, `["src/foo.c"]`, true)
++	if !v.Valid || v.Status != "done" || v.RawStatus != "done" {
++		t.Fatalf("verdict = %+v", v)
++	}
++	if v.ChangedFilesCount != 1 || v.CommandsRun != 1 || v.PassedTests != 1 {
++		t.Errorf("counts = %d/%d/%d, want 1/1/1", v.ChangedFilesCount, v.CommandsRun, v.PassedTests)
++	}
++	if v.OutsideOwnershipCount != 0 || v.NeedsSupervisorReview {
++		t.Errorf("clean handoff flagged: %+v", v)
++	}
++}
++
++func TestMalformedHandoffsAreRejectedWithAReason(t *testing.T) {
++	cases := []struct {
++		name, text, wantErr string
++	}{
++		{"empty", "", "empty delegate handoff"},
++		{"not json", "not json at all", "not valid JSON object"},
++		{"wrong schema", `{"schema_version":"v2","status":"done"}`, "delegate_result_v1"},
++		{"unknown status",
++			`{"schema_version":"delegate_result_v1","status":"finished"}`, "invalid handoff status"},
++		{"missing arrays",
++			`{"schema_version":"delegate_result_v1","status":"done","summary":"x"}`,
++			"missing required fields"},
++		// A summary of only whitespace says nothing; same as absent.
++		{"blank summary",
++			`{"schema_version":"delegate_result_v1","status":"done","changed_files":[],` +
++				`"tests":[],"summary":"   "}`, "missing required fields"},
++	}
++	for _, c := range cases {
++		v := handoffCall(t, c.text, "", true)
++		if v.Valid {
++			t.Errorf("%s: accepted", c.name)
++		}
++		if !strings.Contains(v.Error, c.wantErr) {
++			t.Errorf("%s: error = %q, want it to mention %q", c.name, v.Error, c.wantErr)
++		}
++		// Every rejection routes to a human rather than passing silently.
++		if v.Status != statusNeedsReview || !v.NeedsSupervisorReview {
++			t.Errorf("%s: status = %q, want supervisor review", c.name, v.Status)
++		}
++	}
++}
++
++// supervisor_actions is optional, but a non-array is malformed rather than absent.
++func TestSupervisorActionsOptionalButTyped(t *testing.T) {
++	without := `{"schema_version":"delegate_result_v1","status":"done",` +
++		`"changed_files":["src/foo.c"],"tests":[{"status":"passed"}],"summary":"ok"}`
++	if v := handoffCall(t, without, "", true); !v.Valid {
++		t.Errorf("absent supervisor_actions rejected: %q", v.Error)
++	}
++	wrongType := `{"schema_version":"delegate_result_v1","status":"done",` +
++		`"changed_files":[],"tests":[],"supervisor_actions":"nope","summary":"ok"}`
++	if v := handoffCall(t, wrongType, "", true); v.Valid {
++		t.Error("a non-array supervisor_actions was accepted")
++	}
++}
++
++// A delegate does not get to call its own work done with nothing green.
++func TestDoneWithoutVerificationDowngrades(t *testing.T) {
++	unverified := `{"schema_version":"delegate_result_v1","status":"done",` +
++		`"changed_files":["src/foo.c"],"tests":[],"supervisor_actions":[],"summary":"ok"}`
++
++	v := handoffCall(t, unverified, "", true)
++	if !v.Valid || v.Status != "partial" || !v.DoneWithoutVerification {
++		t.Errorf("verdict = %+v, want a partial downgrade", v)
++	}
++
++	v = handoffCall(t, unverified, "", false)
++	if v.Status != "done" || v.DoneWithoutVerification {
++		t.Errorf("verdict = %+v, want done when verification is not required", v)
++	}
++}
++
++// Both spellings are written by delegates; rejecting one would read a verified
++// run as unverified and downgrade it wrongly.
++func TestBothPassSpellingsCount(t *testing.T) {
++	for _, spelling := range []string{"pass", "passed"} {
++		text := `{"schema_version":"delegate_result_v1","status":"done",` +
++			`"changed_files":[],"tests":[{"status":"` + spelling + `"}],"summary":"ok"}`
++		if v := handoffCall(t, text, "", true); v.PassedTests != 1 || v.DoneWithoutVerification {
++			t.Errorf("%q: passed=%d downgraded=%v", spelling, v.PassedTests,
++				v.DoneWithoutVerification)
++		}
++	}
++}
++
++func TestOutsideOwnershipNeedsReview(t *testing.T) {
++	text := `{"schema_version":"delegate_result_v1","status":"done",` +
++		`"changed_files":["src/foo.c","src/bar.c"],"outside_ownership_touches":[],` +
++		`"tests":[{"name":"unit-test-foo","status":"passed"}],"supervisor_actions":[],` +
++		`"summary":"Touched one extra file."}`
++	v := handoffCall(t, text, `["src/foo.c"]`, true)
++	if !v.Valid || v.Status != statusNeedsReview || !v.NeedsSupervisorReview {
++		t.Fatalf("verdict = %+v", v)
++	}
++	if v.OutsideOwnershipCount != 1 || !strings.Contains(v.Error, "outside owned_files") {
++		t.Errorf("count = %d, error = %q", v.OutsideOwnershipCount, v.Error)
++	}
++}
++
++// A file the delegate ADMITTED touching counts once, not twice for also being
++// in changed_files.
++func TestAdmittedTouchCountsOnce(t *testing.T) {
++	text := `{"schema_version":"delegate_result_v1","status":"done",` +
++		`"changed_files":["src/foo.c","src/bar.c"],"outside_ownership_touches":["src/bar.c"],` +
++		`"tests":[{"status":"passed"}],"summary":"ok"}`
++	if v := handoffCall(t, text, `["src/foo.c"]`, true); v.OutsideOwnershipCount != 1 {
++		t.Errorf("count = %d, want 1", v.OutsideOwnershipCount)
++	}
++}
++
++// With no ownership list, ownership was never scoped: inferring violations from
++// an absent list would flag every ordinary run.
++func TestUnscopedOwnershipCountsOnlyAdmittedTouches(t *testing.T) {
++	text := `{"schema_version":"delegate_result_v1","status":"done",` +
++		`"changed_files":["src/a.c","src/b.c"],"outside_ownership_touches":[],` +
++		`"tests":[{"status":"passed"}],"summary":"ok"}`
++	for _, owned := range []string{"", "[]"} {
++		v := handoffCall(t, text, owned, true)
++		if v.OutsideOwnershipCount != 0 || v.NeedsSupervisorReview {
++			t.Errorf("owned=%q: count = %d, review = %v", owned, v.OutsideOwnershipCount,
++				v.NeedsSupervisorReview)
++		}
++	}
++}
++
++// Ownership outranks the verification downgrade: both apply, and the operator
++// needs the more serious one.
++func TestOwnershipOutranksTheVerificationDowngrade(t *testing.T) {
++	text := `{"schema_version":"delegate_result_v1","status":"done",` +
++		`"changed_files":["src/bar.c"],"outside_ownership_touches":[],"tests":[],` +
++		`"summary":"ok"}`
++	v := handoffCall(t, text, `["src/foo.c"]`, true)
++	if v.Status != statusNeedsReview || v.DoneWithoutVerification {
++		t.Errorf("verdict = %+v, want the ownership verdict to win", v)
++	}
++}
++
++func TestHandoffRejectsInvalidEnvelope(t *testing.T) {
++	short := handoffRequest(validHandoff, "", true)[:handoffHeaderLen-1]
++	if _, status := Handle(bus.ModuleInvocation{StageID: StageHandoff}, short); status != bus.ModuleStatusInvalidRequest {
++		t.Fatalf("truncated status = %d", status)
++	}
++	lying := handoffRequest(validHandoff, "", true)
++	binary.LittleEndian.PutUint32(lying[8:12], 9999)
++	if _, status := Handle(bus.ModuleInvocation{StageID: StageHandoff}, lying); status != bus.ModuleStatusInvalidRequest {
++		t.Fatalf("length-mismatch status = %d", status)
++	}
++	if _, status := Handle(bus.ModuleInvocation{StageID: StageHandoff, DeadlineNS: 1},
++		handoffRequest(validHandoff, "", true)); status != bus.ModuleStatusCancelled {
++		t.Fatalf("expired status = %d", status)
++	}
++}
+diff --git a/src/tests/test_coord_jobs.c b/src/tests/test_coord_jobs.c
+index 650e6ffb1..1d5c6cdcc 100644
+--- a/src/tests/test_coord_jobs.c
++++ b/src/tests/test_coord_jobs.c
+@@ -1,3 +1,4 @@
++#include "cmd_agent_delegate_impl.h"
+ #include <assert.h>
+ #include "platform_test_util.h"
+ #include <stdio.h>
+@@ -627,8 +628,87 @@ static void test_delegate_economics_report_from_coord_job(void)
+    printf("  PASS: test_delegate_economics_report_from_coord_job\n");
+ }
+ 
++/* Judging a handoff is the delegates module's rule now
++ * (server-go/modules/delegates/handoff.go) and this binary hosts no bus. The
++ * subject of these tests is COORDINATION -- which packets are reviewable, which
++ * conflict, which need a supervisor -- so the test supplies the verdicts it
++ * wants to coordinate over.
++ *
++ * This is deliberately NOT the rule. It does not check schema_version, status
++ * admission, summary presence or the done-without-verification downgrade; it
++ * reads only the two numbers these fixtures vary, so it cannot drift into a
++ * second copy of a rule that lives in exactly one place. */
++static int coordjobs_test_handoff_provider(const char *text, const char *owned_files_json,
++                                           int require_verification,
++                                           delegate_handoff_validation_t *out)
++{
++   (void)require_verification;
++   memset(out, 0, sizeof(*out));
++   snprintf(out->status, sizeof(out->status), "%s", "needs_supervisor_review");
++   if (!text || !text[0])
++      return -1;
++
++   cJSON *root = cJSON_Parse(text);
++   if (!cJSON_IsObject(root))
++   {
++      cJSON_Delete(root);
++      snprintf(out->error, sizeof(out->error), "%s", "handoff is not valid JSON object");
++      out->needs_supervisor_review = 1;
++      return -1;
++   }
++
++   cJSON *changed = cJSON_GetObjectItemCaseSensitive(root, "changed_files");
++   cJSON *tests = cJSON_GetObjectItemCaseSensitive(root, "tests");
++   cJSON *owned = owned_files_json ? cJSON_Parse(owned_files_json) : NULL;
++
++   cJSON *item = NULL;
++   cJSON_ArrayForEach(item, tests)
++   {
++      cJSON *st = cJSON_GetObjectItemCaseSensitive(item, "status");
++      if (cJSON_IsString(st) && strcmp(st->valuestring, "passed") == 0)
++         out->passed_tests++;
++   }
++   cJSON_ArrayForEach(item, changed)
++   {
++      if (!cJSON_IsString(item))
++         continue;
++      out->changed_files_count++;
++      int owned_here = 0;
++      cJSON *o = NULL;
++      cJSON_ArrayForEach(o, owned)
++      {
++         if (cJSON_IsString(o) && strcmp(o->valuestring, item->valuestring) == 0)
++         {
++            owned_here = 1;
++            break;
++         }
++      }
++      if (cJSON_IsArray(owned) && cJSON_GetArraySize(owned) > 0 && !owned_here)
++         out->outside_ownership_count++;
++   }
++   cJSON_Delete(owned);
++
++   cJSON *raw = cJSON_GetObjectItemCaseSensitive(root, "status");
++   if (cJSON_IsString(raw))
++   {
++      snprintf(out->raw_status, sizeof(out->raw_status), "%s", raw->valuestring);
++      snprintf(out->status, sizeof(out->status), "%s", raw->valuestring);
++   }
++   cJSON_Delete(root);
++
++   out->valid = 1;
++   if (out->outside_ownership_count > 0)
++   {
++      snprintf(out->status, sizeof(out->status), "%s", "needs_supervisor_review");
++      snprintf(out->error, sizeof(out->error), "%s", "handoff touched files outside owned_files");
++      out->needs_supervisor_review = 1;
++   }
++   return 0;
++}
++
+ int main(void)
+ {
++   delegate_register_handoff_provider(coordjobs_test_handoff_provider);
+    printf("test_coord_jobs:\n");
+    test_job_create();
+    test_adhoc_job_create();
+diff --git a/src/tests/test_delegate_economics.c b/src/tests/test_delegate_economics.c
+index 61bf1008f..005b8ce79 100644
+--- a/src/tests/test_delegate_economics.c
++++ b/src/tests/test_delegate_economics.c
+@@ -4,6 +4,8 @@
+ #include <string.h>
+ 
+ #include <aimee/delegates/delegate_economics.h>
++#include "cmd_agent_delegate_impl.h"
++#include "cJSON.h"
+ 
+ static void add_agent(agent_config_t *cfg, int idx, const char *name, int tier)
+ {
+@@ -204,8 +206,86 @@ static void test_agent_result_json_metadata(void)
+    printf("  PASS: test_agent_result_json_metadata\n");
+ }
+ 
++/* Judging a handoff is the delegates module's rule now
++ * (server-go/modules/delegates/handoff.go) and this binary hosts no bus. The
++ * subject of these tests is COORDINATION -- which packets are reviewable, which
++ * conflict, which need a supervisor -- so the test supplies the verdicts it
++ * wants to coordinate over.
++ *
++ * This is deliberately NOT the rule. It does not check schema_version, status
++ * admission, summary presence or the done-without-verification downgrade; it
++ * reads only the two numbers these fixtures vary, so it cannot drift into a
++ * second copy of a rule that lives in exactly one place. */
++static int econ_test_handoff_provider(const char *text, const char *owned_files_json,
++                                      int require_verification, delegate_handoff_validation_t *out)
++{
++   (void)require_verification;
++   memset(out, 0, sizeof(*out));
++   snprintf(out->status, sizeof(out->status), "%s", "needs_supervisor_review");
++   if (!text || !text[0])
++      return -1;
++
++   cJSON *root = cJSON_Parse(text);
++   if (!cJSON_IsObject(root))
++   {
++      cJSON_Delete(root);
++      snprintf(out->error, sizeof(out->error), "%s", "handoff is not valid JSON object");
++      out->needs_supervisor_review = 1;
++      return -1;
++   }
++
++   cJSON *changed = cJSON_GetObjectItemCaseSensitive(root, "changed_files");
++   cJSON *tests = cJSON_GetObjectItemCaseSensitive(root, "tests");
++   cJSON *owned = owned_files_json ? cJSON_Parse(owned_files_json) : NULL;
++
++   cJSON *item = NULL;
++   cJSON_ArrayForEach(item, tests)
++   {
++      cJSON *st = cJSON_GetObjectItemCaseSensitive(item, "status");
++      if (cJSON_IsString(st) && strcmp(st->valuestring, "passed") == 0)
++         out->passed_tests++;
++   }
++   cJSON_ArrayForEach(item, changed)
++   {
++      if (!cJSON_IsString(item))
++         continue;
++      out->changed_files_count++;
++      int owned_here = 0;
++      cJSON *o = NULL;
++      cJSON_ArrayForEach(o, owned)
++      {
++         if (cJSON_IsString(o) && strcmp(o->valuestring, item->valuestring) == 0)
++         {
++            owned_here = 1;
++            break;
++         }
++      }
++      if (cJSON_IsArray(owned) && cJSON_GetArraySize(owned) > 0 && !owned_here)
++         out->outside_ownership_count++;
++   }
++   cJSON_Delete(owned);
++
++   cJSON *raw = cJSON_GetObjectItemCaseSensitive(root, "status");
++   if (cJSON_IsString(raw))
++   {
++      snprintf(out->raw_status, sizeof(out->raw_status), "%s", raw->valuestring);
++      snprintf(out->status, sizeof(out->status), "%s", raw->valuestring);
++   }
++   cJSON_Delete(root);
++
++   out->valid = 1;
++   if (out->outside_ownership_count > 0)
++   {
++      snprintf(out->status, sizeof(out->status), "%s", "needs_supervisor_review");
++      snprintf(out->error, sizeof(out->error), "%s", "handoff touched files outside owned_files");
++      out->needs_supervisor_review = 1;
++   }
++   return 0;
++}
++
+ int main(void)
+ {
++   delegate_register_handoff_provider(econ_test_handoff_provider);
+    test_tier_distribution_and_handoff_counts();
+    test_tier0_heavy_verdict_recommends_broader_delegation();
+    test_mixed_and_expensive_only_verdicts();
+diff --git a/src/tests/test_delegate_handoff.c b/src/tests/test_delegate_handoff.c
+index ae01a939f..da12aee06 100644
+--- a/src/tests/test_delegate_handoff.c
++++ b/src/tests/test_delegate_handoff.c
+@@ -5,138 +5,6 @@
+ #include <string.h>
+ #include "cmd_agent_delegate_impl.h"
+ 
+-static const char *valid_handoff =
+-    "{"
+-    "\"schema_version\":\"delegate_result_v1\","
+-    "\"status\":\"done\","
+-    "\"packet_id\":\"packet-one\","
+-    "\"changed_files\":[\"src/foo.c\"],"
+-    "\"owned_files_touched\":true,"
+-    "\"outside_ownership_touches\":[],"
+-    "\"commands_run\":[{\"command\":\"make -C src test\",\"exit_code\":0,"
+-    "\"summary\":\"built focused test\"}],"
+-    "\"tests\":[{\"name\":\"unit-test-foo\",\"status\":\"passed\","
+-    "\"command\":\"./src/build/obj/tests/unit-test-foo\"}],"
+-    "\"risks\":[],"
+-    "\"supervisor_actions\":[],"
+-    "\"summary\":\"Implemented focused change.\""
+-    "}";
+-
+-static void test_valid_handoff_parses(void)
+-{
+-   delegate_handoff_validation_t v;
+-   assert(delegate_handoff_validate_text(valid_handoff, "[\"src/foo.c\"]", 1, &v) == 0);
+-   assert(v.valid == 1);
+-   assert(strcmp(v.status, "done") == 0);
+-   assert(strcmp(v.raw_status, "done") == 0);
+-   assert(v.changed_files_count == 1);
+-   assert(v.commands_run == 1);
+-   assert(v.passed_tests == 1);
+-   assert(v.outside_ownership_count == 0);
+-   assert(v.needs_supervisor_review == 0);
+-   printf("  PASS: test_valid_handoff_parses\n");
+-}
+-
+-static void test_invalid_json_rejected(void)
+-{
+-   delegate_handoff_validation_t v;
+-   assert(delegate_handoff_validate_text("not json", NULL, 1, &v) != 0);
+-   assert(v.valid == 0);
+-   assert(strcmp(v.status, "needs_supervisor_review") == 0);
+-   assert(strstr(v.error, "valid JSON object") != NULL);
+-   printf("  PASS: test_invalid_json_rejected\n");
+-}
+-
+-static void test_missing_required_fields_rejected(void)
+-{
+-   const char *json = "{\"schema_version\":\"delegate_result_v1\",\"status\":\"done\"}";
+-   delegate_handoff_validation_t v;
+-   assert(delegate_handoff_validate_text(json, NULL, 1, &v) != 0);
+-   assert(v.valid == 0);
+-   assert(strcmp(v.status, "needs_supervisor_review") == 0);
+-   assert(strstr(v.error, "required fields") != NULL);
+-   printf("  PASS: test_missing_required_fields_rejected\n");
+-}
+-
+-static void test_supervisor_actions_optional(void)
+-{
+-   const char *json = "{"
+-                      "\"schema_version\":\"delegate_result_v1\","
+-                      "\"status\":\"done\","
+-                      "\"changed_files\":[\"src/foo.c\"],"
+-                      "\"tests\":[{\"name\":\"unit-test-foo\",\"status\":\"passed\"}],"
+-                      "\"summary\":\"Implemented focused change.\""
+-                      "}";
+-   delegate_handoff_validation_t v;
+-   assert(delegate_handoff_validate_text(json, "[\"src/foo.c\"]", 1, &v) == 0);
+-   assert(v.valid == 1);
+-   assert(strcmp(v.status, "done") == 0);
+-   assert(v.passed_tests == 1);
+-   printf("  PASS: test_supervisor_actions_optional\n");
+-}
+-
+-static void test_empty_summary_rejected(void)
+-{
+-   const char *json = "{"
+-                      "\"schema_version\":\"delegate_result_v1\","
+-                      "\"status\":\"done\","
+-                      "\"changed_files\":[],"
+-                      "\"tests\":[],"
+-                      "\"supervisor_actions\":[],"
+-                      "\"summary\":\"   \""
+-                      "}";
+-   delegate_handoff_validation_t v;
+-   assert(delegate_handoff_validate_text(json, NULL, 1, &v) != 0);
+-   assert(v.valid == 0);
+-   assert(strstr(v.error, "required fields") != NULL);
+-   printf("  PASS: test_empty_summary_rejected\n");
+-}
+-
+-static void test_done_without_verification_downgrades(void)
+-{
+-   const char *json = "{"
+-                      "\"schema_version\":\"delegate_result_v1\","
+-                      "\"status\":\"done\","
+-                      "\"changed_files\":[\"src/foo.c\"],"
+-                      "\"tests\":[],"
+-                      "\"supervisor_actions\":[],"
+-                      "\"summary\":\"No verification was run.\""
+-                      "}";
+-   delegate_handoff_validation_t v;
+-   assert(delegate_handoff_validate_text(json, "[\"src/foo.c\"]", 1, &v) == 0);
+-   assert(v.valid == 1);
+-   assert(strcmp(v.raw_status, "done") == 0);
+-   assert(strcmp(v.status, "partial") == 0);
+-   assert(v.done_without_verification == 1);
+-   assert(strstr(v.error, "downgraded") != NULL);
+-
+-   assert(delegate_handoff_validate_text(json, "[\"src/foo.c\"]", 0, &v) == 0);
+-   assert(strcmp(v.status, "done") == 0);
+-   assert(v.done_without_verification == 0);
+-   printf("  PASS: test_done_without_verification_downgrades\n");
+-}
+-
+-static void test_outside_owned_files_need_review(void)
+-{
+-   const char *json = "{"
+-                      "\"schema_version\":\"delegate_result_v1\","
+-                      "\"status\":\"done\","
+-                      "\"changed_files\":[\"src/foo.c\",\"src/bar.c\"],"
+-                      "\"outside_ownership_touches\":[],"
+-                      "\"tests\":[{\"name\":\"unit-test-foo\",\"status\":\"passed\"}],"
+-                      "\"supervisor_actions\":[],"
+-                      "\"summary\":\"Touched one extra file.\""
+-                      "}";
+-   delegate_handoff_validation_t v;
+-   assert(delegate_handoff_validate_text(json, "[\"src/foo.c\"]", 1, &v) == 0);
+-   assert(v.valid == 1);
+-   assert(strcmp(v.status, "needs_supervisor_review") == 0);
+-   assert(v.needs_supervisor_review == 1);
+-   assert(v.outside_ownership_count == 1);
+-   assert(strstr(v.error, "outside owned_files") != NULL);
+-   printf("  PASS: test_outside_owned_files_need_review\n");
+-}
+-
+ static void test_prompt_contract_helpers(void)
+ {
+    char *prompt = delegate_handoff_append_contract("Implement packet.", "packet-alpha");
+@@ -156,8 +24,18 @@ static void test_prompt_contract_helpers(void)
+ 
+ static void test_validation_json_fields(void)
+ {
++   /* The subject is what add_validation_json EMITS, so the verdict is stated
++    * rather than computed: judging a handoff is the delegates module rule now
++    * and this binary hosts no bus. The rule is covered in
++    * server-go/modules/delegates/handoff_test.go. */
+    delegate_handoff_validation_t v;
+-   assert(delegate_handoff_validate_text(valid_handoff, "[\"src/foo.c\"]", 1, &v) == 0);
++   memset(&v, 0, sizeof(v));
++   v.valid = 1;
++   v.passed_tests = 1;
++   v.changed_files_count = 1;
++   snprintf(v.status, sizeof(v.status), "%s", "done");
++   snprintf(v.raw_status, sizeof(v.raw_status), "%s", "done");
++
+    cJSON *obj = cJSON_CreateObject();
+    delegate_handoff_add_validation_json(obj, &v);
+    assert(cJSON_IsTrue(cJSON_GetObjectItem(obj, "handoff_valid")));
+@@ -170,13 +48,6 @@ static void test_validation_json_fields(void)
+ 
+ int main(void)
+ {
+-   test_valid_handoff_parses();
+-   test_invalid_json_rejected();
+-   test_missing_required_fields_rejected();
+-   test_supervisor_actions_optional();
+-   test_empty_summary_rejected();
+-   test_done_without_verification_downgrades();
+-   test_outside_owned_files_need_review();
+    test_prompt_contract_helpers();
+    test_validation_json_fields();
+    printf("delegate_handoff: all tests passed\n");
+diff --git a/src/tests/test_delegate_patch_coordinator.c b/src/tests/test_delegate_patch_coordinator.c
+index 77e248aac..b399bf1a2 100644
+--- a/src/tests/test_delegate_patch_coordinator.c
++++ b/src/tests/test_delegate_patch_coordinator.c
+@@ -1,5 +1,6 @@
+ /* test_delegate_patch_coordinator.c: read-only delegate patch-state report tests. */
+ #include <aimee/delegates/delegate_patch_coordinator.h>
++#include "cmd_agent_delegate_impl.h"
+ #include <assert.h>
+ #include <stdio.h>
+ #include <string.h>
+@@ -17,6 +18,83 @@ static void init_task(db1_coord_task_t *task, int id, const char *status, const
+       snprintf(task->result, sizeof(task->result), "%s", result);
+ }
+ 
++/* Judging a handoff is the delegates module's rule now
++ * (server-go/modules/delegates/handoff.go) and this binary hosts no bus. The
++ * subject of these tests is COORDINATION -- which packets are reviewable, which
++ * conflict, which need a supervisor -- so the test supplies the verdicts it
++ * wants to coordinate over.
++ *
++ * This is deliberately NOT the rule. It does not check schema_version, status
++ * admission, summary presence or the done-without-verification downgrade; it
++ * reads only the two numbers these fixtures vary, so it cannot drift into a
++ * second copy of a rule that lives in exactly one place. */
++static int coord_test_handoff_provider(const char *text, const char *owned_files_json,
++                                       int require_verification, delegate_handoff_validation_t *out)
++{
++   (void)require_verification;
++   memset(out, 0, sizeof(*out));
++   snprintf(out->status, sizeof(out->status), "%s", "needs_supervisor_review");
++   if (!text || !text[0])
++      return -1;
++
++   cJSON *root = cJSON_Parse(text);
++   if (!cJSON_IsObject(root))
++   {
++      cJSON_Delete(root);
++      snprintf(out->error, sizeof(out->error), "%s", "handoff is not valid JSON object");
++      out->needs_supervisor_review = 1;
++      return -1;
++   }
++
++   cJSON *changed = cJSON_GetObjectItemCaseSensitive(root, "changed_files");
++   cJSON *tests = cJSON_GetObjectItemCaseSensitive(root, "tests");
++   cJSON *owned = owned_files_json ? cJSON_Parse(owned_files_json) : NULL;
++
++   cJSON *item = NULL;
++   cJSON_ArrayForEach(item, tests)
++   {
++      cJSON *st = cJSON_GetObjectItemCaseSensitive(item, "status");
++      if (cJSON_IsString(st) && strcmp(st->valuestring, "passed") == 0)
++         out->passed_tests++;
++   }
++   cJSON_ArrayForEach(item, changed)
++   {
++      if (!cJSON_IsString(item))
++         continue;
++      out->changed_files_count++;
++      int owned_here = 0;
++      cJSON *o = NULL;
++      cJSON_ArrayForEach(o, owned)
++      {
++         if (cJSON_IsString(o) && strcmp(o->valuestring, item->valuestring) == 0)
++         {
++            owned_here = 1;
++            break;
++         }
++      }
++      if (cJSON_IsArray(owned) && cJSON_GetArraySize(owned) > 0 && !owned_here)
++         out->outside_ownership_count++;
++   }
++   cJSON_Delete(owned);
++
++   cJSON *raw = cJSON_GetObjectItemCaseSensitive(root, "status");
++   if (cJSON_IsString(raw))
++   {
++      snprintf(out->raw_status, sizeof(out->raw_status), "%s", raw->valuestring);
++      snprintf(out->status, sizeof(out->status), "%s", raw->valuestring);
++   }
++   cJSON_Delete(root);
++
++   out->valid = 1;
++   if (out->outside_ownership_count > 0)
++   {
++      snprintf(out->status, sizeof(out->status), "%s", "needs_supervisor_review");
++      snprintf(out->error, sizeof(out->error), "%s", "handoff touched files outside owned_files");
++      out->needs_supervisor_review = 1;
++   }
++   return 0;
++}
++
+ static void make_handoff(char *buf, size_t len, const char *status, const char *changed,
+                          const char *tests, const char *extra)
+ {
+@@ -154,6 +232,7 @@ static void test_brief_mentions_next_command(void)
+ 
+ int main(void)
+ {
++   delegate_register_handoff_provider(coord_test_handoff_provider);
+    printf("delegate_patch_coordinator:\n");
+    test_disjoint_verified_packets_are_reviewable();
+    test_outside_owned_files_need_supervisor();
+diff --git a/src/tests/test_server_compute.c b/src/tests/test_server_compute.c
+index c82f53fea..e0692a899 100644
+--- a/src/tests/test_server_compute.c
++++ b/src/tests/test_server_compute.c
+@@ -3511,8 +3511,52 @@ static void test_codex_oauth_vault_server_principal_fallback(void)
+    printf("PASS: codex oauth vault server-principal fallback + D15 locked hard-miss\n");
+ }
+ 
++/* Judging a handoff is the delegates module's rule now
++ * (server-go/modules/delegates/handoff.go) and this binary hosts no bus. The
++ * subject of the three handoff tests here is COMPUTE'S REPAIR LOOP -- a valid
++ * handoff costs one agent call, a malformed one is repaired and retried, and a
++ * second malformed one is an error -- so the test states the one thing its
++ * fixtures vary: whether the agent's text is a well-formed handoff at all.
++ *
++ * This is deliberately NOT the rule. It does not check status admission, the
++ * required arrays, summary presence, ownership or the done-without-verification
++ * downgrade, so it cannot drift into a second copy of a rule that lives in
++ * exactly one place. */
++static int compute_test_handoff_provider(const char *text, const char *owned_files_json,
++                                         int require_verification,
++                                         delegate_handoff_validation_t *out)
++{
++   (void)owned_files_json;
++   (void)require_verification;
++   memset(out, 0, sizeof(*out));
++   snprintf(out->status, sizeof(out->status), "%s", "needs_supervisor_review");
++
++   cJSON *root = text ? cJSON_Parse(text) : NULL;
++   cJSON *schema = cJSON_GetObjectItemCaseSensitive(root, "schema_version");
++   if (!cJSON_IsObject(root) || !cJSON_IsString(schema) ||
++       strcmp(schema->valuestring, "delegate_result_v1") != 0)
++   {
++      cJSON_Delete(root);
++      snprintf(out->error, sizeof(out->error), "%s", "handoff is not valid JSON object");
++      out->needs_supervisor_review = 1;
++      return -1;
++   }
++
++   cJSON *status = cJSON_GetObjectItemCaseSensitive(root, "status");
++   if (cJSON_IsString(status))
++   {
++      snprintf(out->raw_status, sizeof(out->raw_status), "%s", status->valuestring);
++      snprintf(out->status, sizeof(out->status), "%s", status->valuestring);
++   }
++   cJSON_Delete(root);
++   out->valid = 1;
++   out->passed_tests = 1;
++   return 0;
++}
++
+ int main(void)
+ {
++   delegate_register_handoff_provider(compute_test_handoff_provider);
+    test_codex_oauth_vault_server_principal_fallback();
+    /* DB1 owns delegation_spawns + delegation_messages. */
+    assert(db1_init(":memory:") == 0);
+diff --git a/tests/baselines/refactor/index.json b/tests/baselines/refactor/index.json
+index 4a35a6df5..0b2bd0a5f 100644
+--- a/tests/baselines/refactor/index.json
++++ b/tests/baselines/refactor/index.json
+@@ -375,7 +375,7 @@
+         },
+         {
+           "path": "src/headers/cmd_agent_delegate_impl.h",
+-          "sha256": "092401b1242c4ef798632f98c5d53c94fee04214f3e7a4cb8a32e0856cd3a939"
++          "sha256": "b1e19a5e79e3350e0e2391ebec1e5e1d53aae796bfa0173039ba80eefff4f8da"
+         },
+         {
+           "path": "src/headers/cmd_agent_delegate_internal.h",
+@@ -1083,7 +1083,7 @@
+         },
+         {
+           "path": "src/headers/sandbox.h",
+-          "sha256": "61433cbfd4609047eb897b7d8e00c8d5f736ed5ecc1ff402c3009729d0aff84e"
++          "sha256": "3b67469ed83d214c253cb13a53079458e5fff8ea0ac77dc5762b016071ad5d8d"
+         },
+         {
+           "path": "src/headers/script_rpc.h",
+@@ -1463,7 +1463,7 @@
+         },
+         {
+           "path": "src/modules/delegates/include/aimee/delegates/module_api.h",
+-          "sha256": "05142c381f0a7881c3f5e072b7c4a850e3bc1b9cdc4bc48ab5001d263ce1dd6f"
++          "sha256": "7bb7b304134232ff16c2438e7e02726c3b4e6d822c49e8d82534a50105eb292e"
+         },
+         {
+           "path": "src/modules/delegates/include/aimee/delegates/panel_provider.h",
+@@ -1616,7 +1616,7 @@
+       ]
+     },
+     "public-symbols": {
+-      "sha256": "484304bc91195626897651fd3bcd177cabd315f40b87c82a365c648826f79fd7",
++      "sha256": "df9611a9b96bc533e75db05875d9c3e0da2a4cabc1b84871682dcb188d2d1272",
+       "source": "complete normalized contents of public-headers"
+     },
+     "routes": {

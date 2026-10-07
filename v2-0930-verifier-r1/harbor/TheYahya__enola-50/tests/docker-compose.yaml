@@ -1,0 +1,33 @@
+{
+  "services": {
+    "main": {
+      "pull_policy": "never",
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${CONTEXT_DIR}",
+          "target": "/tests",
+          "read_only": true
+        },
+        {
+          "type": "bind",
+          "source": "/data/swepmv2-harbor-runtime/repairs/v2-0930-verifier-r1/full82_review/enola-payload-draft/full-controls/regexp2-module",
+          "target": "/go/pkg/mod/github.com/dlclark/regexp2@v1.12.0",
+          "read_only": true
+        },
+        {
+          "type": "bind",
+          "source": "/data/swepmv2-harbor-runtime/repairs/v2-0930-verifier-r1/full82_review/enola-payload-draft/full-controls/regexp2-download",
+          "target": "/go/pkg/mod/cache/download/github.com/dlclark/regexp2/@v",
+          "read_only": true
+        }
+      ]
+    }
+  },
+  "networks": {
+    "default": {
+      "external": true,
+      "name": "swepm-verifier-r1"
+    }
+  }
+}

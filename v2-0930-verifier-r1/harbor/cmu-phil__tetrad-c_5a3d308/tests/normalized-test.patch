@@ -1,0 +1,56 @@
+diff --git a/tetrad-lib/src/test/java/edu/cmu/tetrad/test/ExploreAutisticsNeurotypicals.java b/tetrad-lib/src/test/java/edu/cmu/tetrad/test/ExploreAutisticsNeurotypicals.java
+index 7ac61b3b0..9a64b1fff 100644
+--- a/tetrad-lib/src/test/java/edu/cmu/tetrad/test/ExploreAutisticsNeurotypicals.java
++++ b/tetrad-lib/src/test/java/edu/cmu/tetrad/test/ExploreAutisticsNeurotypicals.java
+@@ -87,7 +87,7 @@ public final class ExploreAutisticsNeurotypicals {
+                     }
+                 }
+ 
+-                dataSet.setDouble(row, dataSet.getColumn(group), _group);
++                dataSet.setDouble(row, dataSet.getColumnIndex(group), _group);
+             }
+         }
+ 
+@@ -118,7 +118,7 @@ public final class ExploreAutisticsNeurotypicals {
+             if ("Group".equals(node.getName())) {
+                 continue;
+             }
+-            int col = dataSet.getColumn(node);
++            int col = dataSet.getColumnIndex(node);
+             int count = 0;
+ 
+             for (int i = 0; i < total; i++) {
+diff --git a/tetrad-lib/src/test/java/edu/cmu/tetrad/test/TestCliqueDetection.java b/tetrad-lib/src/test/java/edu/cmu/tetrad/test/TestCliqueDetection.java
+index d653612f1..a199979fd 100644
+--- a/tetrad-lib/src/test/java/edu/cmu/tetrad/test/TestCliqueDetection.java
++++ b/tetrad-lib/src/test/java/edu/cmu/tetrad/test/TestCliqueDetection.java
+@@ -45,7 +45,6 @@ import edu.cmu.tetrad.util.TextTable;
+ import edu.cmu.tetrad.util.TMath;
+ import org.ejml.simple.SimpleMatrix;
+ import org.jetbrains.annotations.NotNull;
+-import org.junit.Test;
+ 
+ import java.util.*;
+ import java.util.function.Supplier;
+@@ -459,7 +458,7 @@ public class TestCliqueDetection {
+                 for (Set<Node> clique : cliquesRaw) {
+                     List<Integer> indices = new ArrayList<>();
+                     for (Node node : clique) {
+-                        indices.add(md.data().getColumn(node));
++                        indices.add(md.data().getColumnIndex(node));
+                     }
+ 
+                     List<Integer> remaining = new ArrayList<>(all);
+diff --git a/tetrad-lib/src/test/java/edu/cmu/tetrad/test/TestFci.java b/tetrad-lib/src/test/java/edu/cmu/tetrad/test/TestFci.java
+index 5644483c8..d1c6e0be3 100644
+--- a/tetrad-lib/src/test/java/edu/cmu/tetrad/test/TestFci.java
++++ b/tetrad-lib/src/test/java/edu/cmu/tetrad/test/TestFci.java
+@@ -493,7 +493,7 @@ public class TestFci {
+             RandomUtil.shuffle(variables);
+ 
+             for (int m = 0; m < numVarsToMarginalize; m++) {
+-                marginalData.removeColumn(marginalData.getColumn(variables.get(m)));
++                marginalData.removeColumn(marginalData.getColumnIndex(variables.get(m)));
+             }
+ 
+             Graph margPag = getPag(marginalData);

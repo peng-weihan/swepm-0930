@@ -1,0 +1,772 @@
+diff --git a/tests/unit/test_base_fetcher.py b/tests/unit/test_base_fetcher.py
+new file mode 100644
+index 0000000..b25b763
+--- /dev/null
++++ b/tests/unit/test_base_fetcher.py
+@@ -0,0 +1,209 @@
++# -*- coding: utf-8 -*-
++"""
++-------------------------------------------------
++   File Name：     test_base_fetcher.py
++   Description :   BaseFetcher 基类测试
++   Author :        JHao
++   date：          2026/5/31
++-------------------------------------------------
++   Change Activity:
++                   2026/05/31:
++-------------------------------------------------
++"""
++__author__ = 'JHao'
++
++from lxml import etree
++from fetcher.baseFetcher import BaseFetcher
++
++
++class TestParseProxiesFromText(object):
++    """parseProxiesFromText 测试"""
++
++    def test_basic_ip_port(self):
++        text = "1.2.3.4:8080"
++        result = BaseFetcher.parseProxiesFromText(text)
++        assert result == ["1.2.3.4:8080"]
++
++    def test_multiple_proxies(self):
++        text = "1.2.3.4:8080\n5.6.7.8:3128\n9.10.11.12:80"
++        result = BaseFetcher.parseProxiesFromText(text)
++        assert result == ["1.2.3.4:8080", "5.6.7.8:3128", "9.10.11.12:80"]
++
++    def test_ip_port_with_spaces(self):
++        text = "1.2.3.4  8080"
++        result = BaseFetcher.parseProxiesFromText(text)
++        assert result == ["1.2.3.4:8080"]
++
++    def test_ip_port_in_html_text(self):
++        """HTML标签中的ip:port需要跨标签匹配，parseProxiesFromText只处理纯文本"""
++        text = '<td>1.2.3.4</td><td>8080</td>'
++        result = BaseFetcher.parseProxiesFromText(text)
++        assert result == []
++
++    def test_empty_text(self):
++        assert BaseFetcher.parseProxiesFromText("") == []
++        assert BaseFetcher.parseProxiesFromText(None) == []
++
++    def test_no_proxies(self):
++        text = "no proxies here"
++        assert BaseFetcher.parseProxiesFromText(text) == []
++
++    def test_ip_with_colon_port(self):
++        text = "192.168.1.1:3128"
++        result = BaseFetcher.parseProxiesFromText(text)
++        assert result == ["192.168.1.1:3128"]
++
++    def test_port_range(self):
++        text = "1.2.3.4:80 1.2.3.4:65535"
++        result = BaseFetcher.parseProxiesFromText(text)
++        assert "1.2.3.4:80" in result
++        assert "1.2.3.4:65535" in result
++
++
++class TestParseProxiesFromJson(object):
++    """parseProxiesFromJson 测试"""
++
++    def test_dict_with_proxy_key(self):
++        data = {"proxy": "1.2.3.4:8080"}
++        result = BaseFetcher.parseProxiesFromJson(data)
++        assert "1.2.3.4:8080" in result
++
++    def test_dict_with_addr_key(self):
++        data = {"addr": "1.2.3.4:8080"}
++        result = BaseFetcher.parseProxiesFromJson(data)
++        assert "1.2.3.4:8080" in result
++
++    def test_dict_with_ip_port_keys(self):
++        data = {"ip": "1.2.3.4", "port": "8080"}
++        result = BaseFetcher.parseProxiesFromJson(data)
++        assert "1.2.3.4:8080" in result
++
++    def test_dict_with_host_port_keys(self):
++        data = {"host": "1.2.3.4", "port": "8080"}
++        result = BaseFetcher.parseProxiesFromJson(data)
++        assert "1.2.3.4:8080" in result
++
++    def test_dict_with_server_port_keys(self):
++        data = {"server": "1.2.3.4", "port": "8080"}
++        result = BaseFetcher.parseProxiesFromJson(data)
++        assert "1.2.3.4:8080" in result
++
++    def test_list_of_dicts(self):
++        data = [
++            {"ip": "1.2.3.4", "port": "8080"},
++            {"ip": "5.6.7.8", "port": "3128"},
++        ]
++        result = BaseFetcher.parseProxiesFromJson(data)
++        assert "1.2.3.4:8080" in result
++        assert "5.6.7.8:3128" in result
++
++    def test_nested_dict(self):
++        data = {
++            "data": {
++                "items": [
++                    {"ip": "1.2.3.4", "port": "8080"}
++                ]
++            }
++        }
++        result = BaseFetcher.parseProxiesFromJson(data)
++        assert "1.2.3.4:8080" in result
++
++    def test_string_value(self):
++        data = "1.2.3.4:8080"
++        result = BaseFetcher.parseProxiesFromJson(data)
++        assert "1.2.3.4:8080" in result
++
++    def test_empty_dict(self):
++        assert BaseFetcher.parseProxiesFromJson({}) == []
++
++    def test_empty_list(self):
++        assert BaseFetcher.parseProxiesFromJson([]) == []
++
++
++class TestParseProxiesFromTree(object):
++    """parseProxiesFromTree 测试"""
++
++    def test_basic_table(self):
++        html = "<table><tr><td>1.2.3.4</td><td>8080</td></tr></table>"
++        tree = etree.HTML(html)
++        result = BaseFetcher.parseProxiesFromTree(tree)
++        assert "1.2.3.4:8080" in result
++
++    def test_multiple_rows(self):
++        html = """<table>
++            <tr><td>1.2.3.4</td><td>8080</td></tr>
++            <tr><td>5.6.7.8</td><td>3128</td></tr>
++        </table>"""
++        tree = etree.HTML(html)
++        result = BaseFetcher.parseProxiesFromTree(tree)
++        assert "1.2.3.4:8080" in result
++        assert "5.6.7.8:3128" in result
++
++    def test_none_tree(self):
++        assert BaseFetcher.parseProxiesFromTree(None) == []
++
++    def test_empty_table(self):
++        html = "<table></table>"
++        tree = etree.HTML(html)
++        assert BaseFetcher.parseProxiesFromTree(tree) == []
++
++    def test_header_row_skipped(self):
++        html = """<table>
++            <tr><th>IP</th><th>Port</th></tr>
++            <tr><td>1.2.3.4</td><td>8080</td></tr>
++        </table>"""
++        tree = etree.HTML(html)
++        result = BaseFetcher.parseProxiesFromTree(tree)
++        assert "1.2.3.4:8080" in result
++
++    def test_row_with_too_few_cells(self):
++        html = "<table><tr><td>1.2.3.4</td></tr></table>"
++        tree = etree.HTML(html)
++        assert BaseFetcher.parseProxiesFromTree(tree) == []
++
++
++class TestYieldUniqueProxies(object):
++    """yieldUniqueProxies 测试"""
++
++    def test_unique_proxies(self):
++        proxies = ["1.2.3.4:8080", "5.6.7.8:3128"]
++        result = list(BaseFetcher.yieldUniqueProxies(proxies))
++        assert result == ["1.2.3.4:8080", "5.6.7.8:3128"]
++
++    def test_duplicates_removed(self):
++        proxies = ["1.2.3.4:8080", "5.6.7.8:3128", "1.2.3.4:8080"]
++        result = list(BaseFetcher.yieldUniqueProxies(proxies))
++        assert result == ["1.2.3.4:8080", "5.6.7.8:3128"]
++
++    def test_empty_list(self):
++        assert list(BaseFetcher.yieldUniqueProxies([])) == []
++
++    def test_preserves_order(self):
++        proxies = ["3.3.3.3:80", "1.1.1.1:80", "2.2.2.2:80", "3.3.3.3:80"]
++        result = list(BaseFetcher.yieldUniqueProxies(proxies))
++        assert result == ["3.3.3.3:80", "1.1.1.1:80", "2.2.2.2:80"]
++
++    def test_is_generator(self):
++        # Historical name retained; the public helper may return any iterable.
++        result = BaseFetcher.yieldUniqueProxies([])
++        assert list(iter(result)) == []
++
++
++class TestBaseFetcherInterface(object):
++    """BaseFetcher 接口约定测试"""
++
++    def test_name_attribute(self):
++        assert hasattr(BaseFetcher, 'name')
++        assert BaseFetcher.name == ""
++
++    def test_url_attribute(self):
++        assert hasattr(BaseFetcher, 'url')
++        assert BaseFetcher.url == ""
++
++    def test_fetch_raises_not_implemented(self):
++        fetcher = BaseFetcher()
++        try:
++            fetcher.fetch()
++            assert False, "Should have raised NotImplementedError"
++        except NotImplementedError:
++            pass
+diff --git a/tests/unit/test_config.py b/tests/unit/test_config.py
+index 00f30be..d89105c 100644
+--- a/tests/unit/test_config.py
++++ b/tests/unit/test_config.py
+@@ -72,9 +72,8 @@ class TestConfigHandlerDefaults:
+     def test_timezone_default(self, conf):
+         assert conf.timezone == setting.TIMEZONE
+ 
+-    def test_fetchers_is_list(self, conf):
+-        assert isinstance(conf.fetchers, list)
+-        assert len(conf.fetchers) > 0
++    def test_fetcher_exclude_is_list(self, conf):
++        assert isinstance(conf.fetcherExclude, list)
+ 
+ 
+ class TestConfigHandlerEnvOverride:
+@@ -97,4 +96,106 @@ class TestConfigHandlerEnvOverride:
+     def test_max_fail_count_override(self):
+         os.environ["MAX_FAIL_COUNT"] = "5"
+         conf = ConfigHandler()
+-        assert conf.maxFailCount == 5
+\ No newline at end of file
++        assert conf.maxFailCount == 5
++
++"""Unexecuted draft: real CLI plus only new, test-owned public plugin files.
++
++Execution is not authorized by this file. An outer, reviewed runner must provide
++an isolated /data-backed writable source view, explicit logs/tmp/cache mounts,
++network isolation and a complete source-before/source-after manifest check.
++"""
++import hashlib
++import json
++import os
++from pathlib import Path
++import re
++import subprocess
++import sys
++import uuid
++
++
++def _sha(data):
++    return hashlib.sha256(data).hexdigest()
++
++
++def _has_token(output, name):
++    return re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", output) is not None
++
++
++def test_show_discovers_new_enabled_plugin_and_omits_disabled_and_unnamed():
++    # Explicit path from the future runner, never inferred from a private helper.
++    repo = Path.cwd().resolve(strict=True)
++    assert repo == Path("/testbed"), "Verifier must run from its fixed repository cwd"
++    sources = repo / "fetcher" / "sources"
++    assert sources.is_dir(), "The task explicitly requires fetcher/sources/"
++    assert not sources.is_symlink(), "Outer runner must validate the source view"
++    assert os.path.commonpath([str(repo), str(sources.resolve())]) == str(repo), (
++        "Public plugin directory resolves outside the isolated repository"
++    )
++    entry = repo / "proxyPool.py"
++    assert entry.is_file(), "The task explicitly requires proxyPool.py show"
++    token = uuid.uuid4().hex
++    names = {
++        "active": "VerifierEnabled" + token,
++        "disabled": "VerifierDisabled" + token,
++        "unnamed": "VerifierUnnamed" + token,
++    }
++    owned = []
++    cleanup_errors = []
++    try:
++        for kind, classname in names.items():
++            path = sources / ("verifier_owned_" + kind + "_" + token + ".py")
++            enabled = "    enabled = False\n" if kind == "disabled" else ""
++            # The enabled case deliberately inherits the required default True.
++            source_name = "" if kind == "unnamed" else "verifier_" + kind + "_" + token
++            data = (
++                "from fetcher.baseFetcher import BaseFetcher\n\n"
++                + "class " + classname + "(BaseFetcher):\n"
++                + "    name = " + repr(source_name) + "\n"
++                + "    url = 'https://fixture.invalid/'\n"
++                + enabled
++                + "    def fetch(self):\n"
++                + "        if False:\n"
++                + "            yield '192.0.2.1:8080'\n"
++            ).encode()
++            # O_EXCL: a collision never overwrites a candidate file.
++            with path.open("xb") as stream:
++                owned.append((path, _sha(data)))
++                receipt_name = os.environ.get("SWEPM_CLI_FIXTURE_RECEIPT")
++                if receipt_name:
++                    Path(receipt_name).write_text(json.dumps([{"path": str(p.relative_to(repo)), "sha256": h} for p, h in owned]) + "\n")
++                stream.write(data)
++        env = dict(os.environ)
++        env["PYTHONDONTWRITEBYTECODE"] = "1"
++        proc = subprocess.run(
++            [sys.executable, "-B", str(entry), "show"],
++            cwd=repo, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
++            text=True, timeout=30, check=False,
++        )
++        # Preserve actual child output in pytest --capture=tee-sys native logs.
++        print("CLI_SHOW_EXIT", proc.returncode)
++        print("CLI_SHOW_STDOUT_BEGIN\n" + proc.stdout + "CLI_SHOW_STDOUT_END")
++        print("CLI_SHOW_STDERR_BEGIN\n" + proc.stderr + "CLI_SHOW_STDERR_END")
++        assert proc.returncode == 0, "Real CLI failed: " + proc.stderr
++        assert _has_token(proc.stdout, names["active"]), (
++            "CLI did not list the newly installed enabled public plugin: "
++            + names["active"] + "\n" + proc.stdout
++        )
++        assert not _has_token(proc.stdout, names["disabled"]), (
++            "CLI listed a disabled public plugin\n" + proc.stdout
++        )
++        assert not _has_token(proc.stdout, names["unnamed"]), (
++            "CLI listed a public plugin whose name is empty\n" + proc.stdout
++        )
++        # No hard-coded heading, indentation, migrated class names or count.
++        # Sorted discovery, exclusions and same-process reload are separate scope.
++    finally:
++        for path, expected_sha in reversed(owned):
++            try:
++                if path.is_symlink() or _sha(path.read_bytes()) != expected_sha:
++                    cleanup_errors.append("Owned fixture changed; retained: " + str(path))
++                else:
++                    path.unlink()
++            except OSError as exc:
++                cleanup_errors.append("Owned fixture cleanup failed: " + str(exc))
++        assert not cleanup_errors, "\n".join(cleanup_errors)
+diff --git a/tests/unit/test_fetcher_sources.py b/tests/unit/test_fetcher_sources.py
+new file mode 100644
+index 0000000..59b4f5b
+--- /dev/null
++++ b/tests/unit/test_fetcher_sources.py
+@@ -0,0 +1,426 @@
++# -*- coding: utf-8 -*-
++"""
++-------------------------------------------------
++   File Name：     test_fetcher_sources.py
++   Description :   各代理源 fetcher 测试
++   Author :        JHao
++   date：          2026/5/31
++-------------------------------------------------
++   Change Activity:
++                   2026/05/31:
++-------------------------------------------------
++"""
++__author__ = 'JHao'
++
++import re
++from unittest.mock import patch, MagicMock
++
++from lxml import etree
++
++from fetcher.baseFetcher import BaseFetcher
++
++
++# Match preserved source websites, not implementation-specific filenames/classes.
++# Multiple plugins may legitimately serve one website.
++from contextlib import ExitStack
++from functools import lru_cache
++import importlib
++import inspect
++import pkgutil
++from urllib.parse import urlsplit
++
++_REQUIRED_SOURCE_HOSTS = {'ip66': '66ip.cn', 'kxdaili': 'kxdaili.com', 'binglx': 'binglx.cn', 'ip3366': 'ip3366.net', 'jiangxianli': 'jiangxianli.com', 'ip89': '89ip.cn', 'docip': 'docip.net', 'goodips': 'goodips.com', 'geonode': 'geonode.com', 'freeproxylist': 'freeproxylists.net', 'kuaidaili': 'kuaidaili.com', 'freevpnnode': 'freevpnnode.com', 'scdn': 'scdn.io', 'zdaye': 'zdaye.com', 'ihuan': 'ihuan.me'}
++_SELECTED_SOURCE = {}
++
++
++@lru_cache(maxsize=None)
++def _source_classes(source_key):
++    package = importlib.import_module("fetcher.sources")
++    host = _REQUIRED_SOURCE_HOSTS[source_key]
++    matches = set()
++    for entry in pkgutil.walk_packages(package.__path__, package.__name__ + "."):
++        module = importlib.import_module(entry.name)
++        for _, cls in inspect.getmembers(module, inspect.isclass):
++            if cls is BaseFetcher or not issubclass(cls, BaseFetcher):
++                continue
++            if cls.__module__ != module.__name__:
++                continue
++            actual = (urlsplit(str(getattr(cls, "url", ""))).hostname or "").lower()
++            if actual == host or actual.endswith("." + host):
++                matches.add(cls)
++    assert matches, f"Missing preserved proxy source for {host}"
++    return tuple(sorted(matches, key=lambda cls: (cls.__module__, cls.__name__)))
++
++
++def _source_class(source_key):
++    if source_key in _SELECTED_SOURCE:
++        return _SELECTED_SOURCE[source_key]
++    candidates = _source_classes(source_key)
++    # The interface tests below still execute their original assertions against
++    # a real subclass. Additional same-site plugins do not hide a missing source.
++    return next((cls for cls in candidates
++                 if getattr(cls, "name", None) and getattr(cls, "url", None)
++                 and hasattr(cls, "enabled") and hasattr(cls, "fetch")), candidates[0])
++
++
++def _source_case(source_key, *mock_targets):
++    def decorate(method):
++        def run(self):
++            failures = []
++            for cls in _source_classes(source_key):
++                module = importlib.import_module(cls.__module__)
++                _SELECTED_SOURCE[source_key] = cls
++                try:
++                    with ExitStack() as stack:
++                        # Original @patch decorators supply mock arguments from
++                        # the innermost decorator outwards.
++                        mocks = [stack.enter_context(patch.object(module, attr, **options))
++                                 for attr, options in reversed(mock_targets)]
++                        method(self, *mocks)
++                    return
++                except Exception as error:
++                    failures.append((cls, error))
++                finally:
++                    _SELECTED_SOURCE.pop(source_key, None)
++            # Keep every candidate failure in the final diagnosis. No successful
++            # candidate means the actual original assertions have not passed.
++            detail = "\n".join(
++                f"{cls.__module__}.{cls.__name__}: {type(error).__name__}: {error}"
++                for cls, error in failures
++            )
++            raise AssertionError(
++                f"No {_REQUIRED_SOURCE_HOSTS[source_key]} plugin satisfied the preserved source test:\n{detail}"
++            ) from failures[0][1]
++        # Do not expose mock-only parameters to pytest fixture discovery.
++        run.__name__ = method.__name__
++        run.__doc__ = method.__doc__
++        return run
++    return decorate
++
++
++# --------------- 辅助工具 ---------------
++
++def _make_response(text="", tree=None, json_data=None):
++    """构造 mock 的 WebRequest 返回对象"""
++    resp = MagicMock()
++    resp.text = text
++    resp.tree = tree
++    resp.json = json_data if json_data is not None else {}
++    return resp
++
++
++def _html_table(rows, has_header=False):
++    """快速生成 HTML table 字符串"""
++    html = "<table>"
++    if has_header:
++        html += "<tr><th>IP</th><th>Port</th></tr>"
++    for ip, port in rows:
++        html += "<tr><td>%s</td><td>%s</td></tr>" % (ip, port)
++    html += "</table>"
++    return html
++
++
++def _assert_valid_proxies(proxies):
++    """验证所有 proxy 符合 ip:port 格式"""
++    pattern = re.compile(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d{2,5}$')
++    for p in proxies:
++        assert pattern.match(p), f"Invalid proxy format: {p}"
++
++
++# --------------- 接口约定测试 ---------------
++
++class TestFetcherInterface(object):
++    """所有 fetcher 的接口约定"""
++
++    REQUIRED_SOURCES = ['ip66', 'kxdaili', 'binglx', 'ip3366', 'jiangxianli', 'ip89', 'docip', 'goodips', 'geonode', 'freeproxylist', 'kuaidaili', 'freevpnnode', 'scdn', 'zdaye', 'ihuan']
++
++    def test_all_fetchers_have_name_url_enabled(self):
++        for source_key in self.REQUIRED_SOURCES:
++            cls = _source_class(source_key)
++            class_name = cls.__name__
++            assert cls.name, f"{class_name} missing name"
++            assert cls.url, f"{class_name} missing url"
++            assert hasattr(cls, 'enabled'), f"{class_name} missing enabled"
++
++    def test_all_fetchers_subclass_base(self):
++        for source_key in self.REQUIRED_SOURCES:
++            cls = _source_class(source_key)
++            class_name = cls.__name__
++            assert issubclass(cls, BaseFetcher), f"{class_name} not subclass of BaseFetcher"
++
++    def test_all_fetchers_have_fetch_method(self):
++        for source_key in self.REQUIRED_SOURCES:
++            cls = _source_class(source_key)
++            class_name = cls.__name__
++            assert hasattr(cls, 'fetch'), f"{class_name} missing fetch method"
++
++
++# --------------- 各 fetcher 逻辑测试 ---------------
++
++class TestIp66Fetcher(object):
++
++    @_source_case('ip66')
++    def test_fetch(self):
++        Ip66Fetcher = _source_class('ip66')
++        html = ("<table></table><table></table>"
++                + _html_table([("IP", "Port"), ("1.2.3.4", "8080"), ("5.6.7.8", "3128")]))
++        result = _fetch_http_body(Ip66Fetcher, html)
++        assert "1.2.3.4:8080" in result
++        assert "5.6.7.8:3128" in result
++
++
++class TestKxdailiFetcher(object):
++
++    @_source_case('kxdaili')
++    def test_fetch(self):
++        KxdailiFetcher = _source_class('kxdaili')
++        html = '<table class="active"><tr><th>IP</th><th>Port</th></tr>' \
++               '<tr><td>1.2.3.4</td><td>8080</td></tr></table>'
++        result = _fetch_http_body(KxdailiFetcher, html)
++        assert "1.2.3.4:8080" in result
++
++
++class TestBinglxFetcher(object):
++
++    @_source_case('binglx')
++    def test_fetch(self):
++        BinglxFetcher = _source_class('binglx')
++        html = _html_table([("IP", "Port"), ("1.2.3.4", "8080")])
++        result = _fetch_http_body(BinglxFetcher, html)
++        assert "1.2.3.4:8080" in result
++
++
++class TestIp3366Fetcher(object):
++
++    @_source_case('ip3366')
++    def test_fetch(self):
++        Ip3366Fetcher = _source_class('ip3366')
++        html = '<td>1.2.3.4</td><td>8080</td><td>5.6.7.8</td><td>3128</td>'
++        result = _fetch_http_body(Ip3366Fetcher, html)
++        assert "1.2.3.4:8080" in result
++        assert "5.6.7.8:3128" in result
++
++
++class TestJiangxianliFetcher(object):
++
++    @_source_case('jiangxianli')
++    def test_fetch(self):
++        JiangxianliFetcher = _source_class('jiangxianli')
++        html = _html_table([("IP", "Port"), ("1.2.3.4", "8080")])
++        result = _fetch_http_body(JiangxianliFetcher, html)
++        assert "1.2.3.4:8080" in result
++
++
++class TestIp89Fetcher(object):
++
++    @_source_case('ip89')
++    def test_fetch(self):
++        Ip89Fetcher = _source_class('ip89')
++        html = '<td>1.2.3.4</td><td>8080</td>'
++        result = _fetch_http_body(Ip89Fetcher, html)
++        assert "1.2.3.4:8080" in result
++
++
++class TestDocipFetcher(object):
++
++    @_source_case('docip')
++    def test_fetch(self):
++        DocipFetcher = _source_class('docip')
++        json_data = {"data": [{"ip": "1.2.3.4:8080"}, {"ip": "5.6.7.8:3128"}]}
++        result = _fetch_http_body(DocipFetcher, json_data, json_response=True)
++        assert "1.2.3.4:8080" in result
++        assert "5.6.7.8:3128" in result
++
++
++class TestGoodipsFetcher(object):
++
++    @_source_case('goodips')
++    def test_fetch(self):
++        GoodipsFetcher = _source_class('goodips')
++        html = '<div class="table-list"><ul><li>1.2.3.4</li><li>8080</li></ul></div>'
++        result = _fetch_http_body(GoodipsFetcher, html)
++        assert "1.2.3.4:8080" in result
++
++
++class TestGeonodeFetcher(object):
++
++    @_source_case('geonode')
++    def test_fetch_json(self):
++        GeonodeFetcher = _source_class('geonode')
++        json_data = {"data": [{"ip": "1.2.3.4", "port": "8080"}]}
++        result = _fetch_http_body(GeonodeFetcher, json_data, json_response=True)
++        assert "1.2.3.4:8080" in result
++
++    @_source_case('geonode')
++    def test_fetch_text_fallback(self):
++        GeonodeFetcher = _source_class('geonode')
++        result = _fetch_http_body(GeonodeFetcher, "1.2.3.4:8080")
++        assert "1.2.3.4:8080" in result
++
++
++class TestFreeProxyListFetcher(object):
++
++    @_source_case('freeproxylist')
++    def test_fetch(self):
++        FreeProxyListFetcher = _source_class('freeproxylist')
++        script_content = "document.write('%31%2E%32%2E%33%2E%34')"
++        html = '<table><tr class="Odd"><td><script>%s</script></td><td>8080</td></tr></table>' % script_content
++        result = _fetch_http_body(FreeProxyListFetcher, html)
++        assert isinstance(result, list)
++        assert "1.2.3.4:8080" in result
++
++
++class TestKuaidailiFetcher(object):
++
++    @_source_case('kuaidaili')
++    def test_fetch(self):
++        KuaidailiFetcher = _source_class('kuaidaili')
++        html = _html_table([("IP", "Port"), ("1.2.3.4", "8080")])
++        result = _fetch_http_body(KuaidailiFetcher, html)
++        assert "1.2.3.4:8080" in result
++
++
++class TestFreeVPNNodeFetcher(object):
++
++    @_source_case('freevpnnode')
++    def test_fetch(self):
++        FreeVPNNodeFetcher = _source_class('freevpnnode')
++        html = _html_table([("1.2.3.4", "8080")])
++        result = _fetch_http_body(FreeVPNNodeFetcher, html + "<p>1.2.3.4:8080 5.6.7.8:3128</p>")
++        assert "1.2.3.4:8080" in result
++        assert "5.6.7.8:3128" in result
++
++
++class TestScdnFetcher(object):
++
++    @_source_case('scdn')
++    def test_fetch_json(self):
++        ScdnFetcher = _source_class('scdn')
++        json_data = {"data": [{"ip": "1.2.3.4", "port": "8080"}]}
++        result = _fetch_http_body(ScdnFetcher, json_data, json_response=True)
++        assert "1.2.3.4:8080" in result
++
++    @_source_case('scdn')
++    def test_fetch_table_html(self):
++        ScdnFetcher = _source_class('scdn')
++        table_html = '<tr><td>1.2.3.4</td><td>8080</td></tr>'
++        json_data = {"table_html": table_html}
++        result = _fetch_http_body(ScdnFetcher, json_data, json_response=True)
++        assert "1.2.3.4:8080" in result
++
++
++def _prepared_html_response(request, html):
++    # Exercise the existing Requests -> WebRequest -> real lxml parser boundary.
++    # This fixture does not inspect any candidate module's import bindings.
++    from requests import Response
++    response = Response()
++    response.status_code = 200
++    response.url = request.url
++    response.request = request
++    response.encoding = "utf-8"
++    response.headers["Content-Type"] = "text/html; charset=utf-8"
++    response._content = html.encode("utf-8")
++    return response
++
++
++
++def _fetch_http_body(fetcher_class, body, json_response=False):
++    """Exercise the baseline HTTP transport and parser without module aliases."""
++    import json
++    from requests.sessions import Session
++
++    if json_response:
++        body = json.dumps(body)
++
++    def send(session, request, **kwargs):
++        response = _prepared_html_response(request, body)
++        if json_response:
++            response.headers["Content-Type"] = "application/json"
++        return response
++
++    with patch.object(Session, "send", autospec=True, side_effect=send):
++        return list(fetcher_class().fetch())
++
++
++def _zdaye_html_response(request, age_seconds):
++    # Use the same local-wall-clock semantics as the unchanged baseline.
++    # Generate the timestamp at request handling, away from the 300s boundary.
++    from datetime import datetime, timedelta
++    if request.url.rstrip("/").endswith("/detail/1"):
++        return _prepared_html_response(
++            request, _html_table([("1.2.3.4", "8080")]))
++    posted_at = (datetime.now() - timedelta(seconds=age_seconds)).strftime(
++        "%Y/%m/%d %H:%M:%S")
++    # Keep a valid detail page even for the old post: ignoring age must reach
++    # the existing empty-result assertion, rather than failing on malformed HTML.
++    return _prepared_html_response(
++        request,
++        '<span class="thread_time_info">' + posted_at + '</span>'
++        '<h3 class="thread_title"><a href="/detail/1">test</a></h3>')
++
++
++class TestZdayeFetcher(object):
++
++    @_source_case('zdaye')
++    def test_fetch_recent(self):
++        from requests.sessions import Session
++        ZdayeFetcher = _source_class('zdaye')
++
++        def send(session, request, **kwargs):
++            return _zdaye_html_response(request, age_seconds=120)
++
++        # No mocked datetime or sleep name. A one-page successful fetch may
++        # retain its baseline five-second sleep; that is allowed behavior.
++        with patch.object(Session, "send", autospec=True, side_effect=send):
++            result = list(ZdayeFetcher().fetch())
++        assert "1.2.3.4:8080" in result
++
++    @_source_case('zdaye')
++    def test_fetch_old_returns_empty(self):
++        from requests.sessions import Session
++        ZdayeFetcher = _source_class('zdaye')
++
++        def send(session, request, **kwargs):
++            return _zdaye_html_response(request, age_seconds=7200)
++
++        with patch.object(Session, "send", autospec=True, side_effect=send):
++            result = list(ZdayeFetcher().fetch())
++        assert result == []
++
++
++class TestIhuanFetcher(object):
++
++    @_source_case('ihuan')
++    def test_fetch(self):
++        from requests.sessions import Session
++        IhuanFetcher = _source_class('ihuan')
++
++        def send(session, request, **kwargs):
++            if request.method == "POST":
++                # A single real HTTP body contains both representations that
++                # the original fixture exposed independently as tree and text.
++                body = (_html_table([("1.2.3.4", "8080")])
++                        + "<p>1.2.3.4:8080</p>")
++            else:
++                body = '<form><input name="key" value="abc123def456789012345678"></form>'
++            return _prepared_html_response(request, body)
++
++        with patch.object(Session, "send", autospec=True, side_effect=send):
++            result = list(IhuanFetcher().fetch())
++        assert "1.2.3.4:8080" in result
++
++    @_source_case('ihuan')
++    def test_fetch_no_key_returns_empty(self):
++        from requests.sessions import Session
++        IhuanFetcher = _source_class('ihuan')
++
++        def send(session, request, **kwargs):
++            if request.method == "POST":
++                body = _html_table([("1.2.3.4", "8080")])
++            else:
++                body = "<form></form>no key here"
++            return _prepared_html_response(request, body)
++
++        with patch.object(Session, "send", autospec=True, side_effect=send):
++            result = list(IhuanFetcher().fetch())
++        assert result == []

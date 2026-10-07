@@ -1,0 +1,907 @@
+diff --git a/packages/core/src/sheets/__tests__/sheet-skeleton.integration.spec.ts b/packages/core/src/sheets/__tests__/sheet-skeleton.integration.spec.ts
+index 88b16f4e9..7f9a586cb 100644
+--- a/packages/core/src/sheets/__tests__/sheet-skeleton.integration.spec.ts
++++ b/packages/core/src/sheets/__tests__/sheet-skeleton.integration.spec.ts
+@@ -334,8 +334,8 @@ describe('SheetSkeleton integration', () => {
+         const baseColor = themeService.getColorFromTheme('primary.500');
+         const { r, g, b } = new ColorKit(baseColor).toRgb();
+ 
+-        expect(skeleton.gapConfig.defaultBackgroundColor).toBe(`rgba(${r}, ${g}, ${b}, 0.08)`);
+-        expect(skeleton.gapConfig.defaultStripeColor).toBe(`rgba(${r}, ${g}, ${b}, 0.25)`);
++        expect(skeleton.gapConfig.defaultBackgroundColor).toBe(`rgba(${r}, ${g}, ${b}, 0.025)`);
++        expect(skeleton.gapConfig.defaultStripeColor).toBe(`rgba(${r}, ${g}, ${b}, 0.08)`);
+         expect(skeleton.getRowGapSize(1)).toBe(5);
+         expect(skeleton.getColGapSize(2)).toBe(7);
+ 
+@@ -490,12 +490,12 @@ describe('SheetSkeleton integration', () => {
+             defaultBackgroundColor: '#abcdef',
+         });
+         expect(skeleton.gapConfig.defaultBackgroundColor).toBe('#abcdef');
+-        expect(skeleton.gapConfig.defaultStripeColor).toBe(`rgba(${r}, ${g}, ${b}, 0.25)`);
++        expect(skeleton.gapConfig.defaultStripeColor).toBe(`rgba(${r}, ${g}, ${b}, 0.08)`);
+ 
+         skeleton.setGapConfig({
+             defaultStripeColor: '#fedcba',
+         });
+         expect(skeleton.gapConfig.defaultStripeColor).toBe('#fedcba');
+-        expect(skeleton.gapConfig.defaultBackgroundColor).toBe(`rgba(${r}, ${g}, ${b}, 0.08)`);
++        expect(skeleton.gapConfig.defaultBackgroundColor).toBe(`rgba(${r}, ${g}, ${b}, 0.025)`);
+     });
+ });
+diff --git a/packages/sheets-table-ui/src/commands/operations/__tests__/open-table-filter-dialog.operation.spec.ts b/packages/sheets-table-ui/src/commands/operations/__tests__/open-table-filter-dialog.operation.spec.ts
+index 64bb12b9f..f627fda95 100644
+--- a/packages/sheets-table-ui/src/commands/operations/__tests__/open-table-filter-dialog.operation.spec.ts
++++ b/packages/sheets-table-ui/src/commands/operations/__tests__/open-table-filter-dialog.operation.spec.ts
+@@ -14,10 +14,8 @@
+  * limitations under the License.
+  */
+ 
+-import { IContextService } from '@univerjs/core';
+ import { TableManager } from '@univerjs/sheets-table';
+ import { describe, expect, it, vi } from 'vitest';
+-import { SHEETS_TABLE_FILTER_PANEL_OPENED_KEY } from '../../../const';
+ import { SheetsTableComponentController } from '../../../controllers/sheet-table-component.controller';
+ import { OpenTableFilterPanelOperation } from '../open-table-filter-dialog.opration';
+ 
+@@ -37,8 +35,7 @@ describe('OpenTableFilterPanelOperation', () => {
+     it('should return false for missing params or missing table', async () => {
+         const accessor = createAccessor([
+             [TableManager, { getTable: () => undefined }],
+-            [IContextService, { getContextValue: () => false, setContextValue: vi.fn() }],
+-            [SheetsTableComponentController, { setCurrentTableFilterInfo: vi.fn() }],
++            [SheetsTableComponentController, { openOrToggleFilterPanel: vi.fn() }],
+         ]);
+ 
+         await expect(OpenTableFilterPanelOperation.handler(accessor, undefined as any)).resolves.toBe(false);
+@@ -51,46 +48,13 @@ describe('OpenTableFilterPanelOperation', () => {
+         })).resolves.toBe(false);
+     });
+ 
+-    it('should open filter panel context only when panel is currently closed', async () => {
+-        const setCurrentTableFilterInfo = vi.fn();
+-        const setContextValue = vi.fn();
++    it('should delegate panel toggle to component controller', async () => {
++        const openOrToggleFilterPanel = vi.fn();
+ 
+         const accessor = createAccessor([
+             [TableManager, { getTable: () => ({ id: 't1' }) }],
+-            [IContextService, {
+-                getContextValue: () => false,
+-                setContextValue,
+-            }],
+-            [SheetsTableComponentController, {
+-                setCurrentTableFilterInfo,
+-            }],
+-        ]);
+-
+-        const result = await OpenTableFilterPanelOperation.handler(accessor, {
+-            unitId: 'u1',
+-            subUnitId: 's1',
+-            tableId: 't1',
+-            row: 6,
+-            col: 3,
+-        });
+-
+-        expect(result).toBe(true);
+-        expect(setCurrentTableFilterInfo).toHaveBeenCalledWith({ unitId: 'u1', subUnitId: 's1', row: 6, tableId: 't1', column: 3 });
+-        expect(setContextValue).toHaveBeenCalledWith(SHEETS_TABLE_FILTER_PANEL_OPENED_KEY, true);
+-    });
+-
+-    it('should not reopen the panel when context indicates already opened', async () => {
+-        const setCurrentTableFilterInfo = vi.fn();
+-        const setContextValue = vi.fn();
+-
+-        const accessor = createAccessor([
+-            [TableManager, { getTable: () => ({ id: 't1' }) }],
+-            [IContextService, {
+-                getContextValue: () => true,
+-                setContextValue,
+-            }],
+             [SheetsTableComponentController, {
+-                setCurrentTableFilterInfo,
++                openOrToggleFilterPanel,
+             }],
+         ]);
+ 
+@@ -103,7 +67,6 @@ describe('OpenTableFilterPanelOperation', () => {
+         });
+ 
+         expect(result).toBe(true);
+-        expect(setCurrentTableFilterInfo).not.toHaveBeenCalled();
+-        expect(setContextValue).not.toHaveBeenCalled();
++        expect(openOrToggleFilterPanel).toHaveBeenCalledWith({ unitId: 'u1', subUnitId: 's1', row: 6, tableId: 't1', column: 3 });
+     });
+ });
+diff --git a/packages/sheets-table-ui/src/controllers/__tests__/sheet-table-anchor.controller.spec.ts b/packages/sheets-table-ui/src/controllers/__tests__/sheet-table-anchor.controller.spec.ts
+deleted file mode 100644
+index f98b2875f..000000000
+--- a/packages/sheets-table-ui/src/controllers/__tests__/sheet-table-anchor.controller.spec.ts
++++ /dev/null
+@@ -1,92 +0,0 @@
+-/**
+- * Copyright 2023-present DreamNum Co., Ltd.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *     http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-import { SetScrollOperation, SetZoomRatioOperation } from '@univerjs/sheets-ui';
+-import { BehaviorSubject, Subject } from 'rxjs';
+-import { describe, expect, it, vi } from 'vitest';
+-import { SheetTableAnchorController } from '../sheet-table-anchor.controller';
+-
+-describe('SheetTableAnchorController', () => {
+-    it('should register anchor UI and toggle anchor visibility on scroll/zoom commands', () => {
+-        vi.useFakeTimers();
+-
+-        const commandListeners: Array<(command: any) => void> = [];
+-        const registerComponent = vi.fn(() => ({ dispose: vi.fn() }));
+-
+-        const controller = new SheetTableAnchorController(
+-            {
+-                unitId: 'u1',
+-                unit: {
+-                    getUnitId: () => 'u1',
+-                    activeSheet$: new BehaviorSubject({ getSheetId: () => 's1' }),
+-                    getActiveSheet: () => ({ getSheetId: () => 's1' }),
+-                },
+-            } as any,
+-            {} as any,
+-            {
+-                currentSkeleton$: new Subject(),
+-            } as any,
+-            {
+-                getRenderById: () => null,
+-            } as any,
+-            {
+-                onCommandExecuted: (listener: (command: any) => void) => {
+-                    commandListeners.push(listener);
+-                    return { dispose: vi.fn() };
+-                },
+-            } as any,
+-            {} as any,
+-            {
+-                registerComponent,
+-            } as any,
+-            {
+-                tableAdd$: new Subject(),
+-                tableDelete$: new Subject(),
+-                tableNameChanged$: new Subject(),
+-                tableRangeChanged$: new Subject(),
+-                tableThemeChanged$: new Subject(),
+-                getTableList: () => [],
+-            } as any,
+-            {
+-                validViewportScrollInfo$: new Subject(),
+-            } as any,
+-            {
+-                unitPermissionInitStateChange$: new Subject(),
+-            } as any,
+-            {
+-                permissionPointUpdate$: new Subject(),
+-                getPermissionPoint: vi.fn(() => ({ value: true })),
+-            } as any
+-        );
+-
+-        expect(registerComponent).toHaveBeenCalledTimes(1);
+-
+-        commandListeners.forEach((listener) => listener({ id: SetZoomRatioOperation.id }));
+-        expect((controller as any)._anchorVisible$.getValue()).toBe(false);
+-
+-        vi.advanceTimersByTime(300);
+-        expect((controller as any)._anchorVisible$.getValue()).toBe(true);
+-
+-        commandListeners.forEach((listener) => listener({ id: SetScrollOperation.id }));
+-        expect((controller as any)._anchorVisible$.getValue()).toBe(false);
+-
+-        vi.advanceTimersByTime(300);
+-        expect((controller as any)._anchorVisible$.getValue()).toBe(true);
+-
+-        controller.dispose();
+-        vi.useRealTimers();
+-    });
+-});
+diff --git a/packages/sheets-table-ui/src/controllers/__tests__/sheet-table-component.controller.spec.ts b/packages/sheets-table-ui/src/controllers/__tests__/sheet-table-component.controller.spec.ts
+index 88f5c99fb..a058f9e15 100644
+--- a/packages/sheets-table-ui/src/controllers/__tests__/sheet-table-component.controller.spec.ts
++++ b/packages/sheets-table-ui/src/controllers/__tests__/sheet-table-component.controller.spec.ts
+@@ -32,6 +32,7 @@ describe('SheetsTableComponentController', () => {
+             { register: vi.fn(() => ({ dispose: vi.fn() })) } as any,
+             {
+                 subscribeContextValue$: () => context$,
++                getContextValue: () => false,
+                 setContextValue,
+             } as any,
+             { attachPopupToCell } as any,
+@@ -71,4 +72,58 @@ describe('SheetsTableComponentController', () => {
+ 
+         controller.dispose();
+     });
++
++    it('should toggle the same filter panel and switch directly to another column', () => {
++        const context$ = new Subject<boolean | undefined>();
++        let opened = false;
++        const setContextValue = vi.fn((_key, value) => {
++            opened = value;
++        });
++
++        const firstPopupDispose = vi.fn();
++        const secondPopupDispose = vi.fn();
++        const attachPopupToCell = vi
++            .fn()
++            .mockReturnValueOnce({ dispose: firstPopupDispose })
++            .mockReturnValueOnce({ dispose: secondPopupDispose });
++
++        const controller = new SheetsTableComponentController(
++            { register: vi.fn(() => ({ dispose: vi.fn() })) } as any,
++            {
++                subscribeContextValue$: () => context$,
++                getContextValue: () => opened,
++                setContextValue,
++            } as any,
++            { attachPopupToCell } as any,
++            { close: vi.fn() } as any
++        );
++
++        const firstInfo = {
++            unitId: 'u1',
++            subUnitId: 's1',
++            tableId: 't1',
++            column: 2,
++            row: 4,
++        };
++        const secondInfo = {
++            ...firstInfo,
++            column: 3,
++        };
++
++        controller.openOrToggleFilterPanel(firstInfo);
++        expect(setContextValue).toHaveBeenCalledWith(SHEETS_TABLE_FILTER_PANEL_OPENED_KEY, true);
++
++        context$.next(true);
++        expect(attachPopupToCell).toHaveBeenCalledWith(4, 2, expect.any(Object));
++
++        controller.openOrToggleFilterPanel(secondInfo);
++        expect(firstPopupDispose).toHaveBeenCalledTimes(1);
++        expect(attachPopupToCell).toHaveBeenLastCalledWith(4, 3, expect.any(Object));
++        expect(controller.getCurrentTableFilterInfo()).toEqual(secondInfo);
++
++        controller.openOrToggleFilterPanel(secondInfo);
++        expect(setContextValue).toHaveBeenLastCalledWith(SHEETS_TABLE_FILTER_PANEL_OPENED_KEY, false);
++
++        controller.dispose();
++    });
+ });
+diff --git a/packages/sheets-table-ui/src/controllers/__tests__/sheet-table-filter-button-render.controller.spec.ts b/packages/sheets-table-ui/src/controllers/__tests__/sheet-table-filter-button-render.controller.spec.ts
+index 7018dd4c0..4a0a50baa 100644
+--- a/packages/sheets-table-ui/src/controllers/__tests__/sheet-table-filter-button-render.controller.spec.ts
++++ b/packages/sheets-table-ui/src/controllers/__tests__/sheet-table-filter-button-render.controller.spec.ts
+@@ -57,6 +57,9 @@ describe('SheetsTableFilterButtonRenderController', () => {
+                 tableFilterChanged$: new Subject(),
+                 getSheetFilterRangeWithState: vi.fn(() => []),
+             } as any,
++            {
++                getRangeThemeStyle: vi.fn(),
++            } as any,
+             {
+                 onCommandExecuted: vi.fn(() => ({ dispose: vi.fn() })),
+             } as any
+diff --git a/packages/sheets-table-ui/src/views/components/__tests__/SheetTableFilterPanel.spec.tsx b/packages/sheets-table-ui/src/views/components/__tests__/SheetTableFilterPanel.spec.tsx
+index 805db54ce..89eb419c6 100644
+--- a/packages/sheets-table-ui/src/views/components/__tests__/SheetTableFilterPanel.spec.tsx
++++ b/packages/sheets-table-ui/src/views/components/__tests__/SheetTableFilterPanel.spec.tsx
+@@ -18,7 +18,7 @@
+ 
+ import { ICommandService, IPermissionService, LocaleService } from '@univerjs/core';
+ import { SortRangeCommand, SortType } from '@univerjs/sheets-sort';
+-import { SheetsTableSortStateEnum, TableColumnFilterTypeEnum, TableConditionTypeEnum, TableDateCompareTypeEnum, TableManager } from '@univerjs/sheets-table';
++import { SheetsTableSortStateEnum, SheetTableInsertColumnAtCommand, SheetTableRemoveColumnAtCommand, TableColumnFilterTypeEnum, TableConditionTypeEnum, TableDateCompareTypeEnum, TableManager } from '@univerjs/sheets-table';
+ import { createElement } from 'react';
+ import { beforeEach, describe, expect, it, vi } from 'vitest';
+ import { SheetsTableComponentController } from '../../../controllers/sheet-table-component.controller';
+@@ -83,7 +83,10 @@ vi.mock('@univerjs/icons', async () => {
+     return {
+         ...actual,
+         AscendingIcon: () => null,
++        DeleteColumnDoubleIcon: () => null,
+         DescendingIcon: () => null,
++        LeftInsertColumnDoubleIcon: () => null,
++        RightInsertColumnDoubleIcon: () => null,
+     };
+ });
+ 
+@@ -160,6 +163,7 @@ describe('SheetTableFilterPanel', () => {
+                             getSortState: () => ({ columnIndex: -1, sortState: SheetsTableSortStateEnum.None }),
+                             setSortState: vi.fn(),
+                         }),
++                        getRange: () => ({ startRow: 0, endRow: 5, startColumn: 0, endColumn: 2 }),
+                         getTableFilterColumn: () => undefined,
+                     }),
+                 };
+@@ -216,6 +220,7 @@ describe('SheetTableFilterPanel', () => {
+                             getSortState: () => ({ columnIndex: 2, sortState: SheetsTableSortStateEnum.Desc }),
+                             setSortState,
+                         }),
++                        getRange: () => ({ startRow: 0, endRow: 5, startColumn: 5, endColumn: 6 }),
+                         getTableFilterRange: () => ({ startRow: 0, endRow: 5, startColumn: 5, endColumn: 6 }),
+                         getTableFilterColumn: () => undefined,
+                     }),
+@@ -282,6 +287,7 @@ describe('SheetTableFilterPanel', () => {
+                             getSortState: () => ({ columnIndex: -1, sortState: SheetsTableSortStateEnum.None }),
+                             setSortState: vi.fn(),
+                         }),
++                        getRange: () => ({ startRow: 0, endRow: 5, startColumn: 0, endColumn: 2 }),
+                         getTableFilterColumn: () => undefined,
+                     }),
+                 };
+@@ -311,4 +317,62 @@ describe('SheetTableFilterPanel', () => {
+         }));
+         expect(closeFilterPanel).toHaveBeenCalledTimes(1);
+     });
++
++    it('should run table column operations from column menu', () => {
++        const closeFilterPanel = vi.fn();
++        const executeCommand = vi.fn();
++
++        mocks.useDependency.mockImplementation((token: unknown) => {
++            if (token === LocaleService) return localeService;
++            if (token === SheetsTableUiService) {
++                return {
++                    getTableFilterPanelInitProps: () => ({
++                        unitId: 'u1',
++                        subUnitId: 's1',
++                        tableId: 't1',
++                        columnIndex: 1,
++                        tableFilter: undefined,
++                        currentFilterBy: FilterByEnum.Items,
++                    }),
++                    getTableFilterItems: () => ({ data: [] }),
++                    getTableFilterCheckedItems: () => [],
++                    setTableFilter: vi.fn(),
++                };
++            }
++            if (token === TableManager) {
++                return {
++                    getTable: () => ({
++                        getTableFilters: () => ({
++                            getSortState: () => ({ columnIndex: -1, sortState: SheetsTableSortStateEnum.None }),
++                            setSortState: vi.fn(),
++                        }),
++                        getRange: () => ({ startRow: 0, endRow: 5, startColumn: 3, endColumn: 5 }),
++                        getTableFilterColumn: () => undefined,
++                    }),
++                };
++            }
++            if (token === ICommandService) return { executeCommand };
++            if (token === IPermissionService) return { getPermissionPoint: () => ({ value: true }) };
++            if (token === SheetsTableComponentController) {
++                return {
++                    getCurrentTableFilterInfo: () => ({ unitId: 'u1', subUnitId: 's1', tableId: 't1', column: 4 }),
++                    closeFilterPanel,
++                };
++            }
++            return null;
++        });
++
++        const tree = renderPanel();
++        const menuButtons = findAll(tree, (n) => n.type === 'button');
++
++        menuButtons[0].props.onClick();
++        expect(executeCommand).toHaveBeenLastCalledWith(SheetTableInsertColumnAtCommand.id, expect.objectContaining({ index: 4 }));
++
++        menuButtons[1].props.onClick();
++        expect(executeCommand).toHaveBeenLastCalledWith(SheetTableInsertColumnAtCommand.id, expect.objectContaining({ index: 5 }));
++
++        menuButtons[2].props.onClick();
++        expect(executeCommand).toHaveBeenLastCalledWith(SheetTableRemoveColumnAtCommand.id, expect.objectContaining({ index: 4 }));
++        expect(closeFilterPanel).toHaveBeenCalledTimes(3);
++    });
+ });
+diff --git a/packages/sheets-table-ui/src/views/widgets/__tests__/table-controls-util.spec.ts b/packages/sheets-table-ui/src/views/widgets/__tests__/table-controls-util.spec.ts
+new file mode 100644
+index 000000000..783471adf
+--- /dev/null
++++ b/packages/sheets-table-ui/src/views/widgets/__tests__/table-controls-util.spec.ts
+@@ -0,0 +1,42 @@
++/**
++ * Copyright 2023-present DreamNum Co., Ltd.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++import { describe, expect, it } from 'vitest';
++import { buildTableMenuRegions, hitTestTableControl, TABLE_CONTROL_INSERT_BUTTON_SIZE } from '../table-controls-util';
++
++describe('table controls geometry', () => {
++    it('hit-tests the topmost region first', () => {
++        const hit = hitTestTableControl([
++            { type: 'anchor-main', tableId: 't1', left: 0, top: 0, width: 100, height: 24 },
++            { type: 'anchor-menu-toggle', tableId: 't1', left: 76, top: 0, width: 24, height: 24 },
++        ], 80, 12);
++
++        expect(hit?.type).toBe('anchor-menu-toggle');
++    });
++
++    it('misses points outside all regions', () => {
++        expect(hitTestTableControl([
++            { type: 'insert-row', tableId: 't1', index: 2, left: 10, top: 10, width: TABLE_CONTROL_INSERT_BUTTON_SIZE, height: TABLE_CONTROL_INSERT_BUTTON_SIZE },
++        ], 0, 0)).toBeNull();
++    });
++
++    it('builds menu item regions under the anchor', () => {
++        const regions = buildTableMenuRegions('t1', 20, 30);
++
++        expect(regions.map((item) => item.action)).toEqual(['rename', 'update-range', 'set-theme', 'delete']);
++        expect(regions[0]).toMatchObject({ left: 20, top: 30 });
++    });
++});
+diff --git a/packages/sheets-table/src/commands/commands/__tests__/sheet-table-row-col.command.spec.ts b/packages/sheets-table/src/commands/commands/__tests__/sheet-table-row-col.command.spec.ts
+index e54759a50..396794cf2 100644
+--- a/packages/sheets-table/src/commands/commands/__tests__/sheet-table-row-col.command.spec.ts
++++ b/packages/sheets-table/src/commands/commands/__tests__/sheet-table-row-col.command.spec.ts
+@@ -1,106 +1,325 @@
+-/**
+- * Copyright 2023-present DreamNum Co., Ltd.
+- *
+- * Licensed under the Apache License, Version 2.0 (the "License");
+- * you may not use this file except in compliance with the License.
+- * You may obtain a copy of the License at
+- *
+- *     http://www.apache.org/licenses/LICENSE-2.0
+- *
+- * Unless required by applicable law or agreed to in writing, software
+- * distributed under the License is distributed on an "AS IS" BASIS,
+- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+- * See the License for the specific language governing permissions and
+- * limitations under the License.
+- */
+-
+-import { ICommandService, IUndoRedoService, IUniverInstanceService } from '@univerjs/core';
+-import { SheetsSelectionsService } from '@univerjs/sheets';
+-
+-import { describe, expect, it, vi } from 'vitest';
+-import { SheetsTableController } from '../../../controllers/sheets-table.controller';
+-import { TableManager } from '../../../model/table-manager';
++import type { ICommand, IMutation, IWorkbookData, Workbook } from '@univerjs/core';
+ import {
+-    SheetTableInsertColCommand,
+-    SheetTableInsertRowCommand,
+-    SheetTableRemoveColCommand,
+-    SheetTableRemoveRowCommand,
+-} from '../sheet-table-row-col.command';
+-
+-const sheetsMocks = vi.hoisted(() => ({
+-    getSheetCommandTarget: vi.fn(),
+-    getMoveRangeUndoRedoMutations: vi.fn(),
+-    SheetsSelectionsService: Symbol('SheetsSelectionsService'),
+-}));
+-
+-vi.mock('@univerjs/sheets', async () => {
+-    const actual = await vi.importActual('@univerjs/sheets');
+-    return {
+-        ...actual,
+-        getSheetCommandTarget: sheetsMocks.getSheetCommandTarget,
+-        getMoveRangeUndoRedoMutations: sheetsMocks.getMoveRangeUndoRedoMutations,
+-        SheetsSelectionsService: sheetsMocks.SheetsSelectionsService,
+-    };
++    CommandType,
++    ICommandService,
++    IUndoRedoService,
++    IUniverInstanceService,
++    LocaleService,
++    LocaleType,
++    LogLevel,
++    RedoCommand,
++    UndoCommand,
++    Univer,
++    UniverInstanceType,
++} from '@univerjs/core';
++import * as sheetAPI from '@univerjs/sheets';
++import * as tableAPI from '@univerjs/sheets-table';
++import { afterEach, describe, expect, it, vi } from 'vitest';
++
++const UNIT = 'direct-command-workbook';
++const SHEET = 'sheet-with-table';
++const TABLE = 'target-table';
++const initialRange = { startRow: 0, endRow: 4, startColumn: 1, endColumn: 3 };
++const originalColumnIds = new Set(['left-column', 'middle-column', 'right-column']);
++const disposables: Univer[] = [];
++
++afterEach(() => {
++    for (const univer of disposables.splice(0)) univer.dispose();
+ });
+ 
++// Real workbook, table, command dispatcher and undo service. No mock method
++// specifies how a candidate must find a table or construct mutation payloads.
++function fixture() {
++    const univer = new Univer({ locale: LocaleType.EN_US, logLevel: LogLevel.SILENT });
++    disposables.push(univer);
++    const injector = univer.__getInjector(); // Existing core test-fixture access only.
++    injector.add([tableAPI.TableManager]);
++    injector.get(LocaleService).load({ enUS: { 'sheets-table': { columnPrefix: 'Field' } } });
++
++    const cellData: Record<number, Record<number, { v: string }>> = {};
++    for (let row = 0; row <= 6; row++) {
++        cellData[row] = {};
++        for (let col = 0; col <= 5; col++) cellData[row][col] = { v: `r${row}c${col}` };
++    }
++    const workbook = univer.createUnit<IWorkbookData, Workbook>(UniverInstanceType.UNIVER_SHEET, {
++        id: UNIT,
++        name: 'Direct commands',
++        locale: LocaleType.EN_US,
++        appVersion: '3.0.0-alpha',
++        styles: {},
++        sheetOrder: [SHEET, 'other-sheet'],
++        sheets: {
++            [SHEET]: { id: SHEET, name: 'Main', rowCount: 30, columnCount: 30, cellData },
++            'other-sheet': { id: 'other-sheet', name: 'Other', rowCount: 30, columnCount: 30 },
++        },
++    });
++    injector.get(IUniverInstanceService).focusUnit(UNIT);
++    const worksheet = workbook.getSheetBySheetId(SHEET)!;
++    const manager = injector.get(tableAPI.TableManager);
++    manager.addTable(UNIT, SHEET, 'TargetTable', { ...initialRange }, ['Left', 'Middle', 'Right'], TABLE, {
++        columns: [['left-column', 'Left'], ['middle-column', 'Middle'], ['right-column', 'Right']].map(([id, displayName]) => ({
++            id, displayName, dataType: tableAPI.TableColumnDataTypeEnum.String, formula: '', meta: {}, style: {},
++        })),
++    });
++    const table = manager.getTable(UNIT, TABLE)!;
++    // Distinct public metadata must survive deleting and undoing the middle column.
++    table.getTableColumnByIndex(1)!.setMeta({ purpose: 'preserve-on-undo' });
++    manager.addTable(UNIT, 'other-sheet', 'OtherTable', { ...initialRange }, ['A', 'B', 'C'], 'other-table');
++
++    const commands = injector.get(ICommandService);
++    const undo = injector.get(IUndoRedoService); // Registers the existing Undo/Redo commands.
++    const mutationIds = new Set<string>();
++    // Admit all existing public mutations, including equivalent implementations;
++    // never whitelist the gold handler's chosen list or inspect its params.
++    for (const candidate of [...Object.values(sheetAPI), ...Object.values(tableAPI)]) {
++        if (candidate && typeof candidate === 'object'
++            && 'type' in candidate && candidate.type === CommandType.MUTATION
++            && 'id' in candidate && typeof candidate.id === 'string'
++            && 'handler' in candidate && typeof candidate.handler === 'function'
++            && !mutationIds.has(candidate.id)) {
++            commands.registerCommand(candidate as IMutation);
++            mutationIds.add(candidate.id);
++        }
++    }
++    for (const command of operations.map(({ command }) => command)) commands.registerCommand(command);
++    const executedMutations: string[] = [];
++    commands.onCommandExecuted(({ id }) => {
++        if (mutationIds.has(id)) executedMutations.push(id);
++    });
++
++    const cell = (row: number, col: number) => worksheet.getCellMatrix().getValue(row, col)?.v ?? null;
++    const currentTable = () => manager.getTable(UNIT, TABLE)!;
++    const columns = () => structuredClone(currentTable().getTableInfo().columns);
++    const state = () => ({
++        range: structuredClone(currentTable().getRange()),
++        columns: columns().map((column) => ({
++            ...column,
++            // Newly allocated IDs need not be identical after undo + redo.
++            id: originalColumnIds.has(column.id) ? column.id : '<new-column>',
++        })),
++        cells: Array.from({ length: 10 }, (_, row) => Array.from({ length: 10 }, (_, col) => cell(row, col))),
++    });
++    return { commands, undo, get table() { return currentTable(); }, cell, columns, state, executedMutations };
++}
++
++const operations = [
++    { name: 'row insertion', kind: 'row', command: tableAPI.SheetTableInsertRowAtCommand },
++    { name: 'column insertion', kind: 'insert-column', command: tableAPI.SheetTableInsertColumnAtCommand },
++    { name: 'column removal', kind: 'remove-column', command: tableAPI.SheetTableRemoveColumnAtCommand },
++] as const;
++
++function assertEffect(f: ReturnType<typeof fixture>, kind: string, count: number, oldColumns: ReturnType<typeof f.columns>) {
++    if (kind === 'row') {
++        expect(f.table.getRange(), 'row insertion changes the table range').toEqual({ ...initialRange, endRow: 4 + count });
++        expect(f.columns(), 'row insertion preserves column metadata').toEqual(oldColumns);
++        expect(f.cell(1, 2), 'preceding table row is unchanged').toBe('r1c2');
++        for (let i = 0; i < count; i++) expect(f.cell(2 + i, 2), 'new row slot is empty').toBeNull();
++        expect(f.cell(2 + count, 2), 'in-table cells move down at the requested index').toBe('r2c2');
++        expect(f.cell(6 + count, 3), 'trailing cells below the table move down').toBe('r6c3');
++        expect(f.cell(2, 0), 'cells left of the table are unaffected').toBe('r2c0');
++        expect(f.cell(2, 5), 'cells right of the table are unaffected').toBe('r2c5');
++    } else if (kind === 'insert-column') {
++        expect(f.table.getRange(), 'column insertion changes the table range').toEqual({ ...initialRange, endColumn: 3 + count });
++        const columns = f.columns();
++        expect(columns.length, 'column metadata grows by count').toBe(3 + count);
++        expect(columns.slice(0, 1), 'metadata before the insertion is preserved').toEqual(oldColumns.slice(0, 1));
++        expect(columns.slice(1 + count), 'existing columns shift without metadata loss').toEqual(oldColumns.slice(1));
++        expect(f.cell(2, 1), 'preceding table column is unchanged').toBe('r2c1');
++        for (let i = 0; i < count; i++) expect(f.cell(2, 2 + i), 'new column slot is empty').toBeNull();
++        expect(f.cell(2, 2 + count), 'in-table cells move right at the requested index').toBe('r2c2');
++        expect(f.cell(4, 5 + count), 'trailing cells right of the table move right').toBe('r4c5');
++        expect(f.cell(6, 2), 'cells below the table are unaffected').toBe('r6c2');
++    } else {
++        expect(f.table.getRange(), 'column removal changes the table range').toEqual({ ...initialRange, endColumn: 3 - count });
++        expect(f.columns(), 'only the requested column metadata is removed').toEqual([
++            ...oldColumns.slice(0, 1), ...oldColumns.slice(1 + count),
++        ]);
++        expect(f.cell(2, 1), 'preceding table column is unchanged').toBe('r2c1');
++        expect(f.cell(2, 2), 'successor cells move into the removed column').toBe(`r2c${2 + count}`);
++        expect(f.cell(4, 5 - count), 'trailing cells right of the table move left').toBe('r4c5');
++        for (let i = 0; i < count; i++) expect(f.cell(2, 5 - i), 'vacated trailing slots are empty').toBeNull();
++        expect(f.cell(6, 2), 'cells below the table are unaffected').toBe('r6c2');
++    }
++}
++
++describe('direct table commands through real state and history', () => {
++    for (const { name, kind, command } of operations) {
++        it.each([1, 2])(`${name} with count %i changes state, undoes and redoes`, (count) => {
++            const f = fixture();
++            const before = f.state();
++            const oldColumns = f.columns();
++            expect(f.commands.syncExecuteCommand(command.id, { unitId: UNIT, subUnitId: SHEET, tableId: TABLE, index: 2, count })).toBe(true);
++            assertEffect(f, kind, count, oldColumns);
++            expect(f.executedMutations.length, 'successful operation executes real mutations through command service').toBeGreaterThan(0);
++            expect(f.undo.pitchTopUndoElement()?.unitID, 'history belongs to the requested workbook').toBe(UNIT);
++            const after = f.state();
++            expect(f.commands.syncExecuteCommand(UndoCommand.id), 'public undo succeeds').toBe(true);
++            expect(f.state(), 'undo restores cells, range and original column metadata').toEqual(before);
++            expect(f.commands.syncExecuteCommand(RedoCommand.id), 'public redo succeeds').toBe(true);
++            expect(f.state(), 'redo reproduces the observable operation').toEqual(after);
++        });
++
++        const invalid = [
++            ['missing params', undefined],
++            ['zero count', { count: 0 }],
++            ['negative count', { count: -1 }],
++            ['missing workbook target', { unitId: 'missing-workbook' }],
++            ['missing worksheet target', { subUnitId: 'missing-sheet' }],
++            ['missing table', { tableId: 'missing-table' }],
++            ['table belongs to another worksheet', { tableId: 'other-table' }],
++            ['index before table', { index: -1 }],
++            ['index after table', { index: 1000 }],
++        ] as const;
++        it.each(invalid)(`${name} rejects %s without changing state`, (_label, overrides) => {
++            const f = fixture();
++            const before = f.state();
++            const params = overrides === undefined ? undefined : {
++                unitId: UNIT, subUnitId: SHEET, tableId: TABLE, index: 2, count: 1, ...overrides,
++            };
++            expect(f.commands.syncExecuteCommand((command as ICommand).id, params), 'invalid request returns false').toBe(false);
++            expect(f.state(), 'invalid request leaves all observable table and cell state intact').toEqual(before);
++            expect(f.undo.pitchTopUndoElement(), 'invalid request adds no undo item').toBeNull();
++        });
++    }
++});
++
++// The three original legacy-command assertions are retained. Local fixtures
++// replace the old module-wide mock so direct commands use the real sheet API.
+ function createAccessor(pairs: Array<[unknown, unknown]>) {
+     const map = new Map<unknown, unknown>(pairs);
+     return {
+         get(token: unknown) {
+-            if (!map.has(token)) {
+-                throw new Error(`Unknown token: ${String(token)}`);
+-            }
++            if (!map.has(token)) throw new Error(`Unknown token: ${String(token)}`);
+             return map.get(token);
+         },
+     } as any;
+ }
+ 
++const {
++    SheetTableInsertRowCommand, SheetTableInsertColCommand,
++    SheetTableRemoveRowCommand, SheetTableRemoveColCommand,
++} = tableAPI;
++
+ describe('sheet-table-row-col commands', () => {
+     it('insert commands should return false when there is no sheet target', () => {
+-        sheetsMocks.getSheetCommandTarget.mockReturnValue(null);
+-
+         const accessor = createAccessor([
+-            [IUniverInstanceService, {}],
++            [IUniverInstanceService, { getCurrentUnitOfType: () => null }],
+         ]);
+-
+         expect(SheetTableInsertRowCommand.handler(accessor)).toBe(false);
+         expect(SheetTableInsertColCommand.handler(accessor)).toBe(false);
+     });
+ 
+     it('remove commands should return false for invalid params', () => {
+-        const accessor = createAccessor([
+-            [IUniverInstanceService, {}],
+-        ]);
+-
++        const accessor = createAccessor([[IUniverInstanceService, {}]]);
+         expect(SheetTableRemoveRowCommand.handler(accessor, undefined as any)).toBe(false);
+         expect(SheetTableRemoveColCommand.handler(accessor, undefined as any)).toBe(false);
+     });
+ 
+     it('commands should stop when current selection is invalid or table is missing', () => {
+-        sheetsMocks.getSheetCommandTarget.mockReturnValue({
+-            unitId: 'u1',
+-            subUnitId: 's1',
+-            worksheet: {
+-                getRowCount: () => 100,
+-                getColumnCount: () => 100,
+-                getCellMatrix: () => ({ getDataRange: () => ({ endRow: 10, endColumn: 10 }) }),
+-            },
+-            workbook: {},
+-        });
+-
++        const worksheet = {
++            getSheetId: () => 's1',
++            getRowCount: () => 100,
++            getColumnCount: () => 100,
++            getCellMatrix: () => ({ getDataRange: () => ({ endRow: 10, endColumn: 10 }) }),
++        };
++        const workbook = {
++            getUnitId: () => 'u1',
++            getActiveSheet: () => worksheet,
++            getSheetBySheetId: () => worksheet,
++        };
+         const accessor = createAccessor([
+-            [IUniverInstanceService, {}],
+-            [SheetsSelectionsService, { getCurrentSelections: () => [] }],
+-            [SheetsTableController, { getContainerTableWithRange: () => null }],
+-            [TableManager, {}],
++            [IUniverInstanceService, { getUnit: () => workbook, getCurrentUnitOfType: () => workbook }],
++            [sheetAPI.SheetsSelectionsService, { getCurrentSelections: () => [] }],
++            [tableAPI.SheetsTableController, { getContainerTableWithRange: () => null }],
++            [tableAPI.TableManager, {}],
+             [ICommandService, { syncExecuteCommand: vi.fn(() => true) }],
+             [IUndoRedoService, { pushUndoRedo: vi.fn() }],
+         ]);
+-
+         expect(SheetTableInsertRowCommand.handler(accessor)).toBe(false);
+         expect(SheetTableInsertColCommand.handler(accessor)).toBe(false);
+-
+         expect(SheetTableRemoveRowCommand.handler(accessor, { unitId: 'u1', subUnitId: 's1', tableId: 't1' } as any)).toBe(false);
+         expect(SheetTableRemoveColCommand.handler(accessor, { unitId: 'u1', subUnitId: 's1', tableId: 't1' } as any)).toBe(false);
+     });
+ });
++
++// Public range-growth contract: localized prefix, with no prescribed numbering,
++// separator, generated identifier, insertion algorithm or private lookup method.
++describe('table range growth uses the active localized column prefix', () => {
++    it.each([
++        ['leading', { startRow: 0, endRow: 4, startColumn: 0, endColumn: 3 }, 1],
++        ['trailing', { startRow: 0, endRow: 4, startColumn: 1, endColumn: 5 }, 2],
++    ] as const)('uses the locale prefix for %s growth and preserves existing columns', (_side, newRange, addedCount) => {
++        const expectedPrefix = '独特列名前缀Ω';
++        const univer = new Univer({ locale: LocaleType.EN_US, logLevel: LogLevel.SILENT });
++        disposables.push(univer);
++        const injector = univer.__getInjector();
++        injector.get(LocaleService).load({ enUS: { 'sheets-table': { columnPrefix: expectedPrefix } } });
++        injector.add([tableAPI.TableManager]);
++        const manager = injector.get(tableAPI.TableManager);
++        manager.addTable(UNIT, SHEET, 'LocalizedGrowth', { ...initialRange }, ['Left', 'Middle', 'Right'], TABLE);
++        manager.getTable(UNIT, TABLE)!.getTableColumnByIndex(1)!.setMeta({ note: 'keep-existing-metadata' });
++        const before = structuredClone(manager.getTable(UNIT, TABLE)!.getTableInfo().columns);
++        const oldIds = new Set(before.map(column => column.id));
++
++        manager.updateTableRange(UNIT, TABLE, { newRange: { ...newRange } });
++
++        const after = structuredClone(manager.getTable(UNIT, TABLE)!.getTableInfo().columns);
++        expect(manager.getTable(UNIT, TABLE)!.getRange(), 'requested expanded range is observable').toEqual(newRange);
++        expect(after.filter(column => oldIds.has(column.id)), 'range growth preserves existing ordered column metadata').toEqual(before);
++        const added = after.filter(column => !oldIds.has(column.id));
++        expect(added.length, 'range growth creates the required number of columns').toBe(addedCount);
++        for (const column of added) {
++            expect(column.displayName, 'new column display name includes the active localized prefix').toContain(expectedPrefix);
++        }
++    });
++});
++
++// Observe ordinary public plugin startup. The probe only receives a service;
++// it does not register commands or manually install candidate dependencies.
++import { Inject, Injector, Plugin } from '@univerjs/core';
++
++describe('table plugin registers direct commands at normal startup', () => {
++    it.each([
++        ['row insertion', tableAPI.SheetTableInsertRowAtCommand],
++        ['column insertion', tableAPI.SheetTableInsertColumnAtCommand],
++        ['column removal', tableAPI.SheetTableRemoveColumnAtCommand],
++    ] as const)('registers %s through the public command service', (_label, command) => {
++        let commands: ICommandService | undefined;
++        class CommandServiceProbe extends Plugin {
++            static override pluginName = 'test-passive-command-service-probe';
++            static override type = UniverInstanceType.UNIVER_SHEET;
++
++            constructor(
++                _options: undefined,
++                @Inject(Injector) protected override _injector: Injector,
++                @ICommandService commandService: ICommandService
++            ) {
++                super();
++                commands = commandService;
++            }
++        }
++
++        const univer = new Univer({ locale: LocaleType.EN_US, logLevel: LogLevel.SILENT });
++        disposables.push(univer);
++        univer.registerPlugin(sheetAPI.UniverSheetsPlugin);
++        univer.registerPlugin(tableAPI.UniverSheetsTablePlugin);
++        univer.registerPlugin(CommandServiceProbe);
++        univer.createUnit<IWorkbookData, Workbook>(UniverInstanceType.UNIVER_SHEET, {
++            id: 'native-registration-workbook',
++            name: 'Native registration',
++            locale: LocaleType.EN_US,
++            appVersion: '3.0.0-alpha',
++            styles: {},
++            sheetOrder: ['native-registration-sheet'],
++            sheets: {
++                'native-registration-sheet': {
++                    id: 'native-registration-sheet', name: 'Sheet', rowCount: 20, columnCount: 20,
++                },
++            },
++        });
++
++        expect(commands, 'passive plugin receives the actual command service').toBeDefined();
++        expect(commands!.hasCommand(command.id), 'native plugin command registration').toBe(true);
++        expect(commands!.syncExecuteCommand(command.id)).toBe(false);
++    });
++});
+diff --git a/packages/sheets-table/src/commands/commands/__tests__/table-name.spec.ts b/packages/sheets-table/src/commands/commands/__tests__/table-name.spec.ts
+new file mode 100644
+index 000000000..cc45abff3
+--- /dev/null
++++ b/packages/sheets-table/src/commands/commands/__tests__/table-name.spec.ts
+@@ -0,0 +1,34 @@
++/**
++ * Copyright 2023-present DreamNum Co., Ltd.
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++import { describe, expect, it } from 'vitest';
++import { validateSheetTableName } from '../../../util/table-name';
++
++describe('validateSheetTableName', () => {
++    it('accepts a unique custom name', () => {
++        expect(validateSheetTableName('SalesTable', new Set(['OtherTable']))).toEqual({ valid: true });
++    });
++
++    it('rejects duplicate names case-insensitively', () => {
++        expect(validateSheetTableName('SalesTable', new Set(['salestable']))).toEqual({ valid: false, reason: 'invalid' });
++    });
++
++    it('rejects empty names, spaces, and leading numbers', () => {
++        expect(validateSheetTableName('', new Set())).toEqual({ valid: false, reason: 'empty' });
++        expect(validateSheetTableName('Sales Table', new Set())).toEqual({ valid: false, reason: 'invalid' });
++        expect(validateSheetTableName('1SalesTable', new Set())).toEqual({ valid: false, reason: 'invalid' });
++    });
++});
+diff --git a/packages/sheets-table/src/controllers/__tests__/table-theme.factory.spec.ts b/packages/sheets-table/src/controllers/__tests__/table-theme.factory.spec.ts
+index c4ec647ee..ae3b00c55 100644
+--- a/packages/sheets-table/src/controllers/__tests__/table-theme.factory.spec.ts
++++ b/packages/sheets-table/src/controllers/__tests__/table-theme.factory.spec.ts
+@@ -55,5 +55,6 @@ describe('table-theme.factory', () => {
+         expect(tableThemeConfig[5].name).toBe('table-default-5');
+         expect(tableThemeConfig[0].style.headerRowStyle?.bd?.t).toEqual(tableDefaultBorderStyle);
+         expect(tableThemeConfig[0].style.lastColumnStyle?.bd?.r).toEqual(tableDefaultBorderStyle);
++        expect(tableThemeConfig[0].style.secondRowStyle?.bg?.rgb).toBe('#EEF2FF');
+     });
+ });

@@ -1,0 +1,42 @@
+{
+  "enabled": true,
+  "instance_id": "crabtalk__crabtalk-116",
+  "version": "provider-and-mcp-config-2",
+  "original_reference_sha256": "090c7ea5104f3263cabd94e22f461ac476c71070426986506fe35a6bdcdc4a15",
+  "correction_patch_sha256": "c9e55a47425357ac5321073160bdce023f62ae4dba48ebf421ba11afc0ad28ed",
+  "source_instance_unchanged": true,
+  "problem_statement_unchanged": true,
+  "original_reference_retained_as": "solution/gold.patch",
+  "application": "Oracle-only additive patch after original reference; not installed by verifier and not exposed to solver agent.",
+  "corrections": [
+    {
+      "path": "crates/core/src/config/provider.rs",
+      "reason": "Add custom preset required by current rewritten task; original upstream described only five presets, so record this as current-spec alignment."
+    },
+    {
+      "path": "crates/daemon/src/daemon/protocol.rs",
+      "reason": "List actual provider keys/full configs once each; derive active from active model/provider mapping, not provider key as model name. Persist MCP auto_restart=false explicitly because omitted value reloads as true."
+    }
+  ],
+  "evidence": {
+    "positive": "crab116-provider-identity-controls-20261002T215434Z/crab116-reference-provider-ident__bN8o425",
+    "negative": "crab116-provider-identity-controls-20261002T215434Z/crab116-provider-identity-regres__EgKESR7",
+    "positive_reward": 1,
+    "negative_reward": 0,
+    "negative_failure": "ListProviders provider-name/nonempty-config assertion line103",
+    "both_mutators_exit": 0,
+    "harbor_exceptions": null
+  },
+  "created_at_utc": "2026-10-02T22:03:48.956805+00:00",
+  "scope_limitations": "Provider and MCP config/tool message tests pass; hub/skills/conversations/CLI and SetProvider.active still need independent coverage.",
+  "updated_at_utc": "2026-10-02T22:29:43.373495+00:00",
+  "previous_version_archive": "verifier_repair/reference-overrides/crabtalk__crabtalk-116/history/20261002T222943Z",
+  "mcp_evidence": {
+    "report": "full82_review/test-overlays/crabtalk__crabtalk-116/draft-mcp/execution-review.json",
+    "positives": 2,
+    "negative_controls": 4,
+    "all_mutators_exit_zero": true,
+    "all_test_assets_verified": true,
+    "no_exceptions": true
+  }
+}

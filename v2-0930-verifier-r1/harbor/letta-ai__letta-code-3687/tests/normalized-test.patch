@@ -1,0 +1,1453 @@
+diff --git a/src/agent/send-message-stream-channel-envelope.test.ts b/src/agent/send-message-stream-channel-envelope.test.ts
+index e0d65b59..5ddf64b2 100644
+--- a/src/agent/send-message-stream-channel-envelope.test.ts
++++ b/src/agent/send-message-stream-channel-envelope.test.ts
+@@ -3,46 +3,26 @@ import type { Stream } from "@letta-ai/letta-client/core/streaming";
+ import type { LettaStreamingResponse } from "@letta-ai/letta-client/resources/agents/messages";
+ import type { MessageCreateParams } from "@letta-ai/letta-client/resources/conversations/messages";
+ import type { Backend } from "@/backend";
+-import { clearDynamicMessageChannelToolCache } from "@/channels/message-tool";
+-import { ChannelRegistry, getChannelRegistry } from "@/channels/registry";
+-import type { ChannelAdapter, InboundChannelMessage } from "@/channels/types";
++import { buildGatewayMessageChannelTool } from "@/channels/message-channel-gateway-tool";
++import type { InboundChannelMessage } from "@/channels/types";
+ import { formatChannelNotification } from "@/channels/xml";
+ import {
+   clearCapturedToolExecutionContexts,
++  clearExternalTools,
+   clearTools,
+   prepareToolExecutionContextForModel,
++  registerExternalTools,
+ } from "@/tools/manager";
+ import { sendMessageStreamWithBackend } from "./message";
+ 
+-function createRunningSlackAdapter(): ChannelAdapter {
+-  return {
+-    id: "slack:acct-slack",
+-    channelId: "slack",
+-    accountId: "acct-slack",
+-    name: "Slack",
+-    start: async () => {},
+-    stop: async () => {},
+-    isRunning: () => true,
+-    sendMessage: async () => ({ messageId: "msg-1" }),
+-    sendDirectReply: async () => {},
+-  };
+-}
+-
+ describe("channel request envelope", () => {
+-  afterEach(async () => {
+-    const registry = getChannelRegistry();
+-    if (registry) {
+-      await registry.stopAll();
+-    }
+-    clearDynamicMessageChannelToolCache();
++  afterEach(() => {
+     clearCapturedToolExecutionContexts();
++    clearExternalTools();
+     clearTools();
+   });
+ 
+   test("sends a compact Slack reminder with reply guidance in MessageChannel", async () => {
+-    const registry = new ChannelRegistry();
+-    registry.registerAdapter(createRunningSlackAdapter());
+-
+     const inboundMessage: InboundChannelMessage = {
+       channel: "slack",
+       accountId: "acct-slack",
+@@ -55,12 +35,34 @@ describe("channel request envelope", () => {
+       text: "Can you investigate this?",
+       timestamp: Date.now(),
+     };
++    const messageChannelTool = await buildGatewayMessageChannelTool([
++      {
++        channel: "slack",
++        accountId: inboundMessage.accountId,
++        chatId: inboundMessage.chatId,
++        chatType: inboundMessage.chatType,
++        messageId: inboundMessage.messageId,
++        threadId: inboundMessage.threadId,
++        agentId: "agent-1",
++        conversationId: "conv-slack",
++      },
++    ]);
++    if (!messageChannelTool) {
++      throw new Error("Gateway did not build MessageChannel");
++    }
++    registerExternalTools([
++      {
++        ...messageChannelTool,
++        runtime: { agentId: "agent-1", conversationId: "conv-slack" },
++      },
++    ]);
+     const preparedToolContext = await prepareToolExecutionContextForModel(
+       "anthropic/claude-opus-4-1-20250805",
+       {
+         clientToolAllowlist: ["MessageChannel"],
+-        channelToolScope: {
+-          channels: [{ channelId: "slack", accountId: "acct-slack" }],
++        runtimeContext: {
++          agentId: "agent-1",
++          conversationId: "conv-slack",
+         },
+       },
+     );
+@@ -114,5 +116,9 @@ describe("channel request envelope", () => {
+     expect(messageChannel.description).toContain(
+       "For Slack requests that require nontrivial work or several tool calls",
+     );
++    const properties = messageChannel.parameters?.properties as
++      | Record<string, unknown>
++      | undefined;
++    expect(properties?.target).toBeDefined();
+   });
+ });
+diff --git a/src/agent/subagent-env-composition.test.ts b/src/agent/subagent-env-composition.test.ts
+index 888df427..759a9d2a 100644
+--- a/src/agent/subagent-env-composition.test.ts
++++ b/src/agent/subagent-env-composition.test.ts
+@@ -6,7 +6,6 @@ import {
+   resolveSubagentInheritedPrimaryRoot,
+ } from "@/agent/subagents/subagent-launcher";
+ import { LETTA_DISABLE_MODS_ENV } from "@/mods/disable";
+-import { LETTA_INHERITED_CHANNEL_CONTEXT_ENV } from "@/runtime-context";
+ 
+ const PARENT_ID = "agent-226cd814-09bf-4436-940e-aea9d91d14cb";
+ const PARENT_MEMORY_DIR = `/Users/someone/.letta/agents/${PARENT_ID}/memory`;
+@@ -280,49 +279,6 @@ describe("composeSubagentChildEnv", () => {
+     expect(env.PATH).toBe("/usr/bin:/bin");
+     expect(env.CUSTOM_VAR).toBe("preserved");
+   });
+-  test("inherited channel context is serialized for child process scope", () => {
+-    const env = composeSubagentChildEnv({
+-      parentProcessEnv: { HOME: "/home/user" },
+-      parentAgentId: PARENT_ID,
+-      launchProfile: "default",
+-      inheritedPrimaryRoot: null,
+-      inheritedChannelContext: {
+-        channelToolScope: {
+-          channels: [{ channelId: "telegram", accountId: "account-1" }],
+-        },
+-        channelTurnSources: [
+-          {
+-            channel: "telegram",
+-            accountId: "account-1",
+-            chatId: "7952253975",
+-            chatType: "channel",
+-            threadId: "42",
+-            agentId: PARENT_ID,
+-            conversationId: "default",
+-          },
+-        ],
+-      },
+-    });
+-
+-    expect(env[LETTA_INHERITED_CHANNEL_CONTEXT_ENV]).toBe(
+-      JSON.stringify({
+-        channelToolScope: {
+-          channels: [{ channelId: "telegram", accountId: "account-1" }],
+-        },
+-        channelTurnSources: [
+-          {
+-            channel: "telegram",
+-            accountId: "account-1",
+-            chatId: "7952253975",
+-            chatType: "channel",
+-            threadId: "42",
+-            agentId: PARENT_ID,
+-            conversationId: "default",
+-          },
+-        ],
+-      }),
+-    );
+-  });
+ });
+ 
+ describe("resolveSubagentInheritedPrimaryRoot", () => {
+diff --git a/src/channels/gateway-core.test.ts b/src/channels/gateway-core.test.ts
+index 70bc238f..d0d55863 100644
+--- a/src/channels/gateway-core.test.ts
++++ b/src/channels/gateway-core.test.ts
+@@ -45,6 +45,7 @@ class FakeClient implements ChannelGatewayClient {
+     agent_id?: string;
+     conversation_id?: string;
+     mode?: string;
++    preserve_skill_sources?: boolean;
+     external_tools?: unknown;
+   }> = [];
+   closeCalls = 0;
+@@ -497,7 +498,6 @@ test("MessageChannel external tool execution routes to hooks.executeExternalTool
+     type: "external_tool_call_request",
+     request_id: "ext-1",
+     runtime: TEST_RUNTIME,
+-    scope_id: "channel-gateway",
+     tool_call_id: "call-1",
+     tool_name: "MessageChannel",
+     input: { channel: "telegram", action: "send", text: "Hi" },
+@@ -514,6 +514,33 @@ test("MessageChannel external tool execution routes to hooks.executeExternalTool
+   gateway.close();
+ });
+ 
++test("process-owned turns execute MessageChannel with the runtime's routed sources", async () => {
++  const client = new FakeClient();
++  let executedSources: ChannelTurnSource[] = [];
++  const { hooks } = makeHooks({
++    executeExternalTool: async (_request, sources) => {
++      executedSources = sources;
++      return { content: [{ type: "text", text: "ok" }] };
++    },
++  });
++  const gateway = new ChannelGateway(client, hooks);
++  const source = makeSource({ channel: "slack", chatId: "C123" });
++
++  await gateway.registerRuntime(TEST_RUNTIME, [source]);
++  client.emitExternalToolCall({
++    type: "external_tool_call_request",
++    request_id: "ext-cron",
++    runtime: TEST_RUNTIME,
++    tool_call_id: "call-cron",
++    tool_name: "MessageChannel",
++    input: { channel: "slack", action: "send", chat_id: "C123" },
++  });
++  await new Promise((resolve) => setTimeout(resolve, 10));
++
++  expect(executedSources).toEqual([source]);
++  gateway.close();
++});
++
+ test("approval response is forwarded via submitApprovalResponse", async () => {
+   const client = new FakeClient();
+   const { hooks } = makeHooks();
+@@ -578,7 +605,30 @@ test("runtime registration happens before input submission", async () => {
+   const startOpts = client.startedRuntimes[0];
+   expect(startOpts?.agent_id).toBe("agent-1");
+   expect(startOpts?.conversation_id).toBe("conv-1");
+-  expect(startOpts?.external_tools).toBeDefined();
++  expect(startOpts?.preserve_skill_sources).toBe(true);
++  expect(startOpts?.external_tools).toEqual([
++    {
++      tools: [
++        {
++          name: "MessageChannel",
++          description: "Send a message through a channel",
++          parameters: {},
++        },
++      ],
++    },
++  ]);
++
++  gateway.close();
++});
++
++test("runtime registration removes MessageChannel when no route remains", async () => {
++  const client = new FakeClient();
++  const { hooks } = makeHooks({ buildExternalTool: async () => null });
++  const gateway = new ChannelGateway(client, hooks);
++
++  await gateway.registerRuntime(TEST_RUNTIME, []);
++
++  expect(client.startedRuntimes[0]?.external_tools).toEqual([]);
+ 
+   gateway.close();
+ });
+diff --git a/src/channels/message-channel-gateway-tool.test.ts b/src/channels/message-channel-gateway-tool.test.ts
+new file mode 100644
+index 00000000..1f723b2b
+--- /dev/null
++++ b/src/channels/message-channel-gateway-tool.test.ts
+@@ -0,0 +1,6 @@
++import { expect, test } from "bun:test";
++import { buildGatewayMessageChannelTool } from "./message-channel-gateway-tool";
++
++test("does not build MessageChannel without an eligible route", async () => {
++  expect(await buildGatewayMessageChannelTool([])).toBeNull();
++});
+diff --git a/src/channels/message-tool-schema.test.ts b/src/channels/message-tool-schema.test.ts
+index b7421165..adf1dcf7 100644
+--- a/src/channels/message-tool-schema.test.ts
++++ b/src/channels/message-tool-schema.test.ts
+@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test } from "bun:test";
+ import {
+   buildDynamicMessageChannelSchema,
+   buildDynamicMessageChannelToolDefinition,
+-  clearDynamicMessageChannelToolCache,
++  clearMessageChannelDiscoveryErrors,
+ } from "@/channels/message-tool";
+ import { ChannelRegistry, getChannelRegistry } from "@/channels/registry";
+ import type { ChannelAdapter } from "@/channels/types";
+@@ -34,7 +34,7 @@ describe("buildDynamicMessageChannelSchema", () => {
+     if (registry) {
+       await registry.stopAll();
+     }
+-    clearDynamicMessageChannelToolCache();
++    clearMessageChannelDiscoveryErrors();
+   });
+ 
+   test("injects active channel enum and plugin-owned actions", async () => {
+diff --git a/src/channels/plugin-registry.test.ts b/src/channels/plugin-registry.test.ts
+index 1f1ba171..e659780c 100644
+--- a/src/channels/plugin-registry.test.ts
++++ b/src/channels/plugin-registry.test.ts
+@@ -5,7 +5,7 @@ import { join } from "node:path";
+ import { __testOverrideChannelsRoot } from "@/channels/config";
+ import {
+   buildDynamicMessageChannelSchema,
+-  clearDynamicMessageChannelToolCache,
++  clearMessageChannelDiscoveryErrors,
+ } from "@/channels/message-tool";
+ import {
+   __testClearUserChannelPluginCache,
+@@ -74,13 +74,13 @@ beforeEach(() => {
+   channelsRoot = mkdtempSync(join(tmpdir(), "letta-channel-plugins-"));
+   __testOverrideChannelsRoot(channelsRoot);
+   __testClearUserChannelPluginCache();
+-  clearDynamicMessageChannelToolCache();
++  clearMessageChannelDiscoveryErrors();
+ });
+ 
+ afterEach(() => {
+   __testOverrideChannelsRoot(null);
+   __testClearUserChannelPluginCache();
+-  clearDynamicMessageChannelToolCache();
++  clearMessageChannelDiscoveryErrors();
+   rmSync(channelsRoot, { recursive: true, force: true });
+ });
+ 
+diff --git a/src/channels/registry-lifecycle.test.ts b/src/channels/registry-lifecycle.test.ts
+index 77c65202..bfaf49ef 100644
+--- a/src/channels/registry-lifecycle.test.ts
++++ b/src/channels/registry-lifecycle.test.ts
+@@ -128,6 +128,48 @@ describe("ChannelRegistry lifecycle", () => {
+     ]);
+   });
+ 
++  test("route-derived sources require a running adapter and outbound route", () => {
++    let running = false;
++    const registry = new ChannelRegistry();
++    registry.registerAdapter({
++      id: "slack:acct-slack",
++      channelId: "slack",
++      accountId: "acct-slack",
++      name: "Slack",
++      start: async () => {},
++      stop: async () => {},
++      isRunning: () => running,
++      sendMessage: async () => ({ messageId: "msg-1" }),
++      sendDirectReply: async () => {},
++    });
++    const route = {
++      accountId: "acct-slack",
++      chatId: "C123",
++      chatType: "channel" as const,
++      threadId: null,
++      agentId: "agent-1",
++      conversationId: "conv-1",
++      enabled: true,
++      outboundEnabled: true,
++      createdAt: "2026-08-05T00:00:00.000Z",
++    };
++    addRoute("slack", route);
++
++    expect(registry.resolveTurnSourcesForScope("agent-1", "conv-1")).toEqual(
++      [],
++    );
++
++    running = true;
++    expect(
++      registry.resolveTurnSourcesForScope("agent-1", "conv-1"),
++    ).toHaveLength(1);
++
++    addRoute("slack", { ...route, outboundEnabled: false });
++    expect(registry.resolveTurnSourcesForScope("agent-1", "conv-1")).toEqual(
++      [],
++    );
++  });
++
+   test("initializeChannels throws when requested channel startup fails", async () => {
+     __testOverrideLoadChannelAccounts(() => []);
+     const logs: string[] = [];
+diff --git a/src/channels/routed-runtime-registration.test.ts b/src/channels/routed-runtime-registration.test.ts
+new file mode 100644
+index 00000000..e6842230
+--- /dev/null
++++ b/src/channels/routed-runtime-registration.test.ts
+@@ -0,0 +1,190 @@
++import { afterEach, expect, test } from "bun:test";
++import type { RuntimeScope } from "@/types/app-server-protocol";
++import { ChannelRegistry, getChannelRegistry } from "./registry";
++import { createRoutedRuntimeRegistrationRefresher } from "./routed-runtime-registration";
++import {
++  __testOverrideLoadRoutes,
++  __testOverrideSaveRoutes,
++  clearAllRoutes,
++  setRouteInMemory,
++} from "./routing";
++import type { ChannelTurnSource } from "./types";
++
++const runtime: RuntimeScope = {
++  agent_id: "agent-1",
++  conversation_id: "conv-1",
++};
++
++const source: ChannelTurnSource = {
++  channel: "slack",
++  accountId: "acct-1",
++  chatId: "C123",
++  chatType: "channel",
++  threadId: null,
++  agentId: runtime.agent_id,
++  conversationId: runtime.conversation_id,
++};
++
++afterEach(async () => {
++  await getChannelRegistry()?.stopAll();
++  clearAllRoutes();
++  __testOverrideLoadRoutes(null);
++  __testOverrideSaveRoutes(null);
++});
++
++test("registers routed conversations at gateway startup", async () => {
++  __testOverrideLoadRoutes(() => null);
++  __testOverrideSaveRoutes(() => {});
++  setRouteInMemory("slack", {
++    accountId: source.accountId,
++    chatId: source.chatId,
++    chatType: "channel",
++    threadId: null,
++    agentId: runtime.agent_id,
++    conversationId: runtime.conversation_id,
++    enabled: true,
++    outboundEnabled: true,
++    createdAt: "2026-08-05T00:00:00.000Z",
++    updatedAt: "2026-08-05T00:00:00.000Z",
++  });
++  const registry = new ChannelRegistry();
++  registry.registerAdapter({
++    id: "slack:acct-1",
++    channelId: "slack",
++    accountId: "acct-1",
++    name: "Slack",
++    start: async () => {},
++    stop: async () => {},
++    isRunning: () => true,
++    sendMessage: async () => ({ messageId: "msg-1" }),
++    sendDirectReply: async () => {},
++  });
++
++  const registrations: Array<{
++    runtime: RuntimeScope;
++    sources: ChannelTurnSource[];
++  }> = [];
++  const refresher = createRoutedRuntimeRegistrationRefresher(
++    registry,
++    {
++      getKnownRuntimes: () => [],
++      registerRuntime: async (nextRuntime, sources = []) => {
++        registrations.push({ runtime: nextRuntime, sources });
++      },
++    },
++    ["slack"],
++  );
++
++  await refresher.refresh();
++
++  expect(registrations).toEqual([{ runtime, sources: [source] }]);
++  refresher.close();
++});
++
++test("removes the tool registration when a known runtime loses its routes", async () => {
++  __testOverrideLoadRoutes(() => null);
++
++  const registrations: ChannelTurnSource[][] = [];
++  const refresher = createRoutedRuntimeRegistrationRefresher(
++    {
++      resolveRoutedTurnSources: () => [],
++    },
++    {
++      getKnownRuntimes: () => [runtime],
++      registerRuntime: async (_runtime, sources = []) => {
++        registrations.push(sources);
++      },
++    },
++    ["slack"],
++  );
++
++  await refresher.refresh();
++
++  expect(registrations).toEqual([[]]);
++  refresher.close();
++});
++
++test("fails startup when initial MessageChannel registration fails", async () => {
++  __testOverrideLoadRoutes(() => null);
++  const refresher = createRoutedRuntimeRegistrationRefresher(
++    { resolveRoutedTurnSources: () => [source] },
++    {
++      getKnownRuntimes: () => [],
++      registerRuntime: async () => {
++        throw new Error("listener unavailable");
++      },
++    },
++    ["slack"],
++  );
++
++  await expect(refresher.refresh()).rejects.toThrow("listener unavailable");
++  refresher.close();
++});
++
++test("retries a failed MessageChannel unregister until it succeeds", async () => {
++  __testOverrideLoadRoutes(() => null);
++  let attempts = 0;
++  let finish!: () => void;
++  const finished = new Promise<void>((resolve) => {
++    finish = resolve;
++  });
++  const refresher = createRoutedRuntimeRegistrationRefresher(
++    { resolveRoutedTurnSources: () => [] },
++    {
++      getKnownRuntimes: () => [runtime],
++      registerRuntime: async (_runtime, sources = []) => {
++        attempts++;
++        expect(sources).toEqual([]);
++        if (attempts === 1) throw new Error("temporary failure");
++        finish();
++      },
++    },
++    ["slack"],
++    undefined,
++    0,
++  );
++
++  refresher.requestRefresh();
++  await Promise.race([
++    finished,
++    Bun.sleep(1000).then(() => {
++      throw new Error("registration retry timed out");
++    }),
++  ]);
++
++  expect(attempts).toBe(2);
++  refresher.close();
++});
++
++test("runs another pass when registration changes during a refresh", async () => {
++  __testOverrideLoadRoutes(() => null);
++  let attempts = 0;
++  let finish!: () => void;
++  const finished = new Promise<void>((resolve) => {
++    finish = resolve;
++  });
++  let refresher!: ReturnType<typeof createRoutedRuntimeRegistrationRefresher>;
++  refresher = createRoutedRuntimeRegistrationRefresher(
++    { resolveRoutedTurnSources: () => [source] },
++    {
++      getKnownRuntimes: () => [],
++      registerRuntime: async () => {
++        attempts++;
++        if (attempts === 1) refresher.requestRefresh();
++        if (attempts === 2) finish();
++      },
++    },
++    ["slack"],
++  );
++
++  refresher.requestRefresh();
++  await Promise.race([
++    finished,
++    Bun.sleep(1000).then(() => {
++      throw new Error("second registration pass timed out");
++    }),
++  ]);
++
++  expect(attempts).toBe(2);
++  refresher.close();
++});
+diff --git a/src/channels/routing.test.ts b/src/channels/routing.test.ts
+index 52c51962..c4273d20 100644
+--- a/src/channels/routing.test.ts
++++ b/src/channels/routing.test.ts
+@@ -9,6 +9,7 @@ import {
+   getRoutesForChannel,
+   removeRoute,
+   removeRoutesForScope,
++  subscribeChannelRoutesChanged,
+ } from "@/channels/routing";
+ 
+ describe("routing", () => {
+@@ -38,6 +39,28 @@ describe("routing", () => {
+     expect(route?.conversationId).toBe("conv-1");
+   });
+ 
++  test("notifies subscribers after persisted route changes", () => {
++    const changedChannels: string[] = [];
++    const unsubscribe = subscribeChannelRoutesChanged((channelId) => {
++      changedChannels.push(channelId);
++    });
++
++    try {
++      addRoute("telegram", {
++        chatId: "chat-1",
++        agentId: "agent-a",
++        conversationId: "conv-1",
++        enabled: true,
++        createdAt: new Date().toISOString(),
++      });
++      removeRoute("telegram", "chat-1");
++    } finally {
++      unsubscribe();
++    }
++
++    expect(changedChannels).toEqual(["telegram", "telegram"]);
++  });
++
+   test("returns null for non-existent route", () => {
+     expect(getRoute("telegram", "nonexistent")).toBeNull();
+   });
+diff --git a/src/tools/manager.test.ts b/src/tools/manager.test.ts
+index 5a8cabda..ebdd175a 100644
+--- a/src/tools/manager.test.ts
++++ b/src/tools/manager.test.ts
+@@ -10,18 +10,17 @@ import {
+ afterEach(() => clearExternalTools());
+ 
+ describe("MessageChannel architecture", () => {
+-  test("exposes one shared channel tool instead of provider-specific tools", () => {
++  test("does not register any channel delivery tool as a built-in", () => {
+     const toolNames = new Set(getAllLettaToolNames());
+ 
+-    expect(toolNames.has("MessageChannel")).toBe(true);
+-
++    expect(toolNames.has("MessageChannel")).toBe(false);
+     expect(toolNames.has("MessageSlackChannel")).toBe(false);
+     expect(toolNames.has("MessageTelegramChannel")).toBe(false);
+     expect(toolNames.has("slack")).toBe(false);
+     expect(toolNames.has("telegram")).toBe(false);
+   });
+ 
+-  test("an external MessageChannel definition shadows the built-in payload", () => {
++  test("exposes the gateway-owned MessageChannel definition", () => {
+     registerExternalTools([
+       {
+         name: "MessageChannel",
+diff --git a/src/tools/tool-execution-context.test.ts b/src/tools/tool-execution-context.test.ts
+index ab632cbe..18e242d2 100644
+--- a/src/tools/tool-execution-context.test.ts
++++ b/src/tools/tool-execution-context.test.ts
+@@ -12,21 +12,6 @@ import { join } from "node:path";
+ import type { Message } from "@letta-ai/letta-client/resources/agents/messages";
+ import { __testSetBackend, type Backend } from "@/backend";
+ import { FakeHeadlessBackend } from "@/backend/dev/fake-headless-backend";
+-import {
+-  __testOverrideLoadChannelAccounts,
+-  __testOverrideSaveChannelAccounts,
+-  clearChannelAccountStores,
+-  upsertChannelAccount,
+-} from "@/channels/accounts";
+-import { clearDynamicMessageChannelToolCache } from "@/channels/message-tool";
+-import { ChannelRegistry, getChannelRegistry } from "@/channels/registry";
+-import {
+-  __testOverrideLoadRoutes,
+-  __testOverrideSaveRoutes,
+-  clearAllRoutes,
+-  setRouteInMemory,
+-} from "@/channels/routing";
+-import type { ChannelAdapter } from "@/channels/types";
+ import {
+   clearModPermissions,
+   registerModPermission,
+@@ -37,10 +22,7 @@ import type {
+   ModToolEndEvent,
+   ModToolStartEvent,
+ } from "@/mods/types";
+-import {
+-  LETTA_INHERITED_CHANNEL_CONTEXT_ENV,
+-  runWithRuntimeContext,
+-} from "@/runtime-context";
++import { runWithRuntimeContext } from "@/runtime-context";
+ import { toolFilter } from "@/tools/filter";
+ import {
+   captureToolExecutionContext,
+@@ -48,20 +30,16 @@ import {
+   clearExternalTools,
+   clearTools,
+   executeTool,
+-  getExecutionContextById,
+   getToolNames,
+-  getToolSchema,
+   loadSpecificTools,
+   prepareCurrentToolExecutionContext,
+   prepareToolExecutionContextForModel,
+   prepareToolExecutionContextForSpecificTools,
+-  refreshDynamicChannelToolsInLoadedRegistry,
+   registerExternalTools,
+ } from "@/tools/manager";
+ import {
+   prepareToolExecutionContextForResolvedTarget,
+   prepareToolExecutionContextForScope,
+-  resolveConversationChannelToolScope,
+ } from "@/tools/toolset";
+ import {
+   __testOverrideSecretsBackend,
+@@ -79,23 +57,6 @@ function asText(
+ describe("tool execution context snapshot", () => {
+   let initialTools: string[] = [];
+ 
+-  function createRunningAdapter(
+-    channelId: "slack" | "telegram",
+-    accountId: string,
+-  ): ChannelAdapter {
+-    return {
+-      id: `${channelId}:${accountId}`,
+-      channelId,
+-      accountId,
+-      name: channelId,
+-      start: async () => {},
+-      stop: async () => {},
+-      isRunning: () => true,
+-      sendMessage: async () => ({ messageId: "msg-1" }),
+-      sendDirectReply: async () => {},
+-    };
+-  }
+-
+   function registerEchoModTool(signal: AbortSignal): void {
+     registerModTool({
+       name: "local_echo",
+@@ -124,35 +85,18 @@ describe("tool execution context snapshot", () => {
+     initialTools = getToolNames();
+   });
+ 
+-  afterEach(async () => {
+-    const registry = getChannelRegistry();
+-    if (registry) {
+-      await registry.stopAll();
+-    }
+-    clearDynamicMessageChannelToolCache();
++  afterEach(() => {
+     clearCapturedToolExecutionContexts();
+     clearExternalTools();
+     clearModPermissions();
+     clearModTools();
+     toolFilter.reset();
+-    clearAllRoutes();
+-    __testOverrideLoadRoutes(null);
+-    __testOverrideSaveRoutes(null);
+-    clearChannelAccountStores();
+-    __testOverrideLoadChannelAccounts(null);
+-    __testOverrideSaveChannelAccounts(null);
+-    delete process.env[LETTA_INHERITED_CHANNEL_CONTEXT_ENV];
+     __testOverrideSecretsBackend(null);
+     clearSecretsCache(null);
+     delete process.env.TAVILY_API_KEY;
+     __testSetBackend(null);
+   });
+ 
+-  function installChannelAccountTestOverrides(): void {
+-    __testOverrideLoadChannelAccounts(() => []);
+-    __testOverrideSaveChannelAccounts(() => {});
+-  }
+-
+   afterAll(async () => {
+     clearExternalTools();
+     clearModPermissions();
+@@ -533,12 +477,13 @@ describe("tool execution context snapshot", () => {
+     expect(asText(denied.toolReturn)).toContain("Tool not found: local_echo");
+   });
+ 
+-  test("runtime-owned external tools stay scoped to their runtime", async () => {
++  test("process-owned turns can use unscoped runtime tools without a connection", async () => {
+     registerExternalTools([
+       {
+-        name: "RemoteFoo",
+-        description: "External tool for first runtime",
++        name: "MessageChannel",
++        description: "Gateway-owned channel delivery",
+         parameters: { type: "object", properties: {}, required: [] },
++        connectionId: "gateway-connection",
+         runtime: { agentId: "agent-1", conversationId: "conv-1" },
+       },
+       {
+@@ -552,15 +497,59 @@ describe("tool execution context snapshot", () => {
+     const prepared = await prepareToolExecutionContextForModel(
+       "anthropic/claude-sonnet-4",
+       {
+-        clientToolAllowlist: ["RemoteFoo", "RemoteBar"],
+-        runtimeContext: { agentId: "agent-1", conversationId: "conv-1" },
++        clientToolAllowlist: ["MessageChannel", "RemoteBar"],
++        runtimeContext: {
++          agentId: "agent-1",
++          conversationId: "conv-1",
++        },
+       },
+     );
+ 
+     expect(prepared.loadedToolNames).toEqual([]);
+     expect(prepared.clientTools.map((tool) => tool.name)).toEqual([
+-      "RemoteFoo",
++      "MessageChannel",
++    ]);
++
++    const otherRuntime = await prepareToolExecutionContextForModel(
++      "anthropic/claude-sonnet-4",
++      {
++        clientToolAllowlist: ["MessageChannel", "RemoteBar"],
++        runtimeContext: {
++          agentId: "agent-1",
++          conversationId: "conv-2",
++        },
++      },
++    );
++    expect(otherRuntime.clientTools.map((tool) => tool.name)).toEqual([
++      "RemoteBar",
++    ]);
++  });
++
++  test("gateway-owned MessageChannel stays available with the none toolset", async () => {
++    registerExternalTools([
++      {
++        name: "MessageChannel",
++        description: "Gateway-owned channel delivery",
++        parameters: { type: "object", properties: {}, required: [] },
++        connectionId: "gateway-connection",
++        runtime: { agentId: "agent-1", conversationId: "conv-1" },
++      },
+     ]);
++
++    const prepared = await prepareToolExecutionContextForResolvedTarget({
++      modelIdentifier: "anthropic/claude-sonnet-4",
++      toolsetPreference: "none",
++      clientToolAllowlist: ["MessageChannel"],
++      runtimeContext: {
++        agentId: "agent-1",
++        conversationId: "conv-1",
++      },
++    });
++
++    expect(prepared.preparedToolContext.loadedToolNames).toEqual([]);
++    expect(
++      prepared.preparedToolContext.clientTools.map((tool) => tool.name),
++    ).toEqual(["MessageChannel"]);
+   });
+ 
+   test("scoped runtime external tools stay hidden unless selected", async () => {
+@@ -575,6 +564,7 @@ describe("tool execution context snapshot", () => {
+         name: "ScopedRemote",
+         description: "Scoped runtime tool",
+         parameters: { type: "object", properties: {}, required: [] },
++        connectionId: "controller-1",
+         runtime: { agentId: "agent-1", conversationId: "conv-1" },
+         scopeId: "scope-1",
+       },
+@@ -584,7 +574,11 @@ describe("tool execution context snapshot", () => {
+       "anthropic/claude-sonnet-4",
+       {
+         clientToolAllowlist: ["AlwaysOnRemote", "ScopedRemote"],
+-        runtimeContext: { agentId: "agent-1", conversationId: "conv-1" },
++        runtimeContext: {
++          connectionId: "controller-1",
++          agentId: "agent-1",
++          conversationId: "conv-1",
++        },
+       },
+     );
+     expect(base.clientTools.map((tool) => tool.name)).toEqual([
+@@ -596,13 +590,33 @@ describe("tool execution context snapshot", () => {
+       {
+         clientToolAllowlist: ["AlwaysOnRemote", "ScopedRemote"],
+         externalToolScopeIds: ["scope-1"],
+-        runtimeContext: { agentId: "agent-1", conversationId: "conv-1" },
++        runtimeContext: {
++          connectionId: "controller-1",
++          agentId: "agent-1",
++          conversationId: "conv-1",
++        },
+       },
+     );
+     expect(selected.clientTools.map((tool) => tool.name)).toEqual([
+       "AlwaysOnRemote",
+       "ScopedRemote",
+     ]);
++
++    const otherConnection = await prepareToolExecutionContextForModel(
++      "anthropic/claude-sonnet-4",
++      {
++        clientToolAllowlist: ["AlwaysOnRemote", "ScopedRemote"],
++        externalToolScopeIds: ["scope-1"],
++        runtimeContext: {
++          connectionId: "cron-process",
++          agentId: "agent-1",
++          conversationId: "conv-1",
++        },
++      },
++    );
++    expect(otherConnection.clientTools.map((tool) => tool.name)).toEqual([
++      "AlwaysOnRemote",
++    ]);
+   });
+ 
+   test("prepares and executes mod tools from turn snapshots", async () => {
+@@ -1063,39 +1077,14 @@ describe("tool execution context snapshot", () => {
+     expect(asText(result.toolReturn)).toBe("Interrupted by user");
+   });
+ 
+-  test("prepares current tool snapshots with fresh MessageChannel discovery", async () => {
++  test("does not register MessageChannel as a built-in tool", async () => {
+     await loadSpecificTools(["Read"]);
+ 
+-    const registry = new ChannelRegistry();
+-    registry.registerAdapter(createRunningAdapter("slack", "acct-slack"));
+-
+     const prepared = await prepareCurrentToolExecutionContext();
+-    const messageChannel = prepared.clientTools.find(
+-      (tool) => tool.name === "MessageChannel",
+-    );
+-
+-    expect(prepared.loadedToolNames).toContain("MessageChannel");
+-    expect(messageChannel).toBeDefined();
+-    expect(messageChannel?.description).toContain(
+-      "Currently active channels: Slack.",
+-    );
+-
+-    if (!messageChannel) {
+-      throw new Error("MessageChannel tool was not prepared");
+-    }
+-
+-    if (!messageChannel.parameters) {
+-      throw new Error("MessageChannel tool is missing parameters");
+-    }
+-
+-    const actionParameter = (
+-      messageChannel.parameters.properties as Record<
+-        string,
+-        { enum?: string[] }
+-      >
+-    ).action;
+-
+-    expect(actionParameter?.enum).toContain("download-file");
++    expect(prepared.loadedToolNames).not.toContain("MessageChannel");
++    expect(
++      prepared.clientTools.some((tool) => tool.name === "MessageChannel"),
++    ).toBe(false);
+   });
+ 
+   test("captures scoped working directories per execution context", async () => {
+@@ -1146,277 +1135,4 @@ describe("tool execution context snapshot", () => {
+       rmSync(tempRoot, { recursive: true, force: true });
+     }
+   });
+-
+-  test("refreshes the loaded MessageChannel schema for synchronous readers", async () => {
+-    await loadSpecificTools(["Read"]);
+-
+-    const registry = new ChannelRegistry();
+-    registry.registerAdapter(createRunningAdapter("telegram", "acct-telegram"));
+-
+-    await refreshDynamicChannelToolsInLoadedRegistry();
+-
+-    const schema = getToolSchema("MessageChannel");
+-    expect(schema?.description).toContain(
+-      "Currently active channels: Telegram.",
+-    );
+-    expect(
+-      (schema?.input_schema.properties?.channel as { enum?: string[] }).enum,
+-    ).toEqual(["telegram"]);
+-  });
+-
+-  test("omits MessageChannel from scoped snapshots when the conversation has no bound channel routes", async () => {
+-    await loadSpecificTools(["Read"]);
+-
+-    const registry = new ChannelRegistry();
+-    registry.registerAdapter(createRunningAdapter("slack", "acct-slack"));
+-
+-    const prepared = await prepareToolExecutionContextForModel(
+-      "anthropic/claude-opus-4-1-20250805",
+-      {
+-        channelToolScope: { channels: [] },
+-      },
+-    );
+-
+-    expect(prepared.loadedToolNames).not.toContain("MessageChannel");
+-    expect(
+-      prepared.clientTools.some((tool) => tool.name === "MessageChannel"),
+-    ).toBe(false);
+-  });
+-
+-  test("preserves scoped MessageChannel discovery even when the global cache was seeded differently", async () => {
+-    await loadSpecificTools(["Read"]);
+-
+-    const registry = new ChannelRegistry();
+-    registry.registerAdapter(createRunningAdapter("slack", "acct-slack"));
+-    registry.registerAdapter(createRunningAdapter("telegram", "acct-telegram"));
+-
+-    await refreshDynamicChannelToolsInLoadedRegistry();
+-
+-    const prepared = await prepareToolExecutionContextForModel(
+-      "anthropic/claude-opus-4-1-20250805",
+-      {
+-        channelToolScope: {
+-          channels: [{ channelId: "slack", accountId: "acct-slack" }],
+-        },
+-      },
+-    );
+-    const messageChannel = prepared.clientTools.find(
+-      (tool) => tool.name === "MessageChannel",
+-    );
+-
+-    expect(prepared.loadedToolNames).toContain("MessageChannel");
+-    expect(messageChannel?.description).toContain(
+-      "Currently active channels: Slack.",
+-    );
+-    expect(messageChannel?.description).not.toContain("Telegram");
+-    expect(
+-      (
+-        messageChannel?.parameters?.properties as Record<
+-          string,
+-          { enum?: string[] }
+-        >
+-      ).channel?.enum,
+-    ).toEqual(["slack"]);
+-  });
+-
+-  test("does not leak MessageChannel into conversations that only share an agent-level Slack account", async () => {
+-    installChannelAccountTestOverrides();
+-    __testOverrideLoadRoutes(() => null);
+-    __testOverrideSaveRoutes(() => {});
+-    await loadSpecificTools(["Read"]);
+-
+-    const registry = new ChannelRegistry();
+-    registry.registerAdapter(createRunningAdapter("slack", "acct-slack"));
+-
+-    upsertChannelAccount("slack", {
+-      channel: "slack",
+-      accountId: "acct-slack",
+-      displayName: "DocsBot Slack",
+-      enabled: true,
+-      dmPolicy: "pairing",
+-      allowedUsers: [],
+-      createdAt: "2026-04-11T00:00:00.000Z",
+-      updatedAt: "2026-04-11T00:00:00.000Z",
+-      mode: "socket",
+-      botToken: "xoxb-test-token",
+-      appToken: "xapp-test-token",
+-      agentId: "agent-1",
+-      defaultPermissionMode: "standard",
+-    });
+-
+-    const scope = resolveConversationChannelToolScope("agent-1", "default");
+-    expect(scope).toEqual({ channels: [] });
+-
+-    const prepared = await prepareToolExecutionContextForModel(
+-      "anthropic/claude-opus-4-1-20250805",
+-      {
+-        channelToolScope: scope,
+-      },
+-    );
+-
+-    expect(prepared.loadedToolNames).not.toContain("MessageChannel");
+-  });
+-
+-  test("includes MessageChannel in scoped snapshots when the conversation has a Slack route", async () => {
+-    installChannelAccountTestOverrides();
+-    __testOverrideLoadRoutes(() => null);
+-    __testOverrideSaveRoutes(() => {});
+-    await loadSpecificTools(["Read"]);
+-
+-    const registry = new ChannelRegistry();
+-    registry.registerAdapter(createRunningAdapter("slack", "acct-slack"));
+-
+-    upsertChannelAccount("slack", {
+-      channel: "slack",
+-      accountId: "acct-slack",
+-      displayName: "DocsBot Slack",
+-      enabled: true,
+-      dmPolicy: "pairing",
+-      allowedUsers: [],
+-      createdAt: "2026-04-11T00:00:00.000Z",
+-      updatedAt: "2026-04-11T00:00:00.000Z",
+-      mode: "socket",
+-      botToken: "xoxb-test-token",
+-      appToken: "xapp-test-token",
+-      agentId: "agent-1",
+-      defaultPermissionMode: "standard",
+-    });
+-    setRouteInMemory("slack", {
+-      accountId: "acct-slack",
+-      chatId: "C123",
+-      chatType: "channel",
+-      threadId: "1712790000.000050",
+-      agentId: "agent-1",
+-      conversationId: "default",
+-      enabled: true,
+-      createdAt: "2026-04-11T00:00:00.000Z",
+-      updatedAt: "2026-04-11T00:00:00.000Z",
+-    });
+-
+-    const scope = resolveConversationChannelToolScope("agent-1", "default");
+-    expect(scope).toEqual({
+-      channels: [{ channelId: "slack", accountId: "acct-slack" }],
+-    });
+-
+-    const prepared = await prepareToolExecutionContextForModel(
+-      "anthropic/claude-opus-4-1-20250805",
+-      {
+-        channelToolScope: scope,
+-      },
+-    );
+-
+-    expect(prepared.loadedToolNames).toContain("MessageChannel");
+-  });
+-
+-  test("keeps scoped MessageChannel available for pinned none toolsets", async () => {
+-    await loadSpecificTools(["Read"]);
+-
+-    const prepared = await prepareToolExecutionContextForResolvedTarget({
+-      modelIdentifier: "anthropic/claude-opus-4-1-20250805",
+-      toolsetPreference: "none",
+-      channelToolScope: {
+-        channels: [{ channelId: "discord", accountId: "acct-discord" }],
+-      },
+-    });
+-
+-    expect(prepared.preparedToolContext.loadedToolNames).toEqual([
+-      "MessageChannel",
+-    ]);
+-    expect(
+-      prepared.preparedToolContext.clientTools.map((tool) => tool.name),
+-    ).toEqual(["MessageChannel"]);
+-  });
+-
+-  test("hydrates inherited channel scope from serialized child env", async () => {
+-    await loadSpecificTools(["Read"]);
+-    __testSetBackend(
+-      new FakeHeadlessBackend(
+-        "agent-1",
+-        undefined,
+-        {},
+-        {
+-          modelHandle: "anthropic/claude-opus-4-1-20250805",
+-        },
+-      ),
+-    );
+-    process.env[LETTA_INHERITED_CHANNEL_CONTEXT_ENV] = JSON.stringify({
+-      channelToolScope: {
+-        channels: [{ channelId: "telegram", accountId: "acct-telegram" }],
+-      },
+-      channelTurnSources: [
+-        {
+-          channel: "telegram",
+-          accountId: "acct-telegram",
+-          chatId: "7952253975",
+-          chatType: "channel",
+-          threadId: "42",
+-          agentId: "agent-1",
+-          conversationId: "default",
+-        },
+-      ],
+-    });
+-
+-    const prepared = await prepareToolExecutionContextForScope({
+-      agentId: "agent-1",
+-      conversationId: "default",
+-      overrideModel: "anthropic/claude-opus-4-1-20250805",
+-    });
+-
+-    expect(prepared.preparedToolContext.loadedToolNames).toContain(
+-      "MessageChannel",
+-    );
+-    const captured = getExecutionContextById(
+-      prepared.preparedToolContext.contextId,
+-    );
+-    expect(captured?.runtimeContext.channelToolScope).toEqual({
+-      channels: [{ channelId: "telegram", accountId: "acct-telegram" }],
+-    });
+-    expect(captured?.runtimeContext.channelTurnSources).toEqual([
+-      {
+-        channel: "telegram",
+-        accountId: "acct-telegram",
+-        chatId: "7952253975",
+-        chatType: "channel",
+-        threadId: "42",
+-        agentId: "agent-1",
+-        conversationId: "default",
+-      },
+-    ]);
+-  });
+-
+-  test("does not grant proactive MessageChannel scope for Telegram-only accounts", async () => {
+-    installChannelAccountTestOverrides();
+-    await loadSpecificTools(["Read"]);
+-
+-    const registry = new ChannelRegistry();
+-    registry.registerAdapter(createRunningAdapter("telegram", "acct-telegram"));
+-
+-    upsertChannelAccount("telegram", {
+-      channel: "telegram",
+-      accountId: "acct-telegram",
+-      displayName: "Telegram Bot",
+-      enabled: true,
+-      dmPolicy: "pairing",
+-      allowedUsers: [],
+-      createdAt: "2026-04-11T00:00:00.000Z",
+-      updatedAt: "2026-04-11T00:00:00.000Z",
+-      token: "telegram-token",
+-      binding: {
+-        agentId: "agent-1",
+-        conversationId: "default",
+-      },
+-    });
+-
+-    const scope = resolveConversationChannelToolScope("agent-1", "default");
+-    expect(scope).toEqual({ channels: [] });
+-
+-    const prepared = await prepareToolExecutionContextForModel(
+-      "anthropic/claude-opus-4-1-20250805",
+-      {
+-        channelToolScope: scope,
+-      },
+-    );
+-
+-    expect(prepared.loadedToolNames).not.toContain("MessageChannel");
+-  });
+ });
+diff --git a/src/websocket/app-server-lifecycle.test.ts b/src/websocket/app-server-lifecycle.test.ts
+index ad6a0bfa..26fc935f 100644
+--- a/src/websocket/app-server-lifecycle.test.ts
++++ b/src/websocket/app-server-lifecycle.test.ts
+@@ -155,6 +155,32 @@ describe("app-server startup lifecycle", () => {
+     expect(runtime.intentionallyClosed).toBe(false);
+   });
+ 
++  test("an attached controller can leave process services to the primary listener", async () => {
++    const runtime = createRuntime();
++    runtime.connectionId = "outbound-listener";
++    runtime.connectionName = "primary listener";
++    setActiveRuntime(runtime);
++    const handle = await startAppServer({
++      listen: "ws://127.0.0.1:0",
++      runtime,
++      connectionName: "channel loopback",
++      startProcessServices: false,
++    });
++    const client = new WebSocket(handle.controlUrl);
++
++    try {
++      await waitForOpen(client);
++      await waitFor(
++        () => runtime.connections.size === 1,
++        "controller connection was not attached to listener runtime",
++      );
++      expect(runtime.processServicesStarted).toBe(false);
++    } finally {
++      closeClient(client);
++      await handle.close();
++    }
++  });
++
+   test("a bind failure preserves the active runtime and a later start succeeds", async () => {
+     const occupied = createServer();
+     await new Promise<void>((resolve) =>
+diff --git a/src/websocket/listener/commands/runtime-start-skill-sources.test.ts b/src/websocket/listener/commands/runtime-start-skill-sources.test.ts
+index 75109ee5..d104d2bc 100644
+--- a/src/websocket/listener/commands/runtime-start-skill-sources.test.ts
++++ b/src/websocket/listener/commands/runtime-start-skill-sources.test.ts
+@@ -62,6 +62,64 @@ describe("runtime_start skill sources", () => {
+     }
+   });
+ 
++  test("preserves skill sources when a secondary controller updates runtime tools", async () => {
++    const storageDir = await mkdtemp(join(tmpdir(), "runtime-skills-"));
++    try {
++      const backend = new LocalBackend({
++        storageDir,
++        executionMode: "deterministic",
++      });
++      __testSetBackend(backend);
++      const agent = await backend.createAgent({
++        name: "Shared runtime worker",
++        model: "anthropic/claude-sonnet-4-6",
++      } as AgentCreateBody);
++      const listener = createRuntime();
++      const context = {
++        socket: {} as WebSocket,
++        connectionId: "test-connection",
++        runtime: listener,
++        safeSocketSend: () => true,
++        runDetachedListenerTask: () => {},
++        getOrCreateScopedRuntime,
++        replaySyncStateForRuntime: async () => {},
++      };
++
++      await handleRuntimeStartCommand(
++        {
++          type: "runtime_start",
++          request_id: "runtime-with-skills",
++          agent_id: agent.id,
++          conversation_id: "default",
++          skill_sources: ["global", "project"],
++          recover_approvals: false,
++        },
++        context,
++      );
++      await handleRuntimeStartCommand(
++        {
++          type: "runtime_start",
++          request_id: "runtime-external-tools",
++          agent_id: agent.id,
++          conversation_id: "default",
++          preserve_skill_sources: true,
++          external_tools: [],
++          recover_approvals: false,
++        },
++        context,
++      );
++
++      const scoped = getOrCreateScopedRuntime(listener, agent.id, "default");
++      expect(scoped.skillSources).toEqual(["global", "project"]);
++      expect(listener.skillSourcesByConversation.get(scoped.key)).toEqual([
++        "global",
++        "project",
++      ]);
++    } finally {
++      await rm(storageDir, { recursive: true, force: true });
++    }
++  });
++
+   test("wait_for_replay delays the response until recovery replay completes", async () => {
+     const storageDir = await mkdtemp(join(tmpdir(), "runtime-replay-"));
+     try {
+diff --git a/src/websocket/listener/connection-state-sync.test.ts b/src/websocket/listener/connection-state-sync.test.ts
+index 6fc82a81..16c933a0 100644
+--- a/src/websocket/listener/connection-state-sync.test.ts
++++ b/src/websocket/listener/connection-state-sync.test.ts
+@@ -64,3 +64,86 @@ test("an unsubscribed app-server connection receives no existing runtime state",
+     setActiveRuntime(null);
+   }
+ });
++
++test("keeps attached App Server connections from bypassing the startup barrier", async () => {
++  const runtime = createRuntime();
++  const transport = new MockTransport();
++  const appServerTransport = new MockTransport();
++  const appServerOptions: StartListenerOptions = {
++    connectionId: "app-server",
++    wsUrl: "local://app-server",
++    deviceId: "test-device",
++    connectionName: "app-server",
++    onConnected: () => {},
++    onDisconnected: () => {},
++    onError: () => {},
++  };
++  let releaseGateway!: () => void;
++  let gatewayStarted!: () => void;
++  const gatewayReady = new Promise<void>((resolve) => {
++    releaseGateway = resolve;
++  });
++  const gatewayStarting = new Promise<void>((resolve) => {
++    gatewayStarted = resolve;
++  });
++  const options: StartListenerOptions = {
++    connectionId: "local-listener",
++    wsUrl: "local://listener",
++    deviceId: "test-device",
++    connectionName: "local-listener",
++    onConnected: async () => {
++      await startConnectedListenerRuntime(
++        runtime,
++        appServerTransport,
++        appServerOptions,
++        async () => {},
++        {
++          startHeartbeat: false,
++          startCronScheduler: false,
++          startProcessServices: false,
++        },
++      );
++      gatewayStarted();
++      await gatewayReady;
++    },
++    onDisconnected: () => {},
++    onError: () => {},
++  };
++  openListenerConnection({
++    runtime,
++    connectionId: options.connectionId,
++    writer: transport,
++    options,
++  });
++  openListenerConnection({
++    runtime,
++    connectionId: appServerOptions.connectionId,
++    writer: appServerTransport,
++    options: appServerOptions,
++  });
++  setActiveRuntime(runtime);
++
++  try {
++    const start = startConnectedListenerRuntime(
++      runtime,
++      transport,
++      options,
++      async () => {},
++      {
++        startHeartbeat: false,
++        startCronScheduler: false,
++      },
++    );
++    await gatewayStarting;
++
++    expect(runtime.processServicesStarted).toBe(false);
++
++    releaseGateway();
++    await start;
++    expect(runtime.processServicesStarted).toBe(true);
++  } finally {
++    releaseGateway();
++    stopRuntime(runtime, true);
++    setActiveRuntime(null);
++  }
++});
+diff --git a/src/websocket/listener/external-tools.test.ts b/src/websocket/listener/external-tools.test.ts
+index 492a05a5..e178f94c 100644
+--- a/src/websocket/listener/external-tools.test.ts
++++ b/src/websocket/listener/external-tools.test.ts
+@@ -69,7 +69,7 @@ describe("listener runtime_start external tool bridge", () => {
+     setActiveRuntime(null);
+   });
+ 
+-  test("connected listener startup installs the executor for runtime-scoped tools", async () => {
++  test("process-owned turns execute unscoped runtime tools through their controller", async () => {
+     const runtime = createRuntime();
+     const sent: ExternalToolCallRequestMessage[] = [];
+     const transport: LocalTransport = {
+@@ -137,7 +137,6 @@ describe("listener runtime_start external tool bridge", () => {
+         {
+           clientToolAllowlist: ["MessageChannel"],
+           runtimeContext: {
+-            connectionId: options.connectionId,
+             agentId: "agent-1",
+             conversationId: "conv-1",
+           },
+diff --git a/src/websocket/listener/protocol-inbound.test.ts b/src/websocket/listener/protocol-inbound.test.ts
+index 96cadb1c..5ba7abea 100644
+--- a/src/websocket/listener/protocol-inbound.test.ts
++++ b/src/websocket/listener/protocol-inbound.test.ts
+@@ -109,6 +109,7 @@ describe("agent/conversation management protocol-inbound validators", () => {
+       cwd: "/tmp/project",
+       mode: "acceptEdits",
+       skill_sources: [],
++      preserve_skill_sources: true,
+       client_info: { name: "test", title: "Test", version: "1.0.0" },
+       external_tools: [
+         {
+@@ -214,6 +215,12 @@ describe("agent/conversation management protocol-inbound validators", () => {
+       agent_id: "agent-1",
+       skill_sources: ["bundled", "invalid"],
+     },
++    {
++      type: "runtime_start",
++      request_id: "r0",
++      agent_id: "agent-1",
++      preserve_skill_sources: "yes",
++    },
+     {
+       type: "runtime_start",
+       request_id: "r0",

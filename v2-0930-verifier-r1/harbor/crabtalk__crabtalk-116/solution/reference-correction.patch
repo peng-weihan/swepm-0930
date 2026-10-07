@@ -1,0 +1,73 @@
+diff --git a/crates/core/src/config/provider.rs b/crates/core/src/config/provider.rs
+--- a/crates/core/src/config/provider.rs
++++ b/crates/core/src/config/provider.rs
+@@ -59,4 +59,11 @@
+         fixed_base_url: "",
+         default_model: "gpt-4o",
+     },
++    ProviderPreset {
++        name: "custom",
++        kind: ApiStandard::Openai,
++        base_url: "",
++        fixed_base_url: "",
++        default_model: "",
++    },
+ ];
+diff --git a/crates/daemon/src/daemon/protocol.rs b/crates/daemon/src/daemon/protocol.rs
+--- a/crates/daemon/src/daemon/protocol.rs
++++ b/crates/daemon/src/daemon/protocol.rs
+@@ -373,23 +373,19 @@
+ 
+     async fn list_providers(&self) -> Result<Vec<ProviderInfo>> {
+         let rt = self.runtime.read().await.clone();
+-        let entries = rt.model.list()?;
++        let active_model = rt.model.active_model_name()?;
+         let config = self.load_config()?;
+-        Ok(entries
++        config.provider
+             .into_iter()
+-            .map(|e| {
+-                let cfg_json = config
+-                    .provider
+-                    .get(&e.name)
+-                    .and_then(|def| serde_json::to_string(def).ok())
+-                    .unwrap_or_default();
+-                ProviderInfo {
+-                    name: e.name,
+-                    active: e.active,
+-                    config: cfg_json,
+-                }
++            .map(|(name, def)| {
++                let active = def.models.iter().any(|model| model == &active_model);
++                Ok(ProviderInfo {
++                    name,
++                    active,
++                    config: serde_json::to_string(&def)?,
++                })
+             })
+-            .collect())
++            .collect()
+     }
+ 
+     fn install_package(
+@@ -649,9 +645,7 @@
+                 if mcp.auth {
+                     tbl.insert("auth", value(true));
+                 }
+-                if mcp.auto_restart {
+-                    tbl.insert("auto_restart", value(true));
+-                }
++                tbl.insert("auto_restart", value(mcp.auto_restart));
+                 if !mcp.env.is_empty() {
+                     let mut env_tbl = Table::new();
+                     for (k, v) in &mcp.env {
+@@ -718,7 +712,8 @@
+             .and_then(|def| serde_json::to_string(def).ok())
+             .unwrap_or_default();
+         let rt = self.runtime.read().await.clone();
+-        let active = rt.model.provider_name_for(&name).is_some_and(|n| n == name);
++        let active_model = rt.model.active_model_name()?;
++        let active = rt.model.provider_name_for(&active_model).is_some_and(|n| n == name);
+         Ok(ProviderInfo {
+             name,
+             active,

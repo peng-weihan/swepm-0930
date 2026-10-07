@@ -1,0 +1,922 @@
+diff --git a/test/etl_profile.h b/test/etl_profile.h
+index 16d73d1b..e3439f70 100644
+--- a/test/etl_profile.h
++++ b/test/etl_profile.h
+@@ -36,6 +36,7 @@ SOFTWARE.
+ #define ETL_VERBOSE_ERRORS
+ #define ETL_CHECK_PUSH_POP
+ #define ETL_CHECK_INDEX_OPERATOR
++#define ETL_DEBUG
+ #define ETL_CHECK_EXTRA
+ #define ETL_ISTRING_REPAIR_ENABLE
+ #define ETL_IVECTOR_REPAIR_ENABLE
+@@ -48,6 +49,7 @@ SOFTWARE.
+ #define ETL_USE_STD_EXCEPTION
+ #endif
+ 
++
+ #define ETL_MESSAGE_TIMER_USE_ATOMIC_LOCK
+ #define ETL_CALLBACK_TIMER_USE_ATOMIC_LOCK
+ 
+diff --git a/test/run_swepm_cpp11_constexpr.sh b/test/run_swepm_cpp11_constexpr.sh
+new file mode 100644
+index 00000000..ea2a1069
+--- /dev/null
++++ b/test/run_swepm_cpp11_constexpr.sh
+@@ -0,0 +1,48 @@
++#!/bin/bash
++set -euo pipefail
++
++# Draft verifier hook. Invoke only after authorization for the small compile.
++# REPO is the candidate worktree; OUTPUT must be a fresh persistent log/build
++# directory. The container's /logs/verifier must be host-/data-backed.
++if [[ $# != 2 ]]; then
++  echo "usage: run_swepm_cpp11_constexpr.sh REPO FRESH_OUTPUT_DIR" >&2
++  exit 64
++fi
++repo=$(cd "$1" && pwd -P)
++parent=$(cd "$(dirname -- "$2")" && pwd -P)
++leaf=$(basename -- "$2")
++case "$leaf" in .|..|"") echo "CPP11_SETUP_ERROR invalid output name" >&2; exit 64 ;; esac
++output="$parent/$leaf"
++case "$output" in
++  /data/*|/logs/verifier/*) ;;
++  *) echo "CPP11_SETUP_ERROR output must be persistent /data or verifier logs" >&2; exit 64 ;;
++esac
++if [[ -e "$output" || -L "$output" ]]; then
++  echo "CPP11_SETUP_ERROR output already exists; require a fresh directory" >&2
++  exit 64
++fi
++compiler=$(command -v g++) || {
++  echo "CPP11_SETUP_ERROR existing g++ unavailable; no installation attempted" >&2
++  exit 69
++}
++test -f "$repo/test/swepm_cpp11_constexpr_contract.cpp"
++available_kib=$(df -Pk "$parent" | awk 'NR == 2 {print $4}')
++if [[ ! "$available_kib" =~ ^[0-9]+$ ]] || (( available_kib < 16384 )); then
++  echo "CPP11_SETUP_ERROR less than 16 MiB free for this small standalone compile" >&2
++  exit 73
++fi
++mkdir -p "$output"
++mkdir "$output/tmp"
++export TMPDIR="$output/tmp"
++df -Pk "$output"
++"$compiler" --version
++
++for checked in 1 0; do
++  executable="$output/constexpr-cpp11-checked-$checked"
++  echo "CPP11_COMPILE checked=$checked standard=c++11"
++  "$compiler" -std=c++11 -pedantic-errors -O0 -g0 \
++    -I"$repo/include" -DSWEPM_ETL_CHECKED="$checked" \
++    "$repo/test/swepm_cpp11_constexpr_contract.cpp" -o "$executable"
++  "$executable"
++done
++echo "CPP11_CONSTEXPR_CONTRACT_PASSED checked_and_unchecked"
+diff --git a/test/swepm_cpp11_constexpr_contract.cpp b/test/swepm_cpp11_constexpr_contract.cpp
+new file mode 100644
+index 00000000..6de8c3f5
+--- /dev/null
++++ b/test/swepm_cpp11_constexpr_contract.cpp
+@@ -0,0 +1,156 @@
++// Independent C++11 public-contract check. No UnitTest++ or production edits.
++// The runner builds this twice: optional checks enabled, then disabled.
++#if __cplusplus != 201103L
++#error "This contract test must actually be compiled as C++11."
++#endif
++
++#if !defined(SWEPM_ETL_CHECKED) || (SWEPM_ETL_CHECKED != 0 && SWEPM_ETL_CHECKED != 1)
++#error "The test runner must explicitly select the checked or unchecked profile."
++#endif
++
++// These configuration switches already exist in the base library/profile.
++#define ETL_NO_PROFILE_HEADER
++#define ETL_THROW_EXCEPTIONS
++#if SWEPM_ETL_CHECKED
++#define ETL_CHECK_INDEX_OPERATOR
++#define ETL_CHECK_EXTRA
++#endif
++
++#include "etl/array_wrapper.h"
++#include "etl/string_view.h"
++#include <cstddef>
++#include <cstdio>
++
++// Explicit pointer/range constructors were constexpr in the base public API.
++// A NUL inside the view also rules out treating it as a C-string by accident.
++constexpr char compile_chars[] = {'L', 'a', '\0', 'z', 'R'};
++constexpr etl::string_view compile_view(compile_chars + 1, std::size_t(3));
++constexpr etl::string_view range_view(compile_chars + 1, compile_chars + 4);
++static_assert(compile_view.front() == 'a', "cpp11_string_front_constant_value");
++static_assert(compile_view.back() == 'z', "cpp11_string_back_constant_value");
++static_assert(compile_view[0] == 'a', "cpp11_string_first_index_constant_value");
++static_assert(compile_view[1] == '\0', "cpp11_string_embedded_nul_constant_value");
++static_assert(compile_view[2] == 'z', "cpp11_string_last_index_constant_value");
++static_assert(range_view.front() == 'a' && range_view.back() == 'z',
++              "cpp11_string_pointer_range_constant_values");
++static_assert(&compile_view.front() == compile_chars + 1,
++              "cpp11_string_front_returns_original_reference");
++static_assert(&compile_view.back() == compile_chars + 3,
++              "cpp11_string_back_returns_original_reference");
++static_assert(&compile_view[1] == compile_chars + 2,
++              "cpp11_string_index_returns_original_reference");
++
++// External linkage meets the base array_wrapper's C++11 reference template
++// parameter requirements. Only its existing const operator[] is constexpr.
++extern constexpr int compile_numbers[] = {7, 19, 31, 43};
++typedef etl::array_wrapper<const int, 4, compile_numbers> ConstantWrapper;
++constexpr ConstantWrapper compile_wrapper = {};
++static_assert(compile_wrapper[0] == 7, "cpp11_array_first_constant_value");
++static_assert(compile_wrapper[2] == 31, "cpp11_array_middle_constant_value");
++static_assert(compile_wrapper[3] == 43, "cpp11_array_last_constant_value");
++static_assert(&compile_wrapper[2] == compile_numbers + 2,
++              "cpp11_array_index_returns_original_reference");
++
++int runtime_numbers[] = {17, 29, 43, 61};
++typedef etl::array_wrapper<int, 4, runtime_numbers> MutableWrapper;
++
++#if SWEPM_ETL_CHECKED
++// An enabled bounds check must be allowed to propagate the configured error.
++static_assert(!noexcept(compile_view[0]), "cpp11_checked_string_index_can_throw");
++static_assert(!noexcept(compile_wrapper[0]), "cpp11_checked_const_array_index_can_throw");
++#else
++// Both operators were noexcept in the base when no optional checks execute.
++static_assert(noexcept(compile_view[0]), "cpp11_unchecked_string_index_keeps_noexcept");
++static_assert(noexcept(compile_wrapper[0]), "cpp11_unchecked_const_array_index_keeps_noexcept");
++#endif
++
++namespace
++{
++  unsigned checks = 0;
++  unsigned failures = 0;
++
++  void check(bool condition, const char* name)
++  {
++    ++checks;
++    if (!condition)
++    {
++      ++failures;
++      std::fprintf(stderr, "CPP11_CONTRACT_FAIL %s\n", name);
++    }
++  }
++
++  template <typename Expected, typename Operation>
++  void expect_error(Operation operation, const char* name)
++  {
++    bool caught_expected = false;
++    try
++    {
++      operation();
++    }
++    catch (const Expected&)
++    {
++      caught_expected = true;
++    }
++    catch (...)
++    {
++      // An unrelated exception cannot satisfy the existing container family.
++    }
++    check(caught_expected, name);
++  }
++}
++
++int main()
++{
++  char runtime_chars[] = {'L', 'a', '\0', 'z', 'R'};
++  const etl::string_view view(runtime_chars + 1, std::size_t(3));
++  check(view.front() == 'a', "string_front_runtime_value");
++  check(view.back() == 'z', "string_back_runtime_value");
++  check(view[0] == 'a' && view[1] == '\0' && view[2] == 'z', "string_index_runtime_values");
++  check(&view.front() == runtime_chars + 1 && &view.back() == runtime_chars + 3,
++        "string_runtime_references");
++
++  MutableWrapper wrapper;
++  const MutableWrapper& const_wrapper = wrapper;
++  wrapper[1] = 37;
++  check(runtime_numbers[1] == 37, "mutable_array_index_updates_backing_storage");
++  check(const_wrapper[0] == 17 && const_wrapper[1] == 37 && const_wrapper[3] == 61,
++        "const_array_runtime_values");
++  check(&const_wrapper[1] == runtime_numbers + 1, "const_array_runtime_reference");
++
++#if SWEPM_ETL_CHECKED
++  // These existing exception families predate the patch. New leaf class names
++  // and the implementation's internal constexpr helper/macro names are free.
++  volatile std::size_t boundary = view.size();
++  expect_error<etl::string_view_exception>([&]() {
++    volatile char value = view[boundary];
++    (void)value;
++  }, "checked_string_index_at_size_throws");
++
++  // Non-null zero-length range: both missing-check reads would still point
++  // within runtime_chars, so a negative control has a deterministic failure.
++  const etl::string_view empty_range(runtime_chars + 2, runtime_chars + 2);
++  expect_error<etl::string_view_exception>([&]() {
++    volatile char value = empty_range.front();
++    (void)value;
++  }, "checked_nonnull_empty_string_front_throws");
++  expect_error<etl::string_view_exception>([&]() {
++    volatile char value = empty_range.back();
++    (void)value;
++  }, "checked_nonnull_empty_string_back_throws");
++
++  volatile std::size_t array_boundary = wrapper.size();
++  expect_error<etl::array_wrapper_exception>([&]() {
++    // Do not load a possibly unchecked out-of-range value from a bad candidate.
++    const int* value = &const_wrapper[array_boundary];
++    (void)value;
++  }, "checked_const_array_index_at_size_throws");
++  expect_error<etl::array_wrapper_exception>([&]() {
++    int* value = &wrapper[array_boundary];
++    (void)value;
++  }, "checked_mutable_array_index_at_size_throws");
++#endif
++
++  std::printf("CPP11_CONSTEXPR_PROFILE checked=%d runtime_checks=%u failures=%u\n",
++              SWEPM_ETL_CHECKED, checks, failures);
++  return failures == 0 ? 0 : 1;
++}
+diff --git a/test/test_array_view.cpp b/test/test_array_view.cpp
+index 0bb69eda..ac6474b3 100644
+--- a/test/test_array_view.cpp
++++ b/test/test_array_view.cpp
+@@ -480,6 +480,20 @@ namespace
+       }
+     }
+ 
++#ifdef ETL_CHECK_INDEX_OPERATOR
++
++    //*************************************************************************
++    TEST(test_index_operator_bounds_check)
++    {
++      View  view(etldata.begin(), etldata.end());
++      CView cview(etldata.begin(), etldata.end());
++
++      CHECK_THROW(view[view.size()], etl::array_view_bounds);
++      CHECK_THROW(cview[cview.size()], etl::array_view_bounds);
++    }
++  
++#endif
++
+     //*************************************************************************
+     TEST(test_at)
+     {
+@@ -732,6 +746,50 @@ namespace
+       CHECK_EQUAL(hashdata, hashcview);
+     }
+ 
++    TEST(test_bounds_check)
++    {
++      View view;
++
++      CHECK_EQUAL(0U, view.size());
++      CHECK_EQUAL(0U, view.max_size());
++      CHECK(view.empty());
++
++      CHECK_THROW(view.front(), etl::array_view_exception);
++      CHECK_THROW(view.back(), etl::array_view_exception);
++    }
++
++    // Empty ranges may still carry valid pointers. They must be rejected before
++    // returning an element, independently of the exception subclass chosen.
++    // Point into actual storage so removing a guard causes an assertion failure
++    // instead of relying on null-pointer or out-of-allocation undefined behavior.
++    TEST(test_empty_range_front_checks)
++    {
++      int storage[] = { 11, 22, 33 };
++      View view(storage + 1, storage + 1);
++      const View& const_view = view;
++      CView const_elements(storage + 1, storage + 1);
++
++      CHECK(view.empty());
++      CHECK_EQUAL(0U, view.size());
++      CHECK_THROW(view.front(), etl::array_view_exception);
++      CHECK_THROW(const_view.front(), etl::array_view_exception);
++      CHECK_THROW(const_elements.front(), etl::array_view_exception);
++    }
++
++    TEST(test_empty_range_back_checks)
++    {
++      int storage[] = { 11, 22, 33 };
++      View view(storage + 1, storage + 1);
++      const View& const_view = view;
++      CView const_elements(storage + 1, storage + 1);
++
++      CHECK(view.empty());
++      CHECK_EQUAL(0U, view.size());
++      CHECK_THROW(view.back(), etl::array_view_exception);
++      CHECK_THROW(const_view.back(), etl::array_view_exception);
++      CHECK_THROW(const_elements.back(), etl::array_view_exception);
++    }
++
+     //*************************************************************************
+ #include "etl/private/diagnostic_unused_function_push.h"
+ 
+diff --git a/test/test_array_wrapper.cpp b/test/test_array_wrapper.cpp
+index cfcb4131..6b469201 100644
+--- a/test/test_array_wrapper.cpp
++++ b/test/test_array_wrapper.cpp
+@@ -567,6 +567,21 @@ namespace
+ 
+       CHECK_EQUAL(compare_hash, hash);
+     }
++
++#ifdef ETL_CHECK_INDEX_OPERATOR
++
++    TEST(test_bounds_check)
++    {
++      Data5 aw5;
++      CHECK_EQUAL(5 , aw5.SIZE);
++      CHECK_EQUAL(5U, aw5.size());
++
++      CHECK_THROW(aw5[6], etl::array_wrapper_bounds);
++      CHECK_THROW(aw5.at(6), etl::array_wrapper_bounds);
++    }
++
++#endif
++
+   }
+ }
+ 
+diff --git a/test/test_deque.cpp b/test/test_deque.cpp
+index a1b0fa15..93b50a9f 100644
+--- a/test/test_deque.cpp
++++ b/test/test_deque.cpp
+@@ -459,6 +459,15 @@ namespace
+       CHECK_EQUAL(N6, data.front());
+     }
+ 
++    //*************************************************************************
++    TEST(test_front_exception)
++    {
++      DataNDC data;
++
++      CHECK(data.empty());
++      CHECK_THROW(data.front(), etl::deque_empty);
++    }
++
+     //*************************************************************************
+     TEST(test_front_const)
+     {
+@@ -508,6 +517,15 @@ namespace
+       CHECK_EQUAL(N6, data.back());
+     }
+ 
++    //*************************************************************************
++    TEST(test_back_exception)
++    {
++      DataNDC data;
++
++      CHECK(data.empty());
++      CHECK_THROW(data.back(), etl::deque_empty);
++    }
++
+     //*************************************************************************
+     TEST(test_back_const)
+     {
+diff --git a/test/test_forward_list.cpp b/test/test_forward_list.cpp
+index d7b44bf7..f84ebb01 100644
+--- a/test/test_forward_list.cpp
++++ b/test/test_forward_list.cpp
+@@ -757,6 +757,15 @@ namespace
+       CHECK_EQUAL(ItemNDC("0"), data.front());
+     }
+ 
++    //*************************************************************************
++    TEST_FIXTURE(SetupFixture, test_front_const_exception)
++    {
++      const DataNDC data;
++
++      CHECK(data.empty());
++      CHECK_THROW(data.front(), etl::forward_list_empty);
++    }
++
+     //*************************************************************************
+     TEST_FIXTURE(SetupFixture, test_before_begin_const)
+     {
+@@ -944,6 +953,15 @@ namespace
+       CHECK_EQUAL(compare_data.front(), data.front());
+     }
+ 
++    //*************************************************************************
++    TEST_FIXTURE(SetupFixture, test_front_exception)
++    {
++      DataNDC data;
++
++      CHECK(data.empty());
++      CHECK_THROW(data.front(), etl::forward_list_empty);
++    }
++
+     //*************************************************************************
+     TEST_FIXTURE(SetupFixture, test_assignment)
+     {
+diff --git a/test/test_intrusive_forward_list.cpp b/test/test_intrusive_forward_list.cpp
+index 4bb3d6f3..2aec53d7 100644
+--- a/test/test_intrusive_forward_list.cpp
++++ b/test/test_intrusive_forward_list.cpp
+@@ -936,6 +936,15 @@ namespace
+       CHECK_EQUAL(sorted_data.front(), data0.front());
+     }
+ 
++    //*************************************************************************
++    TEST_FIXTURE(SetupFixture, test_front_exception)
++    {
++      DataNDC0 data0;
++
++      CHECK(data0.empty());
++      CHECK_THROW(data0.front(), etl::intrusive_forward_list_empty);
++    }
++
+     //*************************************************************************
+     TEST_FIXTURE(SetupFixture, test_unique)
+     {
+diff --git a/test/test_intrusive_list.cpp b/test/test_intrusive_list.cpp
+index 41ea478f..308a8b2f 100644
+--- a/test/test_intrusive_list.cpp
++++ b/test/test_intrusive_list.cpp
+@@ -1092,6 +1092,32 @@ namespace
+       CHECK_EQUAL(sorted_data.front(), data0.front());
+     }
+ 
++    //*************************************************************************
++    TEST_FIXTURE(SetupFixture, test_front_empty_exception)
++    {
++      DataNDC0 data0;
++
++      CHECK_EQUAL(0U, data0.size());
++      CHECK_THROW(data0.front(), etl::intrusive_list_empty);
++    }
++
++    //*************************************************************************
++    TEST_FIXTURE(SetupFixture, test_back)
++    {
++      DataNDC0 data0(sorted_data.begin(), sorted_data.end());
++
++      CHECK_EQUAL(sorted_data.back(), data0.back());
++    }
++
++    //*************************************************************************
++    TEST_FIXTURE(SetupFixture, test_back_empty_exception)
++    {
++      DataNDC0 data0;
++
++      CHECK_EQUAL(0U, data0.size());
++      CHECK_THROW(data0.back(), etl::intrusive_list_empty);
++    }
++
+     //*************************************************************************
+     TEST_FIXTURE(SetupFixture, test_unique)
+     {
+diff --git a/test/test_intrusive_queue.cpp b/test/test_intrusive_queue.cpp
+index 8ab16536..490a76f5 100644
+--- a/test/test_intrusive_queue.cpp
++++ b/test/test_intrusive_queue.cpp
+@@ -438,5 +438,43 @@ namespace
+       queueD.pop();
+       CHECK_EQUAL(queueD.back(), queueDR.back());
+     }
++
++    //*************************************************************************
++    TEST(test_front_empty_exception)
++    {
++      etl::intrusive_queue<Data, link_fwd> queueD;
++
++      CHECK_EQUAL(0U, queueD.size());
++      CHECK_THROW(queueD.front(), etl::intrusive_queue_empty);
++    }
++
++    //*************************************************************************
++    TEST(test_back_empty_exception)
++    {
++      etl::intrusive_queue<Data, link_fwd> queueD;
++
++      CHECK_EQUAL(0U, queueD.size());
++      CHECK_THROW(queueD.back(), etl::intrusive_queue_empty);
++    }
++
++    //*************************************************************************
++    TEST(test_front_const_empty_exception)
++    {
++      etl::intrusive_queue<Data, link_fwd> queueD;
++      const etl::intrusive_queue<Data, link_fwd>& queueDR = queueD;
++
++      CHECK_EQUAL(0U, queueDR.size());
++      CHECK_THROW(queueDR.front(), etl::intrusive_queue_empty);
++    }
++
++    //*************************************************************************
++    TEST(test_back_const_empty_exception)
++    {
++      etl::intrusive_queue<Data, link_fwd> queueD;
++      const etl::intrusive_queue<Data, link_fwd>& queueDR = queueD;
++
++      CHECK_EQUAL(0U, queueDR.size());
++      CHECK_THROW(queueDR.back(), etl::intrusive_queue_empty);
++    }
+   }
+ }
+diff --git a/test/test_intrusive_stack.cpp b/test/test_intrusive_stack.cpp
+index ad55b635..2acad4b3 100644
+--- a/test/test_intrusive_stack.cpp
++++ b/test/test_intrusive_stack.cpp
+@@ -278,6 +278,25 @@ namespace
+       CHECK_EQUAL(stackD.top(), stackDR.top());
+     }
+ 
++    //*************************************************************************
++    TEST(test_top_empty_exception)
++    {
++      etl::intrusive_stack<Data, link0> stackD;
++
++      CHECK_EQUAL(0U, stackD.size());
++      CHECK_THROW(stackD.top(), etl::intrusive_stack_empty);
++    }
++
++    //*************************************************************************
++    TEST(test_top_const_empty_exception)
++    {
++      etl::intrusive_stack<Data, link0> stackD;
++      const etl::intrusive_stack<Data, link0>& stackDR = stackD;
++
++      CHECK_EQUAL(0U, stackDR.size());
++      CHECK_THROW(stackDR.top(), etl::intrusive_stack_empty);
++    }
++
+     //*************************************************************************
+     TEST(test_reverse1)
+     {
+diff --git a/test/test_list.cpp b/test/test_list.cpp
+index 003fb853..adf7cf95 100644
+--- a/test/test_list.cpp
++++ b/test/test_list.cpp
+@@ -1171,6 +1171,15 @@ namespace
+       CHECK_EQUAL(compare_data.front(), data.front());
+     }
+ 
++    //*************************************************************************
++    TEST_FIXTURE(SetupFixture, test_front_exception)
++    {
++      DataInt data;
++
++      CHECK(data.empty());
++      CHECK_THROW(data.front(), etl::list_empty);
++    }
++
+     //*************************************************************************
+     TEST_FIXTURE(SetupFixture, test_front_const)
+     {
+@@ -1180,6 +1189,15 @@ namespace
+       CHECK_EQUAL(compare_data.front(), data.front());
+     }
+ 
++    //*************************************************************************
++    TEST_FIXTURE(SetupFixture, test_front_const_exception)
++    {
++      const DataInt data;
++
++      CHECK(data.empty());
++      CHECK_THROW(data.front(), etl::list_empty);
++    }
++
+     //*************************************************************************
+     TEST_FIXTURE(SetupFixture, test_back)
+     {
+@@ -1189,6 +1207,15 @@ namespace
+       CHECK_EQUAL(compare_data.back(), data.back());
+     }
+ 
++    //*************************************************************************
++    TEST_FIXTURE(SetupFixture, test_back_exception)
++    {
++      DataInt data;
++
++      CHECK(data.empty());
++      CHECK_THROW(data.back(), etl::list_empty);
++    }
++    
+     //*************************************************************************
+     TEST_FIXTURE(SetupFixture, test_back_const)
+     {
+@@ -1198,6 +1225,15 @@ namespace
+       CHECK_EQUAL(compare_data.back(), data.back());
+     }
+ 
++    //*************************************************************************
++    TEST_FIXTURE(SetupFixture, test_back_const_exception)
++    {
++      const DataInt data;
++
++      CHECK(data.empty());
++      CHECK_THROW(data.back(), etl::list_empty);
++    }
++
+     //*************************************************************************
+     TEST_FIXTURE(SetupFixture, test_assignment)
+     {
+diff --git a/test/test_priority_queue.cpp b/test/test_priority_queue.cpp
+index 8d2b5067..1388e234 100644
+--- a/test/test_priority_queue.cpp
++++ b/test/test_priority_queue.cpp
+@@ -270,6 +270,15 @@ namespace
+       CHECK_EQUAL(compare_priority_queue.top(), priority_queue.top());
+     }
+ 
++    //*************************************************************************
++    TEST(test_top_bounds_exception)
++    {
++      etl::priority_queue<int, SIZE> priority_queue;
++     
++      CHECK(priority_queue.empty());
++      CHECK_THROW(priority_queue.top(), etl::priority_queue_exception);
++    }
++
+     //*************************************************************************
+     TEST(test_top_const)
+     {
+@@ -286,6 +295,16 @@ namespace
+       CHECK_EQUAL(4, constQueue.top());
+     }
+ 
++    //*************************************************************************
++    TEST(test_top_const_bounds_exception)
++    {
++      etl::priority_queue<int, SIZE> priority_queue;
++      const etl::priority_queue<int, SIZE>& constQueue = priority_queue;
++
++      CHECK(constQueue.empty());
++      CHECK_THROW(constQueue.top(), etl::priority_queue_exception);
++    }
++
+     //*************************************************************************
+     TEST(test_push)
+     {
+diff --git a/test/test_queue.cpp b/test/test_queue.cpp
+index 1f2a04cf..6f82917e 100644
+--- a/test/test_queue.cpp
++++ b/test/test_queue.cpp
+@@ -251,6 +251,14 @@ namespace
+       CHECK_EQUAL(3, queue.front());
+     }
+ 
++    //*************************************************************************
++    TEST(test_front_bounds_exception)
++    {
++      etl::queue<int, 4> queue;
++      CHECK(queue.empty());
++      CHECK_THROW(queue.front(), etl::queue_empty);
++    }
++
+     //*************************************************************************
+     TEST(test_front_const)
+     {
+@@ -270,6 +278,16 @@ namespace
+       CHECK_EQUAL(3, constQueue.front());
+     }
+ 
++    //*************************************************************************
++    TEST(test_front_const_bounds_exception)
++    {
++      etl::queue<int, 4> queue;
++      const etl::queue<int, 4>& constQueue = queue;
++
++      CHECK(constQueue.empty());
++      CHECK_THROW(constQueue.front(), etl::queue_empty);
++    }
++
+     //*************************************************************************
+     TEST(test_back)
+     {
+@@ -285,6 +303,14 @@ namespace
+       CHECK_EQUAL(3, queue.back());
+     }
+ 
++    //*************************************************************************
++    TEST(test_back_bounds_exception)
++    {
++      etl::queue<int, 4> queue;
++      CHECK(queue.empty());
++      CHECK_THROW(queue.back(), etl::queue_empty);
++    }
++    
+     //*************************************************************************
+     TEST(test_back_const)
+     {
+@@ -301,6 +327,16 @@ namespace
+       CHECK_EQUAL(3, constQueue.back());
+     }
+ 
++    //*************************************************************************
++    TEST(test_back_const_bounds_exception)
++    {
++      etl::queue<int, 4> queue;
++      const etl::queue<int, 4>& constQueue = queue;
++
++      CHECK(constQueue.empty());
++      CHECK_THROW(constQueue.back(), etl::queue_empty);
++    }
++
+     //*************************************************************************
+     TEST(test_push)
+     {
+diff --git a/test/test_queue_lockable.cpp b/test/test_queue_lockable.cpp
+index 893e5d2a..727ccddb 100644
+--- a/test/test_queue_lockable.cpp
++++ b/test/test_queue_lockable.cpp
+@@ -547,6 +547,25 @@ namespace
+       CHECK_EQUAL(0U, queue.size());
+     }
+ 
++    //*************************************************************************
++    TEST(test_front_bounds_exception)
++    {
++      QueueInt queue;
++
++      CHECK_EQUAL(0U, queue.size());
++      CHECK_THROW(queue.front(), etl::exception);
++    }
++
++    //*************************************************************************
++    TEST(test_front_const_bounds_exception)
++    {
++      QueueInt queue;
++      const QueueInt& constQueue = queue;
++
++      CHECK_EQUAL(0U, constQueue.size());
++      CHECK_THROW(constQueue.front(), etl::exception);
++    }
++
+     //*************************************************************************
+     TEST(test_multiple_emplace)
+     {
+diff --git a/test/test_queue_mpmc_mutex.cpp b/test/test_queue_mpmc_mutex.cpp
+index 96c9c4e0..b62d8eaa 100644
+--- a/test/test_queue_mpmc_mutex.cpp
++++ b/test/test_queue_mpmc_mutex.cpp
+@@ -339,6 +339,25 @@ namespace
+       CHECK_EQUAL(0U, queue.size());
+     }
+ 
++    //*************************************************************************
++    TEST(test_front_bounds_exception)
++    {
++      etl::queue_mpmc_mutex<int, 4> queue;
++
++      CHECK_EQUAL(0U, queue.size());
++      CHECK_THROW(queue.front(), etl::exception);
++    }
++
++    //*************************************************************************
++    TEST(test_front_const_bounds_exception)
++    {
++      etl::queue_mpmc_mutex<int, 4> queue;
++      const etl::queue_mpmc_mutex<int, 4>& constQueue = queue;
++
++      CHECK_EQUAL(0U, constQueue.size());
++      CHECK_THROW(constQueue.front(), etl::exception);
++    }
++
+     //*************************************************************************
+     TEST(test_clear)
+     {
+diff --git a/test/test_queue_spsc_isr.cpp b/test/test_queue_spsc_isr.cpp
+index 3e26aeaf..fbf823dd 100644
+--- a/test/test_queue_spsc_isr.cpp
++++ b/test/test_queue_spsc_isr.cpp
+@@ -493,6 +493,29 @@ namespace
+       CHECK_EQUAL(0U, queue.size());
+     }
+ 
++    //*************************************************************************
++    TEST(test_front_bounds_exception)
++    {
++      Access::clear();
++
++      etl::queue_spsc_isr<int, 4, Access> queue;
++
++      CHECK_EQUAL(0U, queue.size_from_isr());
++      CHECK_THROW(queue.front(), etl::exception);
++    }
++
++    //*************************************************************************
++    TEST(test_front_const_bounds_exception)
++    {
++      Access::clear();
++
++      etl::queue_spsc_isr<int, 4, Access> queue;
++      const etl::queue_spsc_isr<int, 4, Access>& constQueue = queue;
++
++      CHECK_EQUAL(0U, constQueue.size_from_isr());
++      CHECK_THROW(constQueue.front(), etl::exception);
++    }
++
+     //*************************************************************************
+     TEST(test_multiple_emplace)
+     {
+diff --git a/test/test_queue_spsc_locked.cpp b/test/test_queue_spsc_locked.cpp
+index be60cbab..92224e64 100644
+--- a/test/test_queue_spsc_locked.cpp
++++ b/test/test_queue_spsc_locked.cpp
+@@ -498,6 +498,29 @@ namespace
+       CHECK_EQUAL(0U, queue.size());
+     }
+ 
++    //*************************************************************************
++    TEST(test_front_bounds_exception)
++    {
++      access.clear();
++
++      etl::queue_spsc_locked<int, 4> queue(lock, unlock);
++
++      CHECK_EQUAL(0U, queue.size_from_unlocked());
++      CHECK_THROW(queue.front(), etl::exception);
++    }
++
++    //*************************************************************************
++    TEST(test_front_const_bounds_exception)
++    {
++      access.clear();
++
++      etl::queue_spsc_locked<int, 4> queue(lock, unlock);
++      const etl::queue_spsc_locked<int, 4>& constQueue = queue;
++
++      CHECK_EQUAL(0U, constQueue.size_from_unlocked());
++      CHECK_THROW(constQueue.front(), etl::exception);
++    }
++
+     //*************************************************************************
+     TEST(test_multiple_emplace)
+     {
+diff --git a/test/test_stack.cpp b/test/test_stack.cpp
+index cd05ddf2..a8a25525 100644
+--- a/test/test_stack.cpp
++++ b/test/test_stack.cpp
+@@ -398,6 +398,15 @@ namespace
+       CHECK_EQUAL(1, stack.top());
+     }
+ 
++    //*************************************************************************
++    TEST(test_top_bounds_exception)
++    {
++      etl::stack<ItemNDC, 4> stack;
++
++      CHECK(stack.empty());
++      CHECK_THROW(stack.top(), etl::stack_empty);
++    }
++
+     //*************************************************************************
+     TEST(test_top_const)
+     {
+@@ -417,6 +426,16 @@ namespace
+       CHECK_EQUAL(1, constQueue.top());
+     }
+ 
++    //*************************************************************************
++    TEST(test_top_const_bounds_exception)
++    {
++      etl::stack<int, 4> stack;
++      const etl::stack<int, 4>& constStack = stack;
++
++      CHECK(constStack.empty());
++      CHECK_THROW(constStack.top(), etl::stack_empty);
++    }
++
+     //*************************************************************************
+     TEST(test_multiple_push)
+     {
+diff --git a/test/test_string_view.cpp b/test/test_string_view.cpp
+index a65b938b..282eef27 100644
+--- a/test/test_string_view.cpp
++++ b/test/test_string_view.cpp
+@@ -418,6 +418,34 @@ namespace
+       CHECK_THROW(view.at(view.size()), etl::string_view_bounds);
+     }
+ 
++#ifdef ETL_CHECK_INDEX_OPERATOR
++
++    //*************************************************************************
++    TEST(test_index_bounds_exception)
++    {
++      View  view(text.c_str(), text.size());
++
++      CHECK_THROW(view[view.size()], etl::string_view_bounds);
++    }
++  
++#endif
++
++    //*************************************************************************
++    TEST(test_front_bounds_exception)
++    {
++      View view(text.c_str(), text.c_str());
++
++      CHECK_THROW(view.front(), etl::string_view_exception);
++    }
++
++    //*************************************************************************
++    TEST(test_back_bounds_exception)
++    {
++      View view(text.c_str(), text.c_str());
++
++      CHECK_THROW(view.back(), etl::string_view_exception);
++    }
++
+     //*************************************************************************
+     TEST(test_non_member_same)
+     {

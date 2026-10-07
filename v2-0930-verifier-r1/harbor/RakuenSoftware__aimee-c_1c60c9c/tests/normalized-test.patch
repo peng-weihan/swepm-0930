@@ -1,0 +1,637 @@
+diff --git a/server-go/cmd/aimee-module/main_test.go b/server-go/cmd/aimee-module/main_test.go
+index 457268c3b..34c422eeb 100644
+--- a/server-go/cmd/aimee-module/main_test.go
++++ b/server-go/cmd/aimee-module/main_test.go
+@@ -15,7 +15,7 @@ func TestModuleRegistryMatchesProcessContracts(t *testing.T) {
+ 		{"memory", 7, []uint32{5889, 5890, 5891, 5892, 5893}},
+ 		{"learning", 8, []uint32{6145}},
+ 		{"routing", 9, []uint32{6401}},
+-		{"delegates", 10, []uint32{6657, 6658, 6659, 6660, 6661, 6662, 6663}},
++		{"delegates", 10, []uint32{6657, 6658, 6659, 6660, 6661, 6662, 6663, 6664}},
+ 		{"tools", 11, []uint32{6913}},
+ 		{"workspace", 12, []uint32{7169, 7170, 7171}},
+ 		{"git", 13, []uint32{7425, 7426, 7427, 7430}},
+diff --git a/server-go/modules/delegates/economics_stage_test.go b/server-go/modules/delegates/economics_stage_test.go
+new file mode 100644
+index 000000000..aebbd4890
+--- /dev/null
++++ b/server-go/modules/delegates/economics_stage_test.go
+@@ -0,0 +1,107 @@
++package delegates
++
++import (
++	"encoding/binary"
++	"testing"
++
++	"github.com/JBailes/aimee/server-go/bus"
++)
++
++func economicsRequestBytes(tasks []EconomicsTask, agents []AgentTier) []byte {
++	request := make([]byte, economicsReqHeaderLen)
++	binary.LittleEndian.PutUint32(request[0:4], economicsRequestMagic)
++	request[4] = wireVersion
++	binary.LittleEndian.PutUint32(request[8:12], uint32(len(tasks)))
++	binary.LittleEndian.PutUint32(request[12:16], uint32(len(agents)))
++	for _, t := range tasks {
++		var hdr [12]byte
++		binary.LittleEndian.PutUint16(hdr[0:2], uint16(len(t.Status)))
++		binary.LittleEndian.PutUint16(hdr[2:4], uint16(len(t.ClaimedBy)))
++		binary.LittleEndian.PutUint32(hdr[4:8], uint32(len(t.Files)))
++		binary.LittleEndian.PutUint32(hdr[8:12], uint32(len(t.Result)))
++		request = append(request, hdr[:]...)
++		request = append(request, t.Status...)
++		request = append(request, t.ClaimedBy...)
++		request = append(request, t.Files...)
++		request = append(request, t.Result...)
++	}
++	for _, a := range agents {
++		var n [2]byte
++		binary.LittleEndian.PutUint16(n[:], uint16(len(a.Name)))
++		request = append(request, n[:]...)
++		request = append(request, a.Name...)
++		var tier [4]byte
++		binary.LittleEndian.PutUint32(tier[:], uint32(int32(a.Tier)))
++		request = append(request, tier[:]...)
++	}
++	return request
++}
++
++func TestEconomicsStageRoundTrip(t *testing.T) {
++	tasks := []EconomicsTask{
++		{Status: "done", ClaimedBy: "cheap", Files: `["src/a.c"]`,
++			Result: doneHandoff(1, `"src/a.c"`, "")},
++		{Status: "failed", ClaimedBy: "cheap"},
++	}
++	agents := []AgentTier{{Name: "cheap", Tier: 0}}
++
++	response, status := Handle(bus.ModuleInvocation{StageID: StageEconomics},
++		economicsRequestBytes(tasks, agents))
++	if status != bus.ModuleStatusOK || len(response) != economicsResponseLen ||
++		binary.LittleEndian.Uint32(response[0:4]) != economicsResponseMagic {
++		t.Fatalf("status %d, %d bytes", status, len(response))
++	}
++
++	want := BuildEconomicsReport(tasks, agents)
++	if got := int(binary.LittleEndian.Uint32(response[4:8])); got != want.DelegateCount {
++		t.Errorf("delegate count = %d, want %d", got, want.DelegateCount)
++	}
++	at := 4 + 19*4
++	if got := decodeFixed(response[at : at+economicsVerdictLen]); got != want.Verdict {
++		t.Errorf("verdict = %q, want %q", got, want.Verdict)
++	}
++	if got := decodeFixed(response[at+economicsVerdictLen:]); got != want.Recommendation {
++		t.Errorf("recommendation = %q, want %q", got, want.Recommendation)
++	}
++}
++
++func TestEconomicsStageRejectsInvalidEnvelope(t *testing.T) {
++	good := economicsRequestBytes([]EconomicsTask{{Status: "done", ClaimedBy: "a"}}, nil)
++
++	if _, status := Handle(bus.ModuleInvocation{StageID: StageEconomics},
++		good[:economicsReqHeaderLen-1]); status != bus.ModuleStatusInvalidRequest {
++		t.Errorf("truncated status = %d", status)
++	}
++
++	// A task count that outruns the body must be refused, not read past.
++	lying := economicsRequestBytes([]EconomicsTask{{Status: "done"}}, nil)
++	binary.LittleEndian.PutUint32(lying[8:12], 99)
++	if _, status := Handle(bus.ModuleInvocation{StageID: StageEconomics}, lying); status != bus.ModuleStatusInvalidRequest {
++		t.Errorf("overrunning task count status = %d", status)
++	}
++
++	// Trailing bytes mean the caller and the module disagree about the frame.
++	trailing := append(economicsRequestBytes(nil, nil), 0)
++	if _, status := Handle(bus.ModuleInvocation{StageID: StageEconomics}, trailing); status != bus.ModuleStatusInvalidRequest {
++		t.Errorf("trailing-byte status = %d", status)
++	}
++
++	if _, status := Handle(bus.ModuleInvocation{StageID: StageEconomics, DeadlineNS: 1},
++		good); status != bus.ModuleStatusCancelled {
++		t.Errorf("expired status = %d", status)
++	}
++}
++
++// An empty run is answerable, not an error: no delegates ran, so nothing is
++// established either way.
++func TestEconomicsStageEmptyRun(t *testing.T) {
++	response, status := Handle(bus.ModuleInvocation{StageID: StageEconomics},
++		economicsRequestBytes(nil, nil))
++	if status != bus.ModuleStatusOK {
++		t.Fatalf("status = %d", status)
++	}
++	at := 4 + 19*4
++	if v := decodeFixed(response[at : at+economicsVerdictLen]); v != "unclear" {
++		t.Errorf("verdict = %q, want unclear", v)
++	}
++}
+diff --git a/server-go/modules/delegates/economics_test.go b/server-go/modules/delegates/economics_test.go
+new file mode 100644
+index 000000000..375e45ce4
+--- /dev/null
++++ b/server-go/modules/delegates/economics_test.go
+@@ -0,0 +1,214 @@
++package delegates
++
++import (
++	"strings"
++	"testing"
++)
++
++func doneHandoff(passed int, changed, owned string) string {
++	tests := `[]`
++	if passed > 0 {
++		tests = `[{"name":"t","status":"passed"}]`
++	}
++	return `{"schema_version":"delegate_result_v1","status":"done",` +
++		`"changed_files":[` + changed + `],"tests":` + tests +
++		`,"supervisor_actions":[],"summary":"did it"}`
++}
++
++// A cheap run whose delegates verified their own work is the shape the cost
++// model is built for.
++func TestEconomicsTier0HeavyIsALikelyWin(t *testing.T) {
++	tasks := []EconomicsTask{
++		{Status: "done", ClaimedBy: "cheap", Files: `["src/a.c"]`,
++			Result: doneHandoff(1, `"src/a.c"`, "")},
++		{Status: "done", ClaimedBy: "cheap", Files: `["src/b.c"]`,
++			Result: doneHandoff(1, `"src/b.c"`, "")},
++	}
++	agents := []AgentTier{{Name: "cheap", Tier: 0}}
++
++	r := BuildEconomicsReport(tasks, agents)
++	if r.DelegateCount != 2 || r.TierCounts[0] != 2 {
++		t.Fatalf("counts = %d delegates, tiers %v", r.DelegateCount, r.TierCounts)
++	}
++	if !r.IsTier0Heavy() {
++		t.Error("two tier-0 delegates should be tier-0 heavy")
++	}
++	if r.ValidHandoffs != 2 || r.InvalidHandoffs != 0 {
++		t.Errorf("handoffs valid=%d invalid=%d", r.ValidHandoffs, r.InvalidHandoffs)
++	}
++	if r.DelegatesWithFocusedTests != 2 || r.FocusedTestsRunByDelegates != 2 {
++		t.Errorf("verification = %d/%d", r.DelegatesWithFocusedTests, r.FocusedTestsRunByDelegates)
++	}
++	if r.Verdict != "likely_net_win" {
++		t.Errorf("verdict = %q", r.Verdict)
++	}
++}
++
++// Expensive seats plus supervisor cleanup is the case the model exists to warn
++// about.
++func TestEconomicsExpensiveWithCleanupIsALikelyLoss(t *testing.T) {
++	tasks := []EconomicsTask{
++		{Status: "failed", ClaimedBy: "dear", Result: `{"agent":"dear"}`},
++		{Status: "done", ClaimedBy: "dear", Files: `["src/a.c"]`, Result: `not a handoff at all`},
++	}
++	agents := []AgentTier{{Name: "dear", Tier: 3}}
++
++	r := BuildEconomicsReport(tasks, agents)
++	if r.TierCounts[3] != 2 || r.UnknownTierCount != 0 {
++		t.Fatalf("tiers = %v unknown=%d", r.TierCounts, r.UnknownTierCount)
++	}
++	if r.InvalidHandoffs != 1 {
++		t.Errorf("invalid handoffs = %d, want 1", r.InvalidHandoffs)
++	}
++	// The failed task and the unbelievable handoff each cost attention.
++	if r.ManualIntegrationEvents != 2 || r.SupervisorActionsRequired != 1 {
++		t.Errorf("manual=%d actions=%d", r.ManualIntegrationEvents, r.SupervisorActionsRequired)
++	}
++	if r.Verdict != "likely_net_loss" {
++		t.Errorf("verdict = %q", r.Verdict)
++	}
++}
++
++// An unknown tier is its own bucket. Counting it as cheap would flatter the run
++// into a win it did not earn.
++func TestEconomicsUnknownTierIsNotCheap(t *testing.T) {
++	tasks := []EconomicsTask{
++		{Status: "done", ClaimedBy: "mystery", Files: `[]`, Result: doneHandoff(1, "", "")},
++	}
++	r := BuildEconomicsReport(tasks, nil)
++	if r.UnknownTierCount != 1 || r.TierCounts[0] != 0 {
++		t.Fatalf("tiers = %v unknown = %d", r.TierCounts, r.UnknownTierCount)
++	}
++	if r.IsTier0Heavy() || r.Verdict == "likely_net_win" {
++		t.Errorf("unknown tier counted as a win: %q", r.Verdict)
++	}
++}
++
++// The tier comes from the result first, then the claimer, then the named agent.
++func TestEconomicsTierPrecedence(t *testing.T) {
++	reported := EconomicsTask{Status: "done", ClaimedBy: "dear", Files: `[]`,
++		Result: `{"agent_cost_tier":0,"schema_version":"delegate_result_v1","status":"done",` +
++			`"changed_files":[],"tests":[{"status":"passed"}],"summary":"x"}`}
++	agents := []AgentTier{{Name: "dear", Tier: 3}}
++	if r := BuildEconomicsReport([]EconomicsTask{reported}, agents); r.TierCounts[0] != 1 {
++		t.Errorf("reported tier ignored: %v", r.TierCounts)
++	}
++
++	named := EconomicsTask{Status: "done", Files: `[]`,
++		Result: `{"agent_name":"dear","schema_version":"delegate_result_v1","status":"done",` +
++			`"changed_files":[],"tests":[{"status":"passed"}],"summary":"x"}`}
++	if r := BuildEconomicsReport([]EconomicsTask{named}, agents); r.TierCounts[3] != 1 {
++		t.Errorf("named agent's tier not used: %v", r.TierCounts)
++	}
++}
++
++// A handoff carried as a `response` field is still the handoff.
++func TestEconomicsFindsHandoffInResponseField(t *testing.T) {
++	inner := doneHandoff(1, `"src/a.c"`, "")
++	asObject := EconomicsTask{Status: "done", ClaimedBy: "cheap", Files: `["src/a.c"]`,
++		Result: `{"response":` + inner + `}`}
++	if r := BuildEconomicsReport([]EconomicsTask{asObject}, nil); r.ValidHandoffs != 1 {
++		t.Errorf("object response: valid=%d invalid=%d", r.ValidHandoffs, r.InvalidHandoffs)
++	}
++}
++
++// Supervisor actions a delegate asked for are attention it spent, and make the
++// run an integration event even when the handoff was believable.
++func TestEconomicsCountsRequestedSupervisorActions(t *testing.T) {
++	result := `{"schema_version":"delegate_result_v1","status":"done","changed_files":[],` +
++		`"tests":[{"status":"passed"}],"supervisor_actions":["review the migration","rerun ci"],` +
++		`"summary":"needs a look"}`
++	r := BuildEconomicsReport([]EconomicsTask{
++		{Status: "done", ClaimedBy: "cheap", Files: `[]`, Result: result},
++	}, []AgentTier{{Name: "cheap", Tier: 0}})
++
++	if r.SupervisorActionsRequired != 2 || r.ManualIntegrationEvents != 1 {
++		t.Errorf("actions=%d manual=%d", r.SupervisorActionsRequired, r.ManualIntegrationEvents)
++	}
++	if r.ValidHandoffs != 1 {
++		t.Errorf("a believable handoff was rejected: %+v", r)
++	}
++}
++
++// Queued work is not a delegate run and must not dilute the counts.
++func TestEconomicsIgnoresUnclaimedPendingTasks(t *testing.T) {
++	r := BuildEconomicsReport([]EconomicsTask{{Status: "pending"}}, nil)
++	if r.DelegateCount != 0 || r.Verdict != "unclear" {
++		t.Errorf("report = %+v", r)
++	}
++}
++
++// Token totals only accumulate from results that reported any.
++func TestEconomicsTokenTotals(t *testing.T) {
++	tasks := []EconomicsTask{
++		{Status: "done", ClaimedBy: "cheap", Files: `[]`,
++			Result: `{"prompt_tokens":100,"completion_tokens":50,"schema_version":"delegate_result_v1",` +
++				`"status":"done","changed_files":[],"tests":[{"status":"passed"}],"summary":"x"}`},
++		{Status: "done", ClaimedBy: "cheap", Files: `[]`, Result: doneHandoff(1, "", "")},
++	}
++	r := BuildEconomicsReport(tasks, []AgentTier{{Name: "cheap", Tier: 0}})
++	if r.PromptTokensTotal != 100 || r.CompletionTokensTotal != 50 ||
++		r.DelegateTokensEstimated != 150 || r.TokenizedDelegateResults != 1 {
++		t.Errorf("tokens = %d/%d/%d over %d results", r.PromptTokensTotal,
++			r.CompletionTokensTotal, r.DelegateTokensEstimated, r.TokenizedDelegateResults)
++	}
++	// 2 delegates * 300, no manual events, no invalid handoffs.
++	if r.SupervisorPromptTokensEstimated != 600 {
++		t.Errorf("supervisor estimate = %d, want 600", r.SupervisorPromptTokensEstimated)
++	}
++}
++
++// Ported from test_delegate_economics.c: cheap seats do NOT buy a win when the
++// supervisor had to step in for most of them. The recommendation still speaks
++// to the tier-0 shape, because that is what the run was -- the verdict and the
++// advice answer different questions.
++func TestEconomicsTier0HeavyWithHighManualIsUnclear(t *testing.T) {
++	withAction := func(file, action string) string {
++		return `{"schema_version":"delegate_result_v1","status":"done","changed_files":["` +
++			file + `"],"tests":[{"name":"unit","status":"passed"}],` +
++			`"supervisor_actions":["` + action + `"],"summary":"done"}`
++	}
++	tasks := []EconomicsTask{
++		{Status: "done", ClaimedBy: "free-a", Files: `["src/a.c"]`,
++			Result: withAction("src/a.c", "resolve API naming")},
++		{Status: "done", ClaimedBy: "free-b", Files: `["src/b.c"]`,
++			Result: withAction("src/b.c", "integrate overlapping changes")},
++	}
++	agents := []AgentTier{{Name: "free-a", Tier: 0}, {Name: "free-b", Tier: 0}}
++
++	r := BuildEconomicsReport(tasks, agents)
++	if !r.IsTier0Heavy() {
++		t.Fatal("two tier-0 delegates should be tier-0 heavy")
++	}
++	if r.ManualIntegrationEvents != 2 {
++		t.Errorf("manual events = %d, want 2", r.ManualIntegrationEvents)
++	}
++	if r.Verdict != "unclear" {
++		t.Errorf("verdict = %q, want unclear", r.Verdict)
++	}
++	if !strings.Contains(r.Recommendation, "broader delegation") {
++		t.Errorf("recommendation = %q", r.Recommendation)
++	}
++}
++
++// A job with no delegates estimates no supervisor cost at all.
++func TestEconomicsZeroDelegateJob(t *testing.T) {
++	r := BuildEconomicsReport(nil, nil)
++	if r.DelegateCount != 0 || r.Verdict != "unclear" ||
++		r.SupervisorPromptTokensEstimated != 0 {
++		t.Errorf("report = %+v", r)
++	}
++}
++
++func TestEconomicsVerdictText(t *testing.T) {
++	for verdict, want := range map[string]string{
++		"likely_net_win":  "likely net supervisor-token win",
++		"likely_net_loss": "likely net supervisor-token loss",
++		"unclear":         "unclear supervisor-token outcome",
++		"nonsense":        "unclear supervisor-token outcome",
++	} {
++		if got := EconomicsVerdictText(verdict); got != want {
++			t.Errorf("%q -> %q, want %q", verdict, got, want)
++		}
++	}
++}
+diff --git a/src/tests/test_coord_jobs.c b/src/tests/test_coord_jobs.c
+index 1d5c6cdcc..a33e1e2a6 100644
+--- a/src/tests/test_coord_jobs.c
++++ b/src/tests/test_coord_jobs.c
+@@ -582,8 +582,14 @@ static void test_empty_files(void)
+ 
+ /* --- Test: DB-backed coordinated job economics report --- */
+ 
+-static void test_delegate_economics_report_from_coord_job(void)
++static void test_coord_job_rows_carry_what_economics_reads(void)
+ {
++   /* What a run COST is the delegates module's rule now
++    * (server-go/modules/delegates/economics.go). What this test uniquely covers
++    * is the seam beneath it: a claimed-and-completed coord job comes back from
++    * the store with the four fields that rule consumes, populated. If any of
++    * these is empty the report is computed over nothing, and no amount of
++    * correctness in the rule would show it. */
+    sqlite3 *db = setup();
+ 
+    int plan_id = create_test_plan(db);
+@@ -603,29 +609,24 @@ static void test_delegate_economics_report_from_coord_job(void)
+    make_handoff(h2, sizeof(h2), "src/free_b.c");
+    assert(db1_coord_job_complete_task(t2, h2) == 0);
+ 
+-   db1_coord_job_t job;
+-   assert(db1_coord_job_get(job_id, &job) == 0);
+    db1_coord_task_t tasks[DB1_COORD_MAX_TASKS];
+    int count = db1_coord_job_list_tasks(job_id, tasks, DB1_COORD_MAX_TASKS);
+    assert(count == 2);
+ 
+-   agent_config_t cfg = {0};
+-   snprintf(cfg.agents[0].name, sizeof(cfg.agents[0].name), "%s", "free-a");
+-   cfg.agents[0].cost_tier = 0;
+-   snprintf(cfg.agents[1].name, sizeof(cfg.agents[1].name), "%s", "free-b");
+-   cfg.agents[1].cost_tier = 0;
+-   cfg.agent_count = 2;
+-
+-   delegate_economics_report_t report;
+-   delegate_economics_build_report(&job, tasks, count, &cfg, &report);
+-   assert(report.delegate_count == 2);
+-   assert(report.tier_counts[0] == 2);
+-   assert(report.valid_handoffs == 2);
+-   assert(report.delegates_with_focused_tests == 2);
+-   assert(strcmp(report.verdict, "likely_net_win") == 0);
++   for (int i = 0; i < count; i++)
++   {
++      assert(strcmp(tasks[i].status, "done") == 0);
++      assert(tasks[i].claimed_by[0]);
++      /* owned files, for the handoff's ownership check */
++      assert(strstr(tasks[i].files, "src/free_") != NULL);
++      /* the handoff itself, which is what the rule reads */
++      assert(strstr(tasks[i].result, "delegate_result_v1") != NULL);
++   }
++   assert(strcmp(tasks[0].claimed_by, "free-a") == 0);
++   assert(strcmp(tasks[1].claimed_by, "free-b") == 0);
+ 
+    teardown(db);
+-   printf("  PASS: test_delegate_economics_report_from_coord_job\n");
++   printf("  PASS: test_coord_job_rows_carry_what_economics_reads\n");
+ }
+ 
+ /* Judging a handoff is the delegates module's rule now
+@@ -726,7 +727,7 @@ int main(void)
+    test_default_parallel();
+    test_invalid_ops();
+    test_empty_files();
+-   test_delegate_economics_report_from_coord_job();
++   test_coord_job_rows_carry_what_economics_reads();
+    printf("All coord_jobs tests passed.\n");
+    return 0;
+ }
+diff --git a/src/tests/test_delegate_economics.c b/src/tests/test_delegate_economics.c
+index 005b8ce79..7a57f98e5 100644
+--- a/src/tests/test_delegate_economics.c
++++ b/src/tests/test_delegate_economics.c
+@@ -16,172 +16,6 @@ static void add_agent(agent_config_t *cfg, int idx, const char *name, int tier)
+       cfg->agent_count = idx + 1;
+ }
+ 
+-static void fill_task(db1_coord_task_t *task, const char *status, const char *claimed_by,
+-                      const char *files, const char *result)
+-{
+-   memset(task, 0, sizeof(*task));
+-   snprintf(task->status, sizeof(task->status), "%s", status);
+-   snprintf(task->claimed_by, sizeof(task->claimed_by), "%s", claimed_by ? claimed_by : "");
+-   snprintf(task->files, sizeof(task->files), "%s", files ? files : "[]");
+-   snprintf(task->result, sizeof(task->result), "%s", result ? result : "");
+-}
+-
+-static void handoff(char *buf, size_t len, const char *file, const char *tests, const char *actions)
+-{
+-   snprintf(buf, len,
+-            "{"
+-            "\"schema_version\":\"delegate_result_v1\","
+-            "\"status\":\"done\","
+-            "\"changed_files\":[\"%s\"],"
+-            "\"tests\":%s,"
+-            "\"supervisor_actions\":%s,"
+-            "\"summary\":\"done\""
+-            "}",
+-            file, tests, actions);
+-}
+-
+-static void test_tier_distribution_and_handoff_counts(void)
+-{
+-   agent_config_t cfg = {0};
+-   add_agent(&cfg, 0, "free-a", 0);
+-   add_agent(&cfg, 1, "cheap-b", 1);
+-   add_agent(&cfg, 2, "expensive-c", 3);
+-
+-   char h1[512];
+-   char h2[512];
+-   handoff(h1, sizeof(h1), "src/free.c", "[{\"name\":\"unit-free\",\"status\":\"passed\"}]", "[]");
+-   handoff(h2, sizeof(h2), "src/cheap.c", "[{\"name\":\"unit-cheap\",\"status\":\"passed\"}]",
+-           "[\"choose public name\"]");
+-
+-   db1_coord_task_t tasks[4];
+-   fill_task(&tasks[0], "done", "free-a", "[\"src/free.c\"]", h1);
+-   fill_task(&tasks[1], "done", "cheap-b", "[\"src/cheap.c\"]", h2);
+-   fill_task(&tasks[2], "failed", "expensive-c", "[\"src/fail.c\"]", "compile failed");
+-   fill_task(&tasks[3], "done", "missing-agent", "[\"src/bad.c\"]", "not json");
+-
+-   delegate_economics_report_t report;
+-   delegate_economics_build_report(NULL, tasks, 4, &cfg, &report);
+-
+-   assert(report.delegate_count == 4);
+-   assert(report.tier_counts[0] == 1);
+-   assert(report.tier_counts[1] == 1);
+-   assert(report.tier_counts[3] == 1);
+-   assert(report.unknown_tier_count == 1);
+-   assert(report.handoff_count == 3);
+-   assert(report.valid_handoffs == 2);
+-   assert(report.invalid_handoffs == 1);
+-   assert(report.focused_tests_run_by_delegates == 2);
+-   assert(report.delegates_with_focused_tests == 2);
+-   assert(report.supervisor_actions_required == 2);
+-   assert(report.manual_integration_events == 3);
+-   printf("  PASS: test_tier_distribution_and_handoff_counts\n");
+-}
+-
+-static void test_tier0_heavy_verdict_recommends_broader_delegation(void)
+-{
+-   agent_config_t cfg = {0};
+-   add_agent(&cfg, 0, "free-a", 0);
+-   add_agent(&cfg, 1, "free-b", 0);
+-   add_agent(&cfg, 2, "cheap-c", 1);
+-
+-   char h1[512];
+-   char h2[512];
+-   char h3[512];
+-   handoff(h1, sizeof(h1), "src/a.c", "[{\"name\":\"unit-a\",\"status\":\"passed\"}]", "[]");
+-   handoff(h2, sizeof(h2), "src/b.c", "[{\"name\":\"unit-b\",\"status\":\"passed\"}]", "[]");
+-   handoff(h3, sizeof(h3), "src/c.c", "[{\"name\":\"unit-c\",\"status\":\"passed\"}]", "[]");
+-
+-   db1_coord_task_t tasks[3];
+-   fill_task(&tasks[0], "done", "free-a", "[\"src/a.c\"]", h1);
+-   fill_task(&tasks[1], "done", "free-b", "[\"src/b.c\"]", h2);
+-   fill_task(&tasks[2], "done", "cheap-c", "[\"src/c.c\"]", h3);
+-
+-   delegate_economics_report_t report;
+-   delegate_economics_build_report(NULL, tasks, 3, &cfg, &report);
+-
+-   assert(delegate_economics_is_tier0_heavy(&report));
+-   assert(strcmp(report.verdict, "likely_net_win") == 0);
+-   assert(strstr(report.recommendation, "broader delegation") != NULL);
+-   printf("  PASS: test_tier0_heavy_verdict_recommends_broader_delegation\n");
+-}
+-
+-static void test_mixed_and_expensive_only_verdicts(void)
+-{
+-   agent_config_t mixed = {0};
+-   add_agent(&mixed, 0, "free-a", 0);
+-   add_agent(&mixed, 1, "expensive-a", 3);
+-   add_agent(&mixed, 2, "expensive-b", 3);
+-
+-   char h1[512];
+-   char h2[512];
+-   char h3[512];
+-   handoff(h1, sizeof(h1), "src/a.c", "[{\"name\":\"unit-a\",\"status\":\"passed\"}]", "[]");
+-   handoff(h2, sizeof(h2), "src/b.c", "[{\"name\":\"unit-b\",\"status\":\"passed\"}]", "[]");
+-   handoff(h3, sizeof(h3), "src/c.c", "[{\"name\":\"unit-c\",\"status\":\"passed\"}]", "[]");
+-
+-   db1_coord_task_t mixed_tasks[3];
+-   fill_task(&mixed_tasks[0], "done", "free-a", "[\"src/a.c\"]", h1);
+-   fill_task(&mixed_tasks[1], "done", "expensive-a", "[\"src/b.c\"]", h2);
+-   fill_task(&mixed_tasks[2], "done", "expensive-b", "[\"src/c.c\"]", h3);
+-
+-   delegate_economics_report_t report;
+-   delegate_economics_build_report(NULL, mixed_tasks, 3, &mixed, &report);
+-   assert(strcmp(report.verdict, "unclear") == 0);
+-
+-   agent_config_t expensive = {0};
+-   add_agent(&expensive, 0, "expensive-a", 3);
+-   add_agent(&expensive, 1, "expensive-b", 3);
+-
+-   char no_test_a[512];
+-   char no_test_b[512];
+-   handoff(no_test_a, sizeof(no_test_a), "src/a.c", "[]", "[]");
+-   handoff(no_test_b, sizeof(no_test_b), "src/b.c", "[]", "[]");
+-
+-   db1_coord_task_t expensive_tasks[2];
+-   fill_task(&expensive_tasks[0], "done", "expensive-a", "[\"src/a.c\"]", no_test_a);
+-   fill_task(&expensive_tasks[1], "done", "expensive-b", "[\"src/b.c\"]", no_test_b);
+-
+-   delegate_economics_build_report(NULL, expensive_tasks, 2, &expensive, &report);
+-   assert(strcmp(report.verdict, "likely_net_loss") == 0);
+-   printf("  PASS: test_mixed_and_expensive_only_verdicts\n");
+-}
+-
+-static void test_tier0_heavy_high_manual_intervention_is_unclear(void)
+-{
+-   agent_config_t cfg = {0};
+-   add_agent(&cfg, 0, "free-a", 0);
+-   add_agent(&cfg, 1, "free-b", 0);
+-
+-   char h1[512];
+-   char h2[512];
+-   handoff(h1, sizeof(h1), "src/a.c", "[{\"name\":\"unit-a\",\"status\":\"passed\"}]",
+-           "[\"resolve API naming\"]");
+-   handoff(h2, sizeof(h2), "src/b.c", "[{\"name\":\"unit-b\",\"status\":\"passed\"}]",
+-           "[\"integrate overlapping changes\"]");
+-
+-   db1_coord_task_t tasks[2];
+-   fill_task(&tasks[0], "done", "free-a", "[\"src/a.c\"]", h1);
+-   fill_task(&tasks[1], "done", "free-b", "[\"src/b.c\"]", h2);
+-
+-   delegate_economics_report_t report;
+-   delegate_economics_build_report(NULL, tasks, 2, &cfg, &report);
+-   assert(delegate_economics_is_tier0_heavy(&report));
+-   assert(report.manual_integration_events == 2);
+-   assert(strcmp(report.verdict, "unclear") == 0);
+-   assert(strstr(report.recommendation, "broader delegation") != NULL);
+-   printf("  PASS: test_tier0_heavy_high_manual_intervention_is_unclear\n");
+-}
+-
+-static void test_zero_delegate_job_is_unclear(void)
+-{
+-   delegate_economics_report_t report;
+-   delegate_economics_build_report(NULL, NULL, 0, NULL, &report);
+-   assert(report.delegate_count == 0);
+-   assert(strcmp(report.verdict, "unclear") == 0);
+-   assert(report.supervisor_prompt_tokens_estimated == 0);
+-   printf("  PASS: test_zero_delegate_job_is_unclear\n");
+-}
+-
+ static void test_agent_result_json_metadata(void)
+ {
+    agent_config_t cfg = {0};
+@@ -286,11 +120,6 @@ static int econ_test_handoff_provider(const char *text, const char *owned_files_
+ int main(void)
+ {
+    delegate_register_handoff_provider(econ_test_handoff_provider);
+-   test_tier_distribution_and_handoff_counts();
+-   test_tier0_heavy_verdict_recommends_broader_delegation();
+-   test_mixed_and_expensive_only_verdicts();
+-   test_tier0_heavy_high_manual_intervention_is_unclear();
+-   test_zero_delegate_job_is_unclear();
+    test_agent_result_json_metadata();
+    printf("delegate_economics: all tests passed\n");
+    return 0;
+diff --git a/tests/baselines/refactor/index.json b/tests/baselines/refactor/index.json
+index c27745ab7..45e4b3ced 100644
+--- a/tests/baselines/refactor/index.json
++++ b/tests/baselines/refactor/index.json
+@@ -1419,7 +1419,7 @@
+         },
+         {
+           "path": "src/modules/delegates/include/aimee/delegates/delegate_economics.h",
+-          "sha256": "cbddf27189812b2adcfdc97199f0d6ca13c64529cd139cb192469449714b02ac"
++          "sha256": "424999e913f90a11d8df6ced4e436dc51037f3a0cce1c11a32dc0e8f78d93437"
+         },
+         {
+           "path": "src/modules/delegates/include/aimee/delegates/delegate_ephemeral_ws.h",
+@@ -1463,7 +1463,7 @@
+         },
+         {
+           "path": "src/modules/delegates/include/aimee/delegates/module_api.h",
+-          "sha256": "cfcbc09aad3876c123ed1c1945e56008eba8446c077dfbd08ffb460c8e935a0b"
++          "sha256": "4eff975db056d964031bb8fffe618cd57216fbdbcf97a8d3d37b0ef45cdc4b5d"
+         },
+         {
+           "path": "src/modules/delegates/include/aimee/delegates/panel_provider.h",
+@@ -1616,7 +1616,7 @@
+       ]
+     },
+     "public-symbols": {
+-      "sha256": "49e73d2ef140c152061a0350924231678bbead51e5e5e43ba4d7eb3080271d6c",
++      "sha256": "d6019d00e59662475f8e3325d0728ecd9405a6867e72b49fe206aed7b6c92e7f",
+       "source": "complete normalized contents of public-headers"
+     },
+     "routes": {

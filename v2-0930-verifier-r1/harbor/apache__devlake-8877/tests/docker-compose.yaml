@@ -1,0 +1,56 @@
+{
+  "services": {
+    "main": {
+      "pull_policy": "never",
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${CONTEXT_DIR}",
+          "target": "/tests",
+          "read_only": true
+        }
+      ],
+      "environment": {
+        "SWEPM_E2E_DB_HOST": "${COMPOSE_PROJECT_NAME}-db"
+      },
+      "depends_on": {
+        "db": {
+          "condition": "service_healthy"
+        }
+      }
+    },
+    "db": {
+      "image": "postgres:15-bookworm",
+      "pull_policy": "never",
+      "environment": {
+        "POSTGRES_USER": "swepm",
+        "POSTGRES_PASSWORD": "swepm",
+        "POSTGRES_DB": "lake"
+      },
+      "networks": {
+        "default": {
+          "aliases": [
+            "${COMPOSE_PROJECT_NAME}-db"
+          ]
+        }
+      },
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "pg_isready -U swepm -d lake"
+        ],
+        "interval": "2s",
+        "timeout": "5s",
+        "retries": 30
+      },
+      "mem_limit": "1g",
+      "cpus": 1
+    }
+  },
+  "networks": {
+    "default": {
+      "external": true,
+      "name": "swepm-verifier-r1"
+    }
+  }
+}

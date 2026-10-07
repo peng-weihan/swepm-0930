@@ -1,0 +1,565 @@
+diff --git a/tests/test_audio_file_regression.c b/tests/test_audio_file_regression.c
+index 698d71b..a2cdd0e 100644
+--- a/tests/test_audio_file_regression.c
++++ b/tests/test_audio_file_regression.c
+@@ -2,9 +2,9 @@
+  * Audio file regression tests - compare library output against reference files
+  */
+ 
++#include "shared/denoiser_logic/processing/hpss_filter.h"
+ #include <math.h>
+ #include <sndfile.h>
+-
+ #include <specbleach_denoiser.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -32,7 +32,8 @@ static const SpectralBleachDenoiserParameters canonical_denoiser_params = {
+     .reduction_amount = 20.0f,
+     .smoothing_factor = 0.0f,
+     .whitening_factor = 50.0f,
+-    .masking_depth = 0.5f};
++    .masking_depth = 0.5f,
++    .hpss_quality_mode = HPSS_QUALITY_LOW};
+ 
+ static const SpectralBleachDenoiserParameters canonical_adenoiser_params = {
+     .residual_listen = false,
+@@ -40,6 +41,7 @@ static const SpectralBleachDenoiserParameters canonical_adenoiser_params = {
+     .smoothing_factor = 0.0f,
+     .whitening_factor = 50.0f,
+     .masking_depth = 0.5f,
++    .hpss_quality_mode = HPSS_QUALITY_LOW,
+ 
+     .adaptive_noise = 1,
+     .noise_estimation_method = 0};
+diff --git a/tests/test_hpss_filter.c b/tests/test_hpss_filter.c
+new file mode 100644
+index 0000000..367765e
+--- /dev/null
++++ b/tests/test_hpss_filter.c
+@@ -0,0 +1,243 @@
++/*
++libspecbleach - A spectral processing library
++
++Copyright 2026 Luciano Dato <lucianodato@gmail.com>
++
++This library is free software; you can redistribute it and/or
++modify it under the terms of the GNU Lesser General Public
++License as published by the Free Software Foundation; either
++version 2.1 of the License, or (at your option) any later version.
++
++This library is distributed in the hope that it will be useful,
++but WITHOUT ANY WARRANTY; without even the implied warranty of
++MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
++Lesser General Public License for more details.
++
++You should have received a copy of the GNU Lesser General Public
++License along with this library; if not, write to the Free Software
++Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
++*/
++
++#include "shared/configurations.h"
++#include "shared/denoiser_logic/processing/hpss_filter.h"
++#include <math.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#define TEST_ASSERT(condition, message)                                        \
++  do {                                                                         \
++    if (!(condition)) {                                                        \
++      fprintf(stderr, "TEST FAILED: %s (%s:%d)\n", message, __FILE__,          \
++              __LINE__);                                                       \
++      exit(1);                                                                 \
++    }                                                                          \
++  } while (0)
++
++#define TEST_FLOAT_CLOSE(a, b, tolerance)                                      \
++  TEST_ASSERT(fabsf((a) - (b)) < (tolerance), "Float values not close enough")
++
++void test_hpss_filter(void) {
++  printf("Testing HPSS Filter...\n");
++
++  // 1. Invalid Initialization
++  HpssConfig invalid_cfg = {
++      .real_spectrum_size = 0U,
++      .time_window_size = 17U,
++      .freq_window_size = 17U,
++  };
++  HpssFilter* invalid_f = hpss_filter_initialize(invalid_cfg);
++  TEST_ASSERT(invalid_f == NULL, "Initialization with size 0 should fail");
++
++  // 2. NULL free check
++  hpss_filter_free(NULL);
++
++  // 3. Valid Initialization
++  HpssConfig config = {
++      .real_spectrum_size = 257U,
++      .time_window_size = HPSS_TIME_WINDOW_MEDIUM,
++      .freq_window_size = HPSS_FREQ_WINDOW_MEDIUM,
++  };
++  HpssFilter* filter = hpss_filter_initialize(config);
++  TEST_ASSERT(filter != NULL, "HPSS filter initialization should succeed");
++
++  // Check latency
++  uint32_t latency = hpss_filter_get_latency_frames(filter);
++  TEST_ASSERT(latency == 8U, "Latency should be 8 frames for 17-frame window");
++
++  float current_mag[257];
++  float delayed_mag[257];
++  float mask_h[257];
++  float mask_p[257];
++
++  for (uint32_t i = 0; i < 257; ++i) {
++    current_mag[i] = 1.0f;
++  }
++
++  // 4. Process multiple frames with constant spectrum
++  for (uint32_t frame = 0; frame < 20; ++frame) {
++    bool ok =
++        hpss_filter_process(filter, current_mag, delayed_mag, mask_h, mask_p);
++    TEST_ASSERT(ok, "hpss_filter_process should succeed");
++  }
++
++  // Verify masks sum to ~1.0
++  for (uint32_t k = 0; k < 257; ++k) {
++    float sum_mask = mask_h[k] + mask_p[k];
++    TEST_FLOAT_CLOSE(sum_mask, 1.0f, 0.001f);
++    TEST_ASSERT(mask_h[k] >= 0.0f && mask_h[k] <= 1.0f, "mask_h in [0, 1]");
++    TEST_ASSERT(mask_p[k] >= 0.0f && mask_p[k] <= 1.0f, "mask_p in [0, 1]");
++  }
++
++  hpss_filter_free(filter);
++
++  // 5. Test transient onset detection
++  filter = hpss_filter_initialize(config);
++  TEST_ASSERT(filter != NULL, "HPSS filter initialization should succeed");
++
++  // Feed baseline quiet frames
++  for (uint32_t i = 0; i < 257; ++i) {
++    current_mag[i] = 0.01f;
++  }
++  for (uint32_t frame = 0; frame < 20; ++frame) {
++    (void)hpss_filter_process(filter, current_mag, delayed_mag, mask_h, mask_p);
++  }
++
++  // Feed sharp transient frame (huge broadband jump)
++  for (uint32_t i = 0; i < 257; ++i) {
++    current_mag[i] = 5.0f;
++  }
++  (void)hpss_filter_process(filter, current_mag, delayed_mag, mask_h, mask_p);
++
++  // Feed quiet frames until the transient reaches center frame (latency frames
++  // later)
++  for (uint32_t i = 0; i < 257; ++i) {
++    current_mag[i] = 0.01f;
++  }
++  for (uint32_t frame = 0; frame < latency; ++frame) {
++    (void)hpss_filter_process(filter, current_mag, delayed_mag, mask_h, mask_p);
++  }
++
++  // When the transient is in the center frame, mask_p should dominate (high
++  // percussive weight)
++  float avg_p = 0.0f;
++  for (uint32_t k = 0; k < 257; ++k) {
++    avg_p += mask_p[k];
++  }
++  avg_p /= 257.0f;
++  TEST_ASSERT(avg_p > 0.5f,
++              "Percussive mask should dominate on transient frame");
++
++  hpss_filter_free(filter);
++
++  // 6. Test Dynamic Quality Mode Reconfiguration
++  filter = hpss_filter_initialize(config);
++  TEST_ASSERT(filter != NULL, "HPSS filter initialization should succeed");
++  TEST_ASSERT(hpss_filter_get_latency_frames(filter) == 8U,
++              "Default latency is 8");
++
++  // Switch to Low
++  hpss_filter_set_quality_mode(filter, HPSS_QUALITY_LOW);
++  TEST_ASSERT(hpss_filter_get_latency_frames(filter) == 4U,
++              "Low quality latency should be 4 frames");
++  for (uint32_t frame = 0; frame < 10; ++frame) {
++    bool ok =
++        hpss_filter_process(filter, current_mag, delayed_mag, mask_h, mask_p);
++    TEST_ASSERT(ok, "Process on Low quality mode should succeed");
++  }
++
++  // Switch to High
++  hpss_filter_set_quality_mode(filter, HPSS_QUALITY_HIGH);
++  TEST_ASSERT(hpss_filter_get_latency_frames(filter) == 16U,
++              "High quality latency should be 16 frames");
++  for (uint32_t frame = 0; frame < 10; ++frame) {
++    bool ok =
++        hpss_filter_process(filter, current_mag, delayed_mag, mask_h, mask_p);
++    TEST_ASSERT(ok, "Process on High quality mode should succeed");
++  }
++
++  // Switch to Off
++  hpss_filter_set_quality_mode(filter, HPSS_QUALITY_OFF);
++  TEST_ASSERT(hpss_filter_get_latency_frames(filter) == 0U,
++              "Off quality latency should be 0 frames");
++  for (uint32_t frame = 0; frame < 10; ++frame) {
++    bool ok =
++        hpss_filter_process(filter, current_mag, delayed_mag, mask_h, mask_p);
++    TEST_ASSERT(ok, "Process on Off quality mode should succeed");
++    TEST_ASSERT(delayed_mag[10] == current_mag[10],
++                "Delayed magnitude should match current magnitude in Off mode");
++    TEST_ASSERT(mask_h[10] == 1.0f, "Harmonic mask should be 1.0 in Off mode");
++  }
++
++  // Switch back to Medium
++  hpss_filter_set_quality_mode(filter, HPSS_QUALITY_MEDIUM);
++  TEST_ASSERT(hpss_filter_get_latency_frames(filter) == 8U,
++              "Medium quality latency should be 8 frames");
++  // Test redundant mode set
++  hpss_filter_set_quality_mode(filter, HPSS_QUALITY_MEDIUM);
++  TEST_ASSERT(hpss_filter_get_latency_frames(filter) == 8U,
++              "Medium quality latency should remain 8 frames");
++
++  for (uint32_t frame = 0; frame < 10; ++frame) {
++    bool ok =
++        hpss_filter_process(filter, current_mag, delayed_mag, mask_h, mask_p);
++    TEST_ASSERT(ok, "Process on Medium quality mode should succeed");
++  }
++
++  // Switch to invalid/default mode
++  hpss_filter_set_quality_mode(filter, (HpssQualityMode)999);
++  TEST_ASSERT(hpss_filter_get_latency_frames(filter) == 8U,
++              "Default quality latency should be 8 frames");
++
++  hpss_filter_free(filter);
++
++  // 7. Test even window configuration
++  HpssConfig even_cfg = {
++      .real_spectrum_size = 257U,
++      .time_window_size = 16U,
++      .freq_window_size = 16U,
++  };
++  HpssFilter* even_filter = hpss_filter_initialize(even_cfg);
++  TEST_ASSERT(even_filter != NULL, "Even config should be normalized to odd");
++  TEST_ASSERT(hpss_filter_get_latency_frames(even_filter) == 8U,
++              "16 window size rounds to 17, latency 8");
++  hpss_filter_free(even_filter);
++
++  // 8. Test oversized window configuration (clamping to HPSS_TIME_WINDOW_MAX)
++  HpssConfig oversized_cfg = {
++      .real_spectrum_size = 257U,
++      .time_window_size = 101U,
++      .freq_window_size = 17U,
++  };
++  HpssFilter* oversized_filter = hpss_filter_initialize(oversized_cfg);
++  TEST_ASSERT(oversized_filter != NULL, "Oversized config should initialize");
++  TEST_ASSERT(hpss_filter_get_latency_frames(oversized_filter) ==
++                  (HPSS_TIME_WINDOW_MAX - 1U) / 2U,
++              "Oversized window clamped to MAX");
++  for (int i = 0; i < (int)HPSS_TIME_WINDOW_MAX + 5; ++i) {
++    bool ok = hpss_filter_process(oversized_filter, current_mag, delayed_mag,
++                                  mask_h, mask_p);
++    TEST_ASSERT(ok, "Oversized filter processing should succeed");
++  }
++  hpss_filter_free(oversized_filter);
++
++  // 9. Test NULL safety
++  hpss_filter_set_quality_mode(NULL, HPSS_QUALITY_LOW);
++  TEST_ASSERT(hpss_filter_get_latency_frames(NULL) == 0U, "NULL latency is 0");
++  TEST_ASSERT(hpss_filter_get_onset_ratio(NULL) == 0.0f, "NULL onset ratio 0");
++  TEST_ASSERT(hpss_filter_process(NULL, current_mag, delayed_mag, mask_h,
++                                  mask_p) == false,
++              "NULL filter process fails");
++  filter = hpss_filter_initialize(config);
++  TEST_ASSERT(
++      hpss_filter_process(filter, NULL, delayed_mag, mask_h, mask_p) == false,
++      "NULL magnitude process fails");
++  hpss_filter_free(filter);
++
++  printf("✓ HPSS Filter tests passed\n");
++}
++
++int main(void) {
++  test_hpss_filter();
++  return 0;
++}
+diff --git a/tests/test_specbleach_2d_denoiser.c b/tests/test_specbleach_2d_denoiser.c
+index 4bc14f4..7fea237 100644
+--- a/tests/test_specbleach_2d_denoiser.c
++++ b/tests/test_specbleach_2d_denoiser.c
+@@ -23,6 +23,7 @@ Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+ #include <stdlib.h>
+ #include <string.h>
+ 
++#include "shared/denoiser_logic/processing/hpss_filter.h"
+ #include "specbleach_2d_denoiser.h"
+ 
+ #define ROLLING_MEAN 1
+@@ -291,16 +292,77 @@ void test_process_loop(void) {
+                                             peak_freqs, 10);
+   free(dummy_prof);
+ 
+-  // Process with tonal reduction
++  // Process with tonal reduction and HPSS
+   float in_buf[1024] = {0};
+   float out_buf[1024] = {0};
+   params.learn_noise = 0;
+   params.tonal_reduction = 0.5f;
+   params.reduction_amount = 20.0f;
++  params.hpss_quality_mode = HPSS_QUALITY_MEDIUM;
+   specbleach_2d_load_parameters(h, params);
+   specbleach_2d_process(h, 1024, in_buf, out_buf);
++  for (int i = 0; i < 1024; ++i) {
++    TEST_ASSERT(isfinite(out_buf[i]), "Output samples must be finite");
++  }
+   specbleach_2d_get_tonal_mask(h);
+-  specbleach_2d_get_tonal_peaks(h, peak_freqs, 10);
++  // Feed non-zero audio with active 2D processing
++  for (int i = 0; i < 1024; ++i) {
++    in_buf[i] = ((float)(i % 100) / 100.0f) * 0.5f;
++  }
++  params.smoothing_factor = 0.5f;
++  params.whitening_factor = 0.5f;
++  params.residual_listen = 1;
++  params.nlm_masking_protection = 5.0f;
++  params.suppression_strength = 2.0f;
++  specbleach_2d_load_parameters(h, params);
++  for (int f = 0; f < 10; ++f) {
++    specbleach_2d_process(h, 1024, in_buf, out_buf);
++    for (int i = 0; i < 1024; ++i) {
++      TEST_ASSERT(isfinite(out_buf[i]), "Output samples must be finite");
++    }
++  }
++
++  // Feed a sharp transient/onset to trigger onset ducking in 2D
++  float transient_buf[1024];
++  for (int i = 0; i < 1024; ++i) {
++    transient_buf[i] = (i % 2 == 0) ? 0.9f : -0.9f;
++  }
++  float curve_bias[1024] = {0};
++  params.reduction_curve_enabled = true;
++  params.reduction_curve_bias = curve_bias;
++  specbleach_2d_load_parameters(h, params);
++  specbleach_2d_process(h, 1024, transient_buf, out_buf);
++  for (int i = 0; i < 1024; ++i) {
++    TEST_ASSERT(isfinite(out_buf[i]), "Output samples must be finite");
++  }
++
++  // Switch HPSS modes and verify latency
++  params.residual_listen = 0;
++  params.reduction_curve_enabled = false;
++  params.reduction_curve_bias = NULL;
++
++  params.hpss_quality_mode = HPSS_QUALITY_OFF;
++  specbleach_2d_load_parameters(h, params);
++  specbleach_2d_process(h, 1024, in_buf, out_buf);
++  uint32_t lat0 = specbleach_2d_get_latency(h);
++
++  params.hpss_quality_mode = HPSS_QUALITY_LOW;
++  specbleach_2d_load_parameters(h, params);
++  specbleach_2d_process(h, 1024, in_buf, out_buf);
++  uint32_t lat1 = specbleach_2d_get_latency(h);
++  TEST_ASSERT(lat1 >= lat0, "Low quality 2D latency >= Off");
++
++  params.hpss_quality_mode = HPSS_QUALITY_MEDIUM;
++  specbleach_2d_load_parameters(h, params);
++  specbleach_2d_process(h, 1024, in_buf, out_buf);
++  uint32_t lat2 = specbleach_2d_get_latency(h);
++  TEST_ASSERT(lat2 > lat1, "Medium quality 2D latency > Low");
++
++  params.hpss_quality_mode = HPSS_QUALITY_HIGH;
++  specbleach_2d_load_parameters(h, params);
++  specbleach_2d_process(h, 1024, in_buf, out_buf);
++  uint32_t lat3 = specbleach_2d_get_latency(h);
++  TEST_ASSERT(lat3 > lat2, "High quality 2D latency > Medium");
+ 
+   // NULL checks
+   TEST_ASSERT(specbleach_2d_get_tonal_mask(NULL) == NULL, "NULL 2D tonal mask");
+diff --git a/tests/test_specbleach_denoiser.c b/tests/test_specbleach_denoiser.c
+index 442a8f2..fd12ce8 100644
+--- a/tests/test_specbleach_denoiser.c
++++ b/tests/test_specbleach_denoiser.c
+@@ -7,6 +7,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
++#include "shared/denoiser_logic/processing/hpss_filter.h"
+ #include "specbleach_denoiser.h"
+ 
+ #define ROLLING_MEAN 1
+@@ -416,18 +417,70 @@ int main(void) {
+                                          10);
+   free(dummy_prof);
+ 
+-  // Process with tonal reduction enabled
++  // Process with tonal reduction and HPSS enabled
+   float in_buf[1024] = {0};
+   float out_buf[1024] = {0};
+   SpectralBleachDenoiserParameters t_params = {
+       .learn_noise = false,
+       .tonal_reduction = 0.5f,
+       .reduction_amount = 20.0f,
++      .hpss_quality_mode = 2,
+   };
+   specbleach_load_parameters(h, t_params);
+   specbleach_process(h, 1024, in_buf, out_buf);
+   specbleach_get_tonal_mask(h);
+-  specbleach_get_tonal_peaks(h, peak_freqs, 10);
++  // Feed non-zero audio with active processing
++  for (int i = 0; i < 1024; ++i) {
++    in_buf[i] = ((float)(i % 100) / 100.0f) * 0.5f;
++  }
++  t_params.smoothing_factor = 0.5f;
++  t_params.whitening_factor = 0.5f;
++  t_params.residual_listen = 1;
++  t_params.masking_depth = 5.0f;
++  t_params.suppression_strength = 2.0f;
++  specbleach_load_parameters(h, t_params);
++  for (int f = 0; f < 10; ++f) {
++    specbleach_process(h, 1024, in_buf, out_buf);
++  }
++
++  // Feed a sharp transient/onset to trigger onset ducking
++  float transient_buf[1024];
++  for (int i = 0; i < 1024; ++i) {
++    transient_buf[i] = (i % 2 == 0) ? 0.9f : -0.9f;
++  }
++  float curve_bias[1024] = {0};
++  t_params.reduction_curve_enabled = true;
++  t_params.reduction_curve_bias = curve_bias;
++  specbleach_load_parameters(h, t_params);
++  specbleach_process(h, 1024, transient_buf, out_buf);
++
++  // Switch HPSS modes and verify latency
++  t_params.residual_listen = 0;
++  t_params.reduction_curve_enabled = false;
++  t_params.reduction_curve_bias = NULL;
++
++  t_params.hpss_quality_mode = HPSS_QUALITY_OFF;
++  specbleach_load_parameters(h, t_params);
++  specbleach_process(h, 1024, in_buf, out_buf);
++  uint32_t lat0 = specbleach_get_latency(h);
++
++  t_params.hpss_quality_mode = HPSS_QUALITY_LOW;
++  specbleach_load_parameters(h, t_params);
++  specbleach_process(h, 1024, in_buf, out_buf);
++  uint32_t lat1 = specbleach_get_latency(h);
++  TEST_ASSERT(lat1 > lat0, "Low quality latency > Off");
++
++  t_params.hpss_quality_mode = HPSS_QUALITY_MEDIUM;
++  specbleach_load_parameters(h, t_params);
++  specbleach_process(h, 1024, in_buf, out_buf);
++  uint32_t lat2 = specbleach_get_latency(h);
++  TEST_ASSERT(lat2 > lat1, "Medium quality latency > Low");
++
++  t_params.hpss_quality_mode = HPSS_QUALITY_HIGH;
++  specbleach_load_parameters(h, t_params);
++  specbleach_process(h, 1024, in_buf, out_buf);
++  uint32_t lat3 = specbleach_get_latency(h);
++  TEST_ASSERT(lat3 > lat2, "High quality latency > Medium");
+ 
+   // Verify NULL handle protections
+   TEST_ASSERT(specbleach_get_latency(NULL) == 0, "NULL latency");
+diff --git a/tests/test_specbleach_processor_core.c b/tests/test_specbleach_processor_core.c
+index e0657f7..85d3af5 100644
+--- a/tests/test_specbleach_processor_core.c
++++ b/tests/test_specbleach_processor_core.c
+@@ -213,26 +213,26 @@ void test_params_sanitize_functions(void) {
+   TEST_ASSERT(sp2.reduction_curve_bias == (const float*)0x1234,
+               "Sanitize enabled curve bias ptr");
+ 
+-  // Bounds clamping checks for noise_profile_offset_db (-6dB to +6dB)
++  // Bounds clamping checks for noise_profile_offset_db (-12dB to +12dB)
+   SpectralBleachDenoiserParameters p_min = p1;
+   p_min.noise_profile_offset_db = -20.0f;
+   DenoiserParameters sp_min = sb_denoiser_params_sanitize(p_min);
+-  TEST_FLOAT_CLOSE(sp_min.noise_profile_offset_linear, 0.5012f, 1e-3f);
++  TEST_FLOAT_CLOSE(sp_min.noise_profile_offset_linear, 0.2512f, 1e-3f);
+ 
+   SpectralBleachDenoiserParameters p_max = p1;
+   p_max.noise_profile_offset_db = 20.0f;
+   DenoiserParameters sp_max = sb_denoiser_params_sanitize(p_max);
+-  TEST_FLOAT_CLOSE(sp_max.noise_profile_offset_linear, 1.9953f, 1e-3f);
++  TEST_FLOAT_CLOSE(sp_max.noise_profile_offset_linear, 3.9811f, 1e-3f);
+ 
+   SpectralBleach2DDenoiserParameters p2_min = p2;
+   p2_min.noise_profile_offset_db = -20.0f;
+   Denoiser2DParameters sp2_min = sb_denoiser_2d_params_sanitize(p2_min);
+-  TEST_FLOAT_CLOSE(sp2_min.noise_profile_offset_linear, 0.5012f, 1e-3f);
++  TEST_FLOAT_CLOSE(sp2_min.noise_profile_offset_linear, 0.2512f, 1e-3f);
+ 
+   SpectralBleach2DDenoiserParameters p2_max = p2;
+   p2_max.noise_profile_offset_db = 20.0f;
+   Denoiser2DParameters sp2_max = sb_denoiser_2d_params_sanitize(p2_max);
+-  TEST_FLOAT_CLOSE(sp2_max.noise_profile_offset_linear, 1.9953f, 1e-3f);
++  TEST_FLOAT_CLOSE(sp2_max.noise_profile_offset_linear, 3.9811f, 1e-3f);
+ 
+   printf("✓ Params sanitize functions tests passed\n");
+ }
+diff --git a/tests/test_spectral_circular_buffer.c b/tests/test_spectral_circular_buffer.c
+index e7a72a7..5e02757 100644
+--- a/tests/test_spectral_circular_buffer.c
++++ b/tests/test_spectral_circular_buffer.c
+@@ -141,8 +141,8 @@ void test_circular_buffer_edge_cases(void) {
+   spectral_circular_buffer_push(NULL, layer0, NULL);
+   TEST_ASSERT(spectral_circular_buffer_retrieve(NULL, layer0, 0) == NULL,
+               "NULL handle retrieve");
+-  TEST_ASSERT(spectral_circular_buffer_retrieve(cb, 99, 0) == NULL,
+-              "Invalid layer id retrieve");
++  TEST_ASSERT(spectral_circular_buffer_retrieve(cb, 999, 0) == NULL,
++              "Out of bounds layer retrieve");
+   spectral_circular_buffer_advance(NULL);
+ 
+   spectral_circular_buffer_free(cb);
+@@ -150,6 +150,27 @@ void test_circular_buffer_edge_cases(void) {
+   printf("✓ Edge cases passed\n");
+ }
+ 
++void test_circular_buffer_clear(void) {
++  printf("Testing circular buffer clear...\n");
++
++  SbSpectralCircularBuffer* cb = spectral_circular_buffer_create(4);
++  uint32_t layer0 = spectral_circular_buffer_add_layer(cb, 2);
++  float data[2] = {10.0f, 20.0f};
++
++  spectral_circular_buffer_push(cb, layer0, data);
++  spectral_circular_buffer_advance(cb);
++  spectral_circular_buffer_clear(cb);
++
++  float* retrieved = spectral_circular_buffer_retrieve(cb, layer0, 0);
++  TEST_ASSERT(retrieved != NULL, "Retrieve after clear should succeed");
++  TEST_FLOAT_CLOSE(retrieved[0], 0.0f, 1e-6f);
++  TEST_FLOAT_CLOSE(retrieved[1], 0.0f, 1e-6f);
++
++  spectral_circular_buffer_clear(NULL);
++  spectral_circular_buffer_free(cb);
++  printf("✓ Clear passed\n");
++}
++
+ int main(void) {
+   printf("Running SbSpectralCircularBuffer tests...\n\n");
+ 
+@@ -157,6 +178,7 @@ int main(void) {
+   test_circular_buffer_push_retrieve();
+   test_circular_buffer_delay_alignment();
+   test_circular_buffer_edge_cases();
++  test_circular_buffer_clear();
+ 
+   printf("\n✅ All spectral circular buffer tests passed!\n");
+   return 0;
+diff --git a/tests/test_stft_latency.c b/tests/test_stft_latency.c
+index da4d454..e8e954c 100644
+--- a/tests/test_stft_latency.c
++++ b/tests/test_stft_latency.c
+@@ -65,6 +65,14 @@ int main(void) {
+   printf("  (Previously was incorrectly: frame_size - hop = %u samples)\n",
+          old_incorrect_latency);
+ 
++  // Test getters and NULL safety
++  assert(get_stft_hop_size(processor) == expected_hop);
++  assert(get_stft_real_spectrum_size(processor) > 0);
++  assert(get_stft_real_spectrum_size(NULL) == 0);
++  assert(get_stft_latency(NULL) == 0);
++  assert(get_stft_hop_size(NULL) == 0);
++  assert(get_stft_fft_size(NULL) == 0);
++
+   stft_processor_free(processor);
+ 
+   return 0;

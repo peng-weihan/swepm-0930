@@ -1,0 +1,1513 @@
+diff --git a/scripts/test-inject-messages.js b/scripts/test-inject-messages.js
+new file mode 100644
+index 00000000..865187fe
+--- /dev/null
++++ b/scripts/test-inject-messages.js
+@@ -0,0 +1,138 @@
++/**
++ * 在 DevTools Console 中粘贴运行此脚本
++ * 向当前 Cowork 会话注入 200 条模拟消息用于性能测试
++ *
++ * 使用方法:
++ *   1. 先打开一个 Cowork 会话
++ *   2. 打开 DevTools (Cmd+Shift+I)
++ *   3. 粘贴此脚本到 Console 并回车
++ */
++
++(function injectTestMessages() {
++  // Try multiple methods to find Redux store
++  let store = null;
++
++  // Method 1: window.__REDUX_STORE__ (if exposed)
++  if (window.__REDUX_STORE__) {
++    store = window.__REDUX_STORE__;
++  }
++
++  // Method 2: Walk React fiber tree
++  if (!store) {
++    const rootEl = document.getElementById('root');
++    if (rootEl) {
++      const fiberKey = Object.keys(rootEl).find(k => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance'));
++      if (fiberKey) {
++        let fiber = rootEl[fiberKey];
++        while (fiber) {
++          const s = fiber.memoizedProps?.store || fiber.stateNode?.store;
++          if (s?.dispatch && s?.getState) {
++            store = s;
++            break;
++          }
++          fiber = fiber.return;
++        }
++      }
++    }
++  }
++
++  // Method 3: Scan all DOM elements for React Provider
++  if (!store) {
++    const allEls = document.querySelectorAll('*');
++    for (const el of allEls) {
++      const key = Object.keys(el).find(k => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance'));
++      if (!key) continue;
++      let fiber = el[key];
++      let depth = 0;
++      while (fiber && depth < 50) {
++        const s = fiber.memoizedProps?.store;
++        if (s?.dispatch && s?.getState) {
++          store = s;
++          break;
++        }
++        fiber = fiber.return;
++        depth++;
++      }
++      if (store) break;
++    }
++  }
++
++  if (!store) {
++    console.error('Cannot find Redux store. Try running this in the renderer process DevTools.');
++    console.log('Tip: In Electron, use View > Toggle Developer Tools, or press Cmd+Option+I while the main window is focused.');
++    return;
++  }
++
++  const state = store.getState();
++  console.log('Found Redux store. State keys:', Object.keys(state));
++  const sessionId = state.cowork?.currentSessionId;
++  if (!sessionId) {
++    console.error('No active cowork session. Please open a session first.');
++    return;
++  }
++
++  console.log(`Injecting 200 messages into session: ${sessionId}`);
++
++  const sampleContents = [
++    '你好，请帮我分析一下这段代码的性能问题。',
++    '当然可以。让我看看你的代码...\n\n```typescript\nfunction fibonacci(n: number): number {\n  if (n <= 1) return n;\n  return fibonacci(n - 1) + fibonacci(n - 2);\n}\n```\n\n这个递归实现的时间复杂度是 O(2^n)，建议使用动态规划优化。',
++    '能给个优化后的版本吗？',
++    '好的，这是使用动态规划优化后的版本：\n\n```typescript\nfunction fibonacci(n: number): number {\n  if (n <= 1) return n;\n  let prev = 0, curr = 1;\n  for (let i = 2; i <= n; i++) {\n    [prev, curr] = [curr, prev + curr];\n  }\n  return curr;\n}\n```\n\n时间复杂度从 O(2^n) 降到了 O(n)，空间复杂度 O(1)。',
++    '这个方案不错！还有别的优化思路吗？',
++    '还可以使用**矩阵快速幂**，将时间复杂度进一步降到 O(log n)：\n\n$$\\begin{pmatrix} F(n+1) \\\\ F(n) \\end{pmatrix} = \\begin{pmatrix} 1 & 1 \\\\ 1 & 0 \\end{pmatrix}^n \\begin{pmatrix} 1 \\\\ 0 \\end{pmatrix}$$\n\n不过对于大多数应用场景，O(n) 的方案已经足够了。',
++    '帮我写一个 React 组件，显示一个可以拖拽排序的列表。',
++    '我来帮你实现。这里使用 `@dnd-kit/core` 库：\n\n```tsx\nimport { DndContext, closestCenter } from \'@dnd-kit/core\';\nimport { SortableContext, verticalListSortingStrategy } from \'@dnd-kit/sortable\';\n\nfunction SortableList({ items, onReorder }) {\n  return (\n    <DndContext collisionDetection={closestCenter} onDragEnd={handleDragEnd}>\n      <SortableContext items={items} strategy={verticalListSortingStrategy}>\n        {items.map(item => <SortableItem key={item.id} item={item} />)}\n      </SortableContext>\n    </DndContext>\n  );\n}\n```',
++    '谢谢！能帮我看看为什么 TypeScript 报错了吗？',
++    '请把报错信息发给我看看。',
++    '```\nTS2345: Argument of type \'string\' is not assignable to parameter of type \'number\'.\n```',
++    '这是类型不匹配的错误。你传入了一个字符串，但函数期望的是数字类型。可以使用 `parseInt()` 或 `Number()` 进行转换。',
++    '这个项目的目录结构能帮我梳理一下吗？',
++    '好的，我来看一下当前项目结构...\n\n```\nsrc/\n├── main/          # Electron 主进程\n├── renderer/      # React 渲染进程\n│   ├── components/\n│   ├── services/\n│   ├── store/\n│   └── types/\n└── shared/        # 共享类型和工具\n```',
++    '帮我写一个单元测试。',
++    '```typescript\nimport { describe, it, expect } from \'vitest\';\nimport { fibonacci } from \'./fibonacci\';\n\ndescribe(\'fibonacci\', () => {\n  it(\'should return 0 for n=0\', () => {\n    expect(fibonacci(0)).toBe(0);\n  });\n  it(\'should return 1 for n=1\', () => {\n    expect(fibonacci(1)).toBe(1);\n  });\n  it(\'should return 55 for n=10\', () => {\n    expect(fibonacci(10)).toBe(55);\n  });\n});\n```',
++    '运行结果全部通过了 ✅',
++    '太好了！测试覆盖了边界情况和正常情况，代码质量有保障。',
++    '还有什么需要优化的地方吗？',
++    '建议再加几个方面的测试：\n\n1. **负数输入** - 测试 `fibonacci(-1)` 的行为\n2. **大数输入** - 测试 `fibonacci(50)` 确保不会溢出\n3. **性能测试** - 确保大数计算在合理时间内完成',
++    '好的，我加上这些测试用例。',
++  ];
++
++  const now = Date.now();
++  const messages = [];
++
++  for (let i = 0; i < 200; i++) {
++    const isUser = i % 2 === 0;
++    const contentIndex = i % sampleContents.length;
++    messages.push({
++      sessionId,
++      message: {
++        id: `test-msg-${i}-${Date.now()}`,
++        type: isUser ? 'user' : 'assistant',
++        content: sampleContents[contentIndex],
++        timestamp: now - (200 - i) * 1000,
++        metadata: isUser ? {} : { isFinal: true },
++      },
++    });
++  }
++
++  // Batch dispatch
++  const batchSize = 10;
++  let injected = 0;
++
++  function injectBatch() {
++    const batch = messages.slice(injected, injected + batchSize);
++    batch.forEach(msg => {
++      store.dispatch({ type: 'cowork/addMessage', payload: msg });
++    });
++    injected += batch.length;
++    console.log(`Injected ${injected}/${messages.length} messages...`);
++
++    if (injected < messages.length) {
++      requestAnimationFrame(injectBatch);
++    } else {
++      console.log('✅ Done! 200 messages injected. Scroll the chat to test performance.');
++    }
++  }
++
++  injectBatch();
++})();
+\ No newline at end of file
+diff --git a/src/main/libs/openclawConfigSync.test.ts b/src/main/libs/openclawConfigSync.test.ts
+new file mode 100644
+index 00000000..0055f579
+--- /dev/null
++++ b/src/main/libs/openclawConfigSync.test.ts
+@@ -0,0 +1,89 @@
++import { test, expect, describe } from 'vitest';
++
++// Mirror the env var name generation logic from openclawConfigSync.ts:84
++// and claudeSettings.ts:449 (both use the same pattern)
++const providerApiKeyEnvVar = (providerName: string): string => {
++  const envName = providerName.toUpperCase().replace(/[^A-Z0-9]/g, '_');
++  return `LOBSTER_APIKEY_${envName}`;
++};
++
++describe('providerApiKeyEnvVar', () => {
++  test('converts simple provider names', () => {
++    expect(providerApiKeyEnvVar('moonshot')).toBe('LOBSTER_APIKEY_MOONSHOT');
++    expect(providerApiKeyEnvVar('anthropic')).toBe('LOBSTER_APIKEY_ANTHROPIC');
++    expect(providerApiKeyEnvVar('openai')).toBe('LOBSTER_APIKEY_OPENAI');
++    expect(providerApiKeyEnvVar('ollama')).toBe('LOBSTER_APIKEY_OLLAMA');
++  });
++
++  test('replaces hyphens and special chars with underscores', () => {
++    expect(providerApiKeyEnvVar('lobsterai-server')).toBe('LOBSTER_APIKEY_LOBSTERAI_SERVER');
++    expect(providerApiKeyEnvVar('my.provider')).toBe('LOBSTER_APIKEY_MY_PROVIDER');
++  });
++
++  test('server key matches hardcoded convention', () => {
++    // lobsterai-server uses hardcoded 'server' in buildProviderSelection
++    expect(providerApiKeyEnvVar('server')).toBe('LOBSTER_APIKEY_SERVER');
++  });
++});
++
++describe('env var stability on model switch', () => {
++  // Simulate what collectSecretEnvVars does: collect all provider keys
++  const simulateCollectEnvVars = (providers: Record<string, { enabled: boolean; apiKey: string }>, serverToken?: string) => {
++    const env: Record<string, string> = {};
++
++    if (serverToken) {
++      env.LOBSTER_APIKEY_SERVER = serverToken;
++    }
++
++    for (const [name, config] of Object.entries(providers)) {
++      if (!config.enabled) continue;
++      const envName = name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
++      env[`LOBSTER_APIKEY_${envName}`] = config.apiKey;
++    }
++
++    return env;
++  };
++
++  test('switching from server to custom provider does not change env var keys', () => {
++    const providers = {
++      moonshot: { enabled: true, apiKey: 'sk-moon-123' },
++    };
++    const serverToken = 'access-token-xyz';
++
++    // Simulate env vars before switch (using server model)
++    const envBefore = simulateCollectEnvVars(providers, serverToken);
++    // Simulate env vars after switch (using moonshot model) - same inputs
++    const envAfter = simulateCollectEnvVars(providers, serverToken);
++
++    expect(JSON.stringify(envBefore)).toBe(JSON.stringify(envAfter));
++  });
++
++  test('switching between two custom providers does not change env var keys', () => {
++    const providers = {
++      moonshot: { enabled: true, apiKey: 'sk-moon-123' },
++      anthropic: { enabled: true, apiKey: 'sk-ant-456' },
++    };
++
++    // Both providers always present regardless of which is active
++    const envBefore = simulateCollectEnvVars(providers);
++    const envAfter = simulateCollectEnvVars(providers);
++
++    expect(JSON.stringify(envBefore)).toBe(JSON.stringify(envAfter));
++    expect(envBefore.LOBSTER_APIKEY_MOONSHOT).toBe('sk-moon-123');
++    expect(envBefore.LOBSTER_APIKEY_ANTHROPIC).toBe('sk-ant-456');
++  });
++
++  test('only editing apiKey value causes env var change', () => {
++    const providersBefore = {
++      moonshot: { enabled: true, apiKey: 'sk-moon-OLD' },
++    };
++    const providersAfter = {
++      moonshot: { enabled: true, apiKey: 'sk-moon-NEW' },
++    };
++
++    const envBefore = simulateCollectEnvVars(providersBefore);
++    const envAfter = simulateCollectEnvVars(providersAfter);
++
++    expect(JSON.stringify(envBefore)).not.toBe(JSON.stringify(envAfter));
++  });
++});
+diff --git a/src/scheduled-task/enginePrompt.test.ts b/src/scheduled-task/enginePrompt.test.ts
+new file mode 100644
+index 00000000..3c88fca8
+--- /dev/null
++++ b/src/scheduled-task/enginePrompt.test.ts
+@@ -0,0 +1,25 @@
++import { test, expect } from 'vitest';
++import { buildScheduledTaskEnginePrompt, SCHEDULED_TASK_SWITCH_MESSAGE } from './enginePrompt';
++
++test('openclaw prompt points scheduled task requests to the native cron tool', () => {
++  const prompt = buildScheduledTaskEnginePrompt('openclaw');
++
++  expect(prompt).toMatch(/native `cron` tool/i);
++  expect(prompt).toMatch(/action: "add".*cron\.add/i);
++  expect(prompt).toMatch(/active conversation context/i);
++  expect(prompt).toMatch(/follow the native `cron` tool schema/i);
++  expect(prompt).toMatch(/one-time reminders .*future iso timestamp with an explicit timezone offset/i);
++  expect(prompt).toMatch(/plugins provide session context and outbound delivery; they do not own scheduling logic/i);
++  expect(prompt).toMatch(/native im\/channel sessions, ignore channel-specific reminder helpers or reminder skills/i);
++  expect(prompt).toMatch(/do not use wrapper payloads .*qqbot_payload.*qqbot_cron.*cron_reminder/i);
++  expect(prompt).toMatch(/do not use `sessions_spawn`, `subagents`, or ad-hoc background workflows as a substitute for `cron\.add`/i);
++  expect(prompt).toMatch(/never emulate reminders .*bash.*sleep.*openclaw.*claw/i);
++  expect(prompt).toMatch(/if the native `cron` tool is unavailable/i);
++});
++
++test('yd_cowork prompt tells the user to switch engines', () => {
++  const prompt = buildScheduledTaskEnginePrompt('yd_cowork');
++
++  expect(prompt).toMatch(new RegExp(SCHEDULED_TASK_SWITCH_MESSAGE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
++  expect(prompt).toMatch(/do not attempt to create, update, list, enable, disable, or delete scheduled tasks/i);
++});
+diff --git a/src/scheduled-task/fixtures.ts b/src/scheduled-task/fixtures.ts
+new file mode 100644
+index 00000000..0208378a
+--- /dev/null
++++ b/src/scheduled-task/fixtures.ts
+@@ -0,0 +1,70 @@
++import type { PolicyTaskModel, PolicyDelivery } from './policies/types';
++import type { TaskOrigin, ExecutionBinding } from './origin';
++import type { SessionTarget, WakeMode } from './constants';
++import {
++  SessionTarget as ST,
++  WakeMode as WM,
++  ScheduleKind,
++  PayloadKind,
++  DeliveryMode,
++  DefaultAgentId,
++  OriginKind,
++  BindingKind,
++} from './constants';
++
++interface TaskOverrides {
++  id?: string;
++  name?: string;
++  description?: string;
++  enabled?: boolean;
++  schedule?: unknown;
++  sessionTarget?: SessionTarget;
++  wakeMode?: WakeMode;
++  payload?: unknown;
++  delivery?: PolicyDelivery;
++  agentId?: string | null;
++  sessionKey?: string | null;
++  state?: unknown;
++  createdAt?: string;
++  updatedAt?: string;
++  origin?: TaskOrigin;
++  binding?: ExecutionBinding;
++}
++
++/** Create a minimal wire-format ScheduledTask with sensible defaults. */
++export function makeTask(overrides: TaskOverrides = {}) {
++  return {
++    id: overrides.id ?? 'task-test-001',
++    name: overrides.name ?? 'Test Task',
++    description: overrides.description ?? '',
++    enabled: overrides.enabled ?? true,
++    schedule: overrides.schedule ?? { kind: ScheduleKind.Every, everyMs: 3600000 },
++    sessionTarget: overrides.sessionTarget ?? ST.Main,
++    wakeMode: overrides.wakeMode ?? WM.Now,
++    payload: overrides.payload ?? { kind: PayloadKind.SystemEvent, text: 'test' },
++    delivery: overrides.delivery ?? { mode: DeliveryMode.None as const },
++    agentId: overrides.agentId ?? DefaultAgentId,
++    sessionKey: overrides.sessionKey ?? null,
++    state: overrides.state ?? {
++      nextRunAtMs: 0,
++      lastRunAtMs: 0,
++      lastStatus: null,
++      lastError: null,
++      lastDurationMs: null,
++      runningAtMs: null,
++      consecutiveErrors: 0,
++    },
++    createdAt: overrides.createdAt ?? new Date().toISOString(),
++    updatedAt: overrides.updatedAt ?? new Date().toISOString(),
++  };
++}
++
++/** Create a minimal ScheduledTaskModel (domain model) with origin + binding. */
++export function makeModel(overrides: TaskOverrides = {}): PolicyTaskModel {
++  const base = makeTask(overrides);
++  return {
++    ...base,
++    origin: overrides.origin ?? { kind: OriginKind.Manual },
++    binding: overrides.binding ?? { kind: BindingKind.NewSession },
++  } as PolicyTaskModel;
++}
+diff --git a/src/scheduled-task/integration.test.ts b/src/scheduled-task/integration.test.ts
+new file mode 100644
+index 00000000..103b7ac3
+--- /dev/null
++++ b/src/scheduled-task/integration.test.ts
+@@ -0,0 +1,131 @@
++import { test, expect } from 'vitest';
++import initSqlJs from 'sql.js';
++import { makeTask, makeModel } from './fixtures';
++import { ScheduledTaskMetaStore } from './metaStore';
++import { TaskModelMapper } from './modelMapper';
++import { taskPolicyRegistry } from './policies/registry';
++import {
++  OriginKind, BindingKind, ScheduleKind, PayloadKind,
++  DeliveryMode, DeliveryChannel,
++} from './constants';
++
++const mapper = new TaskModelMapper();
++
++async function createMetaStore() {
++  const SQL = await initSqlJs();
++  const db = new SQL.Database();
++  return new ScheduledTaskMetaStore(db);
++}
++
++test('integration: manual create -> edit delivery to IM -> binding auto-updates', async () => {
++  const metaStore = await createMetaStore();
++  const origin = { kind: OriginKind.Manual as const };
++  const policy = taskPolicyRegistry.get(origin);
++
++  // 1. Create draft
++  const draft = mapper.createDraft(origin, policy.getCreateDefaults(origin));
++  draft.name = 'Daily Reminder';
++  draft.schedule = { kind: ScheduleKind.Cron, expr: '0 9 * * *' };
++  draft.payload = { kind: PayloadKind.SystemEvent, text: 'Good morning' };
++  expect(draft.binding.kind).toBe(BindingKind.NewSession);
++
++  // 2. Normalize
++  const normalized = policy.normalizeDraft(draft);
++
++  // 3. Edit delivery -> IM
++  const edited = policy.onDeliveryChanged(normalized, { mode: DeliveryMode.Announce, channel: 'telegram' });
++  expect(edited.binding.kind).toBe(BindingKind.IMSession);
++  expect((edited.binding as any).platform).toBe('telegram');
++
++  // 4. Save meta
++  metaStore.set('task-int-1', edited.origin, edited.binding);
++  const savedMeta = metaStore.get('task-int-1');
++  expect(savedMeta).toBeTruthy();
++  expect(JSON.parse(savedMeta!.binding).kind).toBe(BindingKind.IMSession);
++});
++
++test('integration: IM task -> switch to different IM platform -> binding platform updates', () => {
++  const origin = { kind: OriginKind.IM as const, platform: 'telegram', conversationId: 'c1' };
++  const policy = taskPolicyRegistry.get(origin);
++  const defaults = policy.getCreateDefaults(origin);
++  const draft = mapper.createDraft(origin, defaults);
++  draft.binding = { kind: BindingKind.IMSession, platform: 'telegram', conversationId: 'c1', sessionId: 'sess-1' };
++
++  const edited = policy.onDeliveryChanged(draft, { mode: DeliveryMode.Announce, channel: 'discord' });
++  expect(edited.binding.kind).toBe(BindingKind.IMSession);
++  expect((edited.binding as any).platform).toBe('discord');
++});
++
++test('integration: cowork task -> delivery change to webhook -> binding stays', () => {
++  const origin = { kind: OriginKind.Cowork as const, sessionId: 'sess-99' };
++  const policy = taskPolicyRegistry.get(origin);
++  const model = makeModel({
++    origin,
++    binding: { kind: BindingKind.UISession, sessionId: 'sess-99' },
++    delivery: { mode: DeliveryMode.None },
++  });
++
++  const edited = policy.onDeliveryChanged(model, { mode: DeliveryMode.Webhook });
++  expect(edited.binding).toEqual(model.binding);
++  expect(edited.delivery.mode).toBe(DeliveryMode.Webhook);
++});
++
++test('integration: infer -> persist -> reload uses stored meta (not re-infer)', async () => {
++  const metaStore = await createMetaStore();
++  const wire = makeTask({ sessionKey: 'agent:main:lobsterai:sess-99' });
++
++  // 1. First load -- infer
++  const model1 = mapper.fromWire(wire);
++  expect(model1.origin.kind).toBe(OriginKind.Cowork);
++  metaStore.set(wire.id, model1.origin, model1.binding);
++
++  // 2. Second load -- read from store
++  const meta = metaStore.get(wire.id);
++  const model2 = mapper.fromWire(wire, {
++    origin: JSON.parse(meta!.origin),
++    binding: JSON.parse(meta!.binding),
++  });
++  expect(model2.origin).toEqual(model1.origin);
++  expect(model2.binding).toEqual(model1.binding);
++});
++
++test('integration: wire roundtrip preserves all fields', () => {
++  const model = makeModel({
++    name: 'Roundtrip',
++    description: 'Desc with "quotes" & special chars',
++    schedule: { kind: ScheduleKind.Cron, expr: '*/5 * * * *' },
++    payload: { kind: PayloadKind.AgentTurn, message: 'Do work', timeoutSeconds: 120 },
++    delivery: { mode: DeliveryMode.Announce, channel: 'feishu', to: 'user-1' },
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.NewSession },
++  });
++  const policy = taskPolicyRegistry.get(model.origin);
++  const wire = mapper.toWireInput(model, policy);
++
++  // Simulate fromWire (add back id/state/timestamps that toWireInput strips)
++  const restored = mapper.fromWire(
++    { ...wire, id: 'id-1', state: {}, createdAt: '', updatedAt: '' } as any,
++    { origin: model.origin, binding: model.binding },
++  );
++
++  expect(restored.name).toBe('Roundtrip');
++  expect(restored.description).toBe('Desc with "quotes" & special chars');
++  expect(restored.schedule).toEqual({ kind: ScheduleKind.Cron, expr: '*/5 * * * *' });
++  expect((restored.payload as any).message).toBe('Do work');
++  expect((restored.payload as any).timeoutSeconds).toBe(120);
++  expect((restored.delivery as any).channel).toBe('feishu');
++});
++
++test('integration: legacy task with IM announce -> normalizeDraft links binding', () => {
++  const origin = { kind: OriginKind.Legacy as const };
++  const policy = taskPolicyRegistry.get(origin);
++  const model = makeModel({
++    origin,
++    binding: { kind: BindingKind.NewSession },
++    delivery: { mode: DeliveryMode.Announce, channel: 'feishu' },
++  });
++
++  const normalized = policy.normalizeDraft(model);
++  expect(normalized.binding.kind).toBe(BindingKind.IMSession);
++  expect((normalized.binding as any).platform).toBe('feishu');
++});
+diff --git a/src/scheduled-task/metaStore.test.ts b/src/scheduled-task/metaStore.test.ts
+new file mode 100644
+index 00000000..c0d7558d
+--- /dev/null
++++ b/src/scheduled-task/metaStore.test.ts
+@@ -0,0 +1,87 @@
++import { test, expect } from 'vitest';
++import initSqlJs from 'sql.js';
++import { ScheduledTaskMetaStore } from './metaStore';
++import { OriginKind, BindingKind } from './constants';
++
++async function createMetaStore() {
++  const SQL = await initSqlJs();
++  const db = new SQL.Database();
++  return new ScheduledTaskMetaStore(db);
++}
++
++test('metaStore: ensureTable is idempotent (no error on double init)', async () => {
++  const SQL = await initSqlJs();
++  const db = new SQL.Database();
++  const store1 = new ScheduledTaskMetaStore(db);
++  const store2 = new ScheduledTaskMetaStore(db);
++  store1.set('t1', { kind: OriginKind.Manual }, { kind: BindingKind.NewSession });
++  expect(store2.get('t1')).toBeTruthy();
++});
++
++test('metaStore: set + get roundtrip preserves origin and binding', async () => {
++  const store = await createMetaStore();
++  const origin = { kind: OriginKind.IM, platform: 'telegram', conversationId: 'chat-123' };
++  const binding = { kind: BindingKind.IMSession, platform: 'telegram', conversationId: 'chat-123', sessionId: 'sess-1' };
++
++  store.set('task-1', origin, binding);
++  const meta = store.get('task-1');
++
++  expect(meta).toBeTruthy();
++  expect(meta!.taskId).toBe('task-1');
++  expect(JSON.parse(meta!.origin)).toEqual(origin);
++  expect(JSON.parse(meta!.binding)).toEqual(binding);
++});
++
++test('metaStore: set overwrites existing record (upsert)', async () => {
++  const store = await createMetaStore();
++  store.set('task-1', { kind: OriginKind.Manual }, { kind: BindingKind.NewSession });
++  store.set('task-1', { kind: OriginKind.Legacy }, { kind: BindingKind.NewSession });
++
++  const meta = store.get('task-1');
++  expect(meta).toBeTruthy();
++  expect(JSON.parse(meta!.origin)).toEqual({ kind: OriginKind.Legacy });
++});
++
++test('metaStore: get nonexistent returns null', async () => {
++  const store = await createMetaStore();
++  expect(store.get('nonexistent')).toBe(null);
++});
++
++test('metaStore: delete then get returns null', async () => {
++  const store = await createMetaStore();
++  store.set('task-1', { kind: OriginKind.Manual }, { kind: BindingKind.NewSession });
++  store.delete('task-1');
++  expect(store.get('task-1')).toBe(null);
++});
++
++test('metaStore: delete nonexistent does not throw', async () => {
++  const store = await createMetaStore();
++  expect(() => store.delete('nonexistent')).not.toThrow();
++});
++
++test('metaStore: list returns all records', async () => {
++  const store = await createMetaStore();
++  store.set('task-1', { kind: OriginKind.Manual }, { kind: BindingKind.NewSession });
++  store.set('task-2', { kind: OriginKind.Legacy }, { kind: BindingKind.NewSession });
++  const all = store.list();
++  expect(all.length).toBe(2);
++  const ids = all.map((m: any) => m.taskId).sort();
++  expect(ids).toEqual(['task-1', 'task-2']);
++});
++
++test('metaStore: list on empty table returns empty array', async () => {
++  const store = await createMetaStore();
++  expect(store.list()).toEqual([]);
++});
++
++test('metaStore: origin/binding with special characters survives JSON roundtrip', async () => {
++  const store = await createMetaStore();
++  const origin = { kind: OriginKind.IM, platform: 'dingtalk', conversationId: 'acct:user:"peer&1"' };
++  const binding = { kind: BindingKind.IMSession, platform: 'dingtalk', conversationId: 'acct:user:"peer&1"' };
++
++  store.set('task-special', origin, binding);
++  const meta = store.get('task-special');
++  expect(meta).toBeTruthy();
++  expect(JSON.parse(meta!.origin)).toEqual(origin);
++  expect(JSON.parse(meta!.binding)).toEqual(binding);
++});
+diff --git a/src/scheduled-task/modelMapper.test.ts b/src/scheduled-task/modelMapper.test.ts
+new file mode 100644
+index 00000000..5e9ea38a
+--- /dev/null
++++ b/src/scheduled-task/modelMapper.test.ts
+@@ -0,0 +1,121 @@
++import { test, expect } from 'vitest';
++import { makeTask, makeModel } from './fixtures';
++import { TaskModelMapper } from './modelMapper';
++import { ManualTaskPolicy } from './policies/manualPolicy';
++import { CoworkTaskPolicy } from './policies/coworkPolicy';
++import {
++  OriginKind, BindingKind, ScheduleKind, PayloadKind,
++  DeliveryMode, DeliveryChannel, SessionTarget, WakeMode,
++} from './constants';
++
++const mapper = new TaskModelMapper();
++const manualPolicy = new ManualTaskPolicy();
++const coworkPolicy = new CoworkTaskPolicy();
++
++test('mapper.fromWire: with explicit meta, uses meta directly', () => {
++  const wire = makeTask({ sessionKey: null });
++  const meta = {
++    origin: { kind: OriginKind.Cowork as const, sessionId: 'sess-x' },
++    binding: { kind: BindingKind.UISession as const, sessionId: 'sess-x' },
++  };
++  const model = mapper.fromWire(wire, meta);
++  expect(model.origin).toEqual(meta.origin);
++  expect(model.binding).toEqual(meta.binding);
++  expect(model.id).toBe(wire.id);
++  expect(model.name).toBe(wire.name);
++});
++
++test('mapper.fromWire: without meta, falls back to infer', () => {
++  const wire = makeTask({ sessionKey: 'agent:main:lobsterai:sess-1' });
++  const model = mapper.fromWire(wire);
++  expect(model.origin.kind).toBe(OriginKind.Cowork);
++  expect(model.binding.kind).toBe(BindingKind.UISession);
++});
++
++test('mapper.fromWire: preserves all wire fields', () => {
++  const wire = makeTask({
++    name: 'My Task',
++    description: 'Test desc',
++    schedule: { kind: ScheduleKind.Cron, expr: '*/5 * * * *' },
++    payload: { kind: PayloadKind.AgentTurn, message: 'work', timeoutSeconds: 120 },
++    delivery: { mode: DeliveryMode.Announce, channel: 'feishu' },
++  });
++  const model = mapper.fromWire(wire, { origin: { kind: OriginKind.Manual }, binding: { kind: BindingKind.NewSession } });
++  expect(model.name).toBe('My Task');
++  expect(model.description).toBe('Test desc');
++  expect(model.schedule).toEqual({ kind: ScheduleKind.Cron, expr: '*/5 * * * *' });
++  expect(model.delivery.channel).toBe('feishu');
++});
++
++test('mapper.toWireInput: new_session binding -> sessionKey null', () => {
++  const model = makeModel({
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.NewSession },
++    name: 'Test',
++  });
++  const wire = mapper.toWireInput(model, manualPolicy);
++  expect(wire.sessionTarget).toBe(SessionTarget.Main);
++  expect(wire.sessionKey).toBe(null);
++  expect(wire.name).toBe('Test');
++});
++
++test('mapper.toWireInput: ui_session binding -> managed sessionKey', () => {
++  const model = makeModel({
++    origin: { kind: OriginKind.Cowork, sessionId: 'sess-x' },
++    binding: { kind: BindingKind.UISession, sessionId: 'sess-x' },
++  });
++  const wire = mapper.toWireInput(model, coworkPolicy);
++  expect(wire.sessionKey).toBe('agent:main:lobsterai:sess-x');
++  expect(wire.sessionTarget).toBe(SessionTarget.Main);
++});
++
++test('mapper.toWireInput: im_session without sessionId -> sessionKey null', () => {
++  const model = makeModel({
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.IMSession, platform: 'telegram', conversationId: 'c1' },
++  });
++  const wire = mapper.toWireInput(model, manualPolicy);
++  expect(wire.sessionKey).toBe(null);
++});
++
++test('mapper.toWireInput: passes through non-binding fields', () => {
++  const model = makeModel({
++    name: 'Pass-through Test',
++    description: 'Desc with \u7279\u6b8a\u5b57\u7b26',
++    schedule: { kind: ScheduleKind.Every, everyMs: 60000 },
++    payload: { kind: PayloadKind.SystemEvent, text: 'hello' },
++    delivery: { mode: DeliveryMode.Announce, channel: DeliveryChannel.Last },
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.NewSession },
++  });
++  const wire = mapper.toWireInput(model, manualPolicy);
++  expect(wire.name).toBe('Pass-through Test');
++  expect(wire.description).toBe('Desc with \u7279\u6b8a\u5b57\u7b26');
++  expect(wire.schedule).toEqual({ kind: ScheduleKind.Every, everyMs: 60000 });
++  expect(wire.delivery).toEqual({ mode: DeliveryMode.Announce, channel: DeliveryChannel.Last });
++});
++
++test('mapper.createDraft: from manual origin has valid defaults', () => {
++  const draft = mapper.createDraft({ kind: OriginKind.Manual }, { sessionTarget: SessionTarget.Isolated, wakeMode: WakeMode.Now });
++  expect(draft.id.startsWith('draft-')).toBeTruthy();
++  expect(draft.origin.kind).toBe(OriginKind.Manual);
++  expect(draft.binding.kind).toBe(BindingKind.NewSession);
++  expect(draft.sessionTarget).toBe(SessionTarget.Isolated);
++  expect(draft.wakeMode).toBe(WakeMode.Now);
++});
++
++test('mapper.createDraft: from im origin uses provided defaults', () => {
++  const origin = { kind: OriginKind.IM as const, platform: 'telegram', conversationId: 'c1' };
++  const draft = mapper.createDraft(origin, {
++    delivery: { mode: DeliveryMode.Announce, channel: 'telegram' },
++  });
++  expect(draft.origin.kind).toBe(OriginKind.IM);
++  expect(draft.delivery.mode).toBe(DeliveryMode.Announce);
++  expect(draft.delivery.channel).toBe('telegram');
++});
++
++test('mapper.createDraft: draft has non-empty id', () => {
++  const draft = mapper.createDraft({ kind: OriginKind.Manual }, {});
++  expect(draft.id).toBeTruthy();
++  expect(draft.id.length > 0).toBeTruthy();
++});
+diff --git a/src/scheduled-task/origin.test.ts b/src/scheduled-task/origin.test.ts
+new file mode 100644
+index 00000000..f8928d21
+--- /dev/null
++++ b/src/scheduled-task/origin.test.ts
+@@ -0,0 +1,109 @@
++import { test, expect } from 'vitest';
++import { makeTask } from './fixtures';
++import { inferOriginAndBinding } from './origin';
++import {
++  OriginKind, BindingKind, DeliveryMode, DeliveryChannel,
++} from './constants';
++
++test('infer: managed key without IM channel -> cowork origin + ui_session binding', () => {
++  const result = inferOriginAndBinding(
++    makeTask({ sessionKey: 'agent:main:lobsterai:sess-001', delivery: { mode: DeliveryMode.None } })
++  );
++  expect(result.origin).toEqual({ kind: OriginKind.Cowork, sessionId: 'sess-001' });
++  expect(result.binding).toEqual({ kind: BindingKind.UISession, sessionId: 'sess-001' });
++});
++
++test('infer: managed key with IM announce channel -> im origin + im_session binding', () => {
++  const result = inferOriginAndBinding(
++    makeTask({ sessionKey: 'agent:main:lobsterai:sess-002', delivery: { mode: DeliveryMode.Announce, channel: 'telegram' } })
++  );
++  expect(result.origin.kind).toBe(OriginKind.IM);
++  expect((result.origin as any).platform).toBe('telegram');
++  expect(result.binding.kind).toBe(BindingKind.IMSession);
++  expect((result.binding as any).platform).toBe('telegram');
++  expect((result.binding as any).sessionId).toBe('sess-002');
++});
++
++test('infer: non-main agentId managed key -> cowork origin', () => {
++  const result = inferOriginAndBinding(
++    makeTask({ sessionKey: 'agent:secondary:lobsterai:sess-003', delivery: { mode: DeliveryMode.None } })
++  );
++  expect(result.origin).toEqual({ kind: OriginKind.Cowork, sessionId: 'sess-003' });
++  expect(result.binding).toEqual({ kind: BindingKind.UISession, sessionId: 'sess-003' });
++});
++
++test('infer: managed key with channel=last -> cowork origin (last is not an IM platform)', () => {
++  const result = inferOriginAndBinding(
++    makeTask({ sessionKey: 'agent:main:lobsterai:sess-004', delivery: { mode: DeliveryMode.Announce, channel: DeliveryChannel.Last } })
++  );
++  expect(result.origin.kind).toBe(OriginKind.Cowork);
++  expect(result.binding.kind).toBe(BindingKind.UISession);
++});
++
++test('infer: telegram channel key -> im origin + im_session binding', () => {
++  const result = inferOriginAndBinding(
++    makeTask({ sessionKey: 'agent:main:telegram:user:12345' })
++  );
++  expect(result.origin.kind).toBe(OriginKind.IM);
++  expect((result.origin as any).platform).toBe('telegram');
++  expect(result.binding.kind).toBe(BindingKind.IMSession);
++  expect((result.binding as any).platform).toBe('telegram');
++  expect((result.binding as any).conversationId).toBe('user:12345');
++});
++
++test('infer: dingtalk connector channel key -> im origin', () => {
++  const result = inferOriginAndBinding(
++    makeTask({ sessionKey: 'agent:main:openai-user:dingtalk-connector:acct1:user:peer1' })
++  );
++  expect(result.origin.kind).toBe(OriginKind.IM);
++  expect((result.origin as any).platform).toBe('dingtalk');
++  expect(result.binding.kind).toBe(BindingKind.IMSession);
++});
++
++test('infer: unknown sessionKey format -> session_key binding fallback', () => {
++  const result = inferOriginAndBinding(
++    makeTask({ sessionKey: 'custom:opaque:key:value' })
++  );
++  expect(result.origin.kind).toBe(OriginKind.Cowork);
++  expect((result.origin as any).sessionId).toBe('');
++  expect(result.binding.kind).toBe(BindingKind.SessionKey);
++  expect((result.binding as any).sessionKey).toBe('custom:opaque:key:value');
++});
++
++test('infer: null sessionKey -> manual origin + new_session binding', () => {
++  const result = inferOriginAndBinding(makeTask({ sessionKey: null }));
++  expect(result.origin).toEqual({ kind: OriginKind.Manual });
++  expect(result.binding).toEqual({ kind: BindingKind.NewSession });
++});
++
++test('infer: undefined sessionKey -> manual origin', () => {
++  const result = inferOriginAndBinding(makeTask({ sessionKey: undefined }));
++  expect(result.origin).toEqual({ kind: OriginKind.Manual });
++  expect(result.binding).toEqual({ kind: BindingKind.NewSession });
++});
++
++test('infer: empty string sessionKey -> manual origin', () => {
++  const result = inferOriginAndBinding(makeTask({ sessionKey: '' }));
++  expect(result.origin).toEqual({ kind: OriginKind.Manual });
++  expect(result.binding).toEqual({ kind: BindingKind.NewSession });
++});
++
++test('infer: sessionKey with whitespace is trimmed before parsing', () => {
++  const result = inferOriginAndBinding(
++    makeTask({ sessionKey: '  agent:main:lobsterai:sess-trimmed  ' })
++  );
++  expect(result.origin.kind).toBe(OriginKind.Cowork);
++  expect((result.origin as any).sessionId).toBe('sess-trimmed');
++});
++
++test('infer: pure function - same input, same output', () => {
++  const task = makeTask({ sessionKey: 'agent:main:lobsterai:sess-stable' });
++  const r1 = inferOriginAndBinding(task);
++  const r2 = inferOriginAndBinding(task);
++  expect(r1).toEqual(r2);
++});
++
++test('infer: missing delivery field does not crash', () => {
++  const result = inferOriginAndBinding({ sessionKey: null } as any);
++  expect(result.origin).toEqual({ kind: OriginKind.Manual });
++});
+diff --git a/src/scheduled-task/policies/coworkPolicy.test.ts b/src/scheduled-task/policies/coworkPolicy.test.ts
+new file mode 100644
+index 00000000..0a2ae28b
+--- /dev/null
++++ b/src/scheduled-task/policies/coworkPolicy.test.ts
+@@ -0,0 +1,117 @@
++import { test, expect } from 'vitest';
++import { makeModel } from '../fixtures';
++import { CoworkTaskPolicy } from './coworkPolicy';
++import {
++  OriginKind, BindingKind, DeliveryMode, DeliveryChannel, SessionTarget,
++} from '../constants';
++
++test('CoworkPolicy.getCreateDefaults: with cowork origin -> sessionTarget main + channel last', () => {
++  const policy = new CoworkTaskPolicy();
++  const defaults = policy.getCreateDefaults({ kind: OriginKind.Cowork, sessionId: 's1' });
++  expect(defaults.sessionTarget).toBe(SessionTarget.Main);
++  expect(defaults.delivery!.channel).toBe(DeliveryChannel.Last);
++});
++
++test('CoworkPolicy.getCreateDefaults: with non-cowork origin -> throws Error', () => {
++  const policy = new CoworkTaskPolicy();
++  expect(() => policy.getCreateDefaults({ kind: OriginKind.Manual } as any)).toThrow(/Invalid origin/);
++});
++
++test('CoworkPolicy.getCreateDefaults: with im origin -> throws Error', () => {
++  const policy = new CoworkTaskPolicy();
++  expect(
++    () => policy.getCreateDefaults({ kind: OriginKind.IM, platform: 'telegram', conversationId: 'c1' } as any)
++  ).toThrow(/Invalid origin/);
++});
++
++test('CoworkPolicy.normalizeDraft: any draft -> returns unchanged', () => {
++  const policy = new CoworkTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Cowork, sessionId: 's1' },
++    binding: { kind: BindingKind.UISession, sessionId: 's1' },
++    delivery: { mode: DeliveryMode.Announce, channel: DeliveryChannel.Last },
++  });
++  const result = policy.normalizeDraft(draft);
++  expect(result).toEqual(draft);
++});
++
++test('CoworkPolicy.normalizeDraft: with im delivery -> still returns unchanged', () => {
++  const policy = new CoworkTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Cowork, sessionId: 's1' },
++    binding: { kind: BindingKind.UISession, sessionId: 's1' },
++    delivery: { mode: DeliveryMode.Announce, channel: 'telegram' },
++  });
++  const result = policy.normalizeDraft(draft);
++  expect(result).toEqual(draft);
++});
++
++test('CoworkPolicy.onDeliveryChanged: any delivery change -> binding unchanged', () => {
++  const policy = new CoworkTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Cowork, sessionId: 'sess-1' },
++    binding: { kind: BindingKind.UISession, sessionId: 'sess-1' },
++    delivery: { mode: DeliveryMode.None },
++  });
++  const result = policy.onDeliveryChanged(draft, { mode: DeliveryMode.Announce, channel: 'telegram' });
++  expect(result.binding).toEqual(draft.binding);
++  expect(result.delivery).toEqual({ mode: DeliveryMode.Announce, channel: 'telegram' });
++});
++
++test('CoworkPolicy.onDeliveryChanged: webhook delivery -> binding still unchanged', () => {
++  const policy = new CoworkTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Cowork, sessionId: 's1' },
++    binding: { kind: BindingKind.UISession, sessionId: 's1' },
++    delivery: { mode: DeliveryMode.Announce, channel: 'discord' },
++  });
++  const result = policy.onDeliveryChanged(draft, { mode: DeliveryMode.Webhook });
++  expect(result.binding).toEqual(draft.binding);
++});
++
++test('CoworkPolicy.toWireBinding: ui_session binding -> managed sessionKey', () => {
++  const policy = new CoworkTaskPolicy();
++  const result = policy.toWireBinding({ kind: BindingKind.UISession, sessionId: 'sess-x' });
++  expect(result.sessionTarget).toBe(SessionTarget.Main);
++  expect(result.sessionKey).toBe('agent:main:lobsterai:sess-x');
++});
++
++test('CoworkPolicy.toWireBinding: session_key binding -> isolated + original sessionKey', () => {
++  const policy = new CoworkTaskPolicy();
++  const result = policy.toWireBinding({ kind: BindingKind.SessionKey, sessionKey: 'custom:key:1' });
++  expect(result.sessionTarget).toBe(SessionTarget.Isolated);
++  expect(result.sessionKey).toBe('custom:key:1');
++});
++
++test('CoworkPolicy.toWireBinding: new_session binding -> main + null', () => {
++  const policy = new CoworkTaskPolicy();
++  const result = policy.toWireBinding({ kind: BindingKind.NewSession });
++  expect(result.sessionTarget).toBe(SessionTarget.Main);
++  expect(result.sessionKey).toBe(null);
++});
++
++test('CoworkPolicy.describeRunBehavior: ui_session -> mentions UI session', () => {
++  const policy = new CoworkTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Cowork, sessionId: 's1' },
++    binding: { kind: BindingKind.UISession, sessionId: 's1' },
++  });
++  const desc = policy.describeRunBehavior(draft);
++  expect(typeof desc === 'string' && desc.length > 0).toBeTruthy();
++});
++
++test('CoworkPolicy.describeRunBehavior: new_session -> returns non-empty string', () => {
++  const policy = new CoworkTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Cowork, sessionId: 's1' },
++    binding: { kind: BindingKind.NewSession },
++  });
++  const desc = policy.describeRunBehavior(draft);
++  expect(typeof desc === 'string' && desc.length > 0).toBeTruthy();
++});
++
++test('CoworkPolicy.getReadonlyFields: contains origin', () => {
++  const policy = new CoworkTaskPolicy();
++  const fields = policy.getReadonlyFields();
++  expect(fields).toContain('origin');
++});
+diff --git a/src/scheduled-task/policies/imPolicy.test.ts b/src/scheduled-task/policies/imPolicy.test.ts
+new file mode 100644
+index 00000000..0a4f93c5
+--- /dev/null
++++ b/src/scheduled-task/policies/imPolicy.test.ts
+@@ -0,0 +1,166 @@
++import { test, expect } from 'vitest';
++import { makeModel } from '../fixtures';
++import { IMTaskPolicy } from './imPolicy';
++import {
++  OriginKind, BindingKind, DeliveryMode, SessionTarget,
++} from '../constants';
++
++test('IMPolicy.getCreateDefaults: with im origin -> delivery defaults to announce + platform', () => {
++  const policy = new IMTaskPolicy();
++  const defaults = policy.getCreateDefaults({
++    kind: OriginKind.IM,
++    platform: 'discord',
++    conversationId: 'c1',
++  });
++  expect(defaults.delivery!.mode).toBe(DeliveryMode.Announce);
++  expect(defaults.delivery!.channel).toBe('discord');
++  expect(defaults.sessionTarget).toBe(SessionTarget.Main);
++});
++
++test('IMPolicy.getCreateDefaults: with telegram origin -> channel is telegram', () => {
++  const policy = new IMTaskPolicy();
++  const defaults = policy.getCreateDefaults({
++    kind: OriginKind.IM,
++    platform: 'telegram',
++    conversationId: 'chat-123',
++  });
++  expect(defaults.delivery!.channel).toBe('telegram');
++});
++
++test('IMPolicy.getCreateDefaults: with non-im origin -> throws Error', () => {
++  const policy = new IMTaskPolicy();
++  expect(() => policy.getCreateDefaults({ kind: OriginKind.Manual } as any)).toThrow(/Invalid origin/);
++});
++
++test('IMPolicy.getCreateDefaults: with cowork origin -> throws Error', () => {
++  const policy = new IMTaskPolicy();
++  expect(() => policy.getCreateDefaults({ kind: OriginKind.Cowork, sessionId: 's1' } as any)).toThrow(/Invalid origin/);
++});
++
++test('IMPolicy.normalizeDraft: binding platform != delivery channel -> corrects delivery.channel', () => {
++  const policy = new IMTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.IM, platform: 'telegram', conversationId: 'c1' },
++    binding: { kind: BindingKind.IMSession, platform: 'telegram', conversationId: 'c1' },
++    delivery: { mode: DeliveryMode.Announce, channel: 'feishu' },
++  });
++  const result = policy.normalizeDraft(draft);
++  expect(result.delivery.channel).toBe('telegram');
++  expect(result.delivery.mode).toBe(DeliveryMode.Announce);
++});
++
++test('IMPolicy.normalizeDraft: already consistent -> returns unchanged', () => {
++  const policy = new IMTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.IM, platform: 'discord', conversationId: 'ch1' },
++    binding: { kind: BindingKind.IMSession, platform: 'discord', conversationId: 'ch1' },
++    delivery: { mode: DeliveryMode.Announce, channel: 'discord' },
++  });
++  const result = policy.normalizeDraft(draft);
++  expect(result.delivery).toEqual(draft.delivery);
++  expect(result.binding).toEqual(draft.binding);
++});
++
++test('IMPolicy.normalizeDraft: binding not im_session -> returns unchanged', () => {
++  const policy = new IMTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.IM, platform: 'telegram', conversationId: 'c1' },
++    binding: { kind: BindingKind.NewSession },
++    delivery: { mode: DeliveryMode.Announce, channel: 'feishu' },
++  });
++  const result = policy.normalizeDraft(draft);
++  expect(result).toEqual(draft);
++});
++
++test('IMPolicy.onDeliveryChanged: from announce to none -> binding resets to new_session', () => {
++  const policy = new IMTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.IM, platform: 'telegram', conversationId: 'c1' },
++    binding: { kind: BindingKind.IMSession, platform: 'telegram', conversationId: 'c1' },
++    delivery: { mode: DeliveryMode.Announce, channel: 'telegram' },
++  });
++  const result = policy.onDeliveryChanged(draft, { mode: DeliveryMode.None });
++  expect(result.binding).toEqual({ kind: BindingKind.NewSession });
++  expect(result.delivery.mode).toBe(DeliveryMode.None);
++});
++
++test('IMPolicy.onDeliveryChanged: from announce to different IM channel -> binding.platform updates', () => {
++  const policy = new IMTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.IM, platform: 'telegram', conversationId: 'c1' },
++    binding: { kind: BindingKind.IMSession, platform: 'telegram', conversationId: 'c1' },
++    delivery: { mode: DeliveryMode.Announce, channel: 'telegram' },
++  });
++  const result = policy.onDeliveryChanged(draft, { mode: DeliveryMode.Announce, channel: 'discord' });
++  expect(result.binding.kind).toBe(BindingKind.IMSession);
++  expect((result.binding as any).platform).toBe('discord');
++  expect((result.binding as any).conversationId).toBe('c1');
++});
++
++test('IMPolicy.onDeliveryChanged: announce to webhook -> binding resets to new_session', () => {
++  const policy = new IMTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.IM, platform: 'feishu', conversationId: 'c2' },
++    binding: { kind: BindingKind.IMSession, platform: 'feishu', conversationId: 'c2' },
++    delivery: { mode: DeliveryMode.Announce, channel: 'feishu' },
++  });
++  const result = policy.onDeliveryChanged(draft, { mode: DeliveryMode.Webhook });
++  expect(result.binding).toEqual({ kind: BindingKind.NewSession });
++});
++
++test('IMPolicy.toWireBinding: im_session with sessionId -> managed sessionKey', () => {
++  const policy = new IMTaskPolicy();
++  const result = policy.toWireBinding({
++    kind: BindingKind.IMSession,
++    platform: 'telegram',
++    conversationId: 'c1',
++    sessionId: 'sess-1',
++  });
++  expect(result.sessionTarget).toBe(SessionTarget.Main);
++  expect(result.sessionKey).toBe('agent:main:lobsterai:sess-1');
++});
++
++test('IMPolicy.toWireBinding: im_session without sessionId -> sessionKey null', () => {
++  const policy = new IMTaskPolicy();
++  const result = policy.toWireBinding({
++    kind: BindingKind.IMSession,
++    platform: 'telegram',
++    conversationId: 'c1',
++    sessionId: undefined,
++  });
++  expect(result.sessionTarget).toBe(SessionTarget.Main);
++  expect(result.sessionKey).toBe(null);
++});
++
++test('IMPolicy.toWireBinding: new_session -> sessionKey null', () => {
++  const policy = new IMTaskPolicy();
++  const result = policy.toWireBinding({ kind: BindingKind.NewSession });
++  expect(result.sessionTarget).toBe(SessionTarget.Main);
++  expect(result.sessionKey).toBe(null);
++});
++
++test('IMPolicy.describeRunBehavior: im_session binding -> contains platform name', () => {
++  const policy = new IMTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.IM, platform: 'discord', conversationId: 'ch1' },
++    binding: { kind: BindingKind.IMSession, platform: 'discord', conversationId: 'ch1' },
++  });
++  const desc = policy.describeRunBehavior(draft);
++  expect(desc).toContain('discord');
++});
++
++test('IMPolicy.describeRunBehavior: new_session binding -> generic text', () => {
++  const policy = new IMTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.IM, platform: 'telegram', conversationId: 'c1' },
++    binding: { kind: BindingKind.NewSession },
++  });
++  const desc = policy.describeRunBehavior(draft);
++  expect(typeof desc === 'string' && desc.length > 0).toBeTruthy();
++});
++
++test('IMPolicy.getReadonlyFields: contains origin', () => {
++  const policy = new IMTaskPolicy();
++  const fields = policy.getReadonlyFields();
++  expect(fields).toContain('origin');
++});
+diff --git a/src/scheduled-task/policies/legacyPolicy.test.ts b/src/scheduled-task/policies/legacyPolicy.test.ts
+new file mode 100644
+index 00000000..973f4388
+--- /dev/null
++++ b/src/scheduled-task/policies/legacyPolicy.test.ts
+@@ -0,0 +1,118 @@
++import { test, expect } from 'vitest';
++import { makeModel } from '../fixtures';
++import { LegacyTaskPolicy } from './legacyPolicy';
++import {
++  OriginKind, BindingKind, DeliveryMode, DeliveryChannel,
++  SessionTarget, WakeMode,
++} from '../constants';
++
++test('LegacyPolicy.getCreateDefaults: returns sessionTarget main + next-heartbeat wakeMode', () => {
++  const policy = new LegacyTaskPolicy();
++  const defaults = policy.getCreateDefaults();
++  expect(defaults.sessionTarget).toBe(SessionTarget.Main);
++  expect(defaults.wakeMode).toBe(WakeMode.NextHeartbeat);
++});
++
++test('LegacyPolicy.normalizeDraft: announce IM channel + new_session binding -> auto-links to im_session', () => {
++  const policy = new LegacyTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Legacy },
++    binding: { kind: BindingKind.NewSession },
++    delivery: { mode: DeliveryMode.Announce, channel: 'feishu' },
++  });
++  const result = policy.normalizeDraft(draft);
++  expect(result.binding.kind).toBe(BindingKind.IMSession);
++  expect((result.binding as any).platform).toBe('feishu');
++  expect((result.binding as any).conversationId).toBe('');
++});
++
++test('LegacyPolicy.normalizeDraft: without IM channel -> returns draft unchanged', () => {
++  const policy = new LegacyTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Legacy },
++    binding: { kind: BindingKind.NewSession },
++    delivery: { mode: DeliveryMode.None },
++  });
++  const result = policy.normalizeDraft(draft);
++  expect(result.binding).toEqual({ kind: BindingKind.NewSession });
++  expect(result.delivery).toEqual(draft.delivery);
++});
++
++test('LegacyPolicy.normalizeDraft: channel=last is not an IM platform -> no binding change', () => {
++  const policy = new LegacyTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Legacy },
++    binding: { kind: BindingKind.NewSession },
++    delivery: { mode: DeliveryMode.Announce, channel: DeliveryChannel.Last },
++  });
++  const result = policy.normalizeDraft(draft);
++  expect(result.binding).toEqual({ kind: BindingKind.NewSession });
++});
++
++test('LegacyPolicy.onDeliveryChanged: to mode=none -> binding resets to new_session', () => {
++  const policy = new LegacyTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Legacy },
++    binding: { kind: BindingKind.IMSession, platform: 'feishu', conversationId: '' },
++  });
++  const result = policy.onDeliveryChanged(draft, { mode: DeliveryMode.None });
++  expect(result.binding).toEqual({ kind: BindingKind.NewSession });
++  expect(result.delivery.mode).toBe(DeliveryMode.None);
++});
++
++test('LegacyPolicy.onDeliveryChanged: to mode=webhook -> binding resets to new_session', () => {
++  const policy = new LegacyTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Legacy },
++    binding: { kind: BindingKind.IMSession, platform: 'discord', conversationId: '' },
++  });
++  const result = policy.onDeliveryChanged(draft, { mode: DeliveryMode.Webhook });
++  expect(result.binding).toEqual({ kind: BindingKind.NewSession });
++  expect(result.delivery.mode).toBe(DeliveryMode.Webhook);
++});
++
++test('LegacyPolicy.onDeliveryChanged: to mode=announce -> draft updates normally', () => {
++  const policy = new LegacyTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Legacy },
++    binding: { kind: BindingKind.NewSession },
++    delivery: { mode: DeliveryMode.None },
++  });
++  const newDelivery = { mode: DeliveryMode.Announce as const, channel: 'telegram' };
++  const result = policy.onDeliveryChanged(draft, newDelivery);
++  expect(result.delivery).toEqual(newDelivery);
++});
++
++test('LegacyPolicy.toWireBinding: any binding -> always returns sessionTarget main + null sessionKey', () => {
++  const policy = new LegacyTaskPolicy();
++
++  const wireNew = policy.toWireBinding({ kind: BindingKind.NewSession });
++  expect(wireNew.sessionTarget).toBe(SessionTarget.Main);
++  expect(wireNew.sessionKey).toBe(null);
++
++  const wireIm = policy.toWireBinding({
++    kind: BindingKind.IMSession,
++    platform: 'telegram',
++    conversationId: 'c1',
++    sessionId: 'sess-1',
++  });
++  expect(wireIm.sessionTarget).toBe(SessionTarget.Main);
++  expect(wireIm.sessionKey).toBe(null);
++
++  const wireSessionKey = policy.toWireBinding({ kind: BindingKind.SessionKey, sessionKey: 'custom:key' });
++  expect(wireSessionKey.sessionTarget).toBe(SessionTarget.Main);
++  expect(wireSessionKey.sessionKey).toBe(null);
++});
++
++test('LegacyPolicy.describeRunBehavior: returns non-empty string', () => {
++  const policy = new LegacyTaskPolicy();
++  const draft = makeModel({ origin: { kind: OriginKind.Legacy } });
++  const desc = policy.describeRunBehavior(draft);
++  expect(typeof desc === 'string' && desc.length > 0).toBeTruthy();
++});
++
++test('LegacyPolicy.getReadonlyFields: contains origin', () => {
++  const policy = new LegacyTaskPolicy();
++  const fields = policy.getReadonlyFields();
++  expect(fields.includes('origin')).toBeTruthy();
++});
+diff --git a/src/scheduled-task/policies/manualPolicy.test.ts b/src/scheduled-task/policies/manualPolicy.test.ts
+new file mode 100644
+index 00000000..c62573b0
+--- /dev/null
++++ b/src/scheduled-task/policies/manualPolicy.test.ts
+@@ -0,0 +1,190 @@
++import { test, expect } from 'vitest';
++import { makeModel } from '../fixtures';
++import { ManualTaskPolicy } from './manualPolicy';
++import {
++  OriginKind, BindingKind, DeliveryMode, DeliveryChannel, SessionTarget,
++} from '../constants';
++
++test('ManualPolicy.normalizeDraft: IM announce + non-im binding -> auto-links to im_session', () => {
++  const policy = new ManualTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.NewSession },
++    delivery: { mode: DeliveryMode.Announce, channel: 'feishu' },
++  });
++  const result = policy.normalizeDraft(draft);
++  expect(result.binding.kind).toBe(BindingKind.IMSession);
++  expect((result.binding as any).platform).toBe('feishu');
++  expect((result.binding as any).conversationId).toBe('');
++});
++
++test('ManualPolicy.normalizeDraft: IM announce + already im_session -> unchanged', () => {
++  const policy = new ManualTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.IMSession, platform: 'feishu', conversationId: '' },
++    delivery: { mode: DeliveryMode.Announce, channel: 'feishu' },
++  });
++  const result = policy.normalizeDraft(draft);
++  expect(result.binding).toEqual(draft.binding);
++  expect(result.delivery).toEqual(draft.delivery);
++});
++
++test('ManualPolicy.normalizeDraft: im_session binding + non-announce delivery -> resets to new_session', () => {
++  const policy = new ManualTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.IMSession, platform: 'feishu', conversationId: '' },
++    delivery: { mode: DeliveryMode.None },
++  });
++  const result = policy.normalizeDraft(draft);
++  expect(result.binding).toEqual({ kind: BindingKind.NewSession });
++});
++
++test('ManualPolicy.normalizeDraft: announce channel=last + new_session -> stays new_session', () => {
++  const policy = new ManualTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.NewSession },
++    delivery: { mode: DeliveryMode.Announce, channel: DeliveryChannel.Last },
++  });
++  const result = policy.normalizeDraft(draft);
++  expect(result.binding).toEqual({ kind: BindingKind.NewSession });
++});
++
++test('ManualPolicy.onDeliveryChanged: to announce + IM channel -> binding becomes im_session', () => {
++  const policy = new ManualTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.NewSession },
++    delivery: { mode: DeliveryMode.None },
++  });
++  const result = policy.onDeliveryChanged(draft, { mode: DeliveryMode.Announce, channel: 'discord' });
++  expect(result.binding.kind).toBe(BindingKind.IMSession);
++  expect((result.binding as any).platform).toBe('discord');
++  expect((result.binding as any).conversationId).toBe('');
++});
++
++test('ManualPolicy.onDeliveryChanged: to none -> binding resets to new_session', () => {
++  const policy = new ManualTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.IMSession, platform: 'telegram', conversationId: 'c1' },
++    delivery: { mode: DeliveryMode.Announce, channel: 'telegram' },
++  });
++  const result = policy.onDeliveryChanged(draft, { mode: DeliveryMode.None });
++  expect(result.binding).toEqual({ kind: BindingKind.NewSession });
++});
++
++test('ManualPolicy.onDeliveryChanged: to webhook -> binding resets to new_session', () => {
++  const policy = new ManualTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.UISession, sessionId: 's1' },
++    delivery: { mode: DeliveryMode.Announce, channel: DeliveryChannel.Last },
++  });
++  const result = policy.onDeliveryChanged(draft, { mode: DeliveryMode.Webhook });
++  expect(result.binding).toEqual({ kind: BindingKind.NewSession });
++});
++
++test('ManualPolicy.onDeliveryChanged: to announce + last -> delivery updates, binding not forced to im_session', () => {
++  const policy = new ManualTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.NewSession },
++    delivery: { mode: DeliveryMode.None },
++  });
++  const result = policy.onDeliveryChanged(draft, { mode: DeliveryMode.Announce, channel: DeliveryChannel.Last });
++  expect(result.delivery).toEqual({ mode: DeliveryMode.Announce, channel: DeliveryChannel.Last });
++  expect(result.binding).toEqual(draft.binding);
++});
++
++test('ManualPolicy.toWireBinding: new_session -> main + null', () => {
++  const policy = new ManualTaskPolicy();
++  const result = policy.toWireBinding({ kind: BindingKind.NewSession });
++  expect(result).toEqual({ sessionTarget: SessionTarget.Main, sessionKey: null });
++});
++
++test('ManualPolicy.toWireBinding: ui_session with sessionId -> main + managed key', () => {
++  const policy = new ManualTaskPolicy();
++  const result = policy.toWireBinding({ kind: BindingKind.UISession, sessionId: 'sess-x' });
++  expect(result.sessionTarget).toBe(SessionTarget.Main);
++  expect(result.sessionKey).toBe('agent:main:lobsterai:sess-x');
++});
++
++test('ManualPolicy.toWireBinding: im_session with sessionId -> main + managed key', () => {
++  const policy = new ManualTaskPolicy();
++  const result = policy.toWireBinding({
++    kind: BindingKind.IMSession,
++    platform: 'telegram',
++    conversationId: 'c1',
++    sessionId: 'sess-y',
++  });
++  expect(result.sessionTarget).toBe(SessionTarget.Main);
++  expect(result.sessionKey).toBe('agent:main:lobsterai:sess-y');
++});
++
++test('ManualPolicy.toWireBinding: im_session without sessionId -> main + null', () => {
++  const policy = new ManualTaskPolicy();
++  const result = policy.toWireBinding({
++    kind: BindingKind.IMSession,
++    platform: 'telegram',
++    conversationId: 'c1',
++    sessionId: undefined,
++  });
++  expect(result.sessionTarget).toBe(SessionTarget.Main);
++  expect(result.sessionKey).toBe(null);
++});
++
++test('ManualPolicy.toWireBinding: session_key with custom key -> isolated + original key', () => {
++  const policy = new ManualTaskPolicy();
++  const result = policy.toWireBinding({ kind: BindingKind.SessionKey, sessionKey: 'custom:key:1' });
++  expect(result.sessionTarget).toBe(SessionTarget.Isolated);
++  expect(result.sessionKey).toBe('custom:key:1');
++});
++
++test('ManualPolicy.describeRunBehavior: new_session -> returns description', () => {
++  const policy = new ManualTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.NewSession },
++  });
++  const desc = policy.describeRunBehavior(draft);
++  expect(typeof desc === 'string' && desc.length > 0).toBeTruthy();
++});
++
++test('ManualPolicy.describeRunBehavior: ui_session -> returns description', () => {
++  const policy = new ManualTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.UISession, sessionId: 's1' },
++  });
++  const desc = policy.describeRunBehavior(draft);
++  expect(typeof desc === 'string' && desc.length > 0).toBeTruthy();
++});
++
++test('ManualPolicy.describeRunBehavior: im_session -> mentions platform', () => {
++  const policy = new ManualTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.IMSession, platform: 'discord', conversationId: 'ch1' },
++  });
++  const desc = policy.describeRunBehavior(draft);
++  expect(desc).toContain('discord');
++});
++
++test('ManualPolicy.describeRunBehavior: session_key -> mentions OpenClaw', () => {
++  const policy = new ManualTaskPolicy();
++  const draft = makeModel({
++    origin: { kind: OriginKind.Manual },
++    binding: { kind: BindingKind.SessionKey, sessionKey: 'k1' },
++  });
++  const desc = policy.describeRunBehavior(draft);
++  expect(typeof desc === 'string' && desc.length > 0).toBeTruthy();
++});
++
++test('ManualPolicy.getReadonlyFields: returns empty array', () => {
++  const policy = new ManualTaskPolicy();
++  const fields = policy.getReadonlyFields();
++  expect(fields).toEqual([]);
++});
+diff --git a/src/scheduled-task/policies/registry.test.ts b/src/scheduled-task/policies/registry.test.ts
+new file mode 100644
+index 00000000..73deb987
+--- /dev/null
++++ b/src/scheduled-task/policies/registry.test.ts
+@@ -0,0 +1,35 @@
++import { test, expect } from 'vitest';
++import { TaskPolicyRegistry, taskPolicyRegistry } from './registry';
++import { ManualTaskPolicy } from './manualPolicy';
++import { OriginKind } from '../constants';
++
++test('registry: returns LegacyTaskPolicy for legacy origin', () => {
++  const policy = taskPolicyRegistry.get({ kind: OriginKind.Legacy });
++  expect(policy.kind).toBe(OriginKind.Legacy);
++});
++
++test('registry: returns IMTaskPolicy for im origin', () => {
++  const policy = taskPolicyRegistry.get({ kind: OriginKind.IM, platform: 'telegram', conversationId: 'c1' });
++  expect(policy.kind).toBe(OriginKind.IM);
++});
++
++test('registry: returns CoworkTaskPolicy for cowork origin', () => {
++  const policy = taskPolicyRegistry.get({ kind: OriginKind.Cowork, sessionId: 's1' });
++  expect(policy.kind).toBe(OriginKind.Cowork);
++});
++
++test('registry: returns ManualTaskPolicy for manual origin', () => {
++  const policy = taskPolicyRegistry.get({ kind: OriginKind.Manual });
++  expect(policy.kind).toBe(OriginKind.Manual);
++});
++
++test('registry: unknown origin kind falls back to manual', () => {
++  const policy = taskPolicyRegistry.get({ kind: 'future_unknown' } as any);
++  expect(policy.kind).toBe(OriginKind.Manual);
++});
++
++test('registry: custom registry with subset of policies works', () => {
++  const reg = new TaskPolicyRegistry([new ManualTaskPolicy()]);
++  const policy = reg.get({ kind: OriginKind.Manual });
++  expect(policy.kind).toBe(OriginKind.Manual);
++});
+diff --git a/tests/scheduledTaskEnginePrompt.test.mjs b/tests/scheduledTaskEnginePrompt.test.mjs
+deleted file mode 100644
+index f26c1fa4..00000000
+--- a/tests/scheduledTaskEnginePrompt.test.mjs
++++ /dev/null
+@@ -1,32 +0,0 @@
+-import assert from 'node:assert/strict';
+-import test from 'node:test';
+-import { createRequire } from 'node:module';
+-
+-const require = createRequire(import.meta.url);
+-const {
+-  buildScheduledTaskEnginePrompt,
+-  SCHEDULED_TASK_SWITCH_MESSAGE,
+-} = require('../dist-electron/main/libs/scheduledTaskEnginePrompt.js');
+-
+-test('openclaw prompt points scheduled task requests to the native cron tool', () => {
+-  const prompt = buildScheduledTaskEnginePrompt('openclaw');
+-
+-  assert.match(prompt, /native `cron` tool/i);
+-  assert.match(prompt, /action: "add".*cron\.add/i);
+-  assert.match(prompt, /active conversation context/i);
+-  assert.match(prompt, /follow the native `cron` tool schema/i);
+-  assert.match(prompt, /one-time reminders .*future iso timestamp with an explicit timezone offset/i);
+-  assert.match(prompt, /plugins provide session context and outbound delivery; they do not own scheduling logic/i);
+-  assert.match(prompt, /native im\/channel sessions, ignore channel-specific reminder helpers or reminder skills/i);
+-  assert.match(prompt, /do not use wrapper payloads .*qqbot_payload.*qqbot_cron.*cron_reminder/i);
+-  assert.match(prompt, /do not use `sessions_spawn`, `subagents`, or ad-hoc background workflows as a substitute for `cron\.add`/i);
+-  assert.match(prompt, /never emulate reminders .*bash.*sleep.*openclaw.*claw/i);
+-  assert.match(prompt, /if the native `cron` tool is unavailable/i);
+-});
+-
+-test('yd_cowork prompt tells the user to switch engines', () => {
+-  const prompt = buildScheduledTaskEnginePrompt('yd_cowork');
+-
+-  assert.match(prompt, new RegExp(SCHEDULED_TASK_SWITCH_MESSAGE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+-  assert.match(prompt, /do not attempt to create, update, list, enable, disable, or delete scheduled tasks/i);
+-});

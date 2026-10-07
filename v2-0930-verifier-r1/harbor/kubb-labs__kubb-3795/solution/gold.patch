@@ -1,0 +1,3983 @@
+diff --git a/.changeset/adapter-oas-leaner-shape.md b/.changeset/adapter-oas-leaner-shape.md
+new file mode 100644
+--- /dev/null
++++ b/.changeset/adapter-oas-leaner-shape.md
+@@ -0,0 +1,7 @@
++---
++'@kubb/adapter-oas': patch
++---
++
++Reshape the internal parsing pipeline into three phases: `load` (read, bundle, upgrade, validate), `model` (collect schemas and operations), and `emit` (convert to the universal AST). Six overlapping `$ref` resolvers collapse into one `Refs` service, discriminator handling moves behind `preserve`/`propagate` strategies, and nothing mutates the parsed OpenAPI document in place anymore.
++
++Generated output is unchanged, with one fix: a `requestBody` declared as a `$ref` now keeps its `description` and `required` fields when the adapter's `contentType` option is set. Previously that combination silently dropped both.
+diff --git a/packages/adapter-oas/mocks/oas.ts b/packages/adapter-oas/mocks/oas.ts
+--- a/packages/adapter-oas/mocks/oas.ts
++++ b/packages/adapter-oas/mocks/oas.ts
+@@ -1,4 +1,4 @@
+-import { parseDocument } from '../src/factory.ts'
++import { parseDocument } from '../src/load/normalize.ts'
+ import type { Document } from '../src/types.ts'
+ 
+ export async function buildMinimalOas() {
+diff --git a/packages/adapter-oas/src/adapter.bench.ts b/packages/adapter-oas/src/adapter.bench.ts
+--- a/packages/adapter-oas/src/adapter.bench.ts
++++ b/packages/adapter-oas/src/adapter.bench.ts
+@@ -1,10 +1,11 @@
+ import path from 'node:path'
+ import { bench, describe } from 'vitest'
+ import { DEFAULT_PARSER_OPTIONS } from './constants.ts'
+-import { parseDocument } from './factory.ts'
++import { parseDocument } from './load/normalize.ts'
++import { getSchemas } from './model/components.ts'
+ import { getOperations } from './operation.ts'
+ import { createSchemaParser } from './parser.ts'
+-import { getSchemas } from './resolvers.ts'
++import { createRefs } from './refs.ts'
+ import type { Document } from './types.ts'
+ 
+ const petStorePath = path.resolve(import.meta.dirname, '../mocks/petStore.yaml')
+@@ -19,11 +20,12 @@ async function getPetStoreDocument(): Promise<Document> {
+ }
+ 
+ function parseOas(document: Document): void {
+-  const { schemas: schemaObjects } = getSchemas(document, {})
+-  const { parseSchema, parseOperation } = createSchemaParser({ document })
++  const refs = createRefs(document)
++  const { schemas: schemaObjects } = getSchemas(document, {}, refs)
++  const { parseSchema, parseOperation } = createSchemaParser({ document, refs })
+ 
+   for (const [name, schema] of Object.entries(schemaObjects)) parseSchema({ schema, name }, DEFAULT_PARSER_OPTIONS)
+-  for (const operation of getOperations(document)) parseOperation(DEFAULT_PARSER_OPTIONS, operation)
++  for (const operation of getOperations(document, refs)) parseOperation(DEFAULT_PARSER_OPTIONS, operation)
+ }
+ 
+ describe('parseOas() performance', () => {
+diff --git a/packages/adapter-oas/src/adapter.ts b/packages/adapter-oas/src/adapter.ts
+--- a/packages/adapter-oas/src/adapter.ts
++++ b/packages/adapter-oas/src/adapter.ts
+@@ -2,13 +2,16 @@ import { ast, findCircularSchemas, narrowSchema } from '@kubb/ast'
+ import { createAdapter } from '@kubb/core'
+ import type { AdapterSource } from '@kubb/core'
+ import { DEFAULT_PARSER_OPTIONS } from './constants.ts'
+-import { buildDiscriminatorChildMap, patchDiscriminatorNode } from './discriminator.ts'
+-import type { DiscriminatorTarget } from './discriminator.ts'
+-import { assertInputExists, parseDocument, parseFromConfig, validateDocument } from './factory.ts'
++import { buildDiscriminatorChildMap, patchDiscriminatorNode } from './emit/discriminator/propagate.ts'
++import type { DiscriminatorTarget } from './emit/discriminator/propagate.ts'
++import { assertInputExists } from './load/source.ts'
++import { parseDocument, parseFromConfig, validateDocument } from './load/normalize.ts'
++import { getSchemas } from './model/components.ts'
++import { resolveBaseUrl } from './model/server.ts'
+ import { getOperations } from './operation.ts'
+ import { createSchemaParser } from './parser.ts'
+ import { collectInlineEnums, refPromotedEnums } from './promoteEnums.ts'
+-import { getSchemas, resolveBaseUrl } from './resolvers.ts'
++import { createRefs } from './refs.ts'
+ import { reportSchemaDiagnostics } from './schemaDiagnostics.ts'
+ import type { AdapterOas, Document, SchemaObject } from './types.ts'
+ 
+@@ -69,55 +72,24 @@ export const adapterOas = createAdapter<AdapterOas>((options) => {
+ 
+   let parsedDocument: Document | null = null
+ 
+-  // Cache per source and per document so one adapter instance reused across a `defineConfig` array
+-  // parses each config's spec instead of replaying the first one. The document-derived caches key
+-  // off the resulting document, so distinct configs (distinct documents) stay isolated.
+-  const documentCache = new WeakMap<AdapterSource, Promise<Document>>()
+-  const schemasCache = new WeakMap<Document, ReturnType<typeof getSchemas>>()
+-  const schemaParserCache = new WeakMap<Document, ReturnType<typeof createSchemaParser>>()
+-
+-  function ensureDocument(source: AdapterSource): Promise<Document> {
+-    const cached = documentCache.get(source)
+-    if (cached) return cached
+-
+-    const promise = (async () => {
+-      const fresh = await parseFromConfig(source)
+-      if (validate) await validateDocument(fresh)
+-      parsedDocument = fresh
+-      return fresh
+-    })()
+-    documentCache.set(source, promise)
+-    return promise
+-  }
+-
+-  function ensureSchemas(document: Document): ReturnType<typeof getSchemas> {
+-    const cached = schemasCache.get(document)
+-    if (cached) return cached
+-
+-    const result = getSchemas(document, { contentType })
+-    schemasCache.set(document, result)
+-    return result
+-  }
+-
+-  function ensureSchemaParser({ document, renames }: { document: Document; renames: Map<string, string> }): ReturnType<typeof createSchemaParser> {
+-    const cached = schemaParserCache.get(document)
+-    if (cached) return cached
+-
+-    const parser = createSchemaParser({ document, contentType, renames })
+-    schemaParserCache.set(document, parser)
+-    return parser
+-  }
++  // One cache per source: reusing one adapter instance across a `defineConfig` array must parse
++  // each config's spec instead of replaying the first one, and a repeat `.parse()` call for the
++  // same source must not redo the work. The `$ref` memo lives inside the `Refs` instance created
++  // fresh for each document, scoped to this one pass.
++  const inputCache = new WeakMap<AdapterSource, Promise<ast.InputNode>>()
+ 
+   // Parses every schema and operation once. Ref aliases and discriminator children are
+   // resolved from the schemas already parsed in this same pass rather than re-parsed.
+   function parseInput({
+     document,
++    refs,
+     schemas,
+     parser,
+   }: {
+     document: Document
++    refs: ReturnType<typeof createRefs>
+     schemas: Record<string, SchemaObject>
+-    parser: ReturnType<typeof ensureSchemaParser>
++    parser: ReturnType<typeof createSchemaParser>
+   }): ast.InputNode {
+     const { parseSchema, parseOperation } = parser
+ 
+@@ -146,7 +118,7 @@ export const adapterOas = createAdapter<AdapterOas>((options) => {
+       discriminatorParentNodes.length > 0 ? buildDiscriminatorChildMap(discriminatorParentNodes) : null
+ 
+     const operationNodes: Array<ast.OperationNode> = []
+-    for (const operation of getOperations(document)) {
++    for (const operation of getOperations(document, refs)) {
+       const operationNode = parseOperation(parserOptions, operation)
+       if (operationNode) operationNodes.push(operationNode)
+     }
+@@ -214,11 +186,22 @@ export const adapterOas = createAdapter<AdapterOas>((options) => {
+       await validateDocument(document, options)
+     },
+     async parse(source) {
+-      const document = await ensureDocument(source)
+-      const { schemas, renames } = ensureSchemas(document)
+-      const parser = ensureSchemaParser({ document, renames })
+-
+-      return parseInput({ document, schemas, parser })
++      const cached = inputCache.get(source)
++      if (cached) return cached
++
++      const promise = (async () => {
++        const document = await parseFromConfig(source)
++        if (validate) await validateDocument(document)
++        parsedDocument = document
++
++        const refs = createRefs(document)
++        const { schemas, renames } = getSchemas(document, { contentType }, refs)
++        const parser = createSchemaParser({ document, refs, contentType, renames })
++
++        return parseInput({ document, refs, schemas, parser })
++      })()
++      inputCache.set(source, promise)
++      return promise
+     },
+   }
+ })
+diff --git a/packages/adapter-oas/src/converters.ts b/packages/adapter-oas/src/converters.ts
+deleted file mode 100644
+--- a/packages/adapter-oas/src/converters.ts
++++ /dev/null
+@@ -1,770 +0,0 @@
+-import { ast } from '@kubb/ast'
+-import { childName, enumPropName, extractRefName, macroDiscriminatorEnum, macroEnumName, macroSimplifyUnion, mergeAdjacentObjectsLazy } from '@kubb/kit'
+-import { enumDescriptionKeys, enumExtensionKeys, SCHEMA_REF_PREFIX } from './constants.ts'
+-import { createDiscriminantNode, findDiscriminator } from './discriminator.ts'
+-import { isBinary, isDiscriminator, isNullable, isReference } from './oas.ts'
+-import { resolveRef } from './refs.ts'
+-import { buildSchemaNode, extractExamples, getDateType, getPrimitiveType, getSchemaType } from './resolvers.ts'
+-import type { Document, ReferenceObject, SchemaObject } from './types.ts'
+-
+-/**
+- * Pre-computed per-schema context passed to every schema converter.
+- *
+- * Centralizes schema derivations (type resolution, defaults, options) to avoid repeated
+- * computation across all conversion branches. The `type` field is normalized from OAS 3.1
+- * multi-type arrays to a single string.
+- */
+-export type SchemaContext = {
+-  schema: SchemaObject
+-  name: string | null | undefined
+-  nullable: true | undefined
+-  defaultValue: unknown
+-  /**
+-   * Normalized single type string (first element when OAS 3.1 multi-type array).
+-   */
+-  type: string | undefined
+-  rawOptions: Partial<ast.ParserOptions> | undefined
+-  options: ast.ParserOptions
+-}
+-
+-/**
+- * Recurses into a nested schema. Converters call this instead of capturing the parser closure,
+- * so each converter stays a standalone function.
+- */
+-export type ParseFn = (entry: { schema: SchemaObject; name?: string | null }, rawOptions?: Partial<ast.ParserOptions>) => ast.SchemaNode
+-
+-/**
+- * What a converter needs from the parser instance beyond the schema: how to recurse, the source
+- * document, and the two `$ref` helpers whose caches live on the instance.
+- */
+-export type ConverterDeps = {
+-  parse: ParseFn
+-  document: Document
+-  /**
+-   * Resolves a `$ref` to its parsed node, with cycle detection and per-instance memoization.
+-   * Returns `null` for a cycle or an unresolvable target.
+-   */
+-  resolveRefNode: (refPath: string, rawOptions?: Partial<ast.ParserOptions>) => ast.SchemaNode | null
+-  /**
+-   * Returns `true` when a `$ref` path resolves to a component the document actually defines.
+-   */
+-  refExists: (refPath: string) => boolean
+-  /**
+-   * Collision renames keyed by the original component pointer, used to stamp `targetName`
+-   * on ref nodes whose target the adapter renamed.
+-   */
+-  renames?: ReadonlyMap<string, string>
+-}
+-
+-/**
+- * Everything a converter receives: the per-schema context plus what it needs from the parser instance.
+- */
+-export type ConvertContext = SchemaContext & ConverterDeps
+-
+-/**
+- * One entry in the ordered schema rule table: a predicate paired with a converter. A rule whose
+- * `match` returns `true` may still `convert` to `null` to defer to the next rule (e.g. a `format`
+- * that is not convertible falls through to plain `type` handling).
+- */
+-export type SchemaRule = {
+-  /**
+-   * Returns `true` when this rule is responsible for the given context.
+-   */
+-  match: (context: ConvertContext) => boolean
+-  /**
+-   * Produces a node for the context, or `null` to fall through to the next rule.
+-   */
+-  convert: (context: ConvertContext) => ast.SchemaNode | null
+-}
+-
+-/**
+- * Normalizes malformed `{ type: 'array', enum: [...] }` schemas by moving enum values into items.
+- *
+- * This pattern violates the OpenAPI spec but appears in real specs. The fix moves enum values
+- * from the array to its items sub-schema, so they are valid for downstream processing.
+- *
+- * @note A defensive measure for non-compliant specs.
+- */
+-function normalizeArrayEnum(schema: SchemaObject): SchemaObject {
+-  const isItemsObject = typeof schema.items === 'object' && !Array.isArray(schema.items)
+-  const normalizedItems: SchemaObject = {
+-    ...(isItemsObject ? (schema.items as SchemaObject) : {}),
+-    enum: schema.enum,
+-  }
+-  const { enum: _enum, ...schemaWithoutEnum } = schema
+-  // `SchemaObject` is a discriminated union; the spread can't be verified against every member
+-  // structurally, so the merge result is asserted rather than annotated.
+-  const merged = { ...schemaWithoutEnum, items: normalizedItems }
+-
+-  return merged as SchemaObject
+-}
+-
+-/**
+- * Builds a `null` scalar node carrying the schema's documentation. Shared by the `const: null`
+- * and the drf-spectacular `NullEnum` (`{ enum: [null] }`) branches, which render identically.
+- */
+-function createNullNode(schema: SchemaObject, name: string | null | undefined, nullable?: true): ast.SchemaNode {
+-  return ast.factory.createSchema({
+-    type: 'null',
+-    primitive: 'null',
+-    name,
+-    title: schema.title,
+-    description: schema.description,
+-    deprecated: schema.deprecated,
+-    nullable,
+-    format: schema.format,
+-  })
+-}
+-
+-/**
+- * Names the inline enums on a property's schema, and on each item when the property is a tuple, from
+- * the parent and property name. Wraps `macroEnumName` at the property construction site.
+- */
+-function nameEnums(node: ast.SchemaNode, options: { parentName: string | null | undefined; propName: string; enumSuffix: string }): ast.SchemaNode {
+-  const macro = macroEnumName(options)
+-  const named = ast.applyMacros(node, [macro], { depth: 'shallow' })
+-  const tupleNode = ast.narrowSchema(named, 'tuple')
+-  if (tupleNode?.items) {
+-    const namedItems = tupleNode.items.map((item) => ast.applyMacros(item, [macro], { depth: 'shallow' }))
+-    if (namedItems.some((item, i) => item !== tupleNode.items![i])) {
+-      return { ...tupleNode, items: namedItems }
+-    }
+-  }
+-  return named
+-}
+-
+-/**
+- * Converts a `$ref` schema into a `RefSchemaNode`.
+- *
+- * The resolved schema is stored in `node.schema`. Usage-site sibling fields
+- * (description, readOnly, nullable, etc.) are stored directly on the ref node.
+- * Use `syncSchemaRef(node)` in printers to get a merged view of both.
+- * Circular refs are detected in `resolveRefNode` and leave `schema` as `null`.
+- */
+-function convertRef({ schema, name, nullable, defaultValue, rawOptions, document, resolveRefNode, refExists, renames }: ConvertContext): ast.SchemaNode {
+-  const refPath = schema.$ref
+-  const resolvedSchema = refPath ? resolveRefNode(refPath, rawOptions) : null
+-
+-  // A `$ref` to a component the document never defines (a malformed spec) would otherwise emit an
+-  // import to a module that is never generated, leaving the output uncompilable. Fall back to
+-  // `unknown` so the rest of the schema still resolves. Only do this for a document that declares a
+-  // component registry — a registry-less fragment (e.g. a minimal `parse` call) parses refs
+-  // leniently, since the target is expected to live outside the fragment.
+-  if (refPath && document.components && !refExists(refPath)) {
+-    return ast.factory.createSchema({
+-      ...buildSchemaNode(schema, name, nullable, defaultValue),
+-      type: 'unknown',
+-    })
+-  }
+-
+-  const targetName = renames?.get(schema.$ref!)
+-
+-  return ast.factory.createSchema({
+-    ...buildSchemaNode(schema, name, nullable, defaultValue),
+-    type: 'ref',
+-    name: extractRefName(schema.$ref!),
+-    ref: schema.$ref,
+-    ...(targetName ? { targetName } : {}),
+-    schema: resolvedSchema,
+-  })
+-}
+-
+-/**
+- * Converts an `allOf` schema into a flattened node or an `IntersectionSchemaNode`.
+- */
+-function convertAllOf({ schema, name, nullable, defaultValue, rawOptions, parse, document }: ConvertContext): ast.SchemaNode {
+-  if (
+-    schema.allOf!.length === 1 &&
+-    !schema.properties &&
+-    !(Array.isArray(schema.required) && schema.required.length) &&
+-    schema.additionalProperties === undefined
+-  ) {
+-    const [memberSchema] = schema.allOf as Array<SchemaObject | ReferenceObject>
+-    const memberNode = parse({ schema: memberSchema! as SchemaObject, name }, rawOptions)
+-    const { kind: _kind, ...memberNodeProps } = memberNode
+-    const mergedNullable = nullable || memberNode.nullable || undefined
+-    const mergedDefault = schema.default === null && mergedNullable ? undefined : (schema.default ?? memberNode.default)
+-
+-    return ast.factory.createSchema({
+-      ...memberNodeProps,
+-      name,
+-      title: schema.title ?? memberNode.title,
+-      description: schema.description ?? memberNode.description,
+-      deprecated: schema.deprecated ?? memberNode.deprecated,
+-      nullable: mergedNullable,
+-      readOnly: schema.readOnly ?? memberNode.readOnly,
+-      writeOnly: schema.writeOnly ?? memberNode.writeOnly,
+-      default: mergedDefault,
+-      examples: extractExamples(schema) ?? memberNode.examples,
+-      pattern: schema.pattern ?? ('pattern' in memberNode ? memberNode.pattern : undefined),
+-      format: schema.format ?? memberNode.format,
+-    } as ast.DistributiveOmit<ast.SchemaNode, 'kind'>)
+-  }
+-
+-  const filteredDiscriminantValues: Array<{
+-    propertyName: string
+-    value: string
+-  }> = []
+-  const allOfMembers: Array<ast.SchemaNode> = (schema.allOf as Array<SchemaObject | ReferenceObject>)
+-    .filter((item) => {
+-      if (!isReference(item) || !name) return true
+-      const deref = resolveRef<SchemaObject>(document, item.$ref)
+-      if (!deref || !isDiscriminator(deref)) return true
+-      const parentUnion = deref.oneOf ?? deref.anyOf
+-      if (!parentUnion) return true
+-      const childRef = `${SCHEMA_REF_PREFIX}${name}`
+-      const inOneOf = parentUnion.some((oneOfItem) => isReference(oneOfItem) && oneOfItem.$ref === childRef)
+-      const inMapping = Object.values(deref.discriminator.mapping ?? {}).some((v) => v === childRef)
+-      if (inOneOf || inMapping) {
+-        const discriminatorValue = findDiscriminator(deref.discriminator.mapping, childRef)
+-        if (discriminatorValue) {
+-          filteredDiscriminantValues.push({
+-            propertyName: deref.discriminator.propertyName,
+-            value: discriminatorValue,
+-          })
+-        }
+-        return false
+-      }
+-      return true
+-    })
+-    .map((s) => parse({ schema: s as SchemaObject, name }, rawOptions))
+-
+-  const syntheticStart = allOfMembers.length
+-
+-  if (Array.isArray(schema.required) && schema.required.length) {
+-    const outerKeys = schema.properties ? new Set(Object.keys(schema.properties)) : new Set<string>()
+-    const missingRequired = schema.required.filter((key) => !outerKeys.has(key))
+-
+-    if (missingRequired.length) {
+-      const resolvedMembers = (schema.allOf as Array<SchemaObject | ReferenceObject>).flatMap((item) => {
+-        if (!isReference(item)) return [item as SchemaObject]
+-        const deref = resolveRef<SchemaObject>(document, item.$ref)
+-        return deref && !isReference(deref) ? [deref] : []
+-      })
+-
+-      for (const key of missingRequired) {
+-        for (const resolved of resolvedMembers) {
+-          const prop = resolved.properties?.[key]
+-          if (prop) {
+-            const raw = { properties: { [key]: prop }, required: [key] }
+-            const memberSchema = raw as SchemaObject
+-            allOfMembers.push(parse({ schema: memberSchema, name }, rawOptions))
+-            break
+-          }
+-        }
+-      }
+-    }
+-  }
+-
+-  if (schema.properties) {
+-    const { allOf: _allOf, ...schemaWithoutAllOf } = schema
+-    // Don't pass `name` here, the result must stay anonymous so it can be merged with the
+-    // adjacent synthetic object in `mergeAdjacentObjectsLazy`. Nested enum qualification
+-    // happens upstream via `convertObject`'s `setEnumName` propagation.
+-    allOfMembers.push(parse({ schema: schemaWithoutAllOf }, rawOptions))
+-  }
+-
+-  for (const { propertyName, value } of filteredDiscriminantValues) {
+-    allOfMembers.push(createDiscriminantNode({ propertyName, value }))
+-  }
+-
+-  return ast.factory.createSchema({
+-    type: 'intersection',
+-    members: [...mergeAdjacentObjectsLazy(allOfMembers.slice(0, syntheticStart)), ...mergeAdjacentObjectsLazy(allOfMembers.slice(syntheticStart))],
+-    ...buildSchemaNode(schema, name, nullable, defaultValue),
+-  })
+-}
+-
+-/**
+- * Converts a `oneOf` / `anyOf` schema into a `UnionSchemaNode`.
+- */
+-function convertUnion({ schema, name, nullable, defaultValue, rawOptions, parse, document }: ConvertContext): ast.SchemaNode {
+-  function pickDiscriminatorPropertyNode(node: ast.SchemaNode, propertyName: string): ast.SchemaNode | null {
+-    const objectNode = ast.narrowSchema(node, 'object')
+-    const discriminatorProperty = objectNode?.properties?.find((property) => property.name === propertyName)
+-
+-    if (!discriminatorProperty) {
+-      return null
+-    }
+-
+-    return ast.factory.createSchema({
+-      type: 'object',
+-      primitive: 'object',
+-      properties: [discriminatorProperty],
+-    })
+-  }
+-
+-  // Silent walk — reporting resolver would flag missing refs as errors during speculative lookup.
+-  function resolveRefSilent($ref: string): SchemaObject | null {
+-    if (!$ref.startsWith('#')) return null
+-    const target = decodeURIComponent($ref.substring(1))
+-      .split('/')
+-      .filter(Boolean)
+-      .reduce<unknown>((obj, key) => (obj as Record<string, unknown> | undefined)?.[key], document)
+-
+-    return (target as SchemaObject | undefined) ?? null
+-  }
+-
+-  function implicitDiscriminantValue(member: unknown): string | null {
+-    if (!discriminator || discriminator.mapping || !isReference(member)) return null
+-    const value = extractRefName(member.$ref)
+-    if (!value) return null
+-    const variant = resolveRefSilent(member.$ref)
+-    if (!variant) return null
+-
+-    const propertyName = discriminator.propertyName
+-    // Intersecting two different literals on the same property collapses it to `never`,
+-    // so skip folding the implicit name when the variant already pins the discriminator.
+-    const seen = new Set([member.$ref])
+-
+-    function constrains(v: SchemaObject): boolean {
+-      const prop = v.properties?.[propertyName]
+-      const resolved = prop && isReference(prop) ? resolveRefSilent(prop.$ref) : (prop as SchemaObject | undefined)
+-      if (resolved && (Array.isArray(resolved.enum) || resolved.const !== undefined)) return true
+-      const composition = v.allOf ?? v.oneOf ?? v.anyOf
+-      if (!composition) return false
+-
+-      return composition.some((m) => {
+-        if (!isReference(m)) return constrains(m as SchemaObject)
+-        if (seen.has(m.$ref)) return false
+-        seen.add(m.$ref)
+-        const r = resolveRefSilent(m.$ref)
+-        return r ? constrains(r) : false
+-      })
+-    }
+-
+-    return constrains(variant) ? null : value
+-  }
+-
+-  const unionMembers = [...(schema.oneOf ?? []), ...(schema.anyOf ?? [])]
+-  const strategy: 'one' | 'any' = schema.oneOf ? 'one' : 'any'
+-  const unionBase = {
+-    ...buildSchemaNode(schema, name, nullable, defaultValue),
+-    discriminatorPropertyName: isDiscriminator(schema) ? schema.discriminator.propertyName : undefined,
+-    strategy,
+-  }
+-  const discriminator = isDiscriminator(schema) ? schema.discriminator : undefined
+-  const { oneOf: _o, anyOf: _a, discriminator: _d, ...memberBaseSchema } = schema
+-  const sharedPropertiesNode = schema.properties ? parse({ schema: memberBaseSchema as SchemaObject, name }, rawOptions) : undefined
+-
+-  if (sharedPropertiesNode || discriminator) {
+-    const members = unionMembers.map((s) => {
+-      const ref = isReference(s) ? s.$ref : undefined
+-      const discriminatorValue = findDiscriminator(discriminator?.mapping, ref) ?? implicitDiscriminantValue(s)
+-      const memberNode = parse({ schema: s as SchemaObject, name }, rawOptions)
+-
+-      if (!discriminatorValue || !discriminator) {
+-        return memberNode
+-      }
+-
+-      const narrowedDiscriminatorNode = sharedPropertiesNode
+-        ? pickDiscriminatorPropertyNode(
+-            ast.applyMacros(sharedPropertiesNode, [macroDiscriminatorEnum({ propertyName: discriminator.propertyName, values: [discriminatorValue] })], {
+-              depth: 'shallow',
+-            }),
+-            discriminator.propertyName,
+-          )
+-        : undefined
+-
+-      return ast.factory.createSchema({
+-        type: 'intersection',
+-        members: [
+-          memberNode,
+-          narrowedDiscriminatorNode ??
+-            createDiscriminantNode({
+-              propertyName: discriminator.propertyName,
+-              value: discriminatorValue,
+-            }),
+-        ],
+-      })
+-    })
+-
+-    const unionNode = ast.factory.createSchema({
+-      type: 'union',
+-      ...unionBase,
+-      members,
+-    })
+-
+-    if (!sharedPropertiesNode) {
+-      return unionNode
+-    }
+-
+-    return ast.factory.createSchema({
+-      type: 'intersection',
+-      ...buildSchemaNode(schema, name, nullable, defaultValue),
+-      members: [unionNode, sharedPropertiesNode],
+-    })
+-  }
+-
+-  const unionNode = ast.factory.createSchema({
+-    type: 'union',
+-    ...unionBase,
+-    members: unionMembers.map((s) => parse({ schema: s as SchemaObject, name }, rawOptions)),
+-  })
+-
+-  return ast.applyMacros(unionNode, [macroSimplifyUnion], { depth: 'shallow' })
+-}
+-
+-/**
+- * Converts an OAS 3.1 `const` schema into a null scalar or a single-value `EnumSchemaNode`.
+- */
+-function convertConst({ schema, name, nullable, defaultValue }: ConvertContext): ast.SchemaNode {
+-  const constValue = schema.const
+-
+-  if (constValue === null) {
+-    return createNullNode(schema, name)
+-  }
+-
+-  const constPrimitive = getPrimitiveType(typeof constValue === 'number' ? 'number' : typeof constValue === 'boolean' ? 'boolean' : 'string')
+-  return ast.factory.createSchema({
+-    type: 'enum',
+-    primitive: constPrimitive,
+-    enumValues: [constValue as string | number | boolean],
+-    ...buildSchemaNode(schema, name, nullable, defaultValue),
+-  })
+-}
+-
+-/**
+- * Converts a format-annotated schema into a special-type `SchemaNode`.
+- * Returns `null` when the format should fall through to string handling (`dateType: false`).
+- */
+-function convertFormat({ schema, name, nullable, defaultValue, options }: ConvertContext): ast.SchemaNode | null {
+-  const base = buildSchemaNode(schema, name, nullable, defaultValue)
+-
+-  if (schema.format === 'int64') {
+-    return ast.factory.createSchema({
+-      type: options.integerType === 'bigint' ? 'bigint' : 'integer',
+-      primitive: 'integer',
+-      ...base,
+-      min: schema.minimum,
+-      max: schema.maximum,
+-      exclusiveMinimum: typeof schema.exclusiveMinimum === 'number' ? schema.exclusiveMinimum : undefined,
+-      exclusiveMaximum: typeof schema.exclusiveMaximum === 'number' ? schema.exclusiveMaximum : undefined,
+-    })
+-  }
+-
+-  if (schema.format === 'date-time' || schema.format === 'date' || schema.format === 'time') {
+-    const dateType = getDateType(options, schema.format)
+-    if (!dateType) return null
+-
+-    if (dateType.type === 'datetime') {
+-      return ast.factory.createSchema({
+-        ...base,
+-        primitive: 'string' as const,
+-        type: 'datetime',
+-        offset: dateType.offset,
+-        local: dateType.local,
+-      })
+-    }
+-    return ast.factory.createSchema({
+-      ...base,
+-      primitive: 'string' as const,
+-      type: dateType.type,
+-      representation: dateType.representation,
+-    })
+-  }
+-
+-  const specialType = getSchemaType(schema.format!)
+-  if (!specialType) return null
+-
+-  const specialPrimitive: ast.PrimitiveSchemaType = specialType === 'number' || specialType === 'integer' || specialType === 'bigint' ? specialType : 'string'
+-  const hasLength = specialType === 'url' || specialType === 'uuid' || specialType === 'email'
+-
+-  return ast.factory.createSchema({
+-    ...base,
+-    primitive: specialPrimitive,
+-    type: specialType as ast.ScalarSchemaType,
+-    ...(hasLength ? { min: schema.minLength, max: schema.maxLength } : {}),
+-  })
+-}
+-
+-/**
+- * Converts an `enum` schema into an `EnumSchemaNode`.
+- */
+-function convertEnum({ schema, name, nullable, type, rawOptions, parse }: ConvertContext): ast.SchemaNode {
+-  if (type === 'array') {
+-    return parse({ schema: normalizeArrayEnum(schema), name }, rawOptions)
+-  }
+-
+-  const nullInEnum = schema.enum!.includes(null)
+-  const filteredValues = (nullInEnum ? schema.enum!.filter((v) => v !== null) : schema.enum!) as Array<string | number | boolean>
+-
+-  // drf-spectacular `NullEnum` ({ enum: [null] }) is just `null`. An empty enum node would
+-  // render as `never` (plugin-ts) / invalid `z.enum([])` (plugin-zod). Mirror the `const: null`
+-  // branch so it renders as a clean `null` (not `z.null().nullable()`).
+-  if (nullInEnum && filteredValues.length === 0) {
+-    return createNullNode(schema, name)
+-  }
+-
+-  const enumNullable = nullable || nullInEnum || undefined
+-  const enumDefault = schema.default === null && enumNullable ? undefined : schema.default
+-  const enumPrimitive = getPrimitiveType(type)
+-
+-  const enumBase = {
+-    type: 'enum' as const,
+-    primitive: enumPrimitive,
+-    ...buildSchemaNode(schema, name, enumNullable as true | undefined, enumDefault),
+-  }
+-
+-  const extensionKey = enumExtensionKeys.find((key) => key in schema)
+-  const descriptionKey = enumDescriptionKeys.find((key) => key in schema)
+-  if (extensionKey || descriptionKey || enumPrimitive === 'number' || enumPrimitive === 'integer' || enumPrimitive === 'boolean') {
+-    const enumPrimitiveType = (enumPrimitive === 'number' || enumPrimitive === 'integer' ? 'number' : enumPrimitive === 'boolean' ? 'boolean' : 'string') as
+-      | 'number'
+-      | 'boolean'
+-      | 'string'
+-    const rawEnumNames = extensionKey ? ((schema as Record<string, unknown>)[extensionKey] as Array<string | number>) : undefined
+-    const rawEnumDescriptions = descriptionKey ? ((schema as Record<string, unknown>)[descriptionKey] as Array<string>) : undefined
+-    const uniqueValues = [...new Set(filteredValues)]
+-    const seenNames = new Set<string>()
+-
+-    return ast.factory.createSchema({
+-      ...enumBase,
+-      primitive: enumPrimitiveType,
+-      namedEnumValues: uniqueValues
+-        .map((value, index) => ({
+-          name: String(rawEnumNames?.[index] ?? value),
+-          value,
+-          primitive: enumPrimitiveType,
+-          description: rawEnumDescriptions?.[index],
+-        }))
+-        .filter((entry) => {
+-          if (seenNames.has(entry.name)) return false
+-          seenNames.add(entry.name)
+-          return true
+-        }),
+-    })
+-  }
+-
+-  return ast.factory.createSchema({
+-    ...enumBase,
+-    enumValues: [...new Set(filteredValues)],
+-  })
+-}
+-
+-/**
+- * Converts an object-like schema into an `ObjectSchemaNode`.
+- */
+-function convertObject({ schema, name, nullable, defaultValue, rawOptions, options, parse }: ConvertContext): ast.SchemaNode {
+-  const properties: Array<ast.PropertyNode> = schema.properties
+-    ? Object.entries(schema.properties).map(([propName, propSchema]) => {
+-        const required = Array.isArray(schema.required) ? schema.required.includes(propName) : !!schema.required
+-        const resolvedPropSchema = propSchema as SchemaObject
+-        const propNullable = isNullable(resolvedPropSchema)
+-
+-        const resolvedChildName = childName(name, propName)
+-        const propNode = parse({ schema: resolvedPropSchema, name: resolvedChildName }, rawOptions)
+-        const schemaNode = nameEnums(propNode, { parentName: name, propName, enumSuffix: options.enumSuffix })
+-
+-        return ast.factory.createProperty({
+-          name: propName,
+-          schema: {
+-            ...schemaNode,
+-            nullable: schemaNode.type === 'null' ? undefined : propNullable || undefined,
+-          },
+-          required,
+-        })
+-      })
+-    : []
+-
+-  const additionalProperties = schema.additionalProperties
+-  const additionalPropertiesNode: ast.SchemaNode | boolean | undefined = (() => {
+-    if (additionalProperties === true) return true
+-    if (additionalProperties === false) return false
+-    if (additionalProperties && Object.keys(additionalProperties).length > 0) {
+-      return parse({ schema: additionalProperties as SchemaObject }, rawOptions)
+-    }
+-    if (additionalProperties) return ast.factory.createSchema({ type: options.unknownType })
+-    return undefined
+-  })()
+-
+-  const rawPatternProperties = 'patternProperties' in schema ? schema.patternProperties : undefined
+-
+-  const patternProperties = rawPatternProperties
+-    ? Object.fromEntries(
+-        Object.entries(rawPatternProperties).map(([pattern, patternSchema]) => [
+-          pattern,
+-          patternSchema === true || (typeof patternSchema === 'object' && Object.keys(patternSchema).length === 0)
+-            ? ast.factory.createSchema({
+-                type: options.unknownType,
+-              })
+-            : parse({ schema: patternSchema as SchemaObject }, rawOptions),
+-        ]),
+-      )
+-    : undefined
+-
+-  const objectNode: ast.SchemaNode = ast.factory.createSchema({
+-    type: 'object',
+-    primitive: 'object',
+-    properties,
+-    additionalProperties: additionalPropertiesNode,
+-    patternProperties,
+-    minProperties: schema.minProperties,
+-    maxProperties: schema.maxProperties,
+-    ...buildSchemaNode(schema, name, nullable, defaultValue),
+-  })
+-
+-  if (isDiscriminator(schema) && schema.discriminator.mapping) {
+-    const discPropName = schema.discriminator.propertyName
+-    const values = Object.keys(schema.discriminator.mapping)
+-    const enumName = name ? enumPropName(name, discPropName, options.enumSuffix) : undefined
+-    return ast.applyMacros(objectNode, [macroDiscriminatorEnum({ propertyName: discPropName, values, enumName })], { depth: 'shallow' })
+-  }
+-
+-  return objectNode
+-}
+-
+-/**
+- * Converts an OAS 3.1 `prefixItems` tuple into a `TupleSchemaNode`.
+- */
+-function convertTuple({ schema, name, nullable, defaultValue, rawOptions, parse }: ConvertContext): ast.SchemaNode {
+-  const tupleItems = (schema.prefixItems ?? []).map((item) => parse({ schema: item as SchemaObject }, rawOptions))
+-  // items: false closes the tuple; absent/true widens the tail to any.
+-  const rest =
+-    schema.items === false
+-      ? undefined
+-      : !schema.items || schema.items === true
+-        ? ast.factory.createSchema({ type: 'any' })
+-        : parse({ schema: schema.items as SchemaObject }, rawOptions)
+-
+-  return ast.factory.createSchema({
+-    type: 'tuple',
+-    primitive: 'array',
+-    items: tupleItems,
+-    rest,
+-    min: schema.minItems,
+-    max: schema.maxItems,
+-    ...buildSchemaNode(schema, name, nullable, defaultValue),
+-  })
+-}
+-
+-/**
+- * Converts a `type: 'array'` schema into an `ArraySchemaNode`.
+- */
+-function convertArray({ schema, name, nullable, defaultValue, rawOptions, options, parse }: ConvertContext): ast.SchemaNode {
+-  const rawItems = schema.items as SchemaObject | undefined
+-  const itemName = rawItems?.enum?.length && name ? enumPropName(null, name, options.enumSuffix) : name
+-  const items = rawItems ? [parse({ schema: rawItems, name: itemName }, rawOptions)] : []
+-
+-  return ast.factory.createSchema({
+-    type: 'array',
+-    primitive: 'array',
+-    items,
+-    min: schema.minItems,
+-    max: schema.maxItems,
+-    unique: schema.uniqueItems ?? undefined,
+-    ...buildSchemaNode(schema, name, nullable, defaultValue),
+-  })
+-}
+-
+-/**
+- * Converts a `type: 'string'` schema into a `StringSchemaNode`.
+- */
+-function convertString({ schema, name, nullable, defaultValue }: ConvertContext): ast.SchemaNode {
+-  return ast.factory.createSchema({
+-    type: 'string',
+-    primitive: 'string',
+-    min: schema.minLength,
+-    max: schema.maxLength,
+-    pattern: schema.pattern,
+-    ...buildSchemaNode(schema, name, nullable, defaultValue),
+-  })
+-}
+-
+-/**
+- * Converts a `type: 'number'` or `type: 'integer'` schema.
+- */
+-function convertNumeric({ schema, name, nullable, defaultValue }: ConvertContext, type: 'number' | 'integer'): ast.SchemaNode {
+-  return ast.factory.createSchema({
+-    type,
+-    primitive: type,
+-    min: schema.minimum,
+-    max: schema.maximum,
+-    exclusiveMinimum: typeof schema.exclusiveMinimum === 'number' ? schema.exclusiveMinimum : undefined,
+-    exclusiveMaximum: typeof schema.exclusiveMaximum === 'number' ? schema.exclusiveMaximum : undefined,
+-    multipleOf: schema.multipleOf,
+-    ...buildSchemaNode(schema, name, nullable, defaultValue),
+-  })
+-}
+-
+-/**
+- * Converts a `type: 'boolean'` schema.
+- */
+-function convertBoolean({ schema, name, nullable, defaultValue }: ConvertContext): ast.SchemaNode {
+-  return ast.factory.createSchema({
+-    type: 'boolean',
+-    primitive: 'boolean',
+-    ...buildSchemaNode(schema, name, nullable, defaultValue),
+-  })
+-}
+-
+-/**
+- * Converts a binary string schema (`type: 'string'`, `contentMediaType: 'application/octet-stream'`)
+- * into a `blob` node.
+- */
+-function convertBinary({ schema, name, nullable, defaultValue }: ConvertContext): ast.SchemaNode {
+-  return ast.factory.createSchema({
+-    type: 'blob',
+-    primitive: 'string',
+-    ...buildSchemaNode(schema, name, nullable, defaultValue),
+-  })
+-}
+-
+-/**
+- * Converts an OAS 3.1 multi-type array (e.g. `type: ['string', 'number']`) into a `UnionSchemaNode`.
+- *
+- * Returns `null` when only one non-`null` type remains (e.g. `['string', 'null']`), so `parse`
+- * falls through and handles it as that single type with nullability already folded in.
+- */
+-function convertMultiType({ schema, name, nullable, defaultValue, rawOptions, parse }: ConvertContext): ast.SchemaNode | null {
+-  const types = schema.type as Array<string>
+-  const nonNullTypes = types.filter((t) => t !== 'null')
+-  if (nonNullTypes.length <= 1) return null
+-
+-  const arrayNullable = types.includes('null') || nullable || undefined
+-  return ast.factory.createSchema({
+-    type: 'union',
+-    members: nonNullTypes.map((t) => {
+-      const raw = { ...schema, type: t }
+-      const memberSchema = raw as SchemaObject
+-      return parse({ schema: memberSchema, name }, rawOptions)
+-    }),
+-    ...buildSchemaNode(schema, name, arrayNullable, defaultValue),
+-  })
+-}
+-
+-/**
+- * Ordered schema rule table. Order is significant: composition keywords (`$ref`, `allOf`,
+- * `oneOf`/`anyOf`) take precedence over `const`/`format`, which take precedence over the plain
+- * `type`. The first matching rule that produces a node wins. See {@link SchemaRule} for the
+- * match/convert/fall-through contract.
+- */
+-export const schemaRules: Array<SchemaRule> = [
+-  { match: ({ schema }) => isReference(schema), convert: convertRef },
+-  { match: ({ schema }) => !!schema.allOf?.length, convert: convertAllOf },
+-  { match: ({ schema }) => !!(schema.oneOf?.length || schema.anyOf?.length), convert: convertUnion },
+-  { match: ({ schema }) => 'const' in schema && schema.const !== undefined, convert: convertConst },
+-  { match: ({ schema }) => !!schema.format, convert: convertFormat },
+-  { match: ({ schema }) => isBinary(schema), convert: convertBinary },
+-  { match: ({ schema }) => Array.isArray(schema.type) && schema.type.length > 1, convert: convertMultiType },
+-  {
+-    match: ({ schema, type }) => !type && (schema.minLength !== undefined || schema.maxLength !== undefined || schema.pattern !== undefined),
+-    convert: convertString,
+-  },
+-  {
+-    match: ({ schema, type }) => !type && (schema.minimum !== undefined || schema.maximum !== undefined),
+-    convert: (ctx) => convertNumeric(ctx, 'number'),
+-  },
+-  { match: ({ schema }) => !!schema.enum?.length, convert: convertEnum },
+-  {
+-    match: ({ schema, type }) => type === 'object' || !!schema.properties || !!schema.additionalProperties || 'patternProperties' in schema,
+-    convert: convertObject,
+-  },
+-  { match: ({ schema }) => 'prefixItems' in schema, convert: convertTuple },
+-  { match: ({ schema, type }) => type === 'array' || 'items' in schema, convert: convertArray },
+-  { match: ({ type }) => type === 'string', convert: convertString },
+-  { match: ({ type }) => type === 'number', convert: (ctx) => convertNumeric(ctx, 'number') },
+-  { match: ({ type }) => type === 'integer', convert: (ctx) => convertNumeric(ctx, 'integer') },
+-  { match: ({ type }) => type === 'boolean', convert: convertBoolean },
+-  { match: ({ type }) => type === 'null', convert: ({ schema, name, nullable }) => createNullNode(schema, name, nullable) },
+-]
+diff --git a/packages/adapter-oas/src/emit/converters/composition.ts b/packages/adapter-oas/src/emit/converters/composition.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/adapter-oas/src/emit/converters/composition.ts
+@@ -0,0 +1,187 @@
++import { ast } from '@kubb/ast'
++import { extractRefName, macroSimplifyUnion, mergeAdjacentObjectsLazy } from '@kubb/kit'
++import { isDiscriminator, isReference } from '../../oas.ts'
++import type { ReferenceObject, SchemaObject } from '../../types.ts'
++import { createNode } from '../createNode.ts'
++import { createDiscriminantNode, extractDiscriminatedAllOfMembers, narrowUnionMembers } from '../discriminator/preserve.ts'
++import type { ConvertContext } from '../parseSchema.ts'
++import { extractExamples } from '../schemaShape.ts'
++
++/**
++ * Converts a `$ref` schema into a `RefSchemaNode`.
++ *
++ * The resolved schema is stored in `node.schema`. Usage-site sibling fields
++ * (description, readOnly, nullable, etc.) are stored directly on the ref node.
++ * Use `syncSchemaRef(node)` in printers to get a merged view of both.
++ * Circular refs are detected in `refs.resolveNode` and leave `schema` as `null`.
++ */
++export function convertRef({ schema, name, nullable, defaultValue, rawOptions, document, parse, refs, renames }: ConvertContext): ast.SchemaNode {
++  const refPath = schema.$ref
++  const resolvedSchema = refPath ? refs.resolveNode(refPath, parse, rawOptions) : null
++  const ctx = { schema, name, nullable, defaultValue }
++
++  // A `$ref` to a component the document never defines (a malformed spec) would otherwise emit an
++  // import to a module that is never generated, leaving the output uncompilable. Fall back to
++  // `unknown` so the rest of the schema still resolves. Only do this for a document that declares a
++  // component registry — a registry-less fragment (e.g. a minimal `parse` call) parses refs
++  // leniently, since the target is expected to live outside the fragment.
++  if (refPath && document.components && !refs.exists(refPath)) {
++    return createNode(ctx, { type: 'unknown' })
++  }
++
++  const targetName = renames?.get(schema.$ref!)
++
++  return createNode(ctx, {
++    type: 'ref',
++    name: extractRefName(schema.$ref!),
++    ref: schema.$ref,
++    ...(targetName ? { targetName } : {}),
++    schema: resolvedSchema,
++  })
++}
++
++/**
++ * Converts an `allOf` schema into a flattened node or an `IntersectionSchemaNode`.
++ */
++export function convertAllOf({ schema, name, nullable, defaultValue, rawOptions, parse, refs }: ConvertContext): ast.SchemaNode {
++  if (
++    schema.allOf!.length === 1 &&
++    !schema.properties &&
++    !(Array.isArray(schema.required) && schema.required.length) &&
++    schema.additionalProperties === undefined
++  ) {
++    const [memberSchema] = schema.allOf as Array<SchemaObject | ReferenceObject>
++    const memberNode = parse({ schema: memberSchema! as SchemaObject, name }, rawOptions)
++    const { kind: _kind, ...memberNodeProps } = memberNode
++    const mergedNullable = nullable || memberNode.nullable || undefined
++    const mergedDefault = schema.default === null && mergedNullable ? undefined : (schema.default ?? memberNode.default)
++
++    return ast.factory.createSchema({
++      ...memberNodeProps,
++      name,
++      title: schema.title ?? memberNode.title,
++      description: schema.description ?? memberNode.description,
++      deprecated: schema.deprecated ?? memberNode.deprecated,
++      nullable: mergedNullable,
++      readOnly: schema.readOnly ?? memberNode.readOnly,
++      writeOnly: schema.writeOnly ?? memberNode.writeOnly,
++      default: mergedDefault,
++      examples: extractExamples(schema) ?? memberNode.examples,
++      pattern: schema.pattern ?? ('pattern' in memberNode ? memberNode.pattern : undefined),
++      format: schema.format ?? memberNode.format,
++    } as ast.DistributiveOmit<ast.SchemaNode, 'kind'>)
++  }
++
++  const { members: discriminatedAllOf, discriminantValues } = extractDiscriminatedAllOfMembers({
++    allOfMembers: schema.allOf as Array<SchemaObject | ReferenceObject>,
++    name,
++    refs,
++  })
++  const allOfMembers: Array<ast.SchemaNode> = discriminatedAllOf.map((s) => parse({ schema: s as SchemaObject, name }, rawOptions))
++
++  const syntheticStart = allOfMembers.length
++
++  if (Array.isArray(schema.required) && schema.required.length) {
++    const outerKeys = schema.properties ? new Set(Object.keys(schema.properties)) : new Set<string>()
++    const missingRequired = schema.required.filter((key) => !outerKeys.has(key))
++
++    if (missingRequired.length) {
++      const resolvedMembers = (schema.allOf as Array<SchemaObject | ReferenceObject>).flatMap((item) => {
++        if (!isReference(item)) return [item as SchemaObject]
++        const deref = refs.resolve<SchemaObject>(item.$ref)
++        return deref && !isReference(deref) ? [deref] : []
++      })
++
++      for (const key of missingRequired) {
++        for (const resolved of resolvedMembers) {
++          const prop = resolved.properties?.[key]
++          if (prop) {
++            const raw = { properties: { [key]: prop }, required: [key] }
++            const memberSchema = raw as SchemaObject
++            allOfMembers.push(parse({ schema: memberSchema, name }, rawOptions))
++            break
++          }
++        }
++      }
++    }
++  }
++
++  if (schema.properties) {
++    const { allOf: _allOf, ...schemaWithoutAllOf } = schema
++    // Don't pass `name` here, the result must stay anonymous so it can be merged with the
++    // adjacent synthetic object in `mergeAdjacentObjectsLazy`. Nested enum qualification
++    // happens upstream via `convertObject`'s `setEnumName` propagation.
++    allOfMembers.push(parse({ schema: schemaWithoutAllOf }, rawOptions))
++  }
++
++  for (const { propertyName, value } of discriminantValues) {
++    allOfMembers.push(createDiscriminantNode({ propertyName, value }))
++  }
++
++  return createNode(
++    { schema, name, nullable, defaultValue },
++    {
++      type: 'intersection',
++      members: [...mergeAdjacentObjectsLazy(allOfMembers.slice(0, syntheticStart)), ...mergeAdjacentObjectsLazy(allOfMembers.slice(syntheticStart))],
++    },
++  )
++}
++
++/**
++ * Converts a `oneOf` / `anyOf` schema into a `UnionSchemaNode`.
++ */
++export function convertUnion({ schema, name, nullable, defaultValue, rawOptions, parse, refs }: ConvertContext): ast.SchemaNode {
++  const ctx = { schema, name, nullable, defaultValue }
++  const unionMembers = [...(schema.oneOf ?? []), ...(schema.anyOf ?? [])]
++  const strategy: 'one' | 'any' = schema.oneOf ? 'one' : 'any'
++  const unionExtras = {
++    discriminatorPropertyName: isDiscriminator(schema) ? schema.discriminator.propertyName : undefined,
++    strategy,
++  }
++  const discriminator = isDiscriminator(schema) ? schema.discriminator : undefined
++  const { oneOf: _o, anyOf: _a, discriminator: _d, ...memberBaseSchema } = schema
++  const sharedPropertiesNode = schema.properties ? parse({ schema: memberBaseSchema as SchemaObject, name }, rawOptions) : undefined
++
++  if (sharedPropertiesNode || discriminator) {
++    const members = narrowUnionMembers({ unionMembers, discriminator, sharedPropertiesNode, parse, rawOptions, name, refs })
++    const unionNode = createNode(ctx, { type: 'union', ...unionExtras, members })
++
++    if (!sharedPropertiesNode) {
++      return unionNode
++    }
++
++    return createNode(ctx, { type: 'intersection', members: [unionNode, sharedPropertiesNode] })
++  }
++
++  const unionNode = createNode(ctx, {
++    type: 'union',
++    ...unionExtras,
++    members: unionMembers.map((s) => parse({ schema: s as SchemaObject, name }, rawOptions)),
++  })
++
++  return ast.applyMacros(unionNode, [macroSimplifyUnion], { depth: 'shallow' })
++}
++
++/**
++ * Converts an OAS 3.1 multi-type array (e.g. `type: ['string', 'number']`) into a `UnionSchemaNode`.
++ * Only called once the multi-type rule's `match` has confirmed more than one non-`null` type
++ * remains; a single remaining type (e.g. `['string', 'null']`) is handled as that type instead,
++ * with nullability already folded in.
++ */
++export function convertMultiType({ schema, name, nullable, defaultValue, rawOptions, parse }: ConvertContext): ast.SchemaNode {
++  const types = schema.type as Array<string>
++  const nonNullTypes = types.filter((t) => t !== 'null')
++
++  const arrayNullable = types.includes('null') || nullable || undefined
++  return createNode(
++    { schema, name, nullable: arrayNullable, defaultValue },
++    {
++      type: 'union',
++      members: nonNullTypes.map((t) => {
++        const raw = { ...schema, type: t }
++        const memberSchema = raw as SchemaObject
++        return parse({ schema: memberSchema, name }, rawOptions)
++      }),
++    },
++  )
++}
+diff --git a/packages/adapter-oas/src/emit/converters/scalar.ts b/packages/adapter-oas/src/emit/converters/scalar.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/adapter-oas/src/emit/converters/scalar.ts
+@@ -0,0 +1,225 @@
++import { ast } from '@kubb/ast'
++import { enumDescriptionKeys, enumExtensionKeys } from '../../constants.ts'
++import type { SchemaObject } from '../../types.ts'
++import { createNode } from '../createNode.ts'
++import type { ConvertContext } from '../parseSchema.ts'
++import { getDateType, getExclusiveBounds, getPrimitiveType, getSchemaType } from '../schemaShape.ts'
++
++/**
++ * Normalizes malformed `{ type: 'array', enum: [...] }` schemas by moving enum values into items.
++ *
++ * This pattern violates the OpenAPI spec but appears in real specs. The fix moves enum values
++ * from the array to its items sub-schema, so they are valid for downstream processing.
++ *
++ * @note A defensive measure for non-compliant specs.
++ */
++function normalizeArrayEnum(schema: SchemaObject): SchemaObject {
++  const isItemsObject = typeof schema.items === 'object' && !Array.isArray(schema.items)
++  const normalizedItems: SchemaObject = {
++    ...(isItemsObject ? (schema.items as SchemaObject) : {}),
++    enum: schema.enum,
++  }
++  const { enum: _enum, ...schemaWithoutEnum } = schema
++  // `SchemaObject` is a discriminated union; the spread can't be verified against every member
++  // structurally, so the merge result is asserted rather than annotated.
++  const merged = { ...schemaWithoutEnum, items: normalizedItems }
++
++  return merged as SchemaObject
++}
++
++/**
++ * Builds a `null` scalar node carrying the schema's documentation. Shared by the `const: null`
++ * and the drf-spectacular `NullEnum` (`{ enum: [null] }`) branches, which render identically.
++ */
++export function createNullNode(schema: SchemaObject, name: string | null | undefined, nullable?: true): ast.SchemaNode {
++  return ast.factory.createSchema({
++    type: 'null',
++    primitive: 'null',
++    name,
++    title: schema.title,
++    description: schema.description,
++    deprecated: schema.deprecated,
++    nullable,
++    format: schema.format,
++  })
++}
++
++/**
++ * Converts an OAS 3.1 `const` schema into a null scalar or a single-value `EnumSchemaNode`.
++ */
++export function convertConst({ schema, name, nullable, defaultValue }: ConvertContext): ast.SchemaNode {
++  const constValue = schema.const
++
++  if (constValue === null) {
++    return createNullNode(schema, name)
++  }
++
++  const constPrimitive = getPrimitiveType(typeof constValue === 'number' ? 'number' : typeof constValue === 'boolean' ? 'boolean' : 'string')
++  return createNode(
++    { schema, name, nullable, defaultValue },
++    {
++      type: 'enum',
++      primitive: constPrimitive,
++      enumValues: [constValue as string | number | boolean],
++    },
++  )
++}
++
++/**
++ * Converts a format-annotated schema into a special-type `SchemaNode`. Only called once the
++ * `format` rule's `match` has confirmed the format is handled (see `isHandledFormat`) and, for
++ * a date-ish format, that `dateType` is not `false`.
++ */
++export function convertFormat({ schema, name, nullable, defaultValue, options }: ConvertContext): ast.SchemaNode {
++  const ctx = { schema, name, nullable, defaultValue }
++
++  if (schema.format === 'int64') {
++    return createNode(ctx, {
++      type: options.integerType === 'bigint' ? 'bigint' : 'integer',
++      primitive: 'integer',
++      min: schema.minimum,
++      max: schema.maximum,
++      ...getExclusiveBounds(schema),
++    })
++  }
++
++  if (schema.format === 'date-time' || schema.format === 'date' || schema.format === 'time') {
++    const dateType = getDateType(options, schema.format)!
++
++    if (dateType.type === 'datetime') {
++      return createNode(ctx, {
++        primitive: 'string' as const,
++        type: 'datetime',
++        offset: dateType.offset,
++        local: dateType.local,
++      })
++    }
++    return createNode(ctx, {
++      primitive: 'string' as const,
++      type: dateType.type,
++      representation: dateType.representation,
++    })
++  }
++
++  const specialType = getSchemaType(schema.format!)!
++
++  const specialPrimitive: ast.PrimitiveSchemaType = specialType === 'number' || specialType === 'integer' || specialType === 'bigint' ? specialType : 'string'
++  const hasLength = specialType === 'url' || specialType === 'uuid' || specialType === 'email'
++
++  return createNode(ctx, {
++    primitive: specialPrimitive,
++    type: specialType as ast.ScalarSchemaType,
++    ...(hasLength ? { min: schema.minLength, max: schema.maxLength } : {}),
++  })
++}
++
++/**
++ * Converts an `enum` schema into an `EnumSchemaNode`.
++ */
++export function convertEnum({ schema, name, nullable, type, rawOptions, parse }: ConvertContext): ast.SchemaNode {
++  if (type === 'array') {
++    return parse({ schema: normalizeArrayEnum(schema), name }, rawOptions)
++  }
++
++  const nullInEnum = schema.enum!.includes(null)
++  const filteredValues = (nullInEnum ? schema.enum!.filter((v) => v !== null) : schema.enum!) as Array<string | number | boolean>
++
++  // drf-spectacular `NullEnum` ({ enum: [null] }) is just `null`. An empty enum node would
++  // render as `never` (plugin-ts) / invalid `z.enum([])` (plugin-zod). Mirror the `const: null`
++  // branch so it renders as a clean `null` (not `z.null().nullable()`).
++  if (nullInEnum && filteredValues.length === 0) {
++    return createNullNode(schema, name)
++  }
++
++  const enumNullable = nullable || nullInEnum || undefined
++  const enumDefault = schema.default === null && enumNullable ? undefined : schema.default
++  const enumPrimitive = getPrimitiveType(type)
++
++  const ctx = { schema, name, nullable: enumNullable as true | undefined, defaultValue: enumDefault }
++  const enumExtras = {
++    type: 'enum' as const,
++    primitive: enumPrimitive,
++  }
++
++  const extensionKey = enumExtensionKeys.find((key) => key in schema)
++  const descriptionKey = enumDescriptionKeys.find((key) => key in schema)
++  if (extensionKey || descriptionKey || enumPrimitive === 'number' || enumPrimitive === 'integer' || enumPrimitive === 'boolean') {
++    let enumPrimitiveType: 'number' | 'boolean' | 'string' = 'string'
++    if (enumPrimitive === 'number' || enumPrimitive === 'integer') enumPrimitiveType = 'number'
++    else if (enumPrimitive === 'boolean') enumPrimitiveType = 'boolean'
++    const rawEnumNames = extensionKey ? ((schema as Record<string, unknown>)[extensionKey] as Array<string | number>) : undefined
++    const rawEnumDescriptions = descriptionKey ? ((schema as Record<string, unknown>)[descriptionKey] as Array<string>) : undefined
++    const uniqueValues = [...new Set(filteredValues)]
++    const seenNames = new Set<string>()
++
++    return createNode(ctx, {
++      ...enumExtras,
++      primitive: enumPrimitiveType,
++      namedEnumValues: uniqueValues
++        .map((value, index) => ({
++          name: String(rawEnumNames?.[index] ?? value),
++          value,
++          primitive: enumPrimitiveType,
++          description: rawEnumDescriptions?.[index],
++        }))
++        .filter((entry) => {
++          if (seenNames.has(entry.name)) return false
++          seenNames.add(entry.name)
++          return true
++        }),
++    })
++  }
++
++  return createNode(ctx, {
++    ...enumExtras,
++    enumValues: [...new Set(filteredValues)],
++  })
++}
++
++/**
++ * Converts a `type: 'string'` schema into a `StringSchemaNode`.
++ */
++export function convertString({ schema, name, nullable, defaultValue }: ConvertContext): ast.SchemaNode {
++  return createNode(
++    { schema, name, nullable, defaultValue },
++    {
++      type: 'string',
++      primitive: 'string',
++      min: schema.minLength,
++      max: schema.maxLength,
++      pattern: schema.pattern,
++    },
++  )
++}
++
++/**
++ * Converts a `type: 'number'` or `type: 'integer'` schema.
++ */
++export function convertNumeric({ schema, name, nullable, defaultValue }: ConvertContext, type: 'number' | 'integer'): ast.SchemaNode {
++  return createNode(
++    { schema, name, nullable, defaultValue },
++    {
++      type,
++      primitive: type,
++      min: schema.minimum,
++      max: schema.maximum,
++      ...getExclusiveBounds(schema),
++      multipleOf: schema.multipleOf,
++    },
++  )
++}
++
++/**
++ * Converts a `type: 'boolean'` schema.
++ */
++export function convertBoolean({ schema, name, nullable, defaultValue }: ConvertContext): ast.SchemaNode {
++  return createNode({ schema, name, nullable, defaultValue }, { type: 'boolean', primitive: 'boolean' })
++}
++
++/**
++ * Converts a binary string schema (`type: 'string'`, `contentMediaType: 'application/octet-stream'`)
++ * into a `blob` node.
++ */
++export function convertBinary({ schema, name, nullable, defaultValue }: ConvertContext): ast.SchemaNode {
++  return createNode({ schema, name, nullable, defaultValue }, { type: 'blob', primitive: 'string' })
++}
+diff --git a/packages/adapter-oas/src/emit/converters/structural.ts b/packages/adapter-oas/src/emit/converters/structural.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/adapter-oas/src/emit/converters/structural.ts
+@@ -0,0 +1,148 @@
++import { ast } from '@kubb/ast'
++import { childName, enumPropName, macroDiscriminatorEnum, macroEnumName } from '@kubb/kit'
++import { isDiscriminator, isNullable } from '../../oas.ts'
++import type { SchemaObject } from '../../types.ts'
++import { createNode } from '../createNode.ts'
++import type { ConvertContext } from '../parseSchema.ts'
++
++/**
++ * Resolves a `true` or empty-object map schema (`additionalProperties`/`patternProperties`) to
++ * `options.unknownType`, otherwise parses it as a regular schema.
++ */
++function resolveMapSchema(
++  mapSchema: unknown,
++  options: ConvertContext['options'],
++  parse: ConvertContext['parse'],
++  rawOptions: ConvertContext['rawOptions'],
++): ast.SchemaNode {
++  if (mapSchema === true || (typeof mapSchema === 'object' && Object.keys(mapSchema as object).length === 0)) {
++    return ast.factory.createSchema({ type: options.unknownType })
++  }
++  return parse({ schema: mapSchema as SchemaObject }, rawOptions)
++}
++
++/**
++ * Names the inline enums on a property's schema, and on each item when the property is a tuple, from
++ * the parent and property name. Wraps `macroEnumName` at the property construction site.
++ */
++function nameEnums(node: ast.SchemaNode, options: { parentName: string | null | undefined; propName: string; enumSuffix: string }): ast.SchemaNode {
++  const macro = macroEnumName(options)
++  const named = ast.applyMacros(node, [macro], { depth: 'shallow' })
++  const tupleNode = ast.narrowSchema(named, 'tuple')
++  if (tupleNode?.items) {
++    const namedItems = tupleNode.items.map((item) => ast.applyMacros(item, [macro], { depth: 'shallow' }))
++    if (namedItems.some((item, i) => item !== tupleNode.items![i])) {
++      return { ...tupleNode, items: namedItems }
++    }
++  }
++  return named
++}
++
++/**
++ * Converts an object-like schema into an `ObjectSchemaNode`.
++ */
++export function convertObject({ schema, name, nullable, defaultValue, rawOptions, options, parse }: ConvertContext): ast.SchemaNode {
++  const properties: Array<ast.PropertyNode> = schema.properties
++    ? Object.entries(schema.properties).map(([propName, propSchema]) => {
++        const required = Array.isArray(schema.required) ? schema.required.includes(propName) : !!schema.required
++        const resolvedPropSchema = propSchema as SchemaObject
++        const propNullable = isNullable(resolvedPropSchema)
++
++        const resolvedChildName = childName(name, propName)
++        const propNode = parse({ schema: resolvedPropSchema, name: resolvedChildName }, rawOptions)
++        const schemaNode = nameEnums(propNode, { parentName: name, propName, enumSuffix: options.enumSuffix })
++
++        return ast.factory.createProperty({
++          name: propName,
++          schema: {
++            ...schemaNode,
++            nullable: schemaNode.type === 'null' ? undefined : propNullable || undefined,
++          },
++          required,
++        })
++      })
++    : []
++
++  const additionalProperties = schema.additionalProperties
++  let additionalPropertiesNode: ast.SchemaNode | boolean | undefined
++  if (additionalProperties === true) additionalPropertiesNode = true
++  else if (additionalProperties) additionalPropertiesNode = resolveMapSchema(additionalProperties, options, parse, rawOptions)
++  else additionalPropertiesNode = additionalProperties
++
++  const rawPatternProperties = 'patternProperties' in schema ? schema.patternProperties : undefined
++
++  const patternProperties = rawPatternProperties
++    ? Object.fromEntries(
++        Object.entries(rawPatternProperties).map(([pattern, patternSchema]) => [pattern, resolveMapSchema(patternSchema, options, parse, rawOptions)]),
++      )
++    : undefined
++
++  const objectNode: ast.SchemaNode = createNode(
++    { schema, name, nullable, defaultValue },
++    {
++      type: 'object',
++      primitive: 'object',
++      properties,
++      additionalProperties: additionalPropertiesNode,
++      patternProperties,
++      minProperties: schema.minProperties,
++      maxProperties: schema.maxProperties,
++    },
++  )
++
++  if (isDiscriminator(schema) && schema.discriminator.mapping) {
++    const discPropName = schema.discriminator.propertyName
++    const values = Object.keys(schema.discriminator.mapping)
++    const enumName = name ? enumPropName(name, discPropName, options.enumSuffix) : undefined
++    return ast.applyMacros(objectNode, [macroDiscriminatorEnum({ propertyName: discPropName, values, enumName })], { depth: 'shallow' })
++  }
++
++  return objectNode
++}
++
++/**
++ * Converts an OAS 3.1 `prefixItems` tuple into a `TupleSchemaNode`.
++ */
++export function convertTuple({ schema, name, nullable, defaultValue, rawOptions, parse }: ConvertContext): ast.SchemaNode {
++  const tupleItems = (schema.prefixItems ?? []).map((item) => parse({ schema: item as SchemaObject }, rawOptions))
++  // items: false closes the tuple; absent/true widens the tail to any.
++  const rest =
++    schema.items === false
++      ? undefined
++      : !schema.items || schema.items === true
++        ? ast.factory.createSchema({ type: 'any' })
++        : parse({ schema: schema.items as SchemaObject }, rawOptions)
++
++  return createNode(
++    { schema, name, nullable, defaultValue },
++    {
++      type: 'tuple',
++      primitive: 'array',
++      items: tupleItems,
++      rest,
++      min: schema.minItems,
++      max: schema.maxItems,
++    },
++  )
++}
++
++/**
++ * Converts a `type: 'array'` schema into an `ArraySchemaNode`.
++ */
++export function convertArray({ schema, name, nullable, defaultValue, rawOptions, options, parse }: ConvertContext): ast.SchemaNode {
++  const rawItems = schema.items as SchemaObject | undefined
++  const itemName = rawItems?.enum?.length && name ? enumPropName(null, name, options.enumSuffix) : name
++  const items = rawItems ? [parse({ schema: rawItems, name: itemName }, rawOptions)] : []
++
++  return createNode(
++    { schema, name, nullable, defaultValue },
++    {
++      type: 'array',
++      primitive: 'array',
++      items,
++      min: schema.minItems,
++      max: schema.maxItems,
++      unique: schema.uniqueItems ?? undefined,
++    },
++  )
++}
+diff --git a/packages/adapter-oas/src/emit/createNode.ts b/packages/adapter-oas/src/emit/createNode.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/adapter-oas/src/emit/createNode.ts
+@@ -0,0 +1,36 @@
++import { ast } from '@kubb/ast'
++import { extractExamples } from './schemaShape.ts'
++import type { SchemaContext } from './parseSchema.ts'
++
++/**
++ * The `schema`/`name`/`nullable`/`defaultValue` slice of a context, the only part
++ * {@link createNode} needs to fill in a node's shared base fields.
++ */
++type NodeBaseContext = Pick<SchemaContext, 'schema' | 'name' | 'nullable' | 'defaultValue'>
++
++/**
++ * Input shape accepted by `ast.factory.createSchema`, recovered from its own signature so
++ * {@link createNode} stays in sync with the AST layer without redeclaring the union.
++ */
++type CreateSchemaProps = Parameters<typeof ast.factory.createSchema>[0]
++
++/**
++ * Builds a schema node from a converter's base context plus its type-specific fields. Every
++ * converter needs the same metadata fields (`title`, `description`, `examples`, ...) alongside
++ * whatever makes its node distinct; this folds both into one call.
++ */
++export function createNode({ schema, name, nullable, defaultValue }: NodeBaseContext, extras: CreateSchemaProps): ast.SchemaNode {
++  return ast.factory.createSchema({
++    name,
++    nullable,
++    title: schema.title,
++    description: schema.description,
++    deprecated: schema.deprecated,
++    readOnly: schema.readOnly,
++    writeOnly: schema.writeOnly,
++    default: defaultValue,
++    examples: extractExamples(schema),
++    format: schema.format,
++    ...extras,
++  })
++}
+diff --git a/packages/adapter-oas/src/emit/discriminator/preserve.ts b/packages/adapter-oas/src/emit/discriminator/preserve.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/adapter-oas/src/emit/discriminator/preserve.ts
+@@ -0,0 +1,196 @@
++import { ast } from '@kubb/ast'
++import { extractRefName, macroDiscriminatorEnum } from '@kubb/kit'
++import { SCHEMA_REF_PREFIX } from '../../constants.ts'
++import { isDiscriminator, isReference } from '../../oas.ts'
++import type { Refs } from '../../refs.ts'
++import type { DiscriminatorObject, ReferenceObject, SchemaObject } from '../../types.ts'
++import type { ParseFn } from '../parseSchema.ts'
++
++/**
++ * Creates a single-property object schema used as a discriminator literal.
++ *
++ * @example
++ * ```ts
++ * createDiscriminantNode({ propertyName: 'type', value: 'dog' })
++ * // -> { type: 'object', properties: [{ name: 'type', required: true, schema: enum('dog') }] }
++ * ```
++ */
++export function createDiscriminantNode({ propertyName, value }: { propertyName: string; value: string }): ast.SchemaNode {
++  return ast.factory.createSchema({
++    type: 'object',
++    primitive: 'object',
++    properties: [
++      ast.factory.createProperty({
++        name: propertyName,
++        schema: ast.factory.createSchema({
++          type: 'enum',
++          primitive: 'string',
++          enumValues: [value],
++        }),
++        required: true,
++      }),
++    ],
++  })
++}
++
++/**
++ * Returns the discriminator key whose mapping value matches `ref`, or `null` when there is no match.
++ *
++ * @example
++ * ```ts
++ * findDiscriminator({ dog: '#/components/schemas/Dog' }, '#/components/schemas/Dog') // 'dog'
++ * ```
++ */
++export function findDiscriminator(mapping: Record<string, string> | undefined, ref: string | undefined): string | null {
++  if (!mapping || !ref) return null
++  return Object.entries(mapping).find(([, value]) => value === ref)?.[0] ?? null
++}
++
++/**
++ * Narrows each `oneOf`/`anyOf` member with its discriminant value, intersecting the member's own
++ * node with either the shared-properties slice carrying that value, or a synthetic discriminant
++ * literal. The referenced child schema's own definition is left untouched — narrowing happens only
++ * at this union usage site, which is what makes this mode "preserve" (as opposed to `propagate`,
++ * which additionally patches the child schema's own definition in a post-pass).
++ */
++export function narrowUnionMembers({
++  unionMembers,
++  discriminator,
++  sharedPropertiesNode,
++  parse,
++  rawOptions,
++  name,
++  refs,
++}: {
++  unionMembers: Array<unknown>
++  discriminator: DiscriminatorObject | undefined
++  sharedPropertiesNode: ast.SchemaNode | undefined
++  parse: ParseFn
++  rawOptions: Partial<ast.ParserOptions> | undefined
++  name: string | null | undefined
++  refs: Refs
++}): Array<ast.SchemaNode> {
++  function pickDiscriminatorPropertyNode(node: ast.SchemaNode, propertyName: string): ast.SchemaNode | null {
++    const objectNode = ast.narrowSchema(node, 'object')
++    const discriminatorProperty = objectNode?.properties?.find((property) => property.name === propertyName)
++
++    if (!discriminatorProperty) {
++      return null
++    }
++
++    return ast.factory.createSchema({
++      type: 'object',
++      primitive: 'object',
++      properties: [discriminatorProperty],
++    })
++  }
++
++  function implicitDiscriminantValue(member: unknown): string | null {
++    if (!discriminator || discriminator.mapping || !isReference(member)) return null
++    const value = extractRefName(member.$ref)
++    if (!value) return null
++    // Silent walk — the reporting resolve() would flag missing refs as errors during speculative lookup.
++    const variant = refs.resolve<SchemaObject>(member.$ref, { report: false })
++    if (!variant) return null
++
++    const propertyName = discriminator.propertyName
++    // Intersecting two different literals on the same property collapses it to `never`,
++    // so skip folding the implicit name when the variant already pins the discriminator.
++    const seen = new Set([member.$ref])
++
++    function constrains(v: SchemaObject): boolean {
++      const prop = v.properties?.[propertyName]
++      const resolved = prop && isReference(prop) ? refs.resolve<SchemaObject>(prop.$ref, { report: false }) : (prop as SchemaObject | undefined)
++      if (resolved && (Array.isArray(resolved.enum) || resolved.const !== undefined)) return true
++      const composition = v.allOf ?? v.oneOf ?? v.anyOf
++      if (!composition) return false
++
++      return composition.some((m) => {
++        if (!isReference(m)) return constrains(m as SchemaObject)
++        if (seen.has(m.$ref)) return false
++        seen.add(m.$ref)
++        const r = refs.resolve<SchemaObject>(m.$ref, { report: false })
++        return r ? constrains(r) : false
++      })
++    }
++
++    return constrains(variant) ? null : value
++  }
++
++  return unionMembers.map((s) => {
++    const ref = isReference(s) ? s.$ref : undefined
++    const discriminatorValue = findDiscriminator(discriminator?.mapping, ref) ?? implicitDiscriminantValue(s)
++    const memberNode = parse({ schema: s as SchemaObject, name }, rawOptions)
++
++    if (!discriminatorValue || !discriminator) {
++      return memberNode
++    }
++
++    const narrowedDiscriminatorNode = sharedPropertiesNode
++      ? pickDiscriminatorPropertyNode(
++          ast.applyMacros(sharedPropertiesNode, [macroDiscriminatorEnum({ propertyName: discriminator.propertyName, values: [discriminatorValue] })], {
++            depth: 'shallow',
++          }),
++          discriminator.propertyName,
++        )
++      : undefined
++
++    return ast.factory.createSchema({
++      type: 'intersection',
++      members: [
++        memberNode,
++        narrowedDiscriminatorNode ??
++          createDiscriminantNode({
++            propertyName: discriminator.propertyName,
++            value: discriminatorValue,
++          }),
++      ],
++    })
++  })
++}
++
++/**
++ * Filters the discriminated members out of an `allOf` list: an `allOf` member that `$ref`s a
++ * discriminated union's parent, where this schema is itself one of that union's children, is
++ * dropped from `members` and its discriminant value collected instead — the same synthetic
++ * literal `narrowUnionMembers` produces, so the emitted node stays a plain intersection rather
++ * than nesting the whole parent union one level deeper.
++ */
++export function extractDiscriminatedAllOfMembers({
++  allOfMembers,
++  name,
++  refs,
++}: {
++  allOfMembers: Array<SchemaObject | ReferenceObject>
++  name: string | null | undefined
++  refs: Refs
++}): {
++  members: Array<SchemaObject | ReferenceObject>
++  discriminantValues: Array<{ propertyName: string; value: string }>
++} {
++  const discriminantValues: Array<{ propertyName: string; value: string }> = []
++
++  const members = allOfMembers.filter((item) => {
++    if (!isReference(item) || !name) return true
++    const deref = refs.resolve<SchemaObject>(item.$ref)
++    if (!deref || !isDiscriminator(deref)) return true
++    const parentUnion = deref.oneOf ?? deref.anyOf
++    if (!parentUnion) return true
++    const childRef = `${SCHEMA_REF_PREFIX}${name}`
++    const inOneOf = parentUnion.some((oneOfItem) => isReference(oneOfItem) && oneOfItem.$ref === childRef)
++    const inMapping = Object.values(deref.discriminator.mapping ?? {}).some((v) => v === childRef)
++    if (inOneOf || inMapping) {
++      const discriminatorValue = findDiscriminator(deref.discriminator.mapping, childRef)
++      if (discriminatorValue) {
++        discriminantValues.push({
++          propertyName: deref.discriminator.propertyName,
++          value: discriminatorValue,
++        })
++      }
++      return false
++    }
++    return true
++  })
++
++  return { members, discriminantValues }
++}
+diff --git a/packages/adapter-oas/src/discriminator.ts b/packages/adapter-oas/src/emit/discriminator/propagate.ts
+rename from packages/adapter-oas/src/discriminator.ts
+rename to packages/adapter-oas/src/emit/discriminator/propagate.ts
+--- a/packages/adapter-oas/src/discriminator.ts
++++ b/packages/adapter-oas/src/emit/discriminator/propagate.ts
+@@ -88,43 +88,3 @@ export function patchDiscriminatorNode(node: ast.SchemaNode, entry: { propertyNa
+ 
+   return { ...objectNode, properties: newProperties }
+ }
+-
+-/**
+- * Creates a single-property object schema used as a discriminator literal.
+- *
+- * @example
+- * ```ts
+- * createDiscriminantNode({ propertyName: 'type', value: 'dog' })
+- * // -> { type: 'object', properties: [{ name: 'type', required: true, schema: enum('dog') }] }
+- * ```
+- */
+-export function createDiscriminantNode({ propertyName, value }: { propertyName: string; value: string }): ast.SchemaNode {
+-  return ast.factory.createSchema({
+-    type: 'object',
+-    primitive: 'object',
+-    properties: [
+-      ast.factory.createProperty({
+-        name: propertyName,
+-        schema: ast.factory.createSchema({
+-          type: 'enum',
+-          primitive: 'string',
+-          enumValues: [value],
+-        }),
+-        required: true,
+-      }),
+-    ],
+-  })
+-}
+-
+-/**
+- * Returns the discriminator key whose mapping value matches `ref`, or `null` when there is no match.
+- *
+- * @example
+- * ```ts
+- * findDiscriminator({ dog: '#/components/schemas/Dog' }, '#/components/schemas/Dog') // 'dog'
+- * ```
+- */
+-export function findDiscriminator(mapping: Record<string, string> | undefined, ref: string | undefined): string | null {
+-  if (!mapping || !ref) return null
+-  return Object.entries(mapping).find(([, value]) => value === ref)?.[0] ?? null
+-}
+diff --git a/packages/adapter-oas/src/emit/parseSchema.ts b/packages/adapter-oas/src/emit/parseSchema.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/adapter-oas/src/emit/parseSchema.ts
+@@ -0,0 +1,112 @@
++import type { ast } from '@kubb/ast'
++import { isBinary, isReference } from '../oas.ts'
++import type { Refs } from '../refs.ts'
++import type { Document, SchemaObject } from '../types.ts'
++import { convertAllOf, convertMultiType, convertRef, convertUnion } from './converters/composition.ts'
++import { convertBinary, convertBoolean, convertConst, convertEnum, convertFormat, convertNumeric, convertString, createNullNode } from './converters/scalar.ts'
++import { convertArray, convertObject, convertTuple } from './converters/structural.ts'
++import { isHandledFormat } from './schemaShape.ts'
++
++/**
++ * Pre-computed per-schema context passed to every schema converter.
++ *
++ * Centralizes schema derivations (type resolution, defaults, options) to avoid repeated
++ * computation across all conversion branches. The `type` field is normalized from OAS 3.1
++ * multi-type arrays to a single string.
++ */
++export type SchemaContext = {
++  schema: SchemaObject
++  name: string | null | undefined
++  nullable: true | undefined
++  defaultValue: unknown
++  /**
++   * Normalized single type string (first element when OAS 3.1 multi-type array).
++   */
++  type: string | undefined
++  rawOptions: Partial<ast.ParserOptions> | undefined
++  options: ast.ParserOptions
++}
++
++/**
++ * Recurses into a nested schema. Converters call this instead of capturing the parser closure,
++ * so each converter stays a standalone function.
++ */
++export type ParseFn = (entry: { schema: SchemaObject; name?: string | null }, rawOptions?: Partial<ast.ParserOptions>) => ast.SchemaNode
++
++/**
++ * What a converter needs from the parser instance beyond the schema: how to recurse, the source
++ * document, and the `$ref` service bound to it.
++ */
++export type ConverterDeps = {
++  parse: ParseFn
++  document: Document
++  refs: Refs
++  /**
++   * Collision renames keyed by the original component pointer, used to stamp `targetName`
++   * on ref nodes whose target the adapter renamed.
++   */
++  renames?: ReadonlyMap<string, string>
++}
++
++/**
++ * Everything a converter receives: the per-schema context plus what it needs from the parser instance.
++ */
++export type ConvertContext = SchemaContext & ConverterDeps
++
++/**
++ * One entry in the ordered schema rule table: a predicate paired with a converter. `match`
++ * fully decides whether this rule owns the context, so `convert` always produces a node.
++ */
++export type SchemaRule = {
++  /**
++   * Returns `true` when this rule is responsible for the given context.
++   */
++  match: (context: ConvertContext) => boolean
++  /**
++   * Produces a node for the context.
++   */
++  convert: (context: ConvertContext) => ast.SchemaNode
++}
++
++/**
++ * Ordered schema rule table. Order is significant: composition keywords (`$ref`, `allOf`,
++ * `oneOf`/`anyOf`) take precedence over `const`/`format`, which take precedence over the plain
++ * `type`. The first matching rule that produces a node wins. See {@link SchemaRule} for the
++ * match/convert/fall-through contract.
++ */
++export const schemaRules: Array<SchemaRule> = [
++  { match: ({ schema }) => isReference(schema), convert: convertRef },
++  { match: ({ schema }) => !!schema.allOf?.length, convert: convertAllOf },
++  { match: ({ schema }) => !!(schema.oneOf?.length || schema.anyOf?.length), convert: convertUnion },
++  { match: ({ schema }) => 'const' in schema && schema.const !== undefined, convert: convertConst },
++  {
++    match: ({ schema, options }) => {
++      if (!schema.format) return false
++      if (schema.format === 'date-time' || schema.format === 'date' || schema.format === 'time') return options.dateType !== false
++      return isHandledFormat(schema.format)
++    },
++    convert: convertFormat,
++  },
++  { match: ({ schema }) => isBinary(schema), convert: convertBinary },
++  { match: ({ schema }) => Array.isArray(schema.type) && schema.type.filter((t) => t !== 'null').length > 1, convert: convertMultiType },
++  {
++    match: ({ schema, type }) => !type && (schema.minLength !== undefined || schema.maxLength !== undefined || schema.pattern !== undefined),
++    convert: convertString,
++  },
++  {
++    match: ({ schema, type }) => !type && (schema.minimum !== undefined || schema.maximum !== undefined),
++    convert: (ctx) => convertNumeric(ctx, 'number'),
++  },
++  { match: ({ schema }) => !!schema.enum?.length, convert: convertEnum },
++  {
++    match: ({ schema, type }) => type === 'object' || !!schema.properties || !!schema.additionalProperties || 'patternProperties' in schema,
++    convert: convertObject,
++  },
++  { match: ({ schema }) => 'prefixItems' in schema, convert: convertTuple },
++  { match: ({ schema, type }) => type === 'array' || 'items' in schema, convert: convertArray },
++  { match: ({ type }) => type === 'string', convert: convertString },
++  { match: ({ type }) => type === 'number', convert: (ctx) => convertNumeric(ctx, 'number') },
++  { match: ({ type }) => type === 'integer', convert: (ctx) => convertNumeric(ctx, 'integer') },
++  { match: ({ type }) => type === 'boolean', convert: convertBoolean },
++  { match: ({ type }) => type === 'null', convert: ({ schema, name, nullable }) => createNullNode(schema, name, nullable) },
++]
+diff --git a/packages/adapter-oas/src/emit/schemaShape.ts b/packages/adapter-oas/src/emit/schemaShape.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/adapter-oas/src/emit/schemaShape.ts
+@@ -0,0 +1,144 @@
++import type { ast } from '@kubb/ast'
++import { formatMap, specialCasedFormats, structuralKeys } from '../constants.ts'
++import { isReference } from '../oas.ts'
++import type { SchemaObject } from '../types.ts'
++
++/**
++ * Returns the Kubb `SchemaType` for a given OAS `format` string, or `null` if not found.
++ * Formats not in `formatMap` (e.g., `int64`, `date-time`) are handled separately by parser options.
++ */
++export function getSchemaType(format: string): ast.SchemaType | null {
++  return formatMap[format as keyof typeof formatMap] ?? null
++}
++
++/**
++ * Whether the parser maps `format` to a dedicated type. True for any `formatMap` entry, plus the
++ * `specialCasedFormats` that `convertFormat` handles directly. False means the format falls back to
++ * the base type, which is what `KUBB_UNSUPPORTED_FORMAT` flags. Reading both sources keeps the
++ * diagnostic in step with the parser as `formatMap` grows.
++ */
++export function isHandledFormat(format: string): boolean {
++  return getSchemaType(format) !== null || specialCasedFormats.has(format)
++}
++
++/**
++ * Converts an OAS primitive type string to its `PrimitiveSchemaType` equivalent.
++ * Numeric types (`number`, `integer`, `bigint`) pass through unchanged. `boolean` maps to `'boolean'`. Everything else becomes `'string'`.
++ */
++export function getPrimitiveType(type: string | undefined): ast.PrimitiveSchemaType {
++  if (type === 'number' || type === 'integer' || type === 'bigint') return type
++  if (type === 'boolean') return 'boolean'
++
++  return 'string'
++}
++
++/**
++ * Resolves the AST type descriptor for a date/time format, honoring the `dateType` option.
++ * Returns `null` when `dateType: false`, so the format falls through to `string`.
++ */
++export function getDateType(
++  options: ast.ParserOptions,
++  format: 'date-time' | 'date' | 'time',
++): { type: 'datetime'; offset?: boolean; local?: boolean } | { type: 'date' | 'time'; representation: 'date' | 'string' } | null {
++  if (!options.dateType) {
++    return null
++  }
++
++  if (format === 'date-time') {
++    if (options.dateType === 'date') {
++      return { type: 'date', representation: 'date' }
++    }
++    if (options.dateType === 'stringOffset') {
++      return { type: 'datetime', offset: true }
++    }
++    if (options.dateType === 'stringLocal') {
++      return { type: 'datetime', local: true }
++    }
++    return { type: 'datetime', offset: false }
++  }
++
++  if (format === 'date') {
++    return {
++      type: 'date',
++      representation: options.dateType === 'date' ? 'date' : 'string',
++    }
++  }
++
++  // time
++  return {
++    type: 'time',
++    representation: options.dateType === 'date' ? 'date' : 'string',
++  }
++}
++
++/**
++ * Reads a schema's numeric `exclusiveMinimum`/`exclusiveMaximum` bounds (the OAS 3.1 numeric
++ * form). Either key is `undefined` when absent or, for the legacy OAS 3.0 boolean form, not a
++ * number.
++ */
++export function getExclusiveBounds(schema: SchemaObject): { exclusiveMinimum: number | undefined; exclusiveMaximum: number | undefined } {
++  return {
++    exclusiveMinimum: typeof schema.exclusiveMinimum === 'number' ? schema.exclusiveMinimum : undefined,
++    exclusiveMaximum: typeof schema.exclusiveMaximum === 'number' ? schema.exclusiveMaximum : undefined,
++  }
++}
++
++/**
++ * Reads schema examples as an array. OAS 3.1 uses an `examples` array, but specs (including ones
++ * labeled 3.1) still use the singular OAS 3.0 `example`, which the upgrader only converts on the
++ * 3.0 -> 3.1 hop. Normalize both into one array so the AST node exposes only `examples`.
++ */
++export function extractExamples(schema: SchemaObject): Array<unknown> | undefined {
++  if (Array.isArray(schema.examples)) return schema.examples
++  return schema.example !== undefined ? [schema.example] : undefined
++}
++
++/**
++ * Returns `true` when `fragment` carries any JSON Schema keyword that makes it
++ * structurally significant on its own (see `structuralKeys`).
++ *
++ * A fragment with a structural keyword can't be safely merged into a parent schema.
++ */
++function hasStructuralKeywords(fragment: SchemaObject): boolean {
++  return Object.keys(fragment).some((key) => structuralKeys.has(key as 'properties'))
++}
++
++/**
++ * Flattens a keyword-only `allOf` into its parent schema.
++ *
++ * Only flattens when every member is a plain fragment, with no `$ref` and no structural keywords
++ * (see `structuralKeys`). Outer schema values take precedence over fragment values.
++ * Returns `null` for a `null` input, and the original schema unchanged when flattening is unsafe.
++ *
++ * @example
++ * ```ts
++ * flattenSchema({ allOf: [{ description: 'A pet' }], type: 'object', properties: {} })
++ * // { type: 'object', properties: {}, description: 'A pet' }
++ * ```
++ *
++ * @example
++ * ```ts
++ * flattenSchema({ allOf: [{ $ref: '#/components/schemas/Pet' }] })
++ * // returned unchanged, contains a $ref
++ * ```
++ */
++export function flattenSchema(schema: SchemaObject | null): SchemaObject | null {
++  if (!schema?.allOf || schema.allOf.length === 0) return schema ?? null
++
++  const allOfFragments = schema.allOf as Array<SchemaObject>
++  if (allOfFragments.some((item) => isReference(item))) return schema
++  if (allOfFragments.some(hasStructuralKeywords)) return schema
++
++  // Destructure `allOf` out instead of `delete merged.allOf`: a `delete` transitions the freshly
++  // spread object into V8 dictionary (slow) mode, and this runs per `allOf` schema during parsing.
++  const { allOf: _allOf, ...rest } = schema
++  const merged = rest as SchemaObject
++
++  for (const fragment of allOfFragments) {
++    for (const [key, value] of Object.entries(fragment)) {
++      merged[key as keyof SchemaObject] ??= value as SchemaObject[keyof SchemaObject]
++    }
++  }
++
++  return merged
++}
+diff --git a/packages/adapter-oas/src/factory.ts b/packages/adapter-oas/src/load/normalize.ts
+rename from packages/adapter-oas/src/factory.ts
+rename to packages/adapter-oas/src/load/normalize.ts
+--- a/packages/adapter-oas/src/factory.ts
++++ b/packages/adapter-oas/src/load/normalize.ts
+@@ -1,41 +1,11 @@
+ import path from 'node:path'
+-import { exists, read } from '@internals/utils'
+-import { Diagnostics } from '@kubb/core'
+ import type { AdapterSource } from '@kubb/core'
+ import { compileErrors, validate } from '@readme/openapi-parser'
+ import { upgrade } from '@scalar/openapi-upgrader'
+ import { bundle } from 'api-ref-bundler'
+ import { parse } from 'yaml'
+-import type { Document } from './types.ts'
+-
+-const urlRegExp = /^https?:\/+/i
+-
+-async function readSource(sourcePath: string): Promise<string> {
+-  if (urlRegExp.test(sourcePath)) {
+-    // api-ref-bundler joins relative refs with posix normalization, collapsing `https://` to
+-    // `https:/`. The WHATWG URL parser restores the double slash.
+-    const url = new URL(sourcePath)
+-    const response = await fetch(url)
+-
+-    if (!response.ok) {
+-      throw new Error(`Cannot fetch the OAS document at ${url.href} (HTTP ${response.status})`)
+-    }
+-
+-    return response.text()
+-  }
+-
+-  return read(sourcePath)
+-}
+-
+-async function resolveSource(sourcePath: string): Promise<object | string> {
+-  const data = await readSource(sourcePath)
+-
+-  if (sourcePath.toLowerCase().endsWith('.md')) {
+-    return data
+-  }
+-
+-  return parse(data) as object
+-}
++import type { Document } from '../types.ts'
++import { assertInputExists, resolveSource, urlRegExp } from './source.ts'
+ 
+ /**
+  * Bundles a multi-file OpenAPI document into a single document via `api-ref-bundler`.
+@@ -130,26 +100,6 @@ export async function parseFromConfig(source: AdapterSource): Promise<Document>
+   return parseDocument(resolved)
+ }
+ 
+-/**
+- * Throws a coded `KUBB_INPUT_NOT_FOUND` diagnostic when a local input path does not exist.
+- * URLs are skipped, and a malformed but readable file is left for `parseDocument` to surface
+- * its parse error instead.
+- */
+-export async function assertInputExists(input: string): Promise<void> {
+-  if (URL.canParse(input)) {
+-    return
+-  }
+-  if (!(await exists(input))) {
+-    throw new Diagnostics.Error({
+-      code: Diagnostics.code.inputNotFound,
+-      severity: 'error',
+-      message: `Cannot read the file set as \`input\` (or via \`kubb generate PATH\`): ${input}`,
+-      help: 'Check that the path exists and is readable, then set it as `input` or pass it as `kubb generate PATH`.',
+-      location: { kind: 'config' },
+-    })
+-  }
+-}
+-
+ /**
+  * Validates an OpenAPI document using `@readme/openapi-parser` with colorized error output.
+  *
+diff --git a/packages/adapter-oas/src/load/source.ts b/packages/adapter-oas/src/load/source.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/adapter-oas/src/load/source.ts
+@@ -0,0 +1,58 @@
++import { exists, read } from '@internals/utils'
++import { Diagnostics } from '@kubb/core'
++import { parse } from 'yaml'
++
++const urlRegExp = /^https?:\/+/i
++
++async function readSource(sourcePath: string): Promise<string> {
++  if (urlRegExp.test(sourcePath)) {
++    // api-ref-bundler joins relative refs with posix normalization, collapsing `https://` to
++    // `https:/`. The WHATWG URL parser restores the double slash.
++    const url = new URL(sourcePath)
++    const response = await fetch(url)
++
++    if (!response.ok) {
++      throw new Error(`Cannot fetch the OAS document at ${url.href} (HTTP ${response.status})`)
++    }
++
++    return response.text()
++  }
++
++  return read(sourcePath)
++}
++
++/**
++ * Reads and parses one source file or URL referenced during bundling: YAML/JSON is parsed into an
++ * object, Markdown is returned as-is (bundled inline rather than dereferenced).
++ */
++export async function resolveSource(sourcePath: string): Promise<object | string> {
++  const data = await readSource(sourcePath)
++
++  if (sourcePath.toLowerCase().endsWith('.md')) {
++    return data
++  }
++
++  return parse(data) as object
++}
++
++/**
++ * Throws a coded `KUBB_INPUT_NOT_FOUND` diagnostic when a local input path does not exist.
++ * URLs are skipped, and a malformed but readable file is left for `parseDocument` to surface
++ * its parse error instead.
++ */
++export async function assertInputExists(input: string): Promise<void> {
++  if (URL.canParse(input)) {
++    return
++  }
++  if (!(await exists(input))) {
++    throw new Diagnostics.Error({
++      code: Diagnostics.code.inputNotFound,
++      severity: 'error',
++      message: `Cannot read the file set as \`input\` (or via \`kubb generate PATH\`): ${input}`,
++      help: 'Check that the path exists and is readable, then set it as `input` or pass it as `kubb generate PATH`.',
++      location: { kind: 'config' },
++    })
++  }
++}
++
++export { urlRegExp }
+diff --git a/packages/adapter-oas/src/model/components.ts b/packages/adapter-oas/src/model/components.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/adapter-oas/src/model/components.ts
+@@ -0,0 +1,221 @@
++import { pascalCase } from '@internals/utils'
++import { SCHEMA_REF_PREFIX } from '../constants.ts'
++import { isReference } from '../oas.ts'
++import type { Refs } from '../refs.ts'
++import type { ContentType, ContentTypeOptions, Document, SchemaObject } from '../types.ts'
++
++/**
++ * The three component sections Kubb reads schemas from.
++ */
++type SchemaSourceMode = 'schemas' | 'responses' | 'requestBodies'
++
++/**
++ * A schema annotated with its component section source and original name. `getSchemas` uses this
++ * to resolve name collisions across sources.
++ */
++type SchemaWithMetadata = {
++  schema: SchemaObject
++  source: SchemaSourceMode
++  originalName: string
++}
++
++export type GetSchemasResult = {
++  schemas: Record<string, SchemaObject>
++  /**
++   * Maps a renamed component pointer (`#/components/<source>/<name>`) to the
++   * collision-resolved unique name used as the key in `schemas`. Components that keep
++   * their original name are not recorded, so the map stays empty for documents
++   * without collisions.
++   */
++  renames: Map<string, string>
++}
++
++/**
++ * Extracts the inline schema from a media-type `content` map.
++ *
++ * Prefers `preferredContentType` when given, otherwise uses the first key in the map.
++ * Returns `null` when `content` is absent, the schema is missing, or the schema is a `$ref`.
++ *
++ * @example
++ * ```ts
++ * extractSchemaFromContent(operation.content, 'application/json')
++ * // SchemaObject | null
++ * ```
++ */
++export function extractSchemaFromContent(content: Record<string, unknown> | undefined, preferredContentType?: ContentType): SchemaObject | null {
++  if (!content) return null
++
++  const firstContentType = Object.keys(content)[0] ?? 'application/json'
++  const targetContentType = preferredContentType ?? firstContentType
++  const contentSchema = content[targetContentType] as { schema?: SchemaObject } | undefined
++  const schema = contentSchema?.schema
++
++  if (isReference(schema)) return null
++  return schema ?? null
++}
++
++/**
++ * Walks a schema tree and collects the names of all `#/components/schemas/<name>` `$ref`s.
++ */
++function* collectRefs(schema: unknown): Generator<string, void, undefined> {
++  if (Array.isArray(schema)) {
++    for (const item of schema) yield* collectRefs(item)
++    return
++  }
++
++  if (schema && typeof schema === 'object') {
++    for (const key in schema) {
++      const value = (schema as Record<string, unknown>)[key]
++      if (!(key === '$ref' && typeof value === 'string')) {
++        yield* collectRefs(value)
++        continue
++      }
++      if (value.startsWith(SCHEMA_REF_PREFIX)) {
++        const name = value.slice(SCHEMA_REF_PREFIX.length)
++        if (name) yield name
++      }
++    }
++  }
++}
++
++/**
++ * Returns a copy of `schemas` topologically sorted by `$ref` dependency.
++ *
++ * Referenced schemas appear before the schemas that depend on them, so code generators
++ * can emit types in the correct order. Cycles are silently skipped.
++ *
++ * @example
++ * ```ts
++ * const sorted = sortSchemas({ Order: orderSchema, Pet: petSchema })
++ * // Pet appears before Order when Order.$ref points at Pet
++ * ```
++ */
++export function sortSchemas(schemas: Record<string, SchemaObject>): Record<string, SchemaObject> {
++  const deps = new Map<string, Array<string>>()
++
++  for (const [name, schema] of Object.entries(schemas)) {
++    deps.set(name, [...new Set(collectRefs(schema))])
++  }
++
++  const sorted: Array<string> = []
++  const visited = new Set<string>()
++
++  function visit(name: string, stack: Set<string>) {
++    if (visited.has(name) || stack.has(name)) return
++    stack.add(name)
++    for (const child of deps.get(name) ?? []) {
++      if (deps.has(child)) visit(child, stack)
++    }
++    stack.delete(name)
++    visited.add(name)
++    sorted.push(name)
++  }
++
++  for (const name of Object.keys(schemas)) {
++    visit(name, new Set())
++  }
++
++  const result: Record<string, SchemaObject> = {}
++  for (const name of sorted) result[name] = schemas[name]!
++  return result
++}
++
++const semanticSuffixes: Record<SchemaSourceMode, string> = {
++  schemas: 'Schema',
++  responses: 'Response',
++  requestBodies: 'Request',
++}
++
++/**
++ * Picks the collision suffix for one name-colliding schema: none when the name is unique,
++ * a semantic suffix (`Schema`, `Response`, `Request`) when the collision spans sources, otherwise
++ * a numeric suffix (`2`, `3`, …) for same-source collisions.
++ */
++function collisionSuffix({
++  isSingle,
++  hasMultipleSources,
++  source,
++  index,
++}: {
++  isSingle: boolean
++  hasMultipleSources: boolean
++  source: SchemaSourceMode
++  index: number
++}): string {
++  if (isSingle) return ''
++  if (hasMultipleSources) return semanticSuffixes[source]
++  if (index === 0) return ''
++  return String(index + 1)
++}
++
++/**
++ * Collects component schemas from one or more sources and resolves name collisions.
++ *
++ * Sources default to `['schemas', 'requestBodies', 'responses']`. Returned schemas are
++ * topologically sorted by `$ref` dependency so generators emit types in the correct order.
++ *
++ * When two or more schemas normalize to the same PascalCase name:
++ * - Same source → numeric suffix (`2`, `3`, …).
++ * - Different sources → semantic suffix (`Schema`, `Response`, `Request`).
++ *
++ * @example
++ * ```ts
++ * const { schemas, renames } = getSchemas(document, { contentType: 'application/json' }, refs)
++ * ```
++ */
++export function getSchemas(document: Document, { contentType }: ContentTypeOptions, refs: Refs): GetSchemasResult {
++  const components = document.components
++
++  function resolveSchemaRef(schema: SchemaObject): SchemaObject {
++    if (!isReference(schema)) return schema
++    const resolved = refs.resolve<SchemaObject>(schema.$ref)
++    return resolved && !isReference(resolved) ? resolved : schema
++  }
++
++  const candidates: Array<SchemaWithMetadata> = [
++    ...Object.entries((components?.schemas as Record<string, SchemaObject>) ?? {}).map(([name, schema]) => ({
++      schema: resolveSchemaRef(schema),
++      source: 'schemas' as const,
++      originalName: name,
++    })),
++    ...(['responses', 'requestBodies'] as const).flatMap((source) =>
++      Object.entries(components?.[source] ?? {}).flatMap(([name, item]) => {
++        const schema = extractSchemaFromContent((item as { content?: Record<string, unknown> }).content, contentType)
++        return schema
++          ? [
++              {
++                schema: resolveSchemaRef(schema),
++                source,
++                originalName: name,
++              },
++            ]
++          : []
++      }),
++    ),
++  ]
++
++  const normalizedNames = new Map<string, Array<SchemaWithMetadata>>()
++  for (const item of candidates) {
++    const key = pascalCase(item.originalName)
++    const bucket = normalizedNames.get(key) ?? []
++    bucket.push(item)
++    normalizedNames.set(key, bucket)
++  }
++
++  const schemas: Record<string, SchemaObject> = {}
++  const renames = new Map<string, string>()
++
++  for (const [, items] of normalizedNames) {
++    const isSingle = items.length === 1
++    const hasMultipleSources = !isSingle && new Set(items.map((item) => item.source)).size > 1
++
++    items.forEach((item, index) => {
++      const suffix = collisionSuffix({ isSingle, hasMultipleSources, source: item.source, index })
++      const uniqueName = item.originalName + suffix
++      schemas[uniqueName] = item.schema
++      if (suffix) renames.set(`#/components/${item.source}/${item.originalName}`, uniqueName)
++    })
++  }
++
++  return { schemas: sortSchemas(schemas), renames }
++}
+diff --git a/packages/adapter-oas/src/model/operations.ts b/packages/adapter-oas/src/model/operations.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/adapter-oas/src/model/operations.ts
+@@ -0,0 +1,168 @@
++import { isReference, pickContentEntry } from '../oas.ts'
++import { getRequestBody, getRequestContent, getResponseByStatusCode } from '../operation.ts'
++import { dereferenceWithRef } from '../refs.ts'
++import type { Refs } from '../refs.ts'
++import type { ContentTypeOptions, Document, MediaTypeObject, Operation, ParameterObject, ResponseObject, SchemaObject } from '../types.ts'
++
++/**
++ * Returns all parameters for an operation, merging path-level and operation-level entries.
++ * Operation-level parameters override path-level ones with the same `in:name` key.
++ * Each `$ref` parameter is dereferenced via `dereferenceWithRef` before merging.
++ *
++ * @example
++ * ```ts
++ * getParameters({ document, operation })
++ * // [{ name: 'petId', in: 'path', required: true, schema: { type: 'integer' } }]
++ * ```
++ */
++export function getParameters({ document, operation }: { document: Document; operation: Operation }): Array<ParameterObject> {
++  const resolveParams = (params: Array<unknown>): Array<ParameterObject> =>
++    params.map((p) => dereferenceWithRef(document, p)).filter((p): p is ParameterObject => !!p && typeof p === 'object' && 'in' in p && 'name' in p)
++
++  const operationParams = resolveParams(operation.schema?.parameters || [])
++  const pathLevelParams = resolveParams((operation.pathItem as { parameters?: Array<unknown> }).parameters ?? [])
++
++  const paramMap = new Map<string, ParameterObject>()
++  for (const p of pathLevelParams) {
++    if (p.name && p.in) {
++      paramMap.set(`${p.in}:${p.name}`, p)
++    }
++  }
++  for (const p of operationParams) {
++    if (p.name && p.in) {
++      paramMap.set(`${p.in}:${p.name}`, p)
++    }
++  }
++
++  return Array.from(paramMap.values())
++}
++
++function getResponseBody(responseBody: boolean | ResponseObject, contentType?: string): MediaTypeObject | false {
++  if (!responseBody) return false
++  if (isReference(responseBody)) return false
++
++  const body = responseBody as ResponseObject
++  if (!body.content) return false
++
++  if (contentType) {
++    return contentType in body.content ? body.content[contentType]! : false
++  }
++
++  const picked = pickContentEntry(body.content)
++  return picked ? picked[1] : false
++}
++
++/**
++ * Returns the response schema for a given operation and HTTP status code.
++ *
++ * Returns an empty object `{}` when no response body schema is available.
++ *
++ * @example
++ * ```ts
++ * getResponseSchema({ document, operation, refs, statusCode: 200 })   // SchemaObject
++ * getResponseSchema({ document, operation, refs, statusCode: '4XX' }) // {}
++ * ```
++ */
++export function getResponseSchema({
++  document,
++  operation,
++  refs,
++  statusCode,
++  options = {},
++}: {
++  document: Document
++  operation: Operation
++  refs: Refs
++  statusCode: string | number
++  options?: ContentTypeOptions
++}): SchemaObject {
++  const responseBody = getResponseBody(getResponseByStatusCode({ operation, refs, statusCode }), options.contentType)
++
++  if (responseBody === false) {
++    return {}
++  }
++
++  const schema = responseBody.schema
++
++  if (!schema) {
++    return {}
++  }
++
++  return dereferenceWithRef(document, schema)
++}
++
++/**
++ * Returns the request body schema for an operation, or `null` when absent.
++ *
++ * @example
++ * ```ts
++ * getRequestSchema({ document, operation, refs }) // SchemaObject | null
++ * ```
++ */
++export function getRequestSchema({
++  document,
++  operation,
++  refs,
++  options = {},
++}: {
++  document: Document
++  operation: Operation
++  refs: Refs
++  options?: ContentTypeOptions
++}): SchemaObject | null {
++  const requestBody = getRequestContent({ operation, refs, mediaType: options.contentType })
++
++  if (requestBody === false) {
++    return null
++  }
++
++  const mediaType = Array.isArray(requestBody) ? requestBody[0] : options.contentType
++  const schema = Array.isArray(requestBody) ? requestBody[1].schema : requestBody.schema
++
++  // OAS 3.1 (and the 3.0 -> 3.1 upgrade) drops the schema for an `application/octet-stream` body,
++  // leaving an empty media type object. Synthesize the binary schema so generators still emit a
++  // request body type for the operation.
++  if (mediaType === 'application/octet-stream' && (!schema || Object.keys(schema).length === 0)) {
++    return { type: 'string', contentMediaType: 'application/octet-stream' }
++  }
++
++  if (!schema) {
++    return null
++  }
++
++  return dereferenceWithRef(document, schema)
++}
++
++/**
++ * Returns all request body content type keys for an operation, resolving a `$ref` requestBody
++ * through `refs`.
++ *
++ * @example
++ * ```ts
++ * getRequestBodyContentTypes(operation, refs)
++ * // ['application/json', 'multipart/form-data']
++ * ```
++ */
++export function getRequestBodyContentTypes(operation: Operation, refs: Refs): Array<string> {
++  const body = getRequestBody({ operation, refs })
++
++  return body?.content ? Object.keys(body.content) : []
++}
++
++/**
++ * Returns all response content type keys for an operation at a given status code, resolving the
++ * response `$ref` through `refs`.
++ *
++ * @example
++ * ```ts
++ * getResponseBodyContentTypes(operation, refs, 200)
++ * // ['application/json', 'application/xml']
++ * ```
++ */
++export function getResponseBodyContentTypes(operation: Operation, refs: Refs, statusCode: string | number): Array<string> {
++  const responseObj = getResponseByStatusCode({ operation, refs, statusCode })
++  if (!responseObj || typeof responseObj !== 'object' || isReference(responseObj)) return []
++
++  const body = responseObj as { content?: Record<string, unknown> }
++  return body.content ? Object.keys(body.content) : []
++}
+diff --git a/packages/adapter-oas/src/model/server.ts b/packages/adapter-oas/src/model/server.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/adapter-oas/src/model/server.ts
+@@ -0,0 +1,63 @@
++import { Diagnostics } from '@kubb/core'
++import type { Document, ServerObject, ServerOptions } from '../types.ts'
++
++/**
++ * Reads the server URL from the document's `servers` array at `server.index`,
++ * interpolating any `server.variables` into the URL template.
++ *
++ * Returns `null` when `server.index` is omitted or out of range.
++ *
++ * @example Resolve the first server
++ * `resolveBaseUrl({ document, server: { index: 0 } })`
++ *
++ * @example Override a path variable
++ * `resolveBaseUrl({ document, server: { index: 0, variables: { version: 'v2' } } })`
++ */
++export function resolveBaseUrl({ document, server }: { document: Document; server?: ServerOptions }): string | null {
++  const index = server?.index
++  const entry = index !== undefined ? document.servers?.at(index) : undefined
++
++  return entry?.url ? resolveServerUrl(entry, server?.variables) : null
++}
++
++/**
++ * Replaces `{variable}` placeholders in an OpenAPI server URL with provided values.
++ * Resolution order: `overrides[key]` → `variable.default` → left unreplaced.
++ * Throws if an override value is not in the variable's `enum` list.
++ *
++ * @example
++ * ```ts
++ * resolveServerUrl(
++ *   { url: 'https://{env}.api.example.com', variables: { env: { default: 'dev', enum: ['dev', 'prod'] } } },
++ *   { env: 'prod' },
++ * )
++ * // 'https://prod.api.example.com'
++ * ```
++ */
++export function resolveServerUrl(server: ServerObject, overrides?: Record<string, string>): string {
++  if (!server.variables) {
++    return server.url
++  }
++
++  let url = server.url
++  for (const [key, variable] of Object.entries(server.variables)) {
++    const value = overrides?.[key] ?? (variable.default != null ? String(variable.default) : undefined)
++    if (value === undefined) {
++      continue
++    }
++
++    if (variable.enum?.length && !variable.enum.some((e) => String(e) === value)) {
++      throw new Diagnostics.Error({
++        code: Diagnostics.code.invalidServerVariable,
++        severity: 'error',
++        message: `Invalid server variable value '${value}' for '${key}' when resolving ${server.url}. Valid values are: ${variable.enum.join(', ')}.`,
++        help: `Use one of the allowed enum values, or drop the enum on the '${key}' server variable.`,
++        location: { kind: 'document', pointer: '#/servers' },
++      })
++    }
++
++    url = url.replaceAll(`{${key}}`, value)
++  }
++
++  return url
++}
+diff --git a/packages/adapter-oas/src/oas.ts b/packages/adapter-oas/src/oas.ts
+--- a/packages/adapter-oas/src/oas.ts
++++ b/packages/adapter-oas/src/oas.ts
+@@ -61,3 +61,19 @@ const jsonMimeFragments = ['application/json', 'application/x-json', 'text/json'
+ export function isJsonMimeType(mimeType: string): boolean {
+   return jsonMimeFragments.some((fragment) => mimeType.includes(fragment))
+ }
++
++/**
++ * Picks a media-type entry from a `content` map: the first JSON-like media type, falling back to
++ * the first declared one. Returns `false` when `content` has no entries.
++ *
++ * @example
++ * ```ts
++ * pickContentEntry({ 'application/xml': xmlEntry, 'application/json': jsonEntry })
++ * // ['application/json', jsonEntry]
++ * ```
++ */
++export function pickContentEntry<T>(content: Record<string, T>): [string, T] | false {
++  const mediaTypes = Object.keys(content)
++  const available = mediaTypes.find(isJsonMimeType) ?? mediaTypes[0]
++  return available ? [available, content[available]!] : false
++}
+diff --git a/packages/adapter-oas/src/operation.ts b/packages/adapter-oas/src/operation.ts
+--- a/packages/adapter-oas/src/operation.ts
++++ b/packages/adapter-oas/src/operation.ts
+@@ -1,27 +1,29 @@
+ import { SUPPORTED_METHODS } from './constants.ts'
+-import { isJsonMimeType, isReference } from './oas.ts'
+-import { derefInPlace } from './refs.ts'
++import { isJsonMimeType, isReference, pickContentEntry } from './oas.ts'
++import type { Refs } from './refs.ts'
+ import type { Document, MediaTypeObject, OperationObject, PathItemObject, ReferenceObject, RequestBodyObject, ResponseObject } from './types.ts'
+ 
+ /**
+  * A single OpenAPI operation: its URL path, HTTP method, and the raw operation object.
+  *
+- * `schema` is a live reference into the document, so any in-place `$ref` resolution the resolvers
+- * perform is visible here too.
++ * `schema` is a live reference into the document. Unlike earlier versions of this adapter, nothing
++ * resolves a `$ref` in place here anymore — every accessor below resolves through `refs` instead.
++ * `pathItem` is the already-resolved path item this operation was read from, so a caller that
++ * also needs path-level data (parameters, summary, description) doesn't re-resolve it.
+  */
+ export type Operation = {
+   path: string
+   method: string
+   schema: OperationObject
++  pathItem: PathItemObject
+ }
+ 
+ /**
+- * The document plus the operation being read. Shared by the request/response accessors so they can
+- * resolve `$ref`s against the document.
++ * The operation being read plus the `$ref` service to resolve against.
+  */
+ type OperationContext = {
+-  document: Document
+   operation: Operation
++  refs: Refs
+ }
+ 
+ /**
+@@ -60,25 +62,31 @@ export function getResponseStatusCodes({ schema }: Operation): Array<string> {
+ }
+ 
+ /**
+- * Returns the response object for a status code, resolving a `$ref` in place. `false` when absent.
++ * Returns the response object for a status code, resolving a `$ref` through `refs`. `false` when absent.
+  */
+-export function getResponseByStatusCode({ document, operation, statusCode }: OperationContext & { statusCode: string | number }): ResponseObject | false {
++export function getResponseByStatusCode({ operation, refs, statusCode }: OperationContext & { statusCode: string | number }): ResponseObject | false {
+   const responses = operation.schema.responses as Record<string, ResponseObject | ReferenceObject> | undefined
+   if (!responses || isReference(responses)) {
+     return false
+   }
+ 
+-  return derefInPlace<ResponseObject>({ document, container: responses, key: statusCode }) ?? false
++  return refs.deref<ResponseObject>(responses[statusCode]) ?? false
+ }
+ 
+ /**
+- * Resolves the request body (dereferencing a `$ref` in place) and returns its content map, or
+- * `undefined` when the operation has no request body.
++ * Resolves the operation's request body, dereferencing a `$ref` through `refs`. Returns `null`
++ * when the operation has no request body or it cannot be resolved.
+  */
+-function getRequestBodyContent({ document, operation }: OperationContext): Record<string, MediaTypeObject> | undefined {
+-  const requestBody = derefInPlace<RequestBodyObject>({ document, container: operation.schema as unknown as Record<string, unknown>, key: 'requestBody' })
++export function getRequestBody({ operation, refs }: OperationContext): RequestBodyObject | null {
++  return refs.deref<RequestBodyObject>(operation.schema.requestBody)
++}
+ 
+-  return requestBody?.content
++/**
++ * Resolves the request body (a `$ref` through `refs`) and returns its content map, or
++ * `undefined` when the operation has no request body.
++ */
++function getRequestBodyContent({ operation, refs }: OperationContext): Record<string, MediaTypeObject> | undefined {
++  return getRequestBody({ operation, refs })?.content
+ }
+ 
+ /**
+@@ -87,11 +95,11 @@ function getRequestBodyContent({ document, operation }: OperationContext): Recor
+  * `[mediaType, object]` tuple.
+  */
+ export function getRequestContent({
+-  document,
+   operation,
++  refs,
+   mediaType,
+ }: OperationContext & { mediaType?: string }): MediaTypeObject | false | [string, MediaTypeObject] {
+-  const content = getRequestBodyContent({ document, operation })
++  const content = getRequestBodyContent({ operation, refs })
+ 
+   if (!content) {
+     return false
+@@ -101,18 +109,15 @@ export function getRequestContent({
+     return mediaType in content ? content[mediaType]! : false
+   }
+ 
+-  const mediaTypes = Object.keys(content)
+-  const available = mediaTypes.find((mt) => isJsonMimeType(mt)) ?? mediaTypes[0]
+-
+-  return available ? [available, content[available]!] : false
++  return pickContentEntry(content)
+ }
+ 
+ /**
+  * Returns the primary request content type. Prefers a JSON-like media type (the last one wins
+  * when several are declared), then the first declared one, defaulting to `'application/json'`.
+  */
+-export function getRequestContentType({ document, operation }: OperationContext): string {
+-  const content = getRequestBodyContent({ document, operation })
++export function getRequestContentType({ operation, refs }: OperationContext): string {
++  const content = getRequestBodyContent({ operation, refs })
+   const mediaTypes = content ? Object.keys(content) : []
+ 
+   let result = mediaTypes[0] ?? 'application/json'
+@@ -131,12 +136,12 @@ export function getRequestContentType({ document, operation }: OperationContext)
+  *
+  * @example
+  * ```ts
+- * for (const operation of getOperations(document)) {
++ * for (const operation of getOperations(document, refs)) {
+  *   parseOperation(options, operation)
+  * }
+  * ```
+  */
+-export function getOperations(document: Document): Array<Operation> {
++export function getOperations(document: Document, refs: Refs): Array<Operation> {
+   const operations: Array<Operation> = []
+   const paths = document.paths
+   if (!paths) {
+@@ -148,7 +153,7 @@ export function getOperations(document: Document): Array<Operation> {
+       continue
+     }
+ 
+-    const pathItem = derefInPlace<PathItemObject>({ document, container: paths as Record<string, unknown>, key: path })
++    const pathItem = refs.deref<PathItemObject>(paths[path])
+     if (!pathItem) {
+       continue
+     }
+@@ -162,7 +167,7 @@ export function getOperations(document: Document): Array<Operation> {
+       if (!schema || typeof schema !== 'object') {
+         continue
+       }
+-      operations.push({ path, method, schema: schema as OperationObject })
++      operations.push({ path, method, schema: schema as OperationObject, pathItem })
+     }
+   }
+ 
+diff --git a/packages/adapter-oas/src/parser.ts b/packages/adapter-oas/src/parser.ts
+--- a/packages/adapter-oas/src/parser.ts
++++ b/packages/adapter-oas/src/parser.ts
+@@ -1,22 +1,23 @@
+ import { pascalCase } from '@internals/utils'
+ import { ast, type StatusCode } from '@kubb/ast'
+ import { DEFAULT_PARSER_OPTIONS } from './constants.ts'
+-import { type ConvertContext, schemaRules } from './converters.ts'
++import { type ConvertContext, schemaRules } from './emit/parseSchema.ts'
++import { flattenSchema } from './emit/schemaShape.ts'
++import { getParameters, getRequestBodyContentTypes, getRequestSchema, getResponseBodyContentTypes, getResponseSchema } from './model/operations.ts'
+ import { isNullable, isReference } from './oas.ts'
+-import { resolveRef } from './refs.ts'
+-import { getOperationId, getRequestContentType, getResponseByStatusCode, getResponseStatusCodes } from './operation.ts'
+-import { flattenSchema, getParameters, getRequestBodyContentTypes, getRequestSchema, getResponseBodyContentTypes, getResponseSchema } from './resolvers.ts'
+-import type { ContentType, Document, Operation, SchemaObject } from './types.ts'
++import { getOperationId, getRequestBody, getRequestContentType, getResponseByStatusCode, getResponseStatusCodes } from './operation.ts'
++import type { Refs } from './refs.ts'
++import type { ContentTypeOptions, Document, Operation, SchemaObject } from './types.ts'
+ 
+ /**
+  * Parser context holding the raw OpenAPI document and optional content-type override.
+  *
+  * Passed to schema and operation converters to access the full specification
+  * and handle content negotiation when multiple media types are available.
+  */
+-export type OasParserContext = {
++export type OasParserContext = ContentTypeOptions & {
+   document: Document
+-  contentType?: ContentType
++  refs: Refs
+   /**
+    * Collision renames from `getSchemas`, keyed by the original component pointer. `convertRef`
+    * stamps `targetName` from it at ref creation, so refs to renamed schemas resolve to the
+@@ -28,77 +29,17 @@ export type OasParserContext = {
+ /**
+  * Creates the schema and operation converters bound to one OpenAPI document.
+  *
+- * Owns the per-instance `$ref` state (cycle detection, resolved-node cache, existence cache) and
+- * the `parseSchema` recursion seam, then dispatches each schema through the ordered `schemaRules`
+- * table from `converters.ts`. Every converter is a standalone function that recurses through the
+- * `parse` function passed to it, so this file only wires state to the converters.
++ * Takes the `$ref` service for this document (shared with the rest of the pipeline, see
++ * `adapter.ts`) and owns the `parseSchema` recursion seam, then dispatches each schema through
++ * the ordered `schemaRules` table from `emit/parseSchema.ts`. Every converter is a standalone
++ * function that recurses through the `parse` function passed to it, so this file only wires
++ * state to the converters.
+  *
+  * @internal
+  */
+ export function createSchemaParser(ctx: OasParserContext) {
+   const document = ctx.document
+-
+-  /**
+-   * Tracks `$ref` paths that are currently being resolved to prevent infinite
+-   * recursion when schemas contain circular references (e.g. `Pet → parent → Pet`).
+-   */
+-  const resolvingRefs = new Set<string>()
+-
+-  /**
+-   * Cache of `$ref` schemas already resolved in this parser instance, keyed by ref path.
+-   *
+-   * Without it, a shared schema (e.g. `customer`) is re-expanded for every `$ref` that points at
+-   * it. In cross-referenced specs like Stripe (~1400 schemas) that becomes exponential blowup,
+-   * since one schema can be referenced from dozens of parents, each re-walking its whole subtree.
+-   * Memoizing by ref path drops the work from O(2^depth) to O(N) unique schema names.
+-   */
+-  const resolvedRefCache = new Map<string, ast.SchemaNode | null>()
+-
+-  /**
+-   * Memoized record of whether a `$ref` path resolves to a node the document actually defines.
+-   * A circular ref still resolves to an existing target, so this stays `true` for cycles and only
+-   * goes `false` for a `$ref` that points at a component the spec never declares.
+-   */
+-  const refExistence = new Map<string, boolean>()
+-
+-  function refExists(refPath: string): boolean {
+-    if (!refExistence.has(refPath)) {
+-      let exists = false
+-      try {
+-        exists = !!resolveRef(document, refPath)
+-      } catch {
+-        exists = false
+-      }
+-      refExistence.set(refPath, exists)
+-    }
+-    return refExistence.get(refPath) ?? false
+-  }
+-
+-  /**
+-   * Resolves a `$ref` to its parsed node, guarding against cycles and memoizing per instance.
+-   * Returns `null` when the ref is currently being resolved (a cycle) or cannot be resolved
+-   * (e.g. a minimal document in a unit test).
+-   */
+-  function resolveRefNode(refPath: string, rawOptions?: Partial<ast.ParserOptions>): ast.SchemaNode | null {
+-    if (resolvingRefs.has(refPath)) return null
+-
+-    if (!resolvedRefCache.has(refPath)) {
+-      let resolved: ast.SchemaNode | null = null
+-      try {
+-        const referenced = resolveRef<SchemaObject>(document, refPath)
+-        if (referenced) {
+-          resolvingRefs.add(refPath)
+-          resolved = parseSchema({ schema: referenced }, rawOptions)
+-          resolvingRefs.delete(refPath)
+-        }
+-      } catch {
+-        // Ref cannot be resolved in this document (e.g. unit tests with minimal documents).
+-      }
+-      resolvedRefCache.set(refPath, resolved)
+-    }
+-
+-    return resolvedRefCache.get(refPath) ?? null
+-  }
++  const refs = ctx.refs
+ 
+   /**
+    * Converts an OAS `SchemaObject` into a `SchemaNode`.
+@@ -131,15 +72,12 @@ export function createSchemaParser(ctx: OasParserContext) {
+       options,
+       parse: parseSchema,
+       document,
+-      resolveRefNode,
+-      refExists,
++      refs,
+       renames: ctx.renames,
+     }
+ 
+     for (const rule of schemaRules) {
+-      if (!rule.match(context)) continue
+-      const node = rule.convert(context)
+-      if (node) return node
++      if (rule.match(context)) return rule.convert(context)
+     }
+ 
+     const emptyType = options.emptySchemaType
+@@ -182,17 +120,16 @@ export function createSchemaParser(ctx: OasParserContext) {
+ 
+   /**
+    * Reads the inline `requestBody` metadata (description / required) that OAS exposes
+-   * outside the schema itself. Returns an empty object when the request body is missing or a `$ref`.
++   * outside the schema itself, resolving a `$ref` requestBody through `refs`. Returns an
++   * empty object when the request body is missing or cannot be resolved.
+    */
+   function getRequestBodyMeta(operation: Operation): {
+     description?: string
+     required: boolean
+   } {
+-    const body = operation.schema.requestBody as { description?: string; required?: boolean } | undefined
++    const body = getRequestBody({ operation, refs })
+     if (!body) return { required: false }
+ 
+-    // After getRequestBodyContentTypes has run, body may still carry $ref but the
+-    // resolved fields (description, required, content) are already spread onto it.
+     return {
+       description: body.description,
+       required: body.required === true,
+@@ -222,20 +159,20 @@ export function createSchemaParser(ctx: OasParserContext) {
+   function parseOperation(options: ast.ParserOptions, operation: Operation): ast.OperationNode {
+     const operationId = getOperationId(operation)
+     const operationName = operationId ? pascalCase(operationId) : undefined
+-    const parameters: Array<ast.ParameterNode> = getParameters(document, operation).map((param) =>
++    const parameters: Array<ast.ParameterNode> = getParameters({ document, operation }).map((param) =>
+       parseParameter(options, param as unknown as Record<string, unknown>, operationName),
+     )
+ 
+     // Determine which content types to include in requestBody.content.
+     // When a global contentType is configured, restrict to that single type.
+     // Otherwise include every content type declared in the spec.
+-    const allContentTypes = ctx.contentType ? [ctx.contentType] : getRequestBodyContentTypes(document, operation)
++    const allContentTypes = ctx.contentType ? [ctx.contentType] : getRequestBodyContentTypes(operation, refs)
+ 
+     const requestBodyMeta = getRequestBodyMeta(operation)
+     const requestBodyName = operationName ? `${operationName}Request` : undefined
+ 
+     const content = allContentTypes.flatMap((ct) => {
+-      const schema = getRequestSchema(document, operation, { contentType: ct })
++      const schema = getRequestSchema({ document, operation, refs, options: { contentType: ct } })
+       if (!schema) return []
+       return [
+         ast.factory.createContent({
+@@ -256,7 +193,7 @@ export function createSchemaParser(ctx: OasParserContext) {
+         : undefined
+ 
+     const responses: Array<ast.ResponseNode> = getResponseStatusCodes(operation).map((statusCode) => {
+-      const responseObj = getResponseByStatusCode({ document, operation, statusCode })
++      const responseObj = getResponseByStatusCode({ operation, refs, statusCode })
+ 
+       // Use `Status<code>` (matching plugin-ts's resolveResponseStatusName convention) so the
+       // qualified names for nested enums don't collide with top-level component schemas that
+@@ -265,7 +202,7 @@ export function createSchemaParser(ctx: OasParserContext) {
+       const description = typeof responseObj === 'object' && responseObj !== null ? (responseObj as { description?: string }).description : undefined
+ 
+       const parseEntrySchema = (contentType?: string) => {
+-        const raw = getResponseSchema(document, operation, statusCode, { contentType })
++        const raw = getResponseSchema({ document, operation, refs, statusCode, options: { contentType } })
+         const node =
+           raw && Object.keys(raw).length > 0
+             ? parseSchema({ schema: raw, name: responseName }, options)
+@@ -275,15 +212,15 @@ export function createSchemaParser(ctx: OasParserContext) {
+ 
+       // Build one entry per declared response content type so plugins can union the variants.
+       // When a global contentType is configured, restrict to that single type (mirrors requestBody).
+-      const responseContentTypes = ctx.contentType ? [ctx.contentType] : getResponseBodyContentTypes(document, operation, statusCode)
++      const responseContentTypes = ctx.contentType ? [ctx.contentType] : getResponseBodyContentTypes(operation, refs, statusCode)
+       const content = responseContentTypes.map((contentType) => ast.factory.createContent({ contentType, ...parseEntrySchema(contentType) }))
+ 
+       // Body-less responses keep a single fallback entry so the response still resolves to a
+       // (void/any) schema, matching how `requestBody` only carries schemas inside `content`.
+       if (content.length === 0) {
+         content.push(
+           ast.factory.createContent({
+-            contentType: getRequestContentType({ document, operation }) || 'application/json',
++            contentType: getRequestContentType({ operation, refs }) || 'application/json',
+             ...parseEntrySchema(ctx.contentType),
+           }),
+         )
+@@ -296,12 +233,10 @@ export function createSchemaParser(ctx: OasParserContext) {
+       })
+     })
+ 
+-    const pathItem = document.paths?.[operation.path]
+-    const pathItemDoc = pathItem && !isReference(pathItem) ? (pathItem as { summary?: unknown; description?: unknown }) : undefined
+     const pickDoc = (key: 'summary' | 'description'): string | undefined => {
+       const own = operation.schema[key]
+       if (typeof own === 'string') return own
+-      const fallback = pathItemDoc?.[key]
++      const fallback = (operation.pathItem as Record<string, unknown>)[key]
+       return typeof fallback === 'string' ? fallback : undefined
+     }
+ 
+diff --git a/packages/adapter-oas/src/refs.ts b/packages/adapter-oas/src/refs.ts
+--- a/packages/adapter-oas/src/refs.ts
++++ b/packages/adapter-oas/src/refs.ts
+@@ -1,64 +1,76 @@
++import type { ast } from '@kubb/ast'
+ import { type Diagnostic, Diagnostics } from '@kubb/core'
+ import { isReference } from './oas.ts'
+-import type { Document } from './types.ts'
++import type { Document, SchemaObject } from './types.ts'
+ 
+ const _refCache = new WeakMap<Document, Map<string, unknown>>()
+ 
+ /**
+- * Resolves a local JSON pointer reference from a document.
+- *
+- * Accepts `#/...` refs. Returns `null` for an empty or non-local ref. When the pointer cannot be
+- * resolved, reports a `refNotFound` diagnostic into the active build and returns `null`. Outside a
+- * build there is no sink to collect it, so it throws instead.
+- *
+- * @example
+- * ```ts
+- * resolveRef<SchemaObject>(document, '#/components/schemas/Pet')
+- * ```
++ * Walks a local `#/...` JSON pointer against `document`, memoized per document. `applicable` is
++ * `false` for an empty or non-local ref (the caller should not treat that as a failed lookup).
++ * Shared by `resolveRef`'s reporting walk and `createRefs().resolve`'s silent walk, so both use
++ * the same trimming and caching instead of two separate implementations.
+  */
+-export function resolveRef<T = unknown>(document: Document, $ref: string): T | null {
+-  const origRef = $ref
+-  $ref = $ref.trim()
+-  if ($ref === '') {
+-    return null
++function walkPointer<T>(document: Document, $ref: string): { applicable: boolean; value: T | null } {
++  const trimmed = $ref.trim()
++  if (trimmed === '' || !trimmed.startsWith('#')) {
++    return { applicable: false, value: null }
+   }
+-  if (!$ref.startsWith('#')) return null
+-  $ref = globalThis.decodeURIComponent($ref.substring(1))
++  const pointer = globalThis.decodeURIComponent(trimmed.substring(1))
+ 
+   let docCache = _refCache.get(document)
+   if (!docCache) {
+     docCache = new Map()
+     _refCache.set(document, docCache)
+   }
+ 
+-  if (docCache.has($ref)) {
+-    return docCache.get($ref) as T
++  if (docCache.has(pointer)) {
++    return { applicable: true, value: docCache.get(pointer) as T }
+   }
+ 
+-  const current = $ref
++  const current = pointer
+     .split('/')
+     .filter(Boolean)
+     .reduce((obj: unknown, key: string) => (obj as Record<string, unknown>)?.[key], document as unknown)
+ 
+-  if (!current) {
+-    const diagnostic: Diagnostic = {
+-      code: Diagnostics.code.refNotFound,
+-      severity: 'error',
+-      message: `Could not find a definition for ${origRef}.`,
+-      help: 'Add the schema under `components.schemas`, or fix the `$ref`. Run `kubb validate` to check the spec.',
+-      location: { kind: 'schema', pointer: origRef, ref: origRef },
+-    }
+-    // Report the unresolved ref into the active build and resolve to null, like any
+-    // other unresolvable ref. The build collects it and keeps going. Outside a build there is no
+-    // sink, so throw rather than silently returning null.
+-    if (!Diagnostics.report(diagnostic)) {
+-      throw new Diagnostics.Error(diagnostic)
+-    }
+-    return null
++  if (current) {
++    docCache.set(pointer, current)
+   }
+ 
+-  docCache.set($ref, current)
+-  return current as T
++  return { applicable: true, value: (current as T) ?? null }
++}
++
++/**
++ * Resolves a local JSON pointer reference from a document.
++ *
++ * Accepts `#/...` refs. Returns `null` for an empty or non-local ref. When the pointer cannot be
++ * resolved, reports a `refNotFound` diagnostic into the active build and returns `null`. Outside a
++ * build there is no sink to collect it, so it throws instead.
++ *
++ * @example
++ * ```ts
++ * resolveRef<SchemaObject>(document, '#/components/schemas/Pet')
++ * ```
++ */
++export function resolveRef<T = unknown>(document: Document, $ref: string): T | null {
++  const { applicable, value } = walkPointer<T>(document, $ref)
++  if (!applicable) return null
++  if (value) return value
++
++  const diagnostic: Diagnostic = {
++    code: Diagnostics.code.refNotFound,
++    severity: 'error',
++    message: `Could not find a definition for ${$ref}.`,
++    help: 'Add the schema under `components.schemas`, or fix the `$ref`. Run `kubb validate` to check the spec.',
++    location: { kind: 'schema', pointer: $ref, ref: $ref },
++  }
++  // Report the unresolved ref into the active build and resolve to null, like any
++  // other unresolvable ref. The build collects it and keeps going. Outside a build there is no
++  // sink, so throw rather than silently returning null.
++  if (!Diagnostics.report(diagnostic)) {
++    throw new Diagnostics.Error(diagnostic)
++  }
++  return null
+ }
+ 
+ /**
+@@ -86,30 +98,113 @@ export function dereferenceWithRef<T = unknown>(document: Document, schema?: T):
+ }
+ 
+ /**
+- * Resolves a `$ref` slot in place: when `container[key]` holds a `$ref`, replaces it with the
+- * resolved value and returns that value. Returns `null` when the slot is empty, cannot be resolved,
+- * or is still a `$ref` after resolving. A non-`$ref` value is returned untouched, without writing.
++ * Parses a schema for a resolved `$ref` target. Passed in at call time (rather than imported)
++ * so `refs.ts` stays independent of the parser/converter layer.
++ */
++type RefNodeParser = (entry: { schema: SchemaObject; name?: string | null }, rawOptions?: Partial<ast.ParserOptions>) => ast.SchemaNode
++
++/**
++ * The `$ref` service bound to one document: pointer resolution, existence checks, and
++ * resolved-node parsing, each with its own instance-scoped memoization.
++ */
++export type Refs = ReturnType<typeof createRefs>
++
++/**
++ * Creates the `$ref` resolution service for one document.
++ *
++ * Replaces what used to be six overlapping resolvers (a reporting walk, a silent walk, an
++ * existence check, and a resolve-then-parse-into-a-node step, each with its own cache) with one
++ * pointer walk and one explicit `report` contract for a missing ref: `report: true` (the default)
++ * reports a `refNotFound` diagnostic (or throws outside a build), `report: false` resolves to
++ * `null` silently for a speculative lookup.
+  *
+  * @example
+  * ```ts
+- * derefInPlace<ResponseObject>({ document, container: operation.schema.responses, key: '200' })
++ * const refs = createRefs(document)
++ * refs.resolve<SchemaObject>('#/components/schemas/Pet')
++ * refs.resolve<SchemaObject>('#/components/schemas/Pet', { report: false })
++ * refs.exists('#/components/schemas/Pet')
++ * refs.resolveNode('#/components/schemas/Pet', parseSchema)
++ * refs.deref<ResponseObject>(operation.schema.responses?.['200'])
+  * ```
+  */
+-export function derefInPlace<T = unknown>({
+-  document,
+-  container,
+-  key,
+-}: {
+-  document: Document
+-  container: Record<string, unknown>
+-  key: string | number
+-}): T | null {
+-  const value = container[key]
+-  if (!isReference(value)) {
+-    return value ? (value as T) : null
++export function createRefs(document: Document) {
++  const resolvedNodeCache = new Map<string, ast.SchemaNode | null>()
++  const existenceCache = new Map<string, boolean>()
++  const resolvingRefs = new Set<string>()
++
++  /**
++   * Resolves a local `#/...` JSON pointer. Returns `null` for an empty or non-local ref.
++   * `report: true` (default) reports a `refNotFound` diagnostic into the active build (or throws
++   * outside one) when the pointer cannot be resolved. `report: false` resolves to `null` silently,
++   * for a speculative lookup where a missing ref is not an error.
++   */
++  function resolve<T = unknown>(refPath: string, options?: { report?: boolean }): T | null {
++    if (options?.report === false) {
++      const { applicable, value } = walkPointer<T>(document, refPath)
++      return applicable ? value : null
++    }
++
++    return resolveRef<T>(document, refPath)
++  }
++
++  /**
++   * Returns `true` when a `$ref` path resolves to a component the document actually defines.
++   * A circular ref still resolves to an existing target, so this stays `true` for cycles and only
++   * goes `false` for a `$ref` that points at a component the spec never declares. Memoized.
++   */
++  function exists(refPath: string): boolean {
++    if (!existenceCache.has(refPath)) {
++      existenceCache.set(refPath, !!resolve(refPath, { report: false }))
++    }
++    return existenceCache.get(refPath) ?? false
++  }
++
++  /**
++   * Resolves a `$ref` to its parsed node via `parse`, guarding against cycles and memoizing per
++   * instance. Returns `null` when the ref is currently being resolved (a cycle) or cannot be
++   * resolved (e.g. a minimal document in a unit test).
++   */
++  function resolveNode(refPath: string, parse: RefNodeParser, rawOptions?: Partial<ast.ParserOptions>): ast.SchemaNode | null {
++    if (resolvingRefs.has(refPath)) return null
++
++    if (!resolvedNodeCache.has(refPath)) {
++      let resolved: ast.SchemaNode | null = null
++      try {
++        const referenced = resolve<SchemaObject>(refPath)
++        if (referenced) {
++          resolvingRefs.add(refPath)
++          resolved = parse({ schema: referenced }, rawOptions)
++          resolvingRefs.delete(refPath)
++        }
++      } catch {
++        // Ref cannot be resolved in this document (e.g. unit tests with minimal documents).
++      }
++      resolvedNodeCache.set(refPath, resolved)
++    }
++
++    return resolvedNodeCache.get(refPath) ?? null
++  }
++
++  /**
++   * Resolves a `$ref` value without mutating anything: when `value` holds a `$ref`, returns the
++   * resolved target. Returns `null` when the value is empty, cannot be resolved, or is still a
++   * `$ref` after resolving (e.g. a document with no component registry). A non-`$ref` value is
++   * returned as-is.
++   *
++   * @example
++   * ```ts
++   * refs.deref<ResponseObject>(operation.schema.responses?.['200'])
++   * ```
++   */
++  function deref<T = unknown>(value: unknown): T | null {
++    if (!isReference(value)) {
++      return value ? (value as T) : null
++    }
++
++    const resolved = resolve<T>(value.$ref)
++    return resolved && !isReference(resolved) ? resolved : null
+   }
+ 
+-  const resolved = resolveRef<T>(document, value.$ref)
+-  container[key] = resolved
+-  return resolved && !isReference(resolved) ? resolved : null
++  return { resolve, exists, resolveNode, deref }
+ }
+diff --git a/packages/adapter-oas/src/resolvers.ts b/packages/adapter-oas/src/resolvers.ts
+deleted file mode 100644
+--- a/packages/adapter-oas/src/resolvers.ts
++++ /dev/null
+@@ -1,604 +0,0 @@
+-import { pascalCase } from '@internals/utils'
+-import type { ast } from '@kubb/ast'
+-import { Diagnostics } from '@kubb/core'
+-import { formatMap, SCHEMA_REF_PREFIX, specialCasedFormats, structuralKeys } from './constants.ts'
+-import { isJsonMimeType, isReference } from './oas.ts'
+-import { getRequestContent, getResponseByStatusCode } from './operation.ts'
+-import { dereferenceWithRef, derefInPlace, resolveRef } from './refs.ts'
+-import type { ContentType, Document, MediaTypeObject, Operation, ParameterObject, ResponseObject, SchemaObject, ServerObject, ServerOptions } from './types.ts'
+-
+-/**
+- * Reads the server URL from the document's `servers` array at `server.index`,
+- * interpolating any `server.variables` into the URL template.
+- *
+- * Returns `null` when `server.index` is omitted or out of range.
+- *
+- * @example Resolve the first server
+- * `resolveBaseUrl({ document, server: { index: 0 } })`
+- *
+- * @example Override a path variable
+- * `resolveBaseUrl({ document, server: { index: 0, variables: { version: 'v2' } } })`
+- */
+-export function resolveBaseUrl({ document, server }: { document: Document; server?: ServerOptions }): string | null {
+-  const index = server?.index
+-  const entry = index !== undefined ? document.servers?.at(index) : undefined
+-
+-  return entry?.url ? resolveServerUrl(entry, server?.variables) : null
+-}
+-
+-/**
+- * Replaces `{variable}` placeholders in an OpenAPI server URL with provided values.
+- * Resolution order: `overrides[key]` → `variable.default` → left unreplaced.
+- * Throws if an override value is not in the variable's `enum` list.
+- *
+- * @example
+- * ```ts
+- * resolveServerUrl(
+- *   { url: 'https://{env}.api.example.com', variables: { env: { default: 'dev', enum: ['dev', 'prod'] } } },
+- *   { env: 'prod' },
+- * )
+- * // 'https://prod.api.example.com'
+- * ```
+- */
+-export function resolveServerUrl(server: ServerObject, overrides?: Record<string, string>): string {
+-  if (!server.variables) {
+-    return server.url
+-  }
+-
+-  let url = server.url
+-  for (const [key, variable] of Object.entries(server.variables)) {
+-    const value = overrides?.[key] ?? (variable.default != null ? String(variable.default) : undefined)
+-    if (value === undefined) {
+-      continue
+-    }
+-
+-    if (variable.enum?.length && !variable.enum.some((e) => String(e) === value)) {
+-      throw new Diagnostics.Error({
+-        code: Diagnostics.code.invalidServerVariable,
+-        severity: 'error',
+-        message: `Invalid server variable value '${value}' for '${key}' when resolving ${server.url}. Valid values are: ${variable.enum.join(', ')}.`,
+-        help: `Use one of the allowed enum values, or drop the enum on the '${key}' server variable.`,
+-        location: { kind: 'document', pointer: '#/servers' },
+-      })
+-    }
+-
+-    url = url.replaceAll(`{${key}}`, value)
+-  }
+-
+-  return url
+-}
+-
+-/**
+- * Returns the Kubb `SchemaType` for a given OAS `format` string, or `null` if not found.
+- * Formats not in `formatMap` (e.g., `int64`, `date-time`) are handled separately by parser options.
+- */
+-export function getSchemaType(format: string): ast.SchemaType | null {
+-  return formatMap[format as keyof typeof formatMap] ?? null
+-}
+-
+-/**
+- * Whether the parser maps `format` to a dedicated type. True for any `formatMap` entry, plus the
+- * `specialCasedFormats` that `convertFormat` handles directly. False means the format falls back to
+- * the base type, which is what `KUBB_UNSUPPORTED_FORMAT` flags. Reading both sources keeps the
+- * diagnostic in step with the parser as `formatMap` grows.
+- */
+-export function isHandledFormat(format: string): boolean {
+-  return getSchemaType(format) !== null || specialCasedFormats.has(format)
+-}
+-
+-/**
+- * Converts an OAS primitive type string to its `PrimitiveSchemaType` equivalent.
+- * Numeric types (`number`, `integer`, `bigint`) pass through unchanged. `boolean` maps to `'boolean'`. Everything else becomes `'string'`.
+- */
+-export function getPrimitiveType(type: string | undefined): ast.PrimitiveSchemaType {
+-  if (type === 'number' || type === 'integer' || type === 'bigint') return type
+-  if (type === 'boolean') return 'boolean'
+-
+-  return 'string'
+-}
+-
+-export type OperationsOptions = {
+-  contentType?: ContentType
+-}
+-
+-/**
+- * Returns all parameters for an operation, merging path-level and operation-level entries.
+- * Operation-level parameters override path-level ones with the same `in:name` key.
+- * Each `$ref` parameter is dereferenced via `dereferenceWithRef` before merging.
+- *
+- * @example
+- * ```ts
+- * getParameters(document, operation)
+- * // [{ name: 'petId', in: 'path', required: true, schema: { type: 'integer' } }]
+- * ```
+- */
+-export function getParameters(document: Document, operation: Operation): Array<ParameterObject> {
+-  const resolveParams = (params: Array<unknown>): Array<ParameterObject> =>
+-    params.map((p) => dereferenceWithRef(document, p)).filter((p): p is ParameterObject => !!p && typeof p === 'object' && 'in' in p && 'name' in p)
+-
+-  const operationParams = resolveParams(operation.schema?.parameters || [])
+-  const pathItem = document.paths?.[operation.path]
+-  const pathLevelParams = resolveParams(pathItem && !isReference(pathItem) && pathItem.parameters ? pathItem.parameters : [])
+-
+-  const paramMap = new Map<string, ParameterObject>()
+-  for (const p of pathLevelParams) {
+-    if (p.name && p.in) {
+-      paramMap.set(`${p.in}:${p.name}`, p)
+-    }
+-  }
+-  for (const p of operationParams) {
+-    if (p.name && p.in) {
+-      paramMap.set(`${p.in}:${p.name}`, p)
+-    }
+-  }
+-
+-  return Array.from(paramMap.values())
+-}
+-
+-function getResponseBody(responseBody: boolean | ResponseObject, contentType?: string): MediaTypeObject | false {
+-  if (!responseBody) return false
+-  if (isReference(responseBody)) return false
+-
+-  const body = responseBody as ResponseObject
+-  if (!body.content) return false
+-
+-  if (contentType) {
+-    if (!(contentType in body.content)) return false
+-    return body.content[contentType]!
+-  }
+-
+-  const contentTypes = Object.keys(body.content)
+-  const availableContentType = contentTypes.find(isJsonMimeType) ?? contentTypes[0]
+-  if (!availableContentType) return false
+-
+-  return body.content[availableContentType]!
+-}
+-
+-// Dereference every response `$ref` in place so callers can read response bodies directly.
+-function resolveResponseRefs(document: Document, operation: Operation): void {
+-  const responses = operation.schema.responses as Record<string, unknown> | undefined
+-  if (!responses) return
+-  for (const key in responses) {
+-    derefInPlace({ document, container: responses, key })
+-  }
+-}
+-
+-/**
+- * Returns the response schema for a given operation and HTTP status code.
+- *
+- * Returns an empty object `{}` when no response body schema is available.
+- *
+- * @example
+- * ```ts
+- * getResponseSchema(document, operation, 200)         // SchemaObject
+- * getResponseSchema(document, operation, '4XX')       // {}
+- * ```
+- */
+-export function getResponseSchema(document: Document, operation: Operation, statusCode: string | number, options: OperationsOptions = {}): SchemaObject {
+-  resolveResponseRefs(document, operation)
+-
+-  const responseBody = getResponseBody(getResponseByStatusCode({ document, operation, statusCode }), options.contentType)
+-
+-  if (responseBody === false) {
+-    return {}
+-  }
+-
+-  const schema = responseBody.schema
+-
+-  if (!schema) {
+-    return {}
+-  }
+-
+-  return dereferenceWithRef(document, schema)
+-}
+-
+-/**
+- * Returns the request body schema for an operation, or `null` when absent.
+- *
+- * @example
+- * ```ts
+- * getRequestSchema(document, operation) // SchemaObject | null
+- * ```
+- */
+-export function getRequestSchema(document: Document, operation: Operation, options: OperationsOptions = {}): SchemaObject | null {
+-  if (operation.schema.requestBody) {
+-    operation.schema.requestBody = dereferenceWithRef(document, operation.schema.requestBody)
+-  }
+-
+-  const requestBody = getRequestContent({ document, operation, mediaType: options.contentType })
+-
+-  if (requestBody === false) {
+-    return null
+-  }
+-
+-  const mediaType = Array.isArray(requestBody) ? requestBody[0] : options.contentType
+-  const schema = Array.isArray(requestBody) ? requestBody[1].schema : requestBody.schema
+-
+-  // OAS 3.1 (and the 3.0 -> 3.1 upgrade) drops the schema for an `application/octet-stream` body,
+-  // leaving an empty media type object. Synthesize the binary schema so generators still emit a
+-  // request body type for the operation.
+-  if (mediaType === 'application/octet-stream' && (!schema || Object.keys(schema).length === 0)) {
+-    return { type: 'string', contentMediaType: 'application/octet-stream' }
+-  }
+-
+-  if (!schema) {
+-    return null
+-  }
+-
+-  return dereferenceWithRef(document, schema)
+-}
+-
+-/**
+- * The three component sections Kubb reads schemas from.
+- */
+-type SchemaSourceMode = 'schemas' | 'responses' | 'requestBodies'
+-
+-/**
+- * A schema annotated with its component section source and original name. `getSchemas` uses this
+- * to resolve name collisions across sources.
+- */
+-type SchemaWithMetadata = {
+-  schema: SchemaObject
+-  source: SchemaSourceMode
+-  originalName: string
+-}
+-
+-export type GetSchemasOptions = {
+-  contentType?: ContentType
+-}
+-
+-export type GetSchemasResult = {
+-  schemas: Record<string, SchemaObject>
+-  /**
+-   * Maps a renamed component pointer (`#/components/<source>/<name>`) to the
+-   * collision-resolved unique name used as the key in `schemas`. Components that keep
+-   * their original name are not recorded, so the map stays empty for documents
+-   * without collisions.
+-   */
+-  renames: Map<string, string>
+-}
+-
+-/**
+- * Returns `true` when `fragment` carries any JSON Schema keyword that makes it
+- * structurally significant on its own (see `structuralKeys`).
+- *
+- * A fragment with a structural keyword can't be safely merged into a parent schema.
+- */
+-function hasStructuralKeywords(fragment: SchemaObject): boolean {
+-  for (const key in fragment) {
+-    if (structuralKeys.has(key as 'properties')) return true
+-  }
+-  return false
+-}
+-
+-/**
+- * Flattens a keyword-only `allOf` into its parent schema.
+- *
+- * Only flattens when every member is a plain fragment, with no `$ref` and no structural keywords
+- * (see `structuralKeys`). Outer schema values take precedence over fragment values.
+- * Returns `null` for a `null` input, and the original schema unchanged when flattening is unsafe.
+- *
+- * @example
+- * ```ts
+- * flattenSchema({ allOf: [{ description: 'A pet' }], type: 'object', properties: {} })
+- * // { type: 'object', properties: {}, description: 'A pet' }
+- * ```
+- *
+- * @example
+- * ```ts
+- * flattenSchema({ allOf: [{ $ref: '#/components/schemas/Pet' }] })
+- * // returned unchanged, contains a $ref
+- * ```
+- */
+-export function flattenSchema(schema: SchemaObject | null): SchemaObject | null {
+-  if (!schema?.allOf || schema.allOf.length === 0) return schema ?? null
+-
+-  const allOfFragments = schema.allOf as Array<SchemaObject>
+-  if (allOfFragments.some((item) => isReference(item))) return schema
+-  if (allOfFragments.some(hasStructuralKeywords)) return schema
+-
+-  // Destructure `allOf` out instead of `delete merged.allOf`: a `delete` transitions the freshly
+-  // spread object into V8 dictionary (slow) mode, and this runs per `allOf` schema during parsing.
+-  const { allOf: _allOf, ...rest } = schema
+-  const merged = rest as SchemaObject
+-
+-  for (const fragment of allOfFragments) {
+-    for (const [key, value] of Object.entries(fragment)) {
+-      merged[key as keyof SchemaObject] ??= value as SchemaObject[keyof SchemaObject]
+-    }
+-  }
+-
+-  return merged
+-}
+-
+-/**
+- * Extracts the inline schema from a media-type `content` map.
+- *
+- * Prefers `preferredContentType` when given, otherwise uses the first key in the map.
+- * Returns `null` when `content` is absent, the schema is missing, or the schema is a `$ref`.
+- *
+- * @example
+- * ```ts
+- * extractSchemaFromContent(operation.content, 'application/json')
+- * // SchemaObject | null
+- * ```
+- */
+-export function extractSchemaFromContent(content: Record<string, unknown> | undefined, preferredContentType?: ContentType): SchemaObject | null {
+-  if (!content) return null
+-
+-  const firstContentType = Object.keys(content)[0] ?? 'application/json'
+-  const targetContentType = preferredContentType ?? firstContentType
+-  const contentSchema = content[targetContentType] as { schema?: SchemaObject } | undefined
+-  const schema = contentSchema?.schema
+-
+-  if (schema && '$ref' in schema) return null
+-  return schema ?? null
+-}
+-
+-/**
+- * Walks a schema tree and collects the names of all `#/components/schemas/<name>` `$ref`s.
+- */
+-function* collectRefs(schema: unknown): Generator<string, void, undefined> {
+-  if (Array.isArray(schema)) {
+-    for (const item of schema) yield* collectRefs(item)
+-    return
+-  }
+-
+-  if (schema && typeof schema === 'object') {
+-    for (const key in schema) {
+-      const value = (schema as Record<string, unknown>)[key]
+-      if (!(key === '$ref' && typeof value === 'string')) {
+-        yield* collectRefs(value)
+-        continue
+-      }
+-      if (value.startsWith(SCHEMA_REF_PREFIX)) {
+-        const name = value.slice(SCHEMA_REF_PREFIX.length)
+-        if (name) yield name
+-      }
+-    }
+-  }
+-}
+-
+-/**
+- * Returns a copy of `schemas` topologically sorted by `$ref` dependency.
+- *
+- * Referenced schemas appear before the schemas that depend on them, so code generators
+- * can emit types in the correct order. Cycles are silently skipped.
+- *
+- * @example
+- * ```ts
+- * const sorted = sortSchemas({ Order: orderSchema, Pet: petSchema })
+- * // Pet appears before Order when Order.$ref points at Pet
+- * ```
+- */
+-export function sortSchemas(schemas: Record<string, SchemaObject>): Record<string, SchemaObject> {
+-  const deps = new Map<string, Array<string>>()
+-
+-  for (const [name, schema] of Object.entries(schemas)) {
+-    deps.set(name, [...new Set(collectRefs(schema))])
+-  }
+-
+-  const sorted: Array<string> = []
+-  const visited = new Set<string>()
+-
+-  function visit(name: string, stack: Set<string>) {
+-    if (visited.has(name) || stack.has(name)) return
+-    stack.add(name)
+-    for (const child of deps.get(name) ?? []) {
+-      if (deps.has(child)) visit(child, stack)
+-    }
+-    stack.delete(name)
+-    visited.add(name)
+-    sorted.push(name)
+-  }
+-
+-  for (const name of Object.keys(schemas)) {
+-    visit(name, new Set())
+-  }
+-
+-  const result: Record<string, SchemaObject> = {}
+-  for (const name of sorted) result[name] = schemas[name]!
+-  return result
+-}
+-
+-const semanticSuffixes: Record<SchemaSourceMode, string> = {
+-  schemas: 'Schema',
+-  responses: 'Response',
+-  requestBodies: 'Request',
+-}
+-
+-function resolveSchemaRef(document: Document, schema: SchemaObject): SchemaObject {
+-  if (!isReference(schema)) return schema
+-  const resolved = resolveRef<SchemaObject>(document, schema.$ref)
+-  return resolved && !isReference(resolved) ? resolved : schema
+-}
+-
+-/**
+- * Collects component schemas from one or more sources and resolves name collisions.
+- *
+- * Sources default to `['schemas', 'requestBodies', 'responses']`. Returned schemas are
+- * topologically sorted by `$ref` dependency so generators emit types in the correct order.
+- *
+- * When two or more schemas normalize to the same PascalCase name:
+- * - Same source → numeric suffix (`2`, `3`, …).
+- * - Different sources → semantic suffix (`Schema`, `Response`, `Request`).
+- *
+- * @example
+- * ```ts
+- * const { schemas, renames } = getSchemas(document, { contentType: 'application/json' })
+- * ```
+- */
+-export function getSchemas(document: Document, { contentType }: GetSchemasOptions): GetSchemasResult {
+-  const components = document.components
+-
+-  const candidates: Array<SchemaWithMetadata> = [
+-    ...Object.entries((components?.schemas as Record<string, SchemaObject>) ?? {}).map(([name, schema]) => ({
+-      schema: resolveSchemaRef(document, schema),
+-      source: 'schemas' as const,
+-      originalName: name,
+-    })),
+-    ...(['responses', 'requestBodies'] as const).flatMap((source) =>
+-      Object.entries(components?.[source] ?? {}).flatMap(([name, item]) => {
+-        const schema = extractSchemaFromContent((item as { content?: Record<string, unknown> }).content, contentType)
+-        return schema
+-          ? [
+-              {
+-                schema: resolveSchemaRef(document, schema),
+-                source,
+-                originalName: name,
+-              },
+-            ]
+-          : []
+-      }),
+-    ),
+-  ]
+-
+-  const normalizedNames = new Map<string, Array<SchemaWithMetadata>>()
+-  for (const item of candidates) {
+-    const key = pascalCase(item.originalName)
+-    const bucket = normalizedNames.get(key) ?? []
+-    bucket.push(item)
+-    normalizedNames.set(key, bucket)
+-  }
+-
+-  const schemas: Record<string, SchemaObject> = {}
+-  const renames = new Map<string, string>()
+-
+-  for (const [, items] of normalizedNames) {
+-    const isSingle = items.length === 1
+-    let hasMultipleSources = false
+-    if (!isSingle) {
+-      const firstSource = items[0]!.source
+-      for (const item of items) {
+-        if (item.source !== firstSource) {
+-          hasMultipleSources = true
+-          break
+-        }
+-      }
+-    }
+-
+-    items.forEach((item, index) => {
+-      const suffix = isSingle ? '' : hasMultipleSources ? semanticSuffixes[item.source] : index === 0 ? '' : String(index + 1)
+-      const uniqueName = item.originalName + suffix
+-      schemas[uniqueName] = item.schema
+-      if (suffix) renames.set(`#/components/${item.source}/${item.originalName}`, uniqueName)
+-    })
+-  }
+-
+-  return { schemas: sortSchemas(schemas), renames }
+-}
+-
+-/**
+- * Resolves the AST type descriptor for a date/time format, honoring the `dateType` option.
+- * Returns `null` when `dateType: false`, so the format falls through to `string`.
+- */
+-export function getDateType(
+-  options: ast.ParserOptions,
+-  format: 'date-time' | 'date' | 'time',
+-): { type: 'datetime'; offset?: boolean; local?: boolean } | { type: 'date' | 'time'; representation: 'date' | 'string' } | null {
+-  if (!options.dateType) {
+-    return null
+-  }
+-
+-  if (format === 'date-time') {
+-    if (options.dateType === 'date') {
+-      return { type: 'date', representation: 'date' }
+-    }
+-    if (options.dateType === 'stringOffset') {
+-      return { type: 'datetime', offset: true }
+-    }
+-    if (options.dateType === 'stringLocal') {
+-      return { type: 'datetime', local: true }
+-    }
+-    return { type: 'datetime', offset: false }
+-  }
+-
+-  if (format === 'date') {
+-    return {
+-      type: 'date',
+-      representation: options.dateType === 'date' ? 'date' : 'string',
+-    }
+-  }
+-
+-  // time
+-  return {
+-    type: 'time',
+-    representation: options.dateType === 'date' ? 'date' : 'string',
+-  }
+-}
+-
+-/**
+- * Collects the shared metadata fields passed to every `createSchema` call.
+- */
+-/**
+- * Reads schema examples as an array. OAS 3.1 uses an `examples` array, but specs (including ones
+- * labeled 3.1) still use the singular OAS 3.0 `example`, which the upgrader only converts on the
+- * 3.0 -> 3.1 hop. Normalize both into one array so the AST node exposes only `examples`.
+- */
+-export function extractExamples(schema: SchemaObject): Array<unknown> | undefined {
+-  if (Array.isArray(schema.examples)) return schema.examples
+-  return schema.example !== undefined ? [schema.example] : undefined
+-}
+-
+-export function buildSchemaNode(schema: SchemaObject, name: string | null | undefined, nullable: true | undefined, defaultValue: unknown) {
+-  return {
+-    name,
+-    nullable,
+-    title: schema.title,
+-    description: schema.description,
+-    deprecated: schema.deprecated,
+-    readOnly: schema.readOnly,
+-    writeOnly: schema.writeOnly,
+-    default: defaultValue,
+-    examples: extractExamples(schema),
+-    format: schema.format,
+-  } as const
+-}
+-
+-/**
+- * Returns all request body content type keys for an operation.
+- *
+- * The requestBody is dereferenced in place when it is a `$ref` (the same mutation that
+- * `getRequestSchema` already performs), so the returned list accurately reflects the
+- * available content types even for referenced bodies.
+- *
+- * @example
+- * ```ts
+- * getRequestBodyContentTypes(document, operation)
+- * // ['application/json', 'multipart/form-data']
+- * ```
+- */
+-export function getRequestBodyContentTypes(document: Document, operation: Operation): Array<string> {
+-  if (operation.schema.requestBody) {
+-    operation.schema.requestBody = dereferenceWithRef(document, operation.schema.requestBody)
+-  }
+-
+-  const body = operation.schema.requestBody as { content?: Record<string, unknown> } | undefined
+-  if (!body) return []
+-
+-  // dereferenceWithRef keeps $ref but spreads all resolved fields (including `content`).
+-  // Do not bail out on isReference, the content is already present on the merged object.
+-  return body.content ? Object.keys(body.content) : []
+-}
+-
+-/**
+- * Returns all response content type keys for an operation at a given status code.
+- *
+- * Response `$ref`s are resolved in place first (the same mutation `getResponseSchema` performs),
+- * so the returned list reflects the available content types even for referenced responses.
+- *
+- * @example
+- * ```ts
+- * getResponseBodyContentTypes(document, operation, 200)
+- * // ['application/json', 'application/xml']
+- * ```
+- */
+-export function getResponseBodyContentTypes(document: Document, operation: Operation, statusCode: string | number): Array<string> {
+-  resolveResponseRefs(document, operation)
+-
+-  const responseObj = getResponseByStatusCode({ document, operation, statusCode })
+-  if (!responseObj || typeof responseObj !== 'object' || isReference(responseObj)) return []
+-
+-  const body = responseObj as { content?: Record<string, unknown> }
+-  return body.content ? Object.keys(body.content) : []
+-}
+diff --git a/packages/adapter-oas/src/schemaDiagnostics.ts b/packages/adapter-oas/src/schemaDiagnostics.ts
+--- a/packages/adapter-oas/src/schemaDiagnostics.ts
++++ b/packages/adapter-oas/src/schemaDiagnostics.ts
+@@ -1,6 +1,6 @@
+ import type { ast } from '@kubb/ast'
+ import { Diagnostics } from '@kubb/core'
+-import { isHandledFormat } from './resolvers.ts'
++import { isHandledFormat } from './emit/schemaShape.ts'
+ 
+ /**
+  * Reports the advisory diagnostics (`KUBB_UNSUPPORTED_FORMAT`, `KUBB_DEPRECATED`) for one
+diff --git a/packages/adapter-oas/src/types.ts b/packages/adapter-oas/src/types.ts
+--- a/packages/adapter-oas/src/types.ts
++++ b/packages/adapter-oas/src/types.ts
+@@ -16,6 +16,13 @@ export type { Operation }
+  */
+ export type ContentType = 'application/json' | (string & {})
+ 
++/**
++ * Preferred media type to select when an operation or component declares more than one.
++ */
++export type ContentTypeOptions = {
++  contentType?: ContentType
++}
++
+ /**
+  * Extended OpenAPI 3.0 schema object that includes OpenAPI 3.1 and JSON Schema fields.
+  * The parser uses these additional fields to handle newer spec versions.

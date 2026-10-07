@@ -1,0 +1,489 @@
+diff --git a/packages/cli/src/config/keyBindings.test.ts b/packages/cli/src/config/keyBindings.test.ts
+deleted file mode 100644
+index e450e68b7..000000000
+--- a/packages/cli/src/config/keyBindings.test.ts
++++ /dev/null
+@@ -1,93 +0,0 @@
+-/**
+- * @license
+- * Copyright 2025 Google LLC
+- * SPDX-License-Identifier: Apache-2.0
+- */
+-
+-import { describe, it, expect } from 'vitest';
+-import type { KeyBindingConfig } from './keyBindings.js';
+-import {
+-  Command,
+-  commandCategories,
+-  commandDescriptions,
+-  defaultKeyBindings,
+-} from './keyBindings.js';
+-
+-describe('keyBindings config', () => {
+-  describe('defaultKeyBindings', () => {
+-    it('should have bindings for all commands', () => {
+-      const commands = Object.values(Command);
+-
+-      for (const command of commands) {
+-        expect(defaultKeyBindings[command]).toBeDefined();
+-        expect(Array.isArray(defaultKeyBindings[command])).toBe(true);
+-        expect(defaultKeyBindings[command]?.length).toBeGreaterThan(0);
+-      }
+-    });
+-
+-    it('should have valid key binding structures', () => {
+-      for (const [_, bindings] of Object.entries(defaultKeyBindings)) {
+-        for (const binding of bindings) {
+-          // Each binding must have a key name
+-          expect(typeof binding.key).toBe('string');
+-          expect(binding.key.length).toBeGreaterThan(0);
+-
+-          // Modifier properties should be boolean or undefined
+-          if (binding.shift !== undefined) {
+-            expect(typeof binding.shift).toBe('boolean');
+-          }
+-          if (binding.alt !== undefined) {
+-            expect(typeof binding.alt).toBe('boolean');
+-          }
+-          if (binding.ctrl !== undefined) {
+-            expect(typeof binding.ctrl).toBe('boolean');
+-          }
+-          if (binding.cmd !== undefined) {
+-            expect(typeof binding.cmd).toBe('boolean');
+-          }
+-        }
+-      }
+-    });
+-
+-    it('should export all required types', () => {
+-      // Basic type checks
+-      expect(typeof Command.HOME).toBe('string');
+-      expect(typeof Command.END).toBe('string');
+-
+-      // Config should be readonly
+-      const config: KeyBindingConfig = defaultKeyBindings;
+-      expect(config[Command.HOME]).toBeDefined();
+-    });
+-  });
+-
+-  describe('command metadata', () => {
+-    const commandValues = Object.values(Command);
+-
+-    it('has a description entry for every command', () => {
+-      const describedCommands = Object.keys(commandDescriptions);
+-      expect(describedCommands.sort()).toEqual([...commandValues].sort());
+-
+-      for (const command of commandValues) {
+-        expect(typeof commandDescriptions[command]).toBe('string');
+-        expect(commandDescriptions[command]?.trim()).not.toHaveLength(0);
+-      }
+-    });
+-
+-    it('categorizes each command exactly once', () => {
+-      const seen = new Set<Command>();
+-
+-      for (const category of commandCategories) {
+-        expect(typeof category.title).toBe('string');
+-        expect(Array.isArray(category.commands)).toBe(true);
+-
+-        for (const command of category.commands) {
+-          expect(commandValues).toContain(command);
+-          expect(seen.has(command)).toBe(false);
+-          seen.add(command);
+-        }
+-      }
+-
+-      expect(seen.size).toBe(commandValues.length);
+-    });
+-  });
+-});
+diff --git a/packages/cli/src/ui/components/ExitPlanModeDialog.test.tsx b/packages/cli/src/ui/components/ExitPlanModeDialog.test.tsx
+index 35d0d2e71..33daca1e3 100644
+--- a/packages/cli/src/ui/components/ExitPlanModeDialog.test.tsx
++++ b/packages/cli/src/ui/components/ExitPlanModeDialog.test.tsx
+@@ -10,7 +10,7 @@ import { renderWithProviders } from '../../test-utils/render.js';
+ import { waitFor } from '../../test-utils/async.js';
+ import { ExitPlanModeDialog } from './ExitPlanModeDialog.js';
+ import { useKeypress } from '../hooks/useKeypress.js';
+-import { Command } from '../keyMatchers.js';
++import { Command } from '../key/keyMatchers.js';
+ import {
+   ApprovalMode,
+   validatePlanContent,
+diff --git a/packages/cli/src/ui/components/InputPrompt.test.tsx b/packages/cli/src/ui/components/InputPrompt.test.tsx
+index 85e6b8d6a..260455c78 100644
+--- a/packages/cli/src/ui/components/InputPrompt.test.tsx
++++ b/packages/cli/src/ui/components/InputPrompt.test.tsx
+@@ -44,7 +44,7 @@ import { terminalCapabilityManager } from '../utils/terminalCapabilityManager.js
+ import type { UIState } from '../contexts/UIStateContext.js';
+ import { isLowColorDepth } from '../utils/terminalUtils.js';
+ import { cpLen } from '../utils/textUtils.js';
+-import { defaultKeyMatchers, Command } from '../keyMatchers.js';
++import { defaultKeyMatchers, Command } from '../key/keyMatchers.js';
+ import type { Key } from '../hooks/useKeypress.js';
+ import {
+   appEvents,
+diff --git a/packages/cli/src/ui/hooks/useSuspend.test.ts b/packages/cli/src/ui/hooks/useSuspend.test.ts
+index 1d0b34b1a..941bfd44b 100644
+--- a/packages/cli/src/ui/hooks/useSuspend.test.ts
++++ b/packages/cli/src/ui/hooks/useSuspend.test.ts
+@@ -29,8 +29,8 @@ import {
+   cleanupTerminalOnExit,
+   terminalCapabilityManager,
+ } from '../utils/terminalCapabilityManager.js';
+-import { formatCommand } from '../utils/keybindingUtils.js';
+-import { Command } from '../../config/keyBindings.js';
++import { formatCommand } from '../key/keybindingUtils.js';
++import { Command } from '../key/keyBindings.js';
+ 
+ vi.mock('@google/gemini-cli-core', async () => {
+   const actual = await vi.importActual('@google/gemini-cli-core');
+diff --git a/packages/cli/src/ui/hooks/useTabbedNavigation.test.ts b/packages/cli/src/ui/hooks/useTabbedNavigation.test.ts
+index e41a89d66..20e1c13fb 100644
+--- a/packages/cli/src/ui/hooks/useTabbedNavigation.test.ts
++++ b/packages/cli/src/ui/hooks/useTabbedNavigation.test.ts
+@@ -9,18 +9,12 @@ import { act } from 'react';
+ import { renderHook } from '../../test-utils/render.js';
+ import { useTabbedNavigation } from './useTabbedNavigation.js';
+ import { useKeypress } from './useKeypress.js';
+-import { useKeyMatchers } from './useKeyMatchers.js';
+-import type { KeyMatchers } from '../keyMatchers.js';
+ import type { Key, KeypressHandler } from '../contexts/KeypressContext.js';
+ 
+ vi.mock('./useKeypress.js', () => ({
+   useKeypress: vi.fn(),
+ }));
+ 
+-vi.mock('./useKeyMatchers.js', () => ({
+-  useKeyMatchers: vi.fn(),
+-}));
+-
+ const createKey = (partial: Partial<Key>): Key => ({
+   name: partial.name || '',
+   sequence: partial.sequence || '',
+@@ -32,27 +26,10 @@ const createKey = (partial: Partial<Key>): Key => ({
+   ...partial,
+ });
+ 
+-const mockKeyMatchers = {
+-  'cursor.left': vi.fn((key) => key.name === 'left'),
+-  'cursor.right': vi.fn((key) => key.name === 'right'),
+-  'dialog.next': vi.fn((key) => key.name === 'tab' && !key.shift),
+-  'dialog.previous': vi.fn((key) => key.name === 'tab' && key.shift),
+-} as unknown as KeyMatchers;
+-
+-vi.mock('../keyMatchers.js', () => ({
+-  Command: {
+-    MOVE_LEFT: 'cursor.left',
+-    MOVE_RIGHT: 'cursor.right',
+-    DIALOG_NEXT: 'dialog.next',
+-    DIALOG_PREV: 'dialog.previous',
+-  },
+-}));
+-
+ describe('useTabbedNavigation', () => {
+   let capturedHandler: KeypressHandler;
+ 
+   beforeEach(() => {
+-    vi.mocked(useKeyMatchers).mockReturnValue(mockKeyMatchers);
+     vi.mocked(useKeypress).mockImplementation((handler) => {
+       capturedHandler = handler;
+     });
+diff --git a/packages/cli/src/ui/key/keyBindings.test.ts b/packages/cli/src/ui/key/keyBindings.test.ts
+new file mode 100644
+index 000000000..b47e8d56b
+--- /dev/null
++++ b/packages/cli/src/ui/key/keyBindings.test.ts
+@@ -0,0 +1,159 @@
++/**
++ * @license
++ * Copyright 2025 Google LLC
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++import { describe, it, expect } from 'vitest';
++import type { KeyBindingConfig } from './keyBindings.js';
++import {
++  Command,
++  commandCategories,
++  commandDescriptions,
++  defaultKeyBindings,
++  KeyBinding,
++} from './keyBindings.js';
++
++describe('KeyBinding', () => {
++  describe('constructor', () => {
++    it('should parse a simple key', () => {
++      const binding = new KeyBinding('a');
++      expect(binding.key).toBe('a');
++      expect(binding.ctrl).toBe(false);
++      expect(binding.shift).toBe(false);
++      expect(binding.alt).toBe(false);
++      expect(binding.cmd).toBe(false);
++    });
++
++    it('should parse ctrl+key', () => {
++      const binding = new KeyBinding('ctrl+c');
++      expect(binding.key).toBe('c');
++      expect(binding.ctrl).toBe(true);
++    });
++
++    it('should parse shift+key', () => {
++      const binding = new KeyBinding('shift+z');
++      expect(binding.key).toBe('z');
++      expect(binding.shift).toBe(true);
++    });
++
++    it('should parse alt+key', () => {
++      const binding = new KeyBinding('alt+left');
++      expect(binding.key).toBe('left');
++      expect(binding.alt).toBe(true);
++    });
++
++    it('should parse cmd+key', () => {
++      const binding = new KeyBinding('cmd+f');
++      expect(binding.key).toBe('f');
++      expect(binding.cmd).toBe(true);
++    });
++
++    it('should handle aliases (option/opt/meta)', () => {
++      const optionBinding = new KeyBinding('option+b');
++      expect(optionBinding.key).toBe('b');
++      expect(optionBinding.alt).toBe(true);
++
++      const optBinding = new KeyBinding('opt+b');
++      expect(optBinding.key).toBe('b');
++      expect(optBinding.alt).toBe(true);
++
++      const metaBinding = new KeyBinding('meta+enter');
++      expect(metaBinding.key).toBe('enter');
++      expect(metaBinding.cmd).toBe(true);
++    });
++
++    it('should parse multiple modifiers', () => {
++      const binding = new KeyBinding('ctrl+shift+alt+cmd+x');
++      expect(binding.key).toBe('x');
++      expect(binding.ctrl).toBe(true);
++      expect(binding.shift).toBe(true);
++      expect(binding.alt).toBe(true);
++      expect(binding.cmd).toBe(true);
++    });
++
++    it('should be case-insensitive', () => {
++      const binding = new KeyBinding('CTRL+Shift+F');
++      expect(binding.key).toBe('f');
++      expect(binding.ctrl).toBe(true);
++      expect(binding.shift).toBe(true);
++    });
++
++    it('should handle named keys with modifiers', () => {
++      const binding = new KeyBinding('ctrl+return');
++      expect(binding.key).toBe('return');
++      expect(binding.ctrl).toBe(true);
++    });
++
++    it('should throw an error for invalid keys or typos in modifiers', () => {
++      expect(() => new KeyBinding('ctrl+unknown')).toThrow(
++        'Invalid keybinding key: "unknown" in "ctrl+unknown"',
++      );
++      expect(() => new KeyBinding('ctlr+a')).toThrow(
++        'Invalid keybinding key: "ctlr+a" in "ctlr+a"',
++      );
++    });
++
++    it('should throw an error for literal "+" as key (must use "=")', () => {
++      // VS Code style peeling logic results in "+" as the remains
++      expect(() => new KeyBinding('alt++')).toThrow(
++        'Invalid keybinding key: "+" in "alt++"',
++      );
++    });
++  });
++});
++
++describe('keyBindings config', () => {
++  describe('defaultKeyBindings', () => {
++    it('should have bindings for all commands', () => {
++      const commands = Object.values(Command);
++
++      for (const command of commands) {
++        expect(defaultKeyBindings[command]).toBeDefined();
++        expect(Array.isArray(defaultKeyBindings[command])).toBe(true);
++        expect(defaultKeyBindings[command]?.length).toBeGreaterThan(0);
++      }
++    });
++
++    it('should export all required types', () => {
++      // Basic type checks
++      expect(typeof Command.HOME).toBe('string');
++      expect(typeof Command.END).toBe('string');
++
++      // Config should be readonly
++      const config: KeyBindingConfig = defaultKeyBindings;
++      expect(config[Command.HOME]).toBeDefined();
++    });
++  });
++
++  describe('command metadata', () => {
++    const commandValues = Object.values(Command);
++
++    it('has a description entry for every command', () => {
++      const describedCommands = Object.keys(commandDescriptions);
++      expect(describedCommands.sort()).toEqual([...commandValues].sort());
++
++      for (const command of commandValues) {
++        expect(typeof commandDescriptions[command]).toBe('string');
++        expect(commandDescriptions[command]?.trim()).not.toHaveLength(0);
++      }
++    });
++
++    it('categorizes each command exactly once', () => {
++      const seen = new Set<Command>();
++
++      for (const category of commandCategories) {
++        expect(typeof category.title).toBe('string');
++        expect(Array.isArray(category.commands)).toBe(true);
++
++        for (const command of category.commands) {
++          expect(commandValues).toContain(command);
++          expect(seen.has(command)).toBe(false);
++          seen.add(command);
++        }
++      }
++
++      expect(seen.size).toBe(commandValues.length);
++    });
++  });
++});
+diff --git a/packages/cli/src/ui/keyMatchers.test.ts b/packages/cli/src/ui/key/keyMatchers.test.ts
+similarity index 97%
+rename from packages/cli/src/ui/keyMatchers.test.ts
+rename to packages/cli/src/ui/key/keyMatchers.test.ts
+index e90f6334b..62766d1a0 100644
+--- a/packages/cli/src/ui/keyMatchers.test.ts
++++ b/packages/cli/src/ui/key/keyMatchers.test.ts
+@@ -10,9 +10,9 @@ import {
+   Command,
+   createKeyMatchers,
+ } from './keyMatchers.js';
+-import type { KeyBindingConfig } from '../config/keyBindings.js';
+-import { defaultKeyBindings } from '../config/keyBindings.js';
+-import type { Key } from './hooks/useKeypress.js';
++import type { KeyBindingConfig } from './keyBindings.js';
++import { defaultKeyBindings, KeyBinding } from './keyBindings.js';
++import type { Key } from '../hooks/useKeypress.js';
+ 
+ describe('keyMatchers', () => {
+   const createKey = (name: string, mods: Partial<Key> = {}): Key => ({
+@@ -445,7 +445,7 @@ describe('keyMatchers', () => {
+     it('should work with custom configuration', () => {
+       const customConfig: KeyBindingConfig = {
+         ...defaultKeyBindings,
+-        [Command.HOME]: [{ key: 'h', ctrl: true }, { key: '0' }],
++        [Command.HOME]: [new KeyBinding('ctrl+h'), new KeyBinding('0')],
+       };
+ 
+       const customMatchers = createKeyMatchers(customConfig);
+@@ -462,10 +462,7 @@ describe('keyMatchers', () => {
+     it('should support multiple key bindings for same command', () => {
+       const config: KeyBindingConfig = {
+         ...defaultKeyBindings,
+-        [Command.QUIT]: [
+-          { key: 'q', ctrl: true },
+-          { key: 'q', alt: true },
+-        ],
++        [Command.QUIT]: [new KeyBinding('ctrl+q'), new KeyBinding('alt+q')],
+       };
+ 
+       const matchers = createKeyMatchers(config);
+diff --git a/packages/cli/src/ui/utils/keybindingUtils.test.ts b/packages/cli/src/ui/key/keybindingUtils.test.ts
+similarity index 86%
+rename from packages/cli/src/ui/utils/keybindingUtils.test.ts
+rename to packages/cli/src/ui/key/keybindingUtils.test.ts
+index 4dfe2f814..58a113f4d 100644
+--- a/packages/cli/src/ui/utils/keybindingUtils.test.ts
++++ b/packages/cli/src/ui/key/keybindingUtils.test.ts
+@@ -6,8 +6,7 @@
+ 
+ import { describe, it, expect } from 'vitest';
+ import { formatKeyBinding, formatCommand } from './keybindingUtils.js';
+-import { Command } from '../../config/keyBindings.js';
+-import type { KeyBinding } from '../../config/keyBindings.js';
++import { Command, KeyBinding } from './keyBindings.js';
+ 
+ describe('keybindingUtils', () => {
+   describe('formatKeyBinding', () => {
+@@ -23,12 +22,12 @@ describe('keybindingUtils', () => {
+     }> = [
+       {
+         name: 'simple key',
+-        binding: { key: 'a' },
++        binding: new KeyBinding('a'),
+         expected: { darwin: 'A', win32: 'A', linux: 'A', default: 'A' },
+       },
+       {
+         name: 'named key (return)',
+-        binding: { key: 'return' },
++        binding: new KeyBinding('return'),
+         expected: {
+           darwin: 'Enter',
+           win32: 'Enter',
+@@ -38,12 +37,12 @@ describe('keybindingUtils', () => {
+       },
+       {
+         name: 'named key (escape)',
+-        binding: { key: 'escape' },
++        binding: new KeyBinding('escape'),
+         expected: { darwin: 'Esc', win32: 'Esc', linux: 'Esc', default: 'Esc' },
+       },
+       {
+         name: 'ctrl modifier',
+-        binding: { key: 'c', ctrl: true },
++        binding: new KeyBinding('ctrl+c'),
+         expected: {
+           darwin: 'Ctrl+C',
+           win32: 'Ctrl+C',
+@@ -53,7 +52,7 @@ describe('keybindingUtils', () => {
+       },
+       {
+         name: 'cmd modifier',
+-        binding: { key: 'z', cmd: true },
++        binding: new KeyBinding('cmd+z'),
+         expected: {
+           darwin: 'Cmd+Z',
+           win32: 'Win+Z',
+@@ -63,7 +62,7 @@ describe('keybindingUtils', () => {
+       },
+       {
+         name: 'alt/option modifier',
+-        binding: { key: 'left', alt: true },
++        binding: new KeyBinding('alt+left'),
+         expected: {
+           darwin: 'Option+Left',
+           win32: 'Alt+Left',
+@@ -73,7 +72,7 @@ describe('keybindingUtils', () => {
+       },
+       {
+         name: 'shift modifier',
+-        binding: { key: 'up', shift: true },
++        binding: new KeyBinding('shift+up'),
+         expected: {
+           darwin: 'Shift+Up',
+           win32: 'Shift+Up',
+@@ -83,7 +82,7 @@ describe('keybindingUtils', () => {
+       },
+       {
+         name: 'multiple modifiers (ctrl+shift)',
+-        binding: { key: 'z', ctrl: true, shift: true },
++        binding: new KeyBinding('ctrl+shift+z'),
+         expected: {
+           darwin: 'Ctrl+Shift+Z',
+           win32: 'Ctrl+Shift+Z',
+@@ -93,7 +92,7 @@ describe('keybindingUtils', () => {
+       },
+       {
+         name: 'all modifiers',
+-        binding: { key: 'a', ctrl: true, alt: true, shift: true, cmd: true },
++        binding: new KeyBinding('ctrl+alt+shift+cmd+a'),
+         expected: {
+           darwin: 'Ctrl+Option+Shift+Cmd+A',
+           win32: 'Ctrl+Alt+Shift+Win+A',

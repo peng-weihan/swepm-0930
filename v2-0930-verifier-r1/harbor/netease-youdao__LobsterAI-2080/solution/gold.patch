@@ -1,0 +1,2231 @@
+diff --git a/specs/features/kit-capability-references/2026-05-29-kit-capability-reference-design.md b/specs/features/kit-capability-references/2026-05-29-kit-capability-reference-design.md
+--- a/specs/features/kit-capability-references/2026-05-29-kit-capability-reference-design.md
++++ b/specs/features/kit-capability-references/2026-05-29-kit-capability-reference-design.md
+@@ -4,10 +4,10 @@
+ 
+ ### 1.1 问题/背景
+ 
+-当前 Kit（专家套件）已经支持在商店中安装，并在对话输入区选择后自动展开为一组 Skill 注入到 Cowork 会话中。这个实现解决了"一键安装和使用一组 Skill"的问题，但在消息展示层暴露了一个体验问题：
++当前 Kit（专家套件）已经支持在商店中安装，并在对话输入区选择后自动展开为一组 Skill，作为本轮 Cowork 的优先候选能力。这个实现解决了"一键安装和使用一组 Skill"的问题，但在消息展示层暴露了一个体验问题：
+ 
+ - 用户选择的是一个 Kit，例如"GitHub 专家套件"
+-- 运行时为了执行能力，会把 Kit 展开成多个底层 Skill
++- 为了让模型优先考虑 Kit 能力，提交链路会把 Kit 展开成多个底层 Skill
+ - 用户消息 metadata 中记录的是展开后的 `skillIds`
+ - 对话气泡展示时按 `skillIds` 渲染 Skill badge，结果用户看到的是整组底层 Skill，而不是自己选择的 Kit
+ 
+@@ -18,7 +18,7 @@ Codex 的插件引用方式提供了一个更合适的用户体验：用户可
+ ### 1.2 目标
+ 
+ 1. 对话中选中 Kit 后，用户消息只展示 Kit 级别引用，不展开展示底层 Skill。
+-2. 保留当前 Kit 展开为 Skill 并注入 OpenClaw 会话的运行时能力。
++2. 保留当前 Kit 展开为 Skill，并进入 selected-skills 渐进式披露路由的能力。
+ 3. 为后续 Kit 增加 `mcpServers`、`connectors` 预留统一模型。
+ 4. 明确区分用户可见选择、消息持久化 metadata、运行时解析结果。
+ 5. 支持 re-edit、历史会话、导出/复制等场景保持 Kit 引用语义稳定。
+@@ -41,7 +41,7 @@ Codex 的插件引用方式提供了一个更合适的用户体验：用户可
+ 
+ **Given** "GitHub 专家套件"内部包含多个 Skill  
+ **When** 消息发送到 OpenClaw runtime  
+-**Then** runtime 仍收到展开后的 Skill 列表，能力执行不退化。
++**Then** 本轮 selected-skills routing block 仍包含 Kit 展开的 Skill 轻量信息，模型可按需读取对应 `SKILL.md`，能力执行不退化。
+ 
+ ### 场景 3: 用户同时选择 Kit 和单独 Skill
+ 
+@@ -61,6 +61,24 @@ Codex 的插件引用方式提供了一个更合适的用户体验：用户可
+ **When** 用户选择该 Kit 发送消息  
+ **Then** 用户消息仍只展示 Kit 引用；执行层根据 Kit 安装记录解析出所需的 Skill、MCP server、Connector 等能力。
+ 
++### 场景 6: 追问时重新选择 Kit
++
++**Given** 用户上一轮选择了 Kit A  
++**When** 用户追问时选择 Kit B  
++**Then** 本轮消息只记录 Kit B 的 `kitIds` / `kitReferences`，selected-skills routing 也只使用 Kit B 展开的 Skill；Kit A 仅作为历史消息内容存在，不再作为本轮显式选择。
++
++### 场景 7: 追问时再次选择同一个 Kit
++
++**Given** 用户上一轮选择了 Kit A  
++**When** 用户追问时再次选择 Kit A  
++**Then** 本轮消息再次记录 Kit A，并重新构建本轮 selected-skills routing block；展示上这一条用户消息仍显示 Kit A badge。
++
++### 场景 8: 追问时不选择 Kit
++
++**Given** 用户上一轮选择了 Kit A  
++**When** 用户追问时没有选择任何 Kit  
++**Then** 本轮消息不新增 Kit 引用，也不因为历史选择自动重复 Kit A 的 selected-skills routing；模型仍可根据对话历史继续回答，但没有新的 Kit 显式选择信号。
++
+ ## 3. 功能需求
+ 
+ ### FR-1: Kit 用户可见引用
+@@ -77,7 +95,7 @@ Codex 的插件引用方式提供了一个更合适的用户体验：用户可
+ 
+ - `metadata.skillIds` 只表示用户直接选择的 Skill。
+ - Kit 展开出来的 Skill 不应写入用户可见的 `metadata.skillIds`。
+-- 运行时所需的完整 Skill 列表由内部解析结果提供。
++- 本轮路由所需的 Skill 候选列表由内部解析结果提供，但不代表这些 Skill 正文会被注入上下文。
+ 
+ ### FR-3: 通用能力解析模型
+ 
+@@ -93,7 +111,9 @@ Codex 的插件引用方式提供了一个更合适的用户体验：用户可
+   - 用户选择的 Kit ID
+   - 由 Kit 解析出的运行时能力结果
+ - Main process 写入用户消息 metadata 时保留用户可见选择，不把运行时解析结果混入用户可见字段。
+-- 调用 OpenClaw runtime 时继续传递完整 `skillIds`，保证现有 Skill 注入行为不变。
++- 调用 OpenClaw runtime 时继续传递执行/metadata 所需的 runtime `skillIds`，并用这些 Skill 构建 selected-skills routing block，保证渐进式披露行为不变。
++- Skill/Kit 选择是 turn-scoped：每轮只使用本轮输入框中 active 的 Skill/Kit，不从上一轮消息或 session metadata 自动继承。
++- selected-skills routing prompt 是本轮 transient prompt，不应作为 session-level system prompt 持久化后在后续追问中自动复用。
+ 
+ ### FR-5: Markdown 引用兼容
+ 
+@@ -145,13 +165,15 @@ interface InstalledKit {
+ 
+ 1. `CoworkPromptInput` 从 `activeKitIds` 查出已安装 Kit 的 `skillIds`
+ 2. 将 `activeSkillIds` 和 Kit 展开出的 `skillIds` 合并成 `allSkillIds`
+-3. 根据 `allSkillIds` 构建 inlined skill prompt
++3. 根据 `allSkillIds` 构建 selected-skills routing prompt
+ 4. `CoworkView` 再次把 Kit 展开为 `expandedSkillIds`
+ 5. Main process 把 `options.activeSkillIds` 写入消息 metadata 的 `skillIds`
+ 6. `UserMessageItem` 按 `metadata.skillIds` 渲染 Skill badge
+ 
+ 问题出在第 4 到第 6 步：运行时需要的展开结果被当成用户可见选择持久化了。
+ 
++选中 Skill 的 prompt 注入逻辑已经改为渐进式披露：提交链路只构建 selected-skills routing block，包含 Skill 的 `id`、`name`、`description`、`location`、`directory` 等轻量信息，不再内联完整 `SKILL.md` 正文。因此 Kit 优化不需要重新设计 Skill 加载方式，只需要确保 Kit 展开的 Skill 进入同一套 routing block，而不是进入用户可见 `metadata.skillIds`。
++
+ ### 4.3 Plugin 概念边界
+ 
+ Codex plugin、OpenClaw plugin、LobsterAI Kit 是三个不同概念：
+@@ -383,11 +405,20 @@ Renderer 提交流程：
+ 1. 读取 `activeSkillIds` 作为直接 Skill 选择。
+ 2. 读取 `activeKitIds` 作为 Kit 选择。
+ 3. 调用 resolver 得到 `resolvedKitCapabilities`。
+-4. 构建 runtime Skill 列表：
++4. 构建本轮候选 Skill 列表：
+    - `directSkillIds + resolvedKitCapabilities.skillIds`
+-5. 构建 `skillPrompt` 时使用 runtime Skill 列表。
++5. 使用候选 Skill 列表构建 selected-skills routing prompt，不内联 `SKILL.md` 正文。
+ 6. 调用 start/continue session 时传递 `capabilitySelection`。
+ 
++选择作用域：
++
++- 新会话首轮：使用首页输入框当前选中的 Skill/Kit。
++- 继续会话追问：只使用当前追问输入框新选中的 Skill/Kit。
++- 继续会话未选择 Kit：`kitIds`、`kitReferences`、`resolvedKitCapabilities` 均为空，不从上一轮继承。
++- 继续会话选择另一个 Kit：本轮 Kit 集合替换上一轮 Kit 集合，不做并集。
++- 继续会话再次选择同一个 Kit：按一次新的显式选择处理，本轮重新生成 Kit 引用和 selected-skills routing。
++- 发送成功后清空当前 draft 的 active Skill/Kit，和当前输入框已有行为保持一致，避免下一轮误继承。
++
+ Main process 写消息 metadata：
+ 
+ ```typescript
+@@ -399,17 +430,26 @@ const messageMetadata = {
+ };
+ ```
+ 
+-调用 OpenClaw runtime：
++调用 OpenClaw runtime / prompt builder：
+ 
+ ```typescript
+-runtime.startSession(session.id, prompt, {
+-  skillIds: [
+-    ...(selection.skillIds ?? []),
+-    ...(selection.resolvedKitCapabilities?.skillIds ?? []),
+-  ],
+-});
++const runtimeSkillIds = [
++  ...(selection.skillIds ?? []),
++  ...(selection.resolvedKitCapabilities?.skillIds ?? []),
++];
++
++const selectedSkillRoutingPrompt = buildSelectedSkillRoutingPrompt(
++  resolveSkills(runtimeSkillIds),
++);
+ ```
+ 
++说明：
++
++- `runtimeSkillIds` 用于本轮能力路由和必要的 runtime metadata。
++- `selectedSkillRoutingPrompt` 只包含 Skill 轻量 metadata，引导模型按需读取 `SKILL.md`。
++- `messageMetadata.skillIds` 仍只记录用户直接选择的 Skill，不包含 Kit 展开的 Skill。
++- `selectedSkillRoutingPrompt` 不应写入持久化的 session base system prompt；后续追问如果没有新选择，就不重复发送上一轮的 selected-skills block。
++
+ ### 5.6 展示层
+ 
+ `UserMessageItem` 展示顺序：
+@@ -463,9 +503,9 @@ runtime.startSession(session.id, prompt, {
+ |------|------|
+ | `src/renderer/types/kit.ts` | `MarketplaceKit` 保留现有市场 API 字段；`InstalledKit` 使用 `skills`、`mcpServers`、`connectors` 结构 |
+ | `src/renderer/types/cowork.ts` | `CoworkMessageMetadata` 增加 `kitReferences`、`resolvedKitCapabilities`；会话请求类型增加 capability selection |
+-| `src/renderer/components/cowork/CoworkPromptInput.tsx` | 提交时区分直接 Skill、Kit 引用、运行时能力解析 |
++| `src/renderer/components/cowork/CoworkPromptInput.tsx` | 提交时区分直接 Skill、Kit 引用、运行时能力解析；用直接 Skill + Kit 展开 Skill 构建 selected-skills routing prompt |
+ | `src/renderer/components/cowork/CoworkView.tsx` | start/continue session 传递 capability selection；临时消息 metadata 不再把 Kit 展开 Skill 写入 `skillIds` |
+-| `src/main/main.ts` | Cowork IPC options 接收 capability selection；写入用户可见 metadata；runtime 调用仍传完整 Skill 列表 |
++| `src/main/main.ts` | Cowork IPC options 接收 capability selection；写入用户可见 metadata；runtime 调用使用解析后的候选 Skill |
+ | `src/main/libs/agentEngine/openclawRuntimeAdapter.ts` | continuation 用户消息 metadata 支持 kitReferences/kitIds；runtime skillIds 继续只接收执行用列表 |
+ | `src/renderer/components/cowork/UserMessageItem.tsx` | 展示 `kitReferences`；仅展示直接 Skill |
+ | `src/renderer/components/cowork/CoworkSessionDetail.tsx` | re-edit 恢复 `kitIds` 和直接 `skillIds` |
+@@ -481,8 +521,11 @@ runtime.startSession(session.id, prompt, {
+ | Kit 已选择但安装记录缺失 | 展示 Kit 引用可保留，resolver 跳过缺失能力并提示或静默降级 |
+ | Kit 卸载后历史消息仍引用它 | 历史消息按 `metadata.kitReferences` 展示，不依赖当前安装状态 |
+ | Kit 名称在商店中变更 | 历史消息优先使用 metadata 中保存的 `name`；当前选择使用最新 marketplace 名称 |
+-| 多个 Kit 包含同一个 Skill | runtime `skillIds` 去重，展示仍显示两个 Kit 引用 |
++| 多个 Kit 包含同一个 Skill | 候选 `skillIds` 去重，展示仍显示两个 Kit 引用 |
+ | 用户直接选择的 Skill 同时属于某 Kit | 直接 Skill badge 仍展示一次；runtime 去重 |
++| 追问选择不同 Kit | 本轮 Kit 替换上一轮 Kit，不自动合并 |
++| 追问再次选择同一 Kit | 视为本轮新的显式选择，重新生成 Kit 引用和 routing block |
++| 追问不选择 Kit | 不继承上一轮 Kit；只保留历史对话文本带来的上下文 |
+ | 市场 API 的 `mcpServers` / `connectors` 为 `null` | 客户端归一化为空数组 |
+ | `kit://` 链接被复制到普通 Markdown 环境 | 作为普通链接文本保留，不影响 LobsterAI 内部渲染 |
+ | MCP/Connector 能力暂未实现 | `mcpServers`、`connectors` 允许为空数组；resolver 返回空数组 |
+@@ -493,14 +536,16 @@ runtime.startSession(session.id, prompt, {
+ 2. 同一条消息中，Kit 底层 Skill 不再作为 Skill badge 展示。
+ 3. 用户直接选择的 Skill 仍正常显示为 Skill badge。
+ 4. Kit 和直接 Skill 同时选择时，展示为 Kit badge + Skill badge。
+-5. OpenClaw runtime 仍收到 Kit 展开后的完整 Skill 列表，现有 Kit 能力不退化。
++5. selected-skills routing prompt 仍包含 Kit 展开后的 Skill 轻量信息，现有 Kit 能力不退化。
+ 6. 新消息 metadata 中包含 `kitIds` 和 `kitReferences`。
+ 7. 新消息 metadata 中的 `skillIds` 只包含用户直接选择的 Skill。
+ 8. re-edit 历史消息能恢复 Kit 选择状态。
+ 9. `kit://` Markdown 链接在 LobsterAI 内部渲染为安全的 Kit 引用，不打开外部浏览器。
+ 10. Kit 市场 API 保留顶层 `skills`、`mcpServers`、`connectors`，客户端按同名字段保存内部安装记录。
+ 11. 本地安装记录不再写旧版顶层 `skillIds`。
+ 12. 数据模型可以表达未来的 `mcpServers`、`connectors`。
++13. 追问选择 Kit B 时，本轮 metadata 和 routing 只包含 Kit B，不包含上一轮 Kit A。
++14. 追问未选择 Kit 时，本轮不发送上一轮 Kit 的 selected-skills routing block。
+ 
+ ## 9. 验证计划
+ 
+@@ -521,7 +566,8 @@ runtime.startSession(session.id, prompt, {
+ 
+ 1. 安装一个包含多个 Skill 的 Kit。
+ 2. 选择该 Kit 发送消息，确认输入区和消息气泡都只显示 Kit。
+-3. 确认实际回复仍能调用 Kit 对应 Skill 的能力。
+-4. 同时选择 Kit 和一个独立 Skill，确认展示和能力都正确。
+-5. 重新编辑该消息，确认 Kit 和独立 Skill 都恢复。
+-6. 重启应用后打开历史会话，确认 Kit 引用展示稳定。
++3. 确认本轮 system prompt 只包含 selected-skills routing 信息，不内联 Kit 内部 Skill 的 `SKILL.md` 正文。
++4. 确认实际回复仍能按需读取并调用 Kit 对应 Skill 的能力。
++5. 同时选择 Kit 和一个独立 Skill，确认展示和能力都正确。
++6. 重新编辑该消息，确认 Kit 和独立 Skill 都恢复。
++7. 重启应用后打开历史会话，确认 Kit 引用展示稳定。
+diff --git a/src/main/coworkStore.ts b/src/main/coworkStore.ts
+--- a/src/main/coworkStore.ts
++++ b/src/main/coworkStore.ts
+@@ -8,6 +8,10 @@ import { v4 as uuidv4 } from 'uuid';
+ 
+ import { AgentId, normalizeAgentAvatarIcon } from '../shared/agent';
+ import { COWORK_MESSAGE_PAGE_SIZE, COWORK_SESSION_PAGE_SIZE } from '../shared/cowork/constants';
++import type {
++  KitReference,
++  ResolvedKitCapabilities,
++} from '../shared/kit/constants';
+ 
+ 
+ // Default working directory for new users
+@@ -378,6 +382,9 @@ export interface CoworkMessageMetadata {
+   isStreaming?: boolean;
+   isFinal?: boolean;
+   skillIds?: string[];
++  kitIds?: string[];
++  kitReferences?: KitReference[];
++  resolvedKitCapabilities?: ResolvedKitCapabilities;
+   usage?: {
+     inputTokens?: number;
+     outputTokens?: number;
+diff --git a/src/main/ipcHandlers/kits/handlers.ts b/src/main/ipcHandlers/kits/handlers.ts
+--- a/src/main/ipcHandlers/kits/handlers.ts
++++ b/src/main/ipcHandlers/kits/handlers.ts
+@@ -5,6 +5,7 @@ import http from 'http';
+ import https from 'https';
+ import path from 'path';
+ 
++import type { InstalledKitRecord } from '../../../shared/kit/constants';
+ import { cpRecursiveSync } from '../../fsCompat';
+ import type { SkillManager } from '../../skillManager';
+ import type { SqliteStore } from '../../sqliteStore';
+@@ -44,15 +45,12 @@ export interface KitHandlerDeps {
+   getSkillManager: () => SkillManager;
+ }
+ 
+-interface InstalledKitRecord {
+-  id: string;
+-  version: string;
+-  installedAt: number;
+-  skillIds: string[];
+-}
+-
+ type InstalledKitsMap = Record<string, InstalledKitRecord>;
+ 
++const normalizeCapabilityList = (value: unknown): unknown[] => (
++  Array.isArray(value) ? value : []
++);
++
+ function getSkillsRoot(): string {
+   return path.resolve(app.getPath('userData'), SKILLS_DIR_NAME);
+ }
+@@ -176,6 +174,8 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
+     bundleUrl: string;
+     version: string;
+     skillListIds: string[];
++    mcpServers?: unknown[] | null;
++    connectors?: unknown[] | null;
+   }) => {
+     const { kitId, bundleUrl, version, skillListIds: _skillListIds } = params;
+     console.log(`[KitStore] Installing kit "${kitId}" v${version} from ${bundleUrl}`);
+@@ -239,7 +239,9 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
+         id: kitId,
+         version,
+         installedAt: Date.now(),
+-        skillIds: installedSkillIds,
++        skills: installedSkillIds.length > 0 ? { skillIds: installedSkillIds } : null,
++        mcpServers: normalizeCapabilityList(params.mcpServers),
++        connectors: normalizeCapabilityList(params.connectors),
+       };
+       getStore().set(KITS_INSTALLED_KEY, installedMap);
+ 
+@@ -276,7 +278,7 @@ export function registerKitHandlers(deps: KitHandlerDeps): void {
+       const root = getSkillsRoot();
+       const stateMap = getStore().get<Record<string, { enabled: boolean }>>('skills_state') ?? {};
+ 
+-      for (const skillId of kitRecord.skillIds) {
++      for (const skillId of kitRecord.skills?.skillIds ?? []) {
+         const skillDir = path.resolve(root, skillId);
+         if (fs.existsSync(skillDir)) {
+           try {
+diff --git a/src/main/libs/agentEngine/openclawRuntimeAdapter.ts b/src/main/libs/agentEngine/openclawRuntimeAdapter.ts
+--- a/src/main/libs/agentEngine/openclawRuntimeAdapter.ts
++++ b/src/main/libs/agentEngine/openclawRuntimeAdapter.ts
+@@ -10,6 +10,10 @@ import {
+   CoworkSystemMessageKind,
+ } from '../../../common/coworkSystemMessages';
+ import type { OpenClawSessionPatch } from '../../../common/openclawSession';
++import type {
++  KitReference,
++  ResolvedKitCapabilities,
++} from '../../../shared/kit/constants';
+ import type { CoworkExecutionMode, CoworkMessage, CoworkMessageMetadata, CoworkSession, CoworkSessionStatus, CoworkStore } from '../../coworkStore';
+ import { t } from '../../i18n';
+ import { MediaGenerationTool } from '../../mediaGenerationPolicy';
+@@ -2403,6 +2407,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
+     await this.runTurn(sessionId, prompt, {
+       skipInitialUserMessage: options.skipInitialUserMessage,
+       skillIds: options.skillIds,
++      messageSkillIds: options.messageSkillIds,
++      kitIds: options.kitIds,
++      kitReferences: options.kitReferences,
++      resolvedKitCapabilities: options.resolvedKitCapabilities,
+       systemPrompt: options.systemPrompt,
+       confirmationMode: options.confirmationMode,
+       imageAttachments: options.imageAttachments,
+@@ -2417,6 +2425,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
+       skipInitialUserMessage: false,
+       systemPrompt: options.systemPrompt,
+       skillIds: options.skillIds,
++      messageSkillIds: options.messageSkillIds,
++      kitIds: options.kitIds,
++      kitReferences: options.kitReferences,
++      resolvedKitCapabilities: options.resolvedKitCapabilities,
+       imageAttachments: options.imageAttachments,
+       mediaSelection: options.mediaSelection,
+       mediaReferences: options.mediaReferences,
+@@ -2667,6 +2679,10 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
+       skipInitialUserMessage?: boolean;
+       systemPrompt?: string;
+       skillIds?: string[];
++      messageSkillIds?: string[];
++      kitIds?: string[];
++      kitReferences?: KitReference[];
++      resolvedKitCapabilities?: ResolvedKitCapabilities;
+       confirmationMode?: 'modal' | 'text';
+       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string }>;
+       agentId?: string;
+@@ -2695,9 +2711,15 @@ export class OpenClawRuntimeAdapter extends EventEmitter implements CoworkRuntim
+     this.confirmationModeBySession.set(sessionId, confirmationMode);
+ 
+     if (!options.skipInitialUserMessage) {
+-      const metadata = (options.skillIds?.length || options.imageAttachments?.length)
++      const messageSkillIds = options.messageSkillIds ?? options.skillIds;
++      const metadata = (messageSkillIds?.length || options.kitIds?.length || options.imageAttachments?.length)
+         ? {
+-          ...(options.skillIds?.length ? { skillIds: options.skillIds } : {}),
++          ...(messageSkillIds?.length ? { skillIds: messageSkillIds } : {}),
++          ...(options.kitIds?.length ? {
++            kitIds: options.kitIds,
++            ...(options.kitReferences?.length ? { kitReferences: options.kitReferences } : {}),
++            ...(options.resolvedKitCapabilities ? { resolvedKitCapabilities: options.resolvedKitCapabilities } : {}),
++          } : {}),
+           ...(options.imageAttachments?.length ? { imageAttachments: options.imageAttachments } : {}),
+         }
+         : undefined;
+diff --git a/src/main/libs/agentEngine/types.ts b/src/main/libs/agentEngine/types.ts
+--- a/src/main/libs/agentEngine/types.ts
++++ b/src/main/libs/agentEngine/types.ts
+@@ -1,4 +1,8 @@
+ import type { OpenClawSessionPatch } from '../../../common/openclawSession';
++import type {
++  KitReference,
++  ResolvedKitCapabilities,
++} from '../../../shared/kit/constants';
+ import type { CoworkMessage, CoworkSessionStatus } from '../../coworkStore';
+ 
+ export type CoworkAgentEngine = 'openclaw';
+@@ -83,6 +87,10 @@ export type CoworkMediaSelection = {
+ export type CoworkStartOptions = {
+   skipInitialUserMessage?: boolean;
+   skillIds?: string[];
++  messageSkillIds?: string[];
++  kitIds?: string[];
++  kitReferences?: KitReference[];
++  resolvedKitCapabilities?: ResolvedKitCapabilities;
+   systemPrompt?: string;
+   autoApprove?: boolean;
+   workspaceRoot?: string;
+@@ -96,6 +104,10 @@ export type CoworkStartOptions = {
+ export type CoworkContinueOptions = {
+   systemPrompt?: string;
+   skillIds?: string[];
++  messageSkillIds?: string[];
++  kitIds?: string[];
++  kitReferences?: KitReference[];
++  resolvedKitCapabilities?: ResolvedKitCapabilities;
+   imageAttachments?: CoworkImageAttachment[];
+   mediaSelection?: CoworkMediaSelection;
+   mediaReferences?: CoworkMediaAttachmentRef[];
+diff --git a/src/main/main.ts b/src/main/main.ts
+--- a/src/main/main.ts
++++ b/src/main/main.ts
+@@ -58,6 +58,10 @@ import {
+   HtmlShareIpc,
+   HtmlShareSourceType,
+ } from '../shared/htmlShare/constants';
++import type {
++  KitReference,
++  ResolvedKitCapabilities,
++} from '../shared/kit/constants';
+ import {
+   type ListLocalWebServicesOptions,
+   type LocalWebService,
+@@ -2367,6 +2371,40 @@ function mergeCoworkSystemPrompt(systemPrompt?: string): string | undefined {
+   return sections.length > 0 ? sections.join('\n\n') : undefined;
+ }
+ 
++type CoworkImageAttachmentMain = {
++  name: string;
++  mimeType: string;
++  base64Data: string;
++};
++
++function buildCoworkUserSelectionMetadata(options: {
++  skillIds?: string[];
++  kitIds?: string[];
++  kitReferences?: KitReference[];
++  resolvedKitCapabilities?: ResolvedKitCapabilities;
++  imageAttachments?: CoworkImageAttachmentMain[];
++}): Record<string, unknown> | undefined {
++  const metadata: Record<string, unknown> = {};
++
++  if (options.skillIds?.length) {
++    metadata.skillIds = options.skillIds;
++  }
++  if (options.kitIds?.length) {
++    metadata.kitIds = options.kitIds;
++    if (options.kitReferences?.length) {
++      metadata.kitReferences = options.kitReferences;
++    }
++    if (options.resolvedKitCapabilities) {
++      metadata.resolvedKitCapabilities = options.resolvedKitCapabilities;
++    }
++  }
++  if (options.imageAttachments?.length) {
++    metadata.imageAttachments = options.imageAttachments;
++  }
++
++  return Object.keys(metadata).length > 0 ? metadata : undefined;
++}
++
+ // 获取正确的预加载脚本路径
+ const PRELOAD_PATH = app.isPackaged
+   ? path.join(__dirname, 'preload.js')
+@@ -4809,7 +4847,11 @@ if (!gotTheLock) {
+         systemPrompt?: string;
+         title?: string;
+         activeSkillIds?: string[];
+-        imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string }>;
++        runtimeSkillIds?: string[];
++        kitIds?: string[];
++        kitReferences?: KitReference[];
++        resolvedKitCapabilities?: ResolvedKitCapabilities;
++        imageAttachments?: CoworkImageAttachmentMain[];
+         agentId?: string;
+         modelOverride?: string;
+         mediaSelection?: {
+@@ -4820,7 +4862,7 @@ if (!gotTheLock) {
+           videoModelId?: string;
+         };
+         mediaReferences?: MediaAttachmentRefMain[];
+-  },
++      },
+     ) => {
+       try {
+         const engineStatus = await ensureOpenClawRunningForCowork();
+@@ -4849,13 +4891,14 @@ if (!gotTheLock) {
+         );
+         const title = options.title?.trim() || fallbackTitle;
+         const taskWorkingDirectory = resolveTaskWorkingDirectory(selectedTaskDirectory);
++        const runtimeSkillIds = options.runtimeSkillIds ?? options.activeSkillIds;
+ 
+         const session = coworkStoreInstance.createSession(
+           title,
+           taskWorkingDirectory,
+           systemPrompt,
+           config.executionMode || 'local',
+-          options.activeSkillIds || [],
++          runtimeSkillIds || [],
+           options.agentId || 'main',
+           options.modelOverride || '',
+         );
+@@ -4874,16 +4917,12 @@ if (!gotTheLock) {
+           mediaSelectionBySession.delete(session.id);
+         }
+ 
+-      if (options.mediaReferences?.length) {
+-        mediaReferencesBySession.set(session.id, options.mediaReferences);
+-      } else {
+-        mediaReferencesBySession.delete(session.id);
+-      }
+-
+-        const messageMetadata: Record<string, unknown> = {};
+-        if (options.activeSkillIds?.length) {
+-          messageMetadata.skillIds = options.activeSkillIds;
++        if (options.mediaReferences?.length) {
++          mediaReferencesBySession.set(session.id, options.mediaReferences);
++        } else {
++          mediaReferencesBySession.delete(session.id);
+         }
++
+         if (options.imageAttachments?.length) {
+           console.log('[Cowork:StartSession] imageAttachments received via IPC:', {
+             count: options.imageAttachments.length,
+@@ -4893,12 +4932,18 @@ if (!gotTheLock) {
+               base64Length: img.base64Data?.length ?? 0,
+             })),
+           });
+-          messageMetadata.imageAttachments = options.imageAttachments;
+         }
++        const messageMetadata = buildCoworkUserSelectionMetadata({
++          skillIds: options.activeSkillIds,
++          kitIds: options.kitIds,
++          kitReferences: options.kitReferences,
++          resolvedKitCapabilities: options.resolvedKitCapabilities,
++          imageAttachments: options.imageAttachments,
++        });
+         coworkStoreInstance.addMessage(session.id, {
+           type: 'user',
+           content: options.prompt,
+-          metadata: Object.keys(messageMetadata).length > 0 ? messageMetadata : undefined,
++          metadata: messageMetadata,
+         });
+ 
+         coworkStoreInstance.updateSession(session.id, { status: 'running' });
+@@ -4908,14 +4953,18 @@ if (!gotTheLock) {
+           .startSession(session.id, options.prompt, {
+             skipInitialUserMessage: true,
+             systemPrompt,
+-            skillIds: options.activeSkillIds,
++            skillIds: runtimeSkillIds,
++            messageSkillIds: options.activeSkillIds,
++            kitIds: options.kitIds,
++            kitReferences: options.kitReferences,
++            resolvedKitCapabilities: options.resolvedKitCapabilities,
+             workspaceRoot: taskWorkingDirectory,
+             confirmationMode: 'modal',
+             imageAttachments: options.imageAttachments,
+             agentId: options.agentId,
+             mediaSelection: options.mediaSelection,
+             mediaReferences: options.mediaReferences,
+-      })
++          })
+           .catch(error => {
+             console.error('[Cowork] session error:', error);
+             try {
+@@ -4961,7 +5010,11 @@ if (!gotTheLock) {
+         prompt: string;
+         systemPrompt?: string;
+         activeSkillIds?: string[];
+-        imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string }>;
++        runtimeSkillIds?: string[];
++        kitIds?: string[];
++        kitReferences?: KitReference[];
++        resolvedKitCapabilities?: ResolvedKitCapabilities;
++        imageAttachments?: CoworkImageAttachmentMain[];
+         mediaSelection?: {
+           mode: 'auto' | 'image' | 'video' | 'none';
+           modelId?: string;
+@@ -5010,11 +5063,15 @@ if (!gotTheLock) {
+             systemPrompt: mergeCoworkSystemPrompt(
+               options.systemPrompt ?? existingSession?.systemPrompt,
+             ),
+-            skillIds: options.activeSkillIds,
++            skillIds: options.runtimeSkillIds ?? options.activeSkillIds,
++            messageSkillIds: options.activeSkillIds,
++            kitIds: options.kitIds,
++            kitReferences: options.kitReferences,
++            resolvedKitCapabilities: options.resolvedKitCapabilities,
+             imageAttachments: options.imageAttachments,
+             mediaSelection: options.mediaSelection,
+             mediaReferences: options.mediaReferences,
+-      })
++          })
+           .catch(error => {
+             console.error('[Cowork] continue error:', error);
+             try {
+diff --git a/src/main/preload.ts b/src/main/preload.ts
+--- a/src/main/preload.ts
++++ b/src/main/preload.ts
+@@ -9,6 +9,10 @@ import { ClipboardIpc } from '../shared/clipboard/constants';
+ import { CoworkIpcChannel } from '../shared/cowork/constants';
+ import { DialogIpc } from '../shared/dialog/constants';
+ import { type HtmlShareAccessMode, HtmlShareIpc } from '../shared/htmlShare/constants';
++import type {
++  KitReference,
++  ResolvedKitCapabilities,
++} from '../shared/kit/constants';
+ import {
+   type ListLocalWebServicesOptions,
+   type LocalWebService,
+@@ -66,7 +70,14 @@ contextBridge.exposeInMainWorld('electron', {
+   },
+   kits: {
+     fetchStore: () => ipcRenderer.invoke('kits:fetchStore'),
+-    install: (params: { kitId: string; bundleUrl: string; version: string; skillListIds: string[] }) =>
++    install: (params: {
++      kitId: string;
++      bundleUrl: string;
++      version: string;
++      skillListIds: string[];
++      mcpServers?: unknown[] | null;
++      connectors?: unknown[] | null;
++    }) =>
+       ipcRenderer.invoke('kits:install', params),
+     uninstall: (kitId: string) => ipcRenderer.invoke('kits:uninstall', kitId),
+     listInstalled: () => ipcRenderer.invoke('kits:listInstalled'),
+@@ -276,6 +287,10 @@ contextBridge.exposeInMainWorld('electron', {
+       systemPrompt?: string;
+       title?: string;
+       activeSkillIds?: string[];
++      runtimeSkillIds?: string[];
++      kitIds?: string[];
++      kitReferences?: KitReference[];
++      resolvedKitCapabilities?: ResolvedKitCapabilities;
+       agentId?: string;
+       modelOverride?: string;
+       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string }>;
+@@ -286,6 +301,10 @@ contextBridge.exposeInMainWorld('electron', {
+       prompt: string;
+       systemPrompt?: string;
+       activeSkillIds?: string[];
++      runtimeSkillIds?: string[];
++      kitIds?: string[];
++      kitReferences?: KitReference[];
++      resolvedKitCapabilities?: ResolvedKitCapabilities;
+       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string }>;
+       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
+       mediaReferences?: Array<{
+diff --git a/src/renderer/components/MarkdownContent.tsx b/src/renderer/components/MarkdownContent.tsx
+--- a/src/renderer/components/MarkdownContent.tsx
++++ b/src/renderer/components/MarkdownContent.tsx
+@@ -15,7 +15,8 @@ import { i18nService } from '../services/i18n';
+ import { type ShellActionResult, showShellFailureToast, showToast } from '../utils/localFileActions';
+ import CodeBlock from './CodeBlock';
+ 
+-const SAFE_URL_PROTOCOLS = new Set(['http', 'https', 'mailto', 'tel', 'file', 'localfile']);
++const SAFE_URL_PROTOCOLS = new Set(['http', 'https', 'mailto', 'tel', 'file', 'localfile', 'kit']);
++const INTERNAL_URL_PROTOCOLS = new Set(['kit']);
+ const LINK_CLASS_NAME = 'text-primary hover:text-primary-hover underline decoration-primary/50 hover:decoration-primary transition-colors break-words [overflow-wrap:anywhere]';
+ const LARGE_MARKDOWN_RENDER_THRESHOLD = 8 * 1024;
+ const LARGE_MARKDOWN_PREVIEW_HEAD_LENGTH = 4 * 1024;
+@@ -138,7 +139,7 @@ const normalizeDisplayMath = (content: string): string => {
+   });
+ };
+ 
+-const safeUrlTransform = (url: string): string => {
++export const safeUrlTransform = (url: string): string => {
+   const trimmed = url.trim();
+   if (!trimmed) return trimmed;
+ 
+@@ -169,9 +170,15 @@ const getHrefProtocol = (href: string): string | null => {
+ const isExternalHref = (href: string): boolean => {
+   const protocol = getHrefProtocol(href);
+   if (!protocol) return false;
++  if (INTERNAL_URL_PROTOCOLS.has(protocol)) return false;
+   return protocol !== 'file' && protocol !== 'localfile';
+ };
+ 
++export const isInternalHref = (href: string): boolean => {
++  const protocol = getHrefProtocol(href);
++  return !!protocol && INTERNAL_URL_PROTOCOLS.has(protocol);
++};
++
+ const openExternalViaDefaultBrowser = async (url: string): Promise<boolean> => {
+   const openExternal = (window as any)?.electron?.shell?.openExternal;
+   if (typeof openExternal !== 'function') {
+@@ -470,12 +477,24 @@ const createMarkdownComponents = (
+     }
+ 
+     const hrefValue = typeof href === 'string' ? href.trim() : '';
++    const isInternalLink = !!hrefValue && isInternalHref(hrefValue);
+     const isExternalLink = !!hrefValue && isExternalHref(hrefValue);
+     const linkText = Array.isArray(children) ? children.join('') : String(children ?? '');
+-    const resolvedPath = hrefValue && !isExternalLink && resolveLocalFilePath
++    const resolvedPath = hrefValue && !isInternalLink && !isExternalLink && resolveLocalFilePath
+       ? resolveLocalFilePath(hrefValue, linkText)
+       : null;
+-    const isLocalFilePath = !!hrefValue && !isExternalLink && (resolvedPath || isLikelyLocalFilePath(hrefValue));
++    const isLocalFilePath = !!hrefValue && !isInternalLink && !isExternalLink && (resolvedPath || isLikelyLocalFilePath(hrefValue));
++
++    if (isInternalLink) {
++      return (
++        <span
++          className="inline-flex max-w-full items-center rounded-md bg-surface-raised px-1.5 py-0.5 text-[0.9em] font-medium leading-normal text-foreground ring-1 ring-border/60 align-baseline"
++          title={hrefValue}
++        >
++          <span className="min-w-0 truncate">{children}</span>
++        </span>
++      );
++    }
+ 
+     if (isLocalFilePath) {
+       const rawPath = resolvedPath
+diff --git a/src/renderer/components/cowork/ConversationTurnsView.tsx b/src/renderer/components/cowork/ConversationTurnsView.tsx
+--- a/src/renderer/components/cowork/ConversationTurnsView.tsx
++++ b/src/renderer/components/cowork/ConversationTurnsView.tsx
+@@ -7,6 +7,7 @@ import React, { useMemo } from 'react';
+ import type { Artifact } from '../../types/artifact';
+ import { PREVIEWABLE_ARTIFACT_TYPES } from '../../types/artifact';
+ import type { CoworkMessage } from '../../types/cowork';
++import type { MarketplaceKit } from '../../types/kit';
+ import type { Skill } from '../../types/skill';
+ import AssistantTurnBlock from './AssistantTurnBlock';
+ import LazyRenderTurn from './LazyRenderTurn';
+@@ -21,6 +22,7 @@ export interface ConversationTurnsViewProps {
+   messages: CoworkMessage[];
+   isStreaming?: boolean;
+   skills?: Skill[];
++  marketplaceKits?: MarketplaceKit[];
+   artifacts?: Artifact[];
+   resolveLocalFilePath?: (href: string, text: string) => string | null;
+   mapDisplayText?: (value: string) => string;
+@@ -39,12 +41,14 @@ export interface ConversationTurnsViewProps {
+ }
+ 
+ const EMPTY_SKILLS: Skill[] = [];
++const EMPTY_KITS: MarketplaceKit[] = [];
+ const EMPTY_ARTIFACTS: Artifact[] = [];
+ 
+ const ConversationTurnsView: React.FC<ConversationTurnsViewProps> = ({
+   messages,
+   isStreaming = false,
+   skills = EMPTY_SKILLS,
++  marketplaceKits = EMPTY_KITS,
+   artifacts = EMPTY_ARTIFACTS,
+   resolveLocalFilePath,
+   mapDisplayText,
+@@ -106,6 +110,7 @@ const ConversationTurnsView: React.FC<ConversationTurnsViewProps> = ({
+                 <UserMessageItem
+                   message={turn.userMessage}
+                   skills={skills}
++                  marketplaceKits={marketplaceKits}
+                   onReEdit={readOnly ? undefined : onReEdit}
+                 />
+               </div>
+diff --git a/src/renderer/components/cowork/CoworkPromptInput.tsx b/src/renderer/components/cowork/CoworkPromptInput.tsx
+--- a/src/renderer/components/cowork/CoworkPromptInput.tsx
++++ b/src/renderer/components/cowork/CoworkPromptInput.tsx
+@@ -1,4 +1,4 @@
+-import { CheckIcon, ChevronDownIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
++import { CheckIcon, ChevronDownIcon, ChevronRightIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+ import { ArrowUpIcon, FolderIcon } from '@heroicons/react/24/solid';
+ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+ import { useDispatch, useSelector } from 'react-redux';
+@@ -7,6 +7,7 @@ import { agentService } from '../../services/agent';
+ import { configService } from '../../services/config';
+ import { coworkService } from '../../services/cowork';
+ import { i18nService } from '../../services/i18n';
++import { getInstalledKitSkillIds } from '../../services/kitCapability';
+ import { skillService } from '../../services/skill';
+ import { RootState } from '../../store';
+ import { selectDraftPrompts } from '../../store/selectors/coworkSelectors';
+@@ -54,6 +55,7 @@ import {
+   resolveMediaMentionTrigger,
+ } from './mediaMentionUtils';
+ import MediaModelPicker from './MediaModelPicker';
++import { buildSelectedKitContextPrompt } from './selectedKitContextPrompt';
+ import { buildSelectedSkillRoutingPrompt } from './selectedSkillRoutingPrompt';
+ import { usePersistAgentModelSelection } from './usePersistAgentModelSelection';
+ 
+@@ -227,12 +229,14 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
+     const textareaRef = useRef<HTMLTextAreaElement>(null);
+     const addMenuButtonRef = useRef<HTMLButtonElement>(null);
+     const addMenuRef = useRef<HTMLDivElement>(null);
++    const skillMenuItemRef = useRef<HTMLButtonElement>(null);
+     const folderButtonRef = useRef<HTMLButtonElement>(null);
+     const agentButtonRef = useRef<HTMLButtonElement>(null);
+     const agentMenuRef = useRef<HTMLDivElement>(null);
+     const readOnlyContextGroupRef = useRef<HTMLDivElement>(null);
+     const dragDepthRef = useRef(0);
+     const warningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
++    const skillPopoverCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+     const modelPatchRequestIdRef = useRef(0);
+ 
+   // 暴露方法给父组件
+@@ -314,6 +318,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
+   const hasActiveSkills = activeSkillIds.some(id => skills.some(skill => skill.id === id));
+   const activeKitIds = useSelector((state: RootState) => state.kit.activeKitIds);
+   const installedKits = useSelector((state: RootState) => state.kit.installedKits);
++  const marketplaceKits = useSelector((state: RootState) => state.kit.marketplaceKits);
+   const hasActiveKits = activeKitIds.length > 0;
+   const draftKitIdsForKey = useSelector((state: RootState) => state.cowork.draftKitIds[draftKey]);
+   const draftSkillIdsForKey = useSelector((state: RootState) => state.cowork.draftSkillIds[draftKey]);
+@@ -484,6 +489,24 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
+     };
+   }, [showAddMenu]);
+ 
++  useEffect(() => {
++    if (!showAddMenu) {
++      if (skillPopoverCloseTimerRef.current) {
++        clearTimeout(skillPopoverCloseTimerRef.current);
++        skillPopoverCloseTimerRef.current = null;
++      }
++      setShowSkillsPopover(false);
++    }
++  }, [showAddMenu]);
++
++  useEffect(() => {
++    return () => {
++      if (skillPopoverCloseTimerRef.current) {
++        clearTimeout(skillPopoverCloseTimerRef.current);
++      }
++    };
++  }, []);
++
+   useEffect(() => {
+     modelPatchRequestIdRef.current += 1;
+     setIsPatchingModel(false);
+@@ -603,12 +626,16 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
+ 
+     // Get selected skill routing metadata, including skills from active kits.
+     // OpenClaw loads SKILL.md files natively; do not inline full skill bodies here.
+-    const kitSkillIds = activeKitIds.flatMap(kitId => installedKits[kitId]?.skillIds ?? []);
++    const kitSkillIds = activeKitIds.flatMap(kitId => getInstalledKitSkillIds(installedKits[kitId]));
+     const allSkillIds = [...new Set([...activeSkillIds, ...kitSkillIds])];
+     const activeSkills = allSkillIds
+       .map(id => skills.find(s => s.id === id))
+       .filter((s): s is Skill => s !== undefined);
+-    const skillPrompt = buildSelectedSkillRoutingPrompt(activeSkills);
++    const kitPrompt = buildSelectedKitContextPrompt(activeKitIds, marketplaceKits, installedKits);
++    const skillPrompt = [
++      kitPrompt,
++      buildSelectedSkillRoutingPrompt(activeSkills),
++    ].filter(Boolean).join('\n\n') || undefined;
+ 
+     // Extract image attachments (with base64 data) for vision-capable models
+     console.log('[CoworkPromptInput] handleSubmit: attachment diagnosis', {
+@@ -690,13 +717,15 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
+     dispatch(setDraftPrompt({ sessionId: draftKey, draft: '' }));
+     dispatch(clearDraftAttachments(draftKey));
+     setImageVisionHint(false);
+-  }, [value, isStreaming, disabled, isPatchingModel, onSubmit, activeSkillIds, skills, activeKitIds, installedKits, attachments, showFolderSelector, workingDirectory, dispatch, draftKey, effectiveSelectedModel?.id, modelSupportsImage, mediaLabels]);
++  }, [value, isStreaming, disabled, isPatchingModel, onSubmit, activeSkillIds, skills, activeKitIds, marketplaceKits, installedKits, attachments, showFolderSelector, workingDirectory, dispatch, draftKey, effectiveSelectedModel?.id, modelSupportsImage, mediaLabels]);
+ 
+   const handleSelectSkill = useCallback((skill: Skill) => {
+     dispatch(toggleActiveSkill(skill.id));
+   }, [dispatch]);
+ 
+   const handleManageSkills = useCallback(() => {
++    setShowAddMenu(false);
++    setShowSkillsPopover(false);
+     if (onManageSkills) {
+       onManageSkills();
+     }
+@@ -1071,15 +1100,33 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
+   }, [addAttachment, effectiveSelectedModel, isAddingFile, disabled, isStreaming, modelSupportsImage]);
+ 
+   const handleOpenAddMenu = useCallback(() => {
++    if (skillPopoverCloseTimerRef.current) {
++      clearTimeout(skillPopoverCloseTimerRef.current);
++      skillPopoverCloseTimerRef.current = null;
++    }
+     setShowSkillsPopover(false);
+     setShowAddMenu(prev => !prev);
+   }, []);
+ 
+   const handleOpenSkillsPopover = useCallback(() => {
+-    setShowAddMenu(false);
++    if (skillPopoverCloseTimerRef.current) {
++      clearTimeout(skillPopoverCloseTimerRef.current);
++      skillPopoverCloseTimerRef.current = null;
++    }
++    setShowAddMenu(true);
+     setShowSkillsPopover(true);
+   }, []);
+ 
++  const handleScheduleCloseSkillsPopover = useCallback(() => {
++    if (skillPopoverCloseTimerRef.current) {
++      clearTimeout(skillPopoverCloseTimerRef.current);
++    }
++    skillPopoverCloseTimerRef.current = setTimeout(() => {
++      setShowSkillsPopover(false);
++      skillPopoverCloseTimerRef.current = null;
++    }, 320);
++  }, []);
++
+   const handleRemoveAttachment = useCallback((path: string) => {
+     dispatch(setDraftAttachments({
+       draftKey,
+@@ -1271,38 +1318,66 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
+       {showAddMenu && (
+         <div
+           ref={addMenuRef}
+-          className="absolute bottom-full left-0 z-50 mb-2 w-44 overflow-hidden rounded-xl border border-border bg-surface py-1 shadow-popover"
++          className="absolute bottom-full left-0 z-50 mb-2 w-48 rounded-xl border border-border bg-surface py-1 shadow-popover"
+           role="menu"
++          onMouseEnter={() => {
++            if (skillPopoverCloseTimerRef.current) {
++              clearTimeout(skillPopoverCloseTimerRef.current);
++              skillPopoverCloseTimerRef.current = null;
++            }
++          }}
++          onMouseLeave={handleScheduleCloseSkillsPopover}
+         >
+           <button
+             type="button"
+             onClick={handleAddFile}
++            onMouseEnter={handleScheduleCloseSkillsPopover}
+             disabled={disabled || isStreaming || isAddingFile}
+             className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-surface-raised disabled:cursor-not-allowed disabled:opacity-50"
+             role="menuitem"
+           >
+             <PaperClipIcon className="h-5 w-5 shrink-0 text-secondary" />
+             <span className="min-w-0 truncate">{i18nService.t('coworkAddFile')}</span>
+           </button>
++          {showSkillsPopover && (
++            <div
++              aria-hidden="true"
++              className="absolute bottom-0 left-[calc(100%-1px)] z-[55] h-80 w-40"
++              onMouseEnter={handleOpenSkillsPopover}
++              onMouseLeave={handleScheduleCloseSkillsPopover}
++            />
++          )}
+           <button
++            ref={skillMenuItemRef}
+             type="button"
+             onClick={handleOpenSkillsPopover}
+-            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-surface-raised"
++            onMouseEnter={handleOpenSkillsPopover}
++            onFocus={handleOpenSkillsPopover}
++            className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors ${
++              showSkillsPopover ? 'bg-surface-raised' : 'hover:bg-surface-raised'
++            }`}
+             role="menuitem"
++            aria-haspopup="menu"
++            aria-expanded={showSkillsPopover}
+           >
+             <SkillIcon className="h-5 w-5 shrink-0 text-secondary" />
+-            <span className="min-w-0 truncate">{i18nService.t('skills')}</span>
++            <span className="min-w-0 flex-1 truncate">{i18nService.t('useSkill')}</span>
++            <ChevronRightIcon className="h-4 w-4 shrink-0 text-secondary" />
+           </button>
++
++          <SkillsPopover
++            isOpen={showSkillsPopover}
++            onClose={() => setShowSkillsPopover(false)}
++            onSelectSkill={handleSelectSkill}
++            onManageSkills={handleManageSkills}
++            anchorRef={skillMenuItemRef as React.RefObject<HTMLElement>}
++            asSubmenu
++            autoFocusSearch={false}
++            onMouseEnter={handleOpenSkillsPopover}
++            onMouseLeave={handleScheduleCloseSkillsPopover}
++          />
+         </div>
+       )}
+-
+-      <SkillsPopover
+-        isOpen={showSkillsPopover}
+-        onClose={() => setShowSkillsPopover(false)}
+-        onSelectSkill={handleSelectSkill}
+-        onManageSkills={handleManageSkills}
+-        anchorRef={addMenuButtonRef as React.RefObject<HTMLElement>}
+-      />
+     </div>
+   ) : null;
+ 
+@@ -1315,6 +1390,12 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
+       />
+     </div>
+   ) : null;
++  const largeInputToolActions = (
++    <div className="flex items-center gap-0.5">
++      {largeInputActions}
++      <MediaModelPicker draftKey={draftKey} disabled={disabled} />
++    </div>
++  );
+   const largeSendButtonSizeClass = useCompactSendButton ? 'h-7 w-7' : 'h-8 w-8';
+   const largeSendIconSizeClass = useCompactSendButton ? 'h-4 w-4' : 'h-[18px] w-[18px]';
+ 
+@@ -1534,8 +1615,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
+                 )}
+                 <div className="flex items-center justify-between gap-3 px-4 pb-2 pt-1">
+                   <div className="flex min-w-0 items-center gap-2">
+-                    {largeInputActions}
+-                    <MediaModelPicker draftKey={draftKey} disabled={disabled} />
++                    {largeInputToolActions}
+                   </div>
+                   <div className="flex shrink-0 items-center gap-2">
+                     {contextUsageControl}
+@@ -1685,8 +1765,7 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
+                       )}
+                     </>
+                   )}
+-                  {largeInputActions}
+-                  <MediaModelPicker draftKey={draftKey} disabled={disabled} />
++                  {largeInputToolActions}
+                 </div>
+                 <div className="flex shrink-0 items-center gap-2">
+                   {contextUsageControl}
+diff --git a/src/renderer/components/cowork/CoworkSessionDetail.tsx b/src/renderer/components/cowork/CoworkSessionDetail.tsx
+--- a/src/renderer/components/cowork/CoworkSessionDetail.tsx
++++ b/src/renderer/components/cowork/CoworkSessionDetail.tsx
+@@ -34,6 +34,7 @@ import {
+   selectSessionArtifacts,
+   togglePanel,
+ } from '../../store/slices/artifactSlice';
++import { setActiveKitIds } from '../../store/slices/kitSlice';
+ import { setActiveSkillIds } from '../../store/slices/skillSlice';
+ import type { Artifact } from '../../types/artifact';
+ import { ArtifactTypeValue, PREVIEWABLE_ARTIFACT_TYPES } from '../../types/artifact';
+@@ -507,6 +508,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
+   const lastMessageContent = useSelector(selectLastMessageContent);
+   const messagesLength = useSelector(selectCurrentMessagesLength);
+   const skills = useSelector((state: RootState) => state.skill.skills);
++  const marketplaceKits = useSelector((state: RootState) => state.kit.marketplaceKits);
+   const contextUsage = useSelector((state: RootState) =>
+     currentSession?.id ? state.cowork.contextUsageBySessionId[currentSession.id] : undefined
+   );
+@@ -1902,10 +1904,10 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
+     const imageAttachments = ((message.metadata as CoworkMessageMetadata)?.imageAttachments ?? []) as CoworkImageAttachment[];
+     ref.setImageAttachments(imageAttachments);
+     // Restore active skills
+-    const skillIds = (message.metadata as CoworkMessageMetadata)?.skillIds;
+-    if (skillIds && skillIds.length > 0) {
+-      dispatch(setActiveSkillIds(skillIds));
+-    }
++    const skillIds = (message.metadata as CoworkMessageMetadata)?.skillIds ?? [];
++    dispatch(setActiveSkillIds(skillIds));
++    const kitIds = (message.metadata as CoworkMessageMetadata)?.kitIds ?? [];
++    dispatch(setActiveKitIds(kitIds));
+     // Focus the input
+     ref.focus();
+   }, [dispatch]);
+@@ -2046,7 +2048,12 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
+         <LazyRenderTurn key={turn.id} turnId={turn.id} alwaysRender={alwaysRender} data-turn-index={index}>
+           {turn.userMessage && (
+             <div data-export-role="user-message" className={isLastTurn ? 'animate-message-in' : undefined} {...(userRailIdx >= 0 ? { 'data-rail-index': userRailIdx } : undefined)}>
+-              <UserMessageItem message={turn.userMessage} skills={skills} onReEdit={remoteManaged ? undefined : handleReEdit} />
++              <UserMessageItem
++                message={turn.userMessage}
++                skills={skills}
++                marketplaceKits={marketplaceKits}
++                onReEdit={remoteManaged ? undefined : handleReEdit}
++              />
+             </div>
+           )}
+           {showAssistantBlock && (
+diff --git a/src/renderer/components/cowork/CoworkView.tsx b/src/renderer/components/cowork/CoworkView.tsx
+--- a/src/renderer/components/cowork/CoworkView.tsx
++++ b/src/renderer/components/cowork/CoworkView.tsx
+@@ -6,6 +6,10 @@ import { buildSessionTitleFromInput } from '../../../common/sessionTitle';
+ import { agentService } from '../../services/agent';
+ import { coworkService } from '../../services/cowork';
+ import { i18nService } from '../../services/i18n';
++import {
++  buildKitReferences,
++  resolveSelectedKitCapabilities,
++} from '../../services/kitCapability';
+ import { quickActionService } from '../../services/quickAction';
+ import { RootState } from '../../store';
+ import {
+@@ -87,6 +91,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
+   const skills = useSelector((state: RootState) => state.skill.skills);
+   const activeKitIds = useSelector((state: RootState) => state.kit.activeKitIds);
+   const installedKits = useSelector((state: RootState) => state.kit.installedKits);
++  const marketplaceKits = useSelector((state: RootState) => state.kit.marketplaceKits);
+   const quickActions = useSelector((state: RootState) => state.quickAction.actions);
+   const selectedActionId = useSelector((state: RootState) => state.quickAction.selectedActionId);
+   const currentAgentId = useSelector((state: RootState) => state.agent.currentAgentId);
+@@ -112,6 +117,23 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
+     return result;
+   }, [skills]);
+ 
++  const buildCapabilitySelection = useCallback((skillIds: string[], kitIds: string[]) => {
++    const directSkillIds = resolveRoutableSkillIds(skillIds);
++    const resolvedKitCapabilities = resolveSelectedKitCapabilities(kitIds, installedKits);
++    const runtimeSkillIds = resolveRoutableSkillIds([
++      ...directSkillIds,
++      ...resolvedKitCapabilities.skillIds,
++    ]);
++    const kitReferences = buildKitReferences(kitIds, marketplaceKits);
++
++    return {
++      directSkillIds,
++      runtimeSkillIds,
++      kitReferences,
++      resolvedKitCapabilities,
++    };
++  }, [installedKits, marketplaceKits, resolveRoutableSkillIds]);
++
+   const buildApiConfigNotice = (error?: string): { noticeI18nKey: string; noticeExtra?: string } => {
+     const key = 'coworkModelSettingsRequired';
+     if (!error) {
+@@ -267,9 +289,12 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
+       const sessionSkillIds = [...activeSkillIds];
+       const sessionKitIds = [...activeKitIds];
+ 
+-      // Expand kit IDs into skill IDs, then keep only currently routable skills.
+-      const kitSkillIds = sessionKitIds.flatMap(kitId => installedKits[kitId]?.skillIds ?? []);
+-      const expandedSkillIds = resolveRoutableSkillIds([...sessionSkillIds, ...kitSkillIds]);
++      const {
++        directSkillIds,
++        runtimeSkillIds,
++        kitReferences,
++        resolvedKitCapabilities,
++      } = buildCapabilitySelection(sessionSkillIds, sessionKitIds);
+ 
+       const tempSession: CoworkSession = {
+         id: tempSessionId,
+@@ -283,7 +308,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
+         systemPrompt: '',
+         modelOverride: currentAgentSelectedModel ? toOpenClawModelRef(currentAgentSelectedModel) : '',
+         executionMode: config.executionMode || 'local',
+-        activeSkillIds: expandedSkillIds,
++        activeSkillIds: runtimeSkillIds,
+         activeKitIds: sessionKitIds.length > 0 ? sessionKitIds : undefined,
+         agentId: currentAgentId,
+         messages: [
+@@ -292,10 +317,14 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
+             type: 'user',
+             content: prompt,
+             timestamp: now,
+-            metadata: (expandedSkillIds.length > 0 || sessionKitIds.length > 0 || (imageAttachments && imageAttachments.length > 0))
++            metadata: (directSkillIds.length > 0 || sessionKitIds.length > 0 || (imageAttachments && imageAttachments.length > 0))
+               ? {
+-                ...(expandedSkillIds.length > 0 ? { skillIds: expandedSkillIds } : {}),
+-                ...(sessionKitIds.length > 0 ? { kitIds: sessionKitIds } : {}),
++                ...(directSkillIds.length > 0 ? { skillIds: directSkillIds } : {}),
++                ...(sessionKitIds.length > 0 ? {
++                  kitIds: sessionKitIds,
++                  kitReferences,
++                  resolvedKitCapabilities,
++                } : {}),
+                 ...(imageAttachments && imageAttachments.length > 0 ? { imageAttachments } : {}),
+               }
+               : undefined,
+@@ -332,7 +361,11 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
+         title: fallbackTitle,
+         cwd: currentAgentWorkingDirectory || undefined,
+         systemPrompt: combinedSystemPrompt,
+-        activeSkillIds: expandedSkillIds,
++        activeSkillIds: directSkillIds.length > 0 ? directSkillIds : undefined,
++        runtimeSkillIds: runtimeSkillIds.length > 0 ? runtimeSkillIds : undefined,
++        kitIds: sessionKitIds.length > 0 ? sessionKitIds : undefined,
++        kitReferences: sessionKitIds.length > 0 ? kitReferences : undefined,
++        resolvedKitCapabilities: sessionKitIds.length > 0 ? resolvedKitCapabilities : undefined,
+         agentId: currentAgentId,
+         modelOverride: sessionModelOverride,
+         imageAttachments,
+@@ -392,9 +425,12 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
+       const sessionSkillIds = [...activeSkillIds];
+       const sessionKitIds = [...activeKitIds];
+ 
+-      // Expand kit IDs into skill IDs, then keep only currently routable skills.
+-      const kitSkillIds = sessionKitIds.flatMap(kitId => installedKits[kitId]?.skillIds ?? []);
+-      const expandedSkillIds = resolveRoutableSkillIds([...sessionSkillIds, ...kitSkillIds]);
++      const {
++        directSkillIds,
++        runtimeSkillIds,
++        kitReferences,
++        resolvedKitCapabilities,
++      } = buildCapabilitySelection(sessionSkillIds, sessionKitIds);
+ 
+       // Only send a continuation system prompt when this turn selects new skills.
+       // Otherwise the main process falls back to the session prompt created on the first turn.
+@@ -404,7 +440,11 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
+         sessionId: currentSession.id,
+         prompt,
+         systemPrompt: combinedSystemPrompt,
+-        activeSkillIds: expandedSkillIds.length > 0 ? expandedSkillIds : undefined,
++        activeSkillIds: directSkillIds.length > 0 ? directSkillIds : undefined,
++        runtimeSkillIds: runtimeSkillIds.length > 0 ? runtimeSkillIds : undefined,
++        kitIds: sessionKitIds.length > 0 ? sessionKitIds : undefined,
++        kitReferences: sessionKitIds.length > 0 ? kitReferences : undefined,
++        resolvedKitCapabilities: sessionKitIds.length > 0 ? resolvedKitCapabilities : undefined,
+         imageAttachments,
+         mediaSelection: mediaSelection && mediaSelection.mode !== 'none' ? mediaSelection : undefined,
+         mediaReferences,
+@@ -650,7 +690,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
+ 
+           {/* Prompt Input Area - Large version with folder selector */}
+           <div
+-            className="mt-9 w-full max-w-3xl animate-fade-in-up"
++            className="relative z-30 mt-9 w-full max-w-3xl animate-fade-in-up"
+             style={{ animationDelay: '180ms', animationFillMode: 'both' }}
+           >
+             <CoworkPromptInput
+@@ -675,7 +715,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
+ 
+           {/* Quick Actions */}
+           <div
+-            className="mt-8 w-full max-w-3xl space-y-4 animate-fade-in-up"
++            className="relative z-0 mt-8 w-full max-w-3xl space-y-4 animate-fade-in-up"
+             style={{ animationDelay: '260ms', animationFillMode: 'both' }}
+           >
+             {selectedAction ? (
+diff --git a/src/renderer/components/cowork/MediaModelPicker.tsx b/src/renderer/components/cowork/MediaModelPicker.tsx
+--- a/src/renderer/components/cowork/MediaModelPicker.tsx
++++ b/src/renderer/components/cowork/MediaModelPicker.tsx
+@@ -546,7 +546,7 @@ const MediaModelPicker: React.FC<MediaModelPickerProps> = ({ draftKey, disabled
+         className={`flex h-[34px] w-[34px] items-center justify-center rounded-lg transition-colors ${
+           selection && selection.mode !== 'none'
+             ? 'text-foreground hover:bg-surface-raised'
+-            : 'text-secondary hover:bg-surface-raised hover:text-foreground'
++            : 'text-secondary hover:bg-surface-raised hover:text-foreground/80'
+         } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+       >
+         {triggerIcon}
+diff --git a/src/renderer/components/cowork/UserMessageItem.tsx b/src/renderer/components/cowork/UserMessageItem.tsx
+--- a/src/renderer/components/cowork/UserMessageItem.tsx
++++ b/src/renderer/components/cowork/UserMessageItem.tsx
+@@ -1,13 +1,17 @@
+ import { PhotoIcon } from '@heroicons/react/24/outline';
+ import React, { useCallback, useMemo, useState } from 'react';
+ 
++import type { KitReference } from '../../../shared/kit/constants';
+ import { i18nService } from '../../services/i18n';
++import { buildKitReferences } from '../../services/kitCapability';
+ import type { CoworkImageAttachment, CoworkMessage, CoworkMessageMetadata } from '../../types/cowork';
++import type { MarketplaceKit } from '../../types/kit';
+ import type { Skill } from '../../types/skill';
+ import { formatMessageDateTime } from '../../utils/tokenFormat';
+ import { parseUserMessageForDisplay } from '../../utils/userMessageDisplay';
+ import EditIcon from '../icons/EditIcon';
+ import MessageCopyIcon from '../icons/MessageCopyIcon';
++import SidebarKitsIcon from '../icons/SidebarKitsIcon';
+ import SkillIcon from '../icons/SkillIcon';
+ import MarkdownContent from '../MarkdownContent';
+ import ImagePreviewModal, { type ImagePreviewSource } from './ImagePreviewModal';
+@@ -116,13 +120,52 @@ const UserMessageSkillBadges: React.FC<{ skills: Skill[] }> = ({ skills }) => {
+   );
+ };
+ 
++const UserMessageKitBadges: React.FC<{ kitReferences: KitReference[] }> = ({ kitReferences }) => {
++  if (kitReferences.length === 0) return null;
++
++  return (
++    <>
++      {kitReferences.map(kitReference => {
++        const displayName = kitReference.name?.trim() || `@${kitReference.id}`;
++        return (
++          <div
++            key={kitReference.uri || kitReference.id}
++            className="inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-md bg-surface-raised px-2.5 text-[13px] font-normal leading-none text-foreground ring-1 ring-border/60"
++            title={kitReference.uri}
++          >
++            <SidebarKitsIcon className="h-3.5 w-3.5 shrink-0 text-secondary" />
++            <span className="min-w-0 truncate">
++              {displayName}
++            </span>
++          </div>
++        );
++      })}
++    </>
++  );
++};
++
++const UserMessageCapabilityBadges: React.FC<{
++  kitReferences: KitReference[];
++  skills: Skill[];
++}> = ({ kitReferences, skills }) => {
++  if (kitReferences.length === 0 && skills.length === 0) return null;
++
++  return (
++    <div className="flex flex-wrap items-center gap-1.5">
++      <UserMessageKitBadges kitReferences={kitReferences} />
++      <UserMessageSkillBadges skills={skills} />
++    </div>
++  );
++};
++
+ // ── UserMessageItem ──────────────────────────────────────────────────────────
+ 
+ const UserMessageItem: React.FC<{
+   message: CoworkMessage;
+   skills: Skill[];
++  marketplaceKits?: MarketplaceKit[];
+   onReEdit?: (message: CoworkMessage) => void;
+-}> = React.memo(({ message, skills, onReEdit }) => {
++}> = React.memo(({ message, skills, marketplaceKits = [], onReEdit }) => {
+   const [isHovered, setIsHovered] = useState(false);
+   const [expandedImage, setExpandedImage] = useState<ImagePreviewSource | null>(null);
+   const modelLabel = getMessageModelLabel(message.metadata);
+@@ -143,12 +186,19 @@ const UserMessageItem: React.FC<{
+     [message.content]
+   );
+ 
+-  const messageSkillIds = (message.metadata as CoworkMessageMetadata)?.skillIds || [];
++  const metadata = message.metadata as CoworkMessageMetadata | undefined;
++  const messageSkillIds = Array.isArray(metadata?.skillIds) ? metadata.skillIds : [];
+   const messageSkills = messageSkillIds
+     .map(id => skills.find(s => s.id === id))
+     .filter((s): s is NonNullable<typeof s> => s !== undefined);
++  const metadataKitReferences = Array.isArray(metadata?.kitReferences) ? metadata.kitReferences : [];
++  const messageKitIds = Array.isArray(metadata?.kitIds) ? metadata.kitIds : [];
++  const messageKitReferences = metadataKitReferences.length > 0
++    ? metadataKitReferences
++    : buildKitReferences(messageKitIds, marketplaceKits);
+ 
+-  const imageAttachments = ((message.metadata as CoworkMessageMetadata)?.imageAttachments ?? []) as CoworkImageAttachment[];
++  const imageAttachments = (metadata?.imageAttachments ?? []) as CoworkImageAttachment[];
++  const hasCapabilityBadges = messageKitReferences.length > 0 || messageSkills.length > 0;
+ 
+   return (
+     <div
+@@ -164,9 +214,12 @@ const UserMessageItem: React.FC<{
+           <div className="flex items-start gap-3 flex-row-reverse">
+             <div className="w-full min-w-0 flex flex-col items-end">
+               <div className="w-fit max-w-full rounded-2xl px-4 py-2.5 bg-surface text-foreground shadow-subtle">
+-                {messageSkills.length > 0 && (
++                {hasCapabilityBadges && (
+                   <div className={(displayContent?.trim() || imageAttachments.length > 0) ? 'mb-2' : ''}>
+-                    <UserMessageSkillBadges skills={messageSkills} />
++                    <UserMessageCapabilityBadges
++                      kitReferences={messageKitReferences}
++                      skills={messageSkills}
++                    />
+                   </div>
+                 )}
+                 {displayContent?.trim() && (
+diff --git a/src/renderer/components/cowork/selectedKitContextPrompt.ts b/src/renderer/components/cowork/selectedKitContextPrompt.ts
+new file mode 100644
+--- /dev/null
++++ b/src/renderer/components/cowork/selectedKitContextPrompt.ts
+@@ -0,0 +1,164 @@
++import { resolveLocalizedText } from '../../services/skill';
++import type { InstalledKit, MarketplaceKit } from '../../types/kit';
++
++const MAX_DESCRIPTION_LENGTH = 480;
++const MAX_SKILL_REFS = 32;
++const MAX_INTEGRATION_REFS = 16;
++
++type KitCapabilityRef = {
++  id: string;
++  name?: string;
++  description?: string;
++};
++
++const escapeXmlText = (value: string): string =>
++  value
++    .replace(/&/g, '&amp;')
++    .replace(/</g, '&lt;')
++    .replace(/>/g, '&gt;');
++
++const escapeXmlAttribute = (value: string): string =>
++  escapeXmlText(value).replace(/"/g, '&quot;');
++
++const normalizePromptText = (value: string): string =>
++  value.replace(/\s+/g, ' ').trim();
++
++const truncateText = (value: string, maxLength: number): string => {
++  const normalized = normalizePromptText(value);
++  if (normalized.length <= maxLength) return normalized;
++  return `${normalized.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
++};
++
++const isRecord = (value: unknown): value is Record<string, unknown> =>
++  typeof value === 'object' && value !== null;
++
++const getStringField = (
++  record: Record<string, unknown>,
++  keys: string[],
++): string | undefined => {
++  for (const key of keys) {
++    const value = record[key];
++    if (typeof value === 'string' && value.trim()) {
++      return value.trim();
++    }
++  }
++  return undefined;
++};
++
++const normalizeCapabilityList = (value: unknown): unknown[] => (
++  Array.isArray(value) ? value : []
++);
++
++const normalizeIntegrationRefs = (items: unknown[]): KitCapabilityRef[] => {
++  return items.map((item, index) => {
++    if (typeof item === 'string') {
++      return { id: item, name: item };
++    }
++    if (!isRecord(item)) {
++      return { id: `item-${index + 1}` };
++    }
++
++    const id = getStringField(item, ['id', 'name', 'serverId', 'connectorId']) ?? `item-${index + 1}`;
++    const name = getStringField(item, ['name', 'displayName', 'title']);
++    const description = getStringField(item, ['description', 'description_zh', 'description_en']);
++    return {
++      id,
++      ...(name && name !== id ? { name } : {}),
++      ...(description ? { description: truncateText(description, MAX_DESCRIPTION_LENGTH) } : {}),
++    };
++  });
++};
++
++const buildSkillRefs = (
++  kit: MarketplaceKit | undefined,
++  installedKit: InstalledKit | undefined,
++): KitCapabilityRef[] => {
++  const marketplaceSkillRefs = kit?.skills?.list ?? [];
++  if (marketplaceSkillRefs.length > 0) {
++    return marketplaceSkillRefs.map(skill => ({
++      id: skill.id,
++      name: skill.name,
++    }));
++  }
++
++  return installedKit?.skills?.skillIds.map(skillId => ({
++    id: skillId,
++    name: skillId,
++  })) ?? [];
++};
++
++const buildSelfClosingCapabilityTag = (
++  tagName: string,
++  ref: KitCapabilityRef,
++): string => {
++  const attributes = [
++    `id="${escapeXmlAttribute(ref.id)}"`,
++    ref.name ? `name="${escapeXmlAttribute(ref.name)}"` : undefined,
++    ref.description ? `description="${escapeXmlAttribute(ref.description)}"` : undefined,
++  ].filter(Boolean);
++  return `      <${tagName} ${attributes.join(' ')} />`;
++};
++
++const buildCapabilityGroup = (
++  groupName: string,
++  itemName: string,
++  refs: KitCapabilityRef[],
++  maxItems: number,
++): string[] => {
++  if (refs.length === 0) {
++    return [`    <${groupName} count="0" />`];
++  }
++
++  const visibleRefs = refs.slice(0, maxItems);
++  const omittedCount = Math.max(0, refs.length - visibleRefs.length);
++  return [
++    `    <${groupName} count="${refs.length}"${omittedCount > 0 ? ` omitted="${omittedCount}"` : ''}>`,
++    ...visibleRefs.map(ref => buildSelfClosingCapabilityTag(itemName, ref)),
++    `    </${groupName}>`,
++  ];
++};
++
++export const buildSelectedKitContextPrompt = (
++  kitIds: string[],
++  marketplaceKits: MarketplaceKit[],
++  installedKits: Record<string, InstalledKit>,
++): string | undefined => {
++  if (kitIds.length === 0) return undefined;
++
++  const kitEntries = kitIds.map((kitId) => {
++    const kit = marketplaceKits.find(item => item.id === kitId);
++    const installedKit = installedKits[kitId];
++    const name = kit?.name ? resolveLocalizedText(kit.name) : kitId;
++    const description = kit?.description
++      ? truncateText(resolveLocalizedText(kit.description), MAX_DESCRIPTION_LENGTH)
++      : '';
++    const skillRefs = buildSkillRefs(kit, installedKit);
++    const mcpServerRefs = normalizeIntegrationRefs(
++      normalizeCapabilityList(installedKit?.mcpServers ?? kit?.mcpServers)
++    );
++    const connectorRefs = normalizeIntegrationRefs(
++      normalizeCapabilityList(installedKit?.connectors ?? kit?.connectors)
++    );
++
++    return [
++      '  <kit>',
++      `    <id>${escapeXmlText(kitId)}</id>`,
++      `    <name>${escapeXmlText(name)}</name>`,
++      ...(description ? [`    <description>${escapeXmlText(description)}</description>`] : []),
++      ...buildCapabilityGroup('skills', 'skill', skillRefs, MAX_SKILL_REFS),
++      ...buildCapabilityGroup('mcpServers', 'mcpServer', mcpServerRefs, MAX_INTEGRATION_REFS),
++      ...buildCapabilityGroup('connectors', 'connector', connectorRefs, MAX_INTEGRATION_REFS),
++      '  </kit>',
++    ].join('\n');
++  });
++
++  return [
++    '## Selected kits for this turn',
++    'The user selected these kits as high-level capability bundles.',
++    'Use this metadata to answer questions about what the selected kit can do or what "this kit" refers to.',
++    'Treat listed skills, MCP servers, and connectors as internal evidence. Do not enumerate internal capabilities unless the user explicitly asks which skills, MCP servers, or connectors are included.',
++    '<selected_kits>',
++    ...kitEntries,
++    '</selected_kits>',
++  ].join('\n');
++};
+diff --git a/src/renderer/components/icons/PromptAddIcon.tsx b/src/renderer/components/icons/PromptAddIcon.tsx
+--- a/src/renderer/components/icons/PromptAddIcon.tsx
++++ b/src/renderer/components/icons/PromptAddIcon.tsx
+@@ -4,7 +4,7 @@ const PromptAddIcon: React.FC<{ className?: string }> = ({ className }) => {
+   return (
+     <svg className={className} viewBox="0 0 34 34" fill="none" xmlns="http://www.w3.org/2000/svg">
+       <path
+-        d="M17 9V25M9 17H25"
++        d="M17 7V27M7 17H27"
+         stroke="currentColor"
+         strokeWidth="2.4"
+         strokeLinecap="round"
+diff --git a/src/renderer/components/kits/ActiveKitBadge.tsx b/src/renderer/components/kits/ActiveKitBadge.tsx
+--- a/src/renderer/components/kits/ActiveKitBadge.tsx
++++ b/src/renderer/components/kits/ActiveKitBadge.tsx
+@@ -31,12 +31,12 @@ const ActiveKitBadge: React.FC = () => {
+           type="button"
+           key={kit.id}
+           onClick={(e) => handleRemoveKit(e, kit.id)}
+-          className="group inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-md bg-surface-raised px-2.5 text-[13px] font-normal leading-none text-foreground transition-all hover:bg-gray-200 dark:hover:bg-gray-700 hover:ring-1 hover:ring-border"
++          className="group inline-flex h-7 max-w-[240px] items-center gap-1.5 rounded-md bg-primary-muted px-2.5 text-[13px] font-normal leading-none text-foreground transition-all hover:bg-primary/15 hover:ring-1 hover:ring-primary/30"
+           title={i18nService.t('clearKit')}
+         >
+-          <span className="relative flex h-4 w-4 shrink-0 items-center justify-center rounded-sm transition-colors group-hover:bg-gray-300 dark:group-hover:bg-gray-600">
+-            <SidebarKitsIcon className="h-3.5 w-3.5 text-secondary transition-opacity group-hover:opacity-0" />
+-            <XMarkIcon className="absolute h-3 w-3 text-secondary opacity-0 transition-opacity group-hover:opacity-100" />
++          <span className="relative flex h-4 w-4 shrink-0 items-center justify-center rounded-sm transition-colors group-hover:bg-primary/15">
++            <SidebarKitsIcon className="h-3.5 w-3.5 text-primary transition-opacity group-hover:opacity-0" />
++            <XMarkIcon className="absolute h-3 w-3 text-primary opacity-0 transition-opacity group-hover:opacity-100" />
+           </span>
+           <span className="min-w-0 truncate">
+             {resolveLocalizedText(kit.name)}
+diff --git a/src/renderer/components/kits/KitsPopover.tsx b/src/renderer/components/kits/KitsPopover.tsx
+--- a/src/renderer/components/kits/KitsPopover.tsx
++++ b/src/renderer/components/kits/KitsPopover.tsx
+@@ -8,7 +8,6 @@ import { resolveLocalizedText } from '../../services/skill';
+ import { RootState } from '../../store';
+ import { setInstalledKits, setMarketplaceKits } from '../../store/slices/kitSlice';
+ import type { MarketplaceKit } from '../../types/kit';
+-import Cog6ToothIcon from '../icons/Cog6ToothIcon';
+ import SearchIcon from '../icons/SearchIcon';
+ import SidebarKitsIcon from '../icons/SidebarKitsIcon';
+ 
+@@ -24,12 +23,11 @@ const KitsPopover: React.FC<KitsPopoverProps> = ({
+   isOpen,
+   onClose,
+   onSelectKit,
+-  onManageKits,
+   anchorRef,
+ }) => {
+   const dispatch = useDispatch();
+   const [searchQuery, setSearchQuery] = useState('');
+-  const [maxListHeight, setMaxListHeight] = useState(256);
++  const [maxListHeight, setMaxListHeight] = useState(300);
+   const [isLoading, setIsLoading] = useState(false);
+   const popoverRef = useRef<HTMLDivElement>(null);
+   const searchInputRef = useRef<HTMLInputElement>(null);
+@@ -81,7 +79,7 @@ const KitsPopover: React.FC<KitsPopoverProps> = ({
+       if (anchorRef.current) {
+         const anchorRect = anchorRef.current.getBoundingClientRect();
+         const availableHeight = anchorRect.top - 120 - 60;
+-        setMaxListHeight(Math.max(120, Math.min(256, availableHeight)));
++        setMaxListHeight(Math.max(120, Math.min(300, availableHeight)));
+       }
+       if (searchInputRef.current) {
+         setTimeout(() => searchInputRef.current?.focus(), 0);
+@@ -129,41 +127,37 @@ const KitsPopover: React.FC<KitsPopoverProps> = ({
+     // Don't close popover to allow multi-selection
+   };
+ 
+-  const handleManageKits = () => {
+-    onManageKits();
+-    onClose();
+-  };
+-
+   if (!isOpen) return null;
+ 
+   return (
+     <div
+       ref={popoverRef}
+-      className="absolute bottom-full left-0 mb-2 w-72 rounded-xl border border-border bg-surface shadow-xl z-50"
++      className="absolute bottom-full left-0 z-50 mb-2 w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-surface shadow-popover"
++      role="menu"
+     >
+       {/* Search input */}
+-      <div className="p-3 border-b border-border">
++      <div className="px-3 py-2 border-b border-border">
+         <div className="relative">
+-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" />
++          <SearchIcon className="absolute left-1.5 top-1/2 h-[18px] w-[18px] -translate-y-1/2 text-secondary" />
+           <input
+             ref={searchInputRef}
+             type="text"
+             placeholder={i18nService.t('searchKits')}
+             value={searchQuery}
+             onChange={(e) => setSearchQuery(e.target.value)}
+-            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg bg-surface text-foreground placeholder-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary"
++            className="w-full rounded-md bg-transparent py-1.5 pl-8 pr-2 text-[13px] leading-5 text-foreground placeholder-secondary focus:bg-surface-raised/70 focus:outline-none"
+           />
+         </div>
+       </div>
+ 
+       {/* Kits list */}
+-      <div className="overflow-y-auto py-1" style={{ maxHeight: `${maxListHeight}px` }}>
++      <div className="overflow-y-auto px-2 py-1.5" style={{ maxHeight: `${maxListHeight}px` }}>
+         {isLoading ? (
+-          <div className="px-4 py-6 text-center text-sm text-secondary">
++          <div className="px-3 py-5 text-center text-[13px] text-secondary">
+             {i18nService.t('kitLoading')}
+           </div>
+         ) : filteredKits.length === 0 ? (
+-          <div className="px-4 py-6 text-center text-sm text-secondary">
++          <div className="px-3 py-5 text-center text-[13px] text-secondary">
+             {i18nService.t('noKitsInstalled')}
+           </div>
+         ) : (
+@@ -173,57 +167,42 @@ const KitsPopover: React.FC<KitsPopoverProps> = ({
+               <button
+                 key={kit.id}
+                 onClick={() => handleSelectKit(kit.id)}
+-                className={`w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors ${
++                className={`w-full flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-colors ${
+                   isActive
+                     ? 'bg-surface-raised'
+                     : 'hover:bg-surface-raised'
+                 }`}
+               >
+-                <div className={`mt-0.5 w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
++                <div className={`mt-[3px] flex h-5 w-5 flex-shrink-0 items-center justify-center ${
+                   isActive
+-                    ? 'bg-gray-200 dark:bg-gray-700'
+-                    : 'bg-surface-raised'
++                    ? 'text-foreground'
++                    : 'text-secondary'
+                 }`}>
+-                  <SidebarKitsIcon className={`h-4 w-4 ${isActive ? 'text-foreground' : 'text-secondary'}`} />
++                  <SidebarKitsIcon className="h-[18px] w-[18px]" />
+                 </div>
+                 <div className="flex-1 min-w-0">
+-                  <div className="flex items-center gap-2">
+-                    <span className={`text-sm font-medium truncate ${
+-                      isActive
+-                        ? 'text-foreground'
+-                        : 'text-foreground'
+-                    }`}>
++                  <div className="flex min-w-0 items-center gap-1.5">
++                    <span className="min-w-0 truncate text-[13px] font-semibold leading-5 text-foreground">
+                       {resolveLocalizedText(kit.name)}
+                     </span>
+                     {kit.author && (
+-                      <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-primary/10 text-primary flex-shrink-0">
++                      <span className="flex-shrink-0 rounded bg-surface-raised px-1.5 py-0.5 text-[10px] font-medium leading-none text-secondary">
+                         {i18nService.t('kitOfficial')}
+                       </span>
+                     )}
+                   </div>
+-                  <p className="text-xs text-secondary truncate mt-0.5">
++                  <p className="mt-0.5 truncate text-[12px] leading-4 text-secondary">
+                     {resolveLocalizedText(kit.description)}
+                   </p>
+                 </div>
+                 {isActive && (
+-                  <CheckIcon className="mt-1 h-4 w-4 flex-shrink-0 text-foreground" />
++                  <CheckIcon className="mt-1 h-3.5 w-3.5 flex-shrink-0 text-primary" />
+                 )}
+               </button>
+             );
+           })
+         )}
+       </div>
+-
+-      {/* Footer - Manage Kits */}
+-      <div className="border-t border-border">
+-        <button
+-          onClick={handleManageKits}
+-          className="w-full flex items-center justify-between px-4 py-3 text-sm text-foreground hover:bg-surface-raised transition-colors rounded-b-xl"
+-        >
+-          <span>{i18nService.t('manageKits')}</span>
+-          <Cog6ToothIcon className="h-4 w-4 text-secondary" />
+-        </button>
+-      </div>
+     </div>
+   );
+ };
+diff --git a/src/renderer/components/skills/SkillsManager.tsx b/src/renderer/components/skills/SkillsManager.tsx
+--- a/src/renderer/components/skills/SkillsManager.tsx
++++ b/src/renderer/components/skills/SkillsManager.tsx
+@@ -782,7 +782,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat
+           filteredSkills.map((skill) => (
+             <div
+               key={skill.id}
+-              className="rounded-xl border border-border bg-surface p-3 transition-colors hover:border-primary cursor-pointer"
++              className="rounded-xl border border-border bg-surface p-3 transition-colors hover:border-primary hover:bg-surface-raised cursor-pointer"
+               onClick={() => setSelectedSkill(skill)}
+             >
+               <div className="flex items-start justify-between mb-2">
+@@ -887,7 +887,7 @@ const SkillsManager: React.FC<SkillsManagerProps> = ({ readOnly, onCreateByChat
+                 {filteredMarketplaceSkills.map((skill) => (
+               <div
+                 key={skill.id}
+-                className="rounded-xl border border-border bg-surface p-3 transition-colors hover:border-primary cursor-pointer"
++                className="rounded-xl border border-border bg-surface p-3 transition-colors hover:border-primary hover:bg-surface-raised cursor-pointer"
+                 onClick={() => setSelectedMarketplaceSkill(skill)}
+               >
+                 <div className="flex items-start justify-between mb-2">
+diff --git a/src/renderer/components/skills/SkillsPopover.tsx b/src/renderer/components/skills/SkillsPopover.tsx
+--- a/src/renderer/components/skills/SkillsPopover.tsx
++++ b/src/renderer/components/skills/SkillsPopover.tsx
+@@ -16,6 +16,10 @@ interface SkillsPopoverProps {
+   onSelectSkill: (skill: Skill) => void;
+   onManageSkills: () => void;
+   anchorRef: React.RefObject<HTMLElement>;
++  asSubmenu?: boolean;
++  autoFocusSearch?: boolean;
++  onMouseEnter?: () => void;
++  onMouseLeave?: () => void;
+ }
+ 
+ const SkillsPopover: React.FC<SkillsPopoverProps> = ({
+@@ -24,41 +28,65 @@ const SkillsPopover: React.FC<SkillsPopoverProps> = ({
+   onSelectSkill,
+   onManageSkills,
+   anchorRef,
++  asSubmenu = false,
++  autoFocusSearch = true,
++  onMouseEnter,
++  onMouseLeave,
+ }) => {
+   const [searchQuery, setSearchQuery] = useState('');
+   const [maxListHeight, setMaxListHeight] = useState(256); // default max-h-64 = 256px
++  const [i18nReady, setI18nReady] = useState(() => skillService.hasLocalizedSkillDescriptions());
+   const popoverRef = useRef<HTMLDivElement>(null);
+   const searchInputRef = useRef<HTMLInputElement>(null);
+   const skills = useSelector((state: RootState) => state.skill.skills);
+   const activeSkillIds = useSelector((state: RootState) => state.skill.activeSkillIds);
++  const shouldUseFallbackDescription = i18nReady || i18nService.getLanguage() !== 'zh';
+ 
+   // Filter enabled skills based on search query
+   const filteredSkills = skills
+     .filter(s => s.enabled)
+-    .filter(s =>
+-      s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+-      skillService.getLocalizedSkillDescription(s.id, s.name, s.description).toLowerCase().includes(searchQuery.toLowerCase())
+-    );
++    .filter(s => {
++      const query = searchQuery.toLowerCase();
++      const description = shouldUseFallbackDescription
++        ? skillService.getLocalizedSkillDescription(s.id, s.name, s.description)
++        : '';
++      return s.name.toLowerCase().includes(query) || description.toLowerCase().includes(query);
++    });
++
++  // Load localized skill descriptions from marketplace/localSkill metadata.
++  useEffect(() => {
++    if (!isOpen) return;
++    if (skillService.hasLocalizedSkillDescriptions()) {
++      setI18nReady(true);
++      return;
++    }
++    skillService.fetchMarketplaceSkills()
++      .then(() => setI18nReady(true))
++      .catch(() => setI18nReady(true));
++  }, [isOpen]);
+ 
+   // Calculate available height and focus search input when popover opens
+   useEffect(() => {
+     if (isOpen) {
+       // Calculate available space above the anchor
+       if (anchorRef.current) {
+         const anchorRect = anchorRef.current.getBoundingClientRect();
+-        // Available height = distance from top of viewport to anchor, minus padding for search bar (~120px) and some margin (~60px)
+-        const availableHeight = anchorRect.top - 120 - 60;
+-        // Clamp between 120px (minimum usable) and 256px (default max)
+-        setMaxListHeight(Math.max(120, Math.min(256, availableHeight)));
++        const maxHeight = asSubmenu ? 300 : 256;
++        const minHeight = asSubmenu ? 180 : 120;
++        const availableHeight = asSubmenu
++          ? anchorRect.bottom - 72
++          // Available height = distance from top of viewport to anchor, minus padding for search bar (~120px) and some margin (~60px)
++          : anchorRect.top - 120 - 60;
++        setMaxListHeight(Math.max(minHeight, Math.min(maxHeight, availableHeight)));
+       }
+-      if (searchInputRef.current) {
++      if (autoFocusSearch && searchInputRef.current) {
+         setTimeout(() => searchInputRef.current?.focus(), 0);
+       }
+     }
+     if (!isOpen) {
+       setSearchQuery('');
+     }
+-  }, [isOpen, anchorRef]);
++  }, [isOpen, anchorRef, asSubmenu, autoFocusSearch]);
+ 
+   // Handle click outside
+   useEffect(() => {
+@@ -104,90 +132,123 @@ const SkillsPopover: React.FC<SkillsPopoverProps> = ({
+ 
+   if (!isOpen) return null;
+ 
++  const popoverClassName = asSubmenu
++    ? 'absolute bottom-0 left-[calc(100%-1px)] z-[60] w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-xl border border-border bg-surface shadow-popover'
++    : 'absolute bottom-full left-0 z-50 mb-2 w-72 rounded-xl border border-border bg-surface shadow-xl';
++  const searchWrapperClassName = asSubmenu
++    ? 'px-3 py-2 border-b border-border'
++    : 'p-3 border-b border-border';
++  const searchInputClassName = asSubmenu
++    ? 'w-full pl-8 pr-2 py-1.5 text-[13px] leading-5 rounded-md bg-transparent text-foreground placeholder-secondary focus:outline-none focus:bg-surface-raised/70'
++    : 'w-full pl-9 pr-3 py-2 text-sm rounded-lg bg-surface text-foreground placeholder-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary';
++  const listClassName = asSubmenu
++    ? 'overflow-y-auto px-2 py-1.5'
++    : 'overflow-y-auto py-1';
++
+   return (
+     <div
+       ref={popoverRef}
+-      className="absolute bottom-full left-0 mb-2 w-72 rounded-xl border border-border bg-surface shadow-xl z-50"
++      className={popoverClassName}
++      role="menu"
++      onMouseEnter={onMouseEnter}
++      onMouseLeave={onMouseLeave}
+     >
+       {/* Search input */}
+-      <div className="p-3 border-b border-border">
++      <div className={searchWrapperClassName}>
+         <div className="relative">
+-          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-secondary" />
++          <SearchIcon className={`absolute top-1/2 -translate-y-1/2 text-secondary ${
++            asSubmenu ? 'left-1.5 h-[18px] w-[18px]' : 'left-3 h-4 w-4'
++          }`} />
+           <input
+             ref={searchInputRef}
+             type="text"
+             placeholder={i18nService.t('searchSkills')}
+             value={searchQuery}
+             onChange={(e) => setSearchQuery(e.target.value)}
+-            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg bg-surface text-foreground placeholder-secondary border border-border focus:outline-none focus:ring-2 focus:ring-primary"
++            className={searchInputClassName}
+           />
+         </div>
+       </div>
+ 
+       {/* Skills list */}
+-      <div className="overflow-y-auto py-1" style={{ maxHeight: `${maxListHeight}px` }}>
++      <div className={listClassName} style={{ maxHeight: `${maxListHeight}px` }}>
+         {filteredSkills.length === 0 ? (
+-          <div className="px-4 py-6 text-center text-sm text-secondary">
++          <div className={asSubmenu ? 'px-3 py-5 text-center text-[13px] text-secondary' : 'px-4 py-6 text-center text-sm text-secondary'}>
+             {i18nService.t('noSkillsAvailable')}
+           </div>
+         ) : (
+           filteredSkills.map((skill) => {
+             const isActive = activeSkillIds.includes(skill.id);
++            const description = shouldUseFallbackDescription
++              ? skillService.getLocalizedSkillDescription(skill.id, skill.name, skill.description)
++              : '';
+             return (
+               <button
+                 key={skill.id}
+                 onClick={() => handleSelectSkill(skill)}
+-                className={`w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors ${
+-                  isActive
+-                    ? 'dark:bg-primary/10 bg-primary/10'
+-                    : 'hover:bg-surface-raised'
+-                }`}
++                className={asSubmenu
++                  ? `w-full flex items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-left transition-colors ${
++                    isActive ? 'bg-surface-raised' : 'hover:bg-surface-raised'
++                  }`
++                  : `w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors ${
++                    isActive ? 'dark:bg-primary/10 bg-primary/10' : 'hover:bg-primary/10 dark:hover:bg-primary/10'
++                  }`}
+               >
+-                <div className={`mt-0.5 w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+-                  isActive
+-                    ? 'bg-primary/10 text-primary'
+-                    : 'bg-surface-raised'
+-                }`}>
+-                  <SkillIcon className={`h-4 w-4 ${isActive ? '' : 'text-secondary'}`} />
++                <div className={asSubmenu
++                  ? `mt-[3px] flex h-5 w-5 flex-shrink-0 items-center justify-center ${
++                    isActive ? 'text-foreground' : 'text-secondary'
++                  }`
++                  : `mt-0.5 w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
++                    isActive ? 'bg-primary/10 text-primary' : 'bg-surface-raised'
++                  }`}
++                >
++                  <SkillIcon className={asSubmenu ? 'h-[18px] w-[18px]' : `h-4 w-4 ${isActive ? '' : 'text-secondary'}`} />
+                 </div>
+                 <div className="flex-1 min-w-0">
+-                  <div className="flex items-center gap-2">
+-                    <span className={`text-sm font-medium truncate ${
+-                      isActive
+-                        ? 'text-primary'
+-                        : 'text-foreground'
+-                    }`}>
++                  <div className={asSubmenu ? 'flex min-w-0 items-center gap-1.5' : 'flex items-center gap-2'}>
++                    <span className={asSubmenu
++                      ? 'min-w-0 truncate text-[13px] font-semibold leading-5 text-foreground'
++                      : `text-sm font-medium truncate ${
++                        isActive ? 'text-primary' : 'text-foreground'
++                      }`}
++                    >
+                       {skill.name}
+                     </span>
+                     {skill.isOfficial && (
+-                      <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-primary/10 text-primary flex-shrink-0">
++                      <span className={asSubmenu
++                        ? 'flex-shrink-0 rounded bg-surface-raised px-1.5 py-0.5 text-[10px] font-medium leading-none text-secondary'
++                        : 'px-1.5 py-0.5 text-[10px] font-medium rounded bg-primary/10 text-primary flex-shrink-0'}
++                      >
+                         {i18nService.t('official')}
+                       </span>
+                     )}
+                   </div>
+-                  <p className="text-xs text-secondary truncate mt-0.5">
+-                    {skillService.getLocalizedSkillDescription(skill.id, skill.name, skill.description)}
+-                  </p>
++                  {description && (
++                    <p className={asSubmenu ? 'mt-0.5 truncate text-[12px] leading-4 text-secondary' : 'text-xs text-secondary truncate mt-0.5'}>
++                      {description}
++                    </p>
++                  )}
+                 </div>
+                 {isActive && (
+-                  <CheckIcon className="mt-1 h-4 w-4 flex-shrink-0 text-primary" />
++                  <CheckIcon className={asSubmenu ? 'mt-1 h-3.5 w-3.5 flex-shrink-0 text-primary' : 'mt-1 h-4 w-4 flex-shrink-0 text-primary'} />
+                 )}
+               </button>
+             );
+           })
+         )}
+       </div>
+ 
+-      {/* Footer - Manage Skills */}
+-      <div className="border-t border-border">
+-        <button
+-          onClick={handleManageSkills}
+-          className="w-full flex items-center justify-between px-4 py-3 text-sm text-foreground hover:bg-surface-raised transition-colors rounded-b-xl"
+-        >
+-          <span>{i18nService.t('manageSkills')}</span>
+-          <Cog6ToothIcon className="h-4 w-4 text-secondary" />
+-        </button>
+-      </div>
++      {!asSubmenu && (
++        <div className="border-t border-border">
++          <button
++            onClick={handleManageSkills}
++            className="w-full flex items-center justify-between px-4 py-3 text-sm text-foreground hover:bg-surface-raised transition-colors rounded-b-xl"
++          >
++            <span>{i18nService.t('manageSkills')}</span>
++            <Cog6ToothIcon className="h-4 w-4 text-secondary" />
++          </button>
++        </div>
++      )}
+     </div>
+   );
+ };
+diff --git a/src/renderer/services/cowork.ts b/src/renderer/services/cowork.ts
+--- a/src/renderer/services/cowork.ts
++++ b/src/renderer/services/cowork.ts
+@@ -671,6 +671,10 @@ class CoworkService {
+       prompt: options.prompt,
+       systemPrompt: options.systemPrompt,
+       activeSkillIds: options.activeSkillIds,
++      runtimeSkillIds: options.runtimeSkillIds,
++      kitIds: options.kitIds,
++      kitReferences: options.kitReferences,
++      resolvedKitCapabilities: options.resolvedKitCapabilities,
+       imageAttachments: options.imageAttachments,
+       mediaSelection: options.mediaSelection,
+       mediaReferences: options.mediaReferences,
+diff --git a/src/renderer/services/i18n.ts b/src/renderer/services/i18n.ts
+--- a/src/renderer/services/i18n.ts
++++ b/src/renderer/services/i18n.ts
+@@ -1093,6 +1093,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
+ 
+     // Skills
+     skills: '技能',
++    useSkill: '使用技能',
+     searchSkills: '搜索技能',
+     manageSkills: '管理技能',
+     officialSkills: '官方技能',
+@@ -3389,6 +3390,7 @@ const translations: Record<LanguageType, Record<string, string>> = {
+ 
+     // Skills
+     skills: 'Skills',
++    useSkill: 'Use Skill',
+     searchSkills: 'Search skills',
+     manageSkills: 'Manage Skills',
+     officialSkills: 'Official Skills',
+diff --git a/src/renderer/services/kit.ts b/src/renderer/services/kit.ts
+--- a/src/renderer/services/kit.ts
++++ b/src/renderer/services/kit.ts
+@@ -52,6 +52,8 @@ class KitService {
+       bundleUrl: kit.skills.bundle,
+       version: kit.version ?? '0.0.0',
+       skillListIds: kit.skills.list.map(s => s.id),
++      mcpServers: kit.mcpServers ?? null,
++      connectors: kit.connectors ?? null,
+     });
+ 
+     return result;
+diff --git a/src/renderer/services/kitCapability.ts b/src/renderer/services/kitCapability.ts
+new file mode 100644
+--- /dev/null
++++ b/src/renderer/services/kitCapability.ts
+@@ -0,0 +1,66 @@
++import {
++  buildKitReferenceUri,
++  type KitReference,
++  KitReferenceKind,
++  KitReferenceSource,
++  type ResolvedKitCapabilities,
++} from '../../shared/kit/constants';
++import type { InstalledKit, MarketplaceKit } from '../types/kit';
++import { resolveLocalizedText } from './skill';
++
++const normalizeCapabilityList = (value: unknown): unknown[] => (
++  Array.isArray(value) ? value : []
++);
++
++const pushUniqueStrings = (target: string[], seen: Set<string>, values: string[]): void => {
++  for (const value of values) {
++    if (seen.has(value)) continue;
++    seen.add(value);
++    target.push(value);
++  }
++};
++
++export const getInstalledKitSkillIds = (kit: InstalledKit | undefined): string[] =>
++  kit?.skills?.skillIds ?? [];
++
++export const resolveSelectedKitCapabilities = (
++  kitIds: string[],
++  installedKits: Record<string, InstalledKit>,
++): ResolvedKitCapabilities => {
++  const skillIds: string[] = [];
++  const seenSkillIds = new Set<string>();
++  const mcpServers: unknown[] = [];
++  const connectors: unknown[] = [];
++
++  for (const kitId of kitIds) {
++    const kit = installedKits[kitId];
++    if (!kit) continue;
++
++    pushUniqueStrings(skillIds, seenSkillIds, getInstalledKitSkillIds(kit));
++    mcpServers.push(...normalizeCapabilityList(kit.mcpServers));
++    connectors.push(...normalizeCapabilityList(kit.connectors));
++  }
++
++  return {
++    skillIds,
++    mcpServers,
++    connectors,
++  };
++};
++
++export const buildKitReferences = (
++  kitIds: string[],
++  marketplaceKits: MarketplaceKit[],
++): KitReference[] => {
++  return kitIds.map((kitId) => {
++    const kit = marketplaceKits.find(item => item.id === kitId);
++    const name = kit?.name ? resolveLocalizedText(kit.name) : undefined;
++    return {
++      kind: KitReferenceKind.Kit,
++      id: kitId,
++      ...(name ? { name } : {}),
++      uri: buildKitReferenceUri(kitId),
++      source: KitReferenceSource.LobsterAiKits,
++    };
++  });
++};
+diff --git a/src/renderer/types/cowork.ts b/src/renderer/types/cowork.ts
+--- a/src/renderer/types/cowork.ts
++++ b/src/renderer/types/cowork.ts
+@@ -2,6 +2,10 @@ import type {
+   CoworkContextUsageFailureReason,
+   CoworkContextUsageSource,
+ } from '../../shared/cowork/constants';
++import type {
++  KitReference,
++  ResolvedKitCapabilities,
++} from '../../shared/kit/constants';
+ 
+ // Cowork image attachment for vision-capable models
+ export interface CoworkImageAttachment {
+@@ -55,6 +59,8 @@ export interface CoworkMessageMetadata {
+   isThinking?: boolean;
+   skillIds?: string[];
+   kitIds?: string[];
++  kitReferences?: KitReference[];
++  resolvedKitCapabilities?: ResolvedKitCapabilities;
+   usage?: {
+     inputTokens?: number;
+     outputTokens?: number;
+@@ -274,6 +280,10 @@ export interface CoworkStartOptions {
+   systemPrompt?: string;
+   title?: string;
+   activeSkillIds?: string[];
++  runtimeSkillIds?: string[];
++  kitIds?: string[];
++  kitReferences?: KitReference[];
++  resolvedKitCapabilities?: ResolvedKitCapabilities;
+   agentId?: string;
+   modelOverride?: string;
+   imageAttachments?: CoworkImageAttachment[];
+@@ -287,6 +297,10 @@ export interface CoworkContinueOptions {
+   prompt: string;
+   systemPrompt?: string;
+   activeSkillIds?: string[];
++  runtimeSkillIds?: string[];
++  kitIds?: string[];
++  kitReferences?: KitReference[];
++  resolvedKitCapabilities?: ResolvedKitCapabilities;
+   imageAttachments?: CoworkImageAttachment[];
+   mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
+   mediaReferences?: import('./mediaGeneration').MediaAttachmentRef[];
+diff --git a/src/renderer/types/electron.d.ts b/src/renderer/types/electron.d.ts
+--- a/src/renderer/types/electron.d.ts
++++ b/src/renderer/types/electron.d.ts
+@@ -9,6 +9,11 @@ import type {
+   CoworkContextUsageSource,
+ } from '../../shared/cowork/constants';
+ import type { HtmlShareAccessMode, HtmlShareStatus } from '../../shared/htmlShare/constants';
++import type {
++  InstalledKitRecord,
++  KitReference,
++  ResolvedKitCapabilities,
++} from '../../shared/kit/constants';
+ import type {
+   ListLocalWebServicesOptions,
+   LocalWebService,
+@@ -398,11 +403,13 @@ interface IElectronAPI {
+       bundleUrl: string;
+       version: string;
+       skillListIds: string[];
++      mcpServers?: unknown[] | null;
++      connectors?: unknown[] | null;
+     }) => Promise<{ success: boolean; skillIds?: string[]; error?: string }>;
+     uninstall: (kitId: string) => Promise<{ success: boolean; error?: string }>;
+     listInstalled: () => Promise<{
+       success: boolean;
+-      installed?: Record<string, { id: string; version: string; installedAt: number; skillIds: string[] }>;
++      installed?: Record<string, InstalledKitRecord>;
+       error?: string;
+     }>;
+   };
+@@ -527,6 +534,10 @@ interface IElectronAPI {
+       systemPrompt?: string;
+       title?: string;
+       activeSkillIds?: string[];
++      runtimeSkillIds?: string[];
++      kitIds?: string[];
++      kitReferences?: KitReference[];
++      resolvedKitCapabilities?: ResolvedKitCapabilities;
+       agentId?: string;
+       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string }>;
+       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
+@@ -543,6 +554,10 @@ interface IElectronAPI {
+       prompt: string;
+       systemPrompt?: string;
+       activeSkillIds?: string[];
++      runtimeSkillIds?: string[];
++      kitIds?: string[];
++      kitReferences?: KitReference[];
++      resolvedKitCapabilities?: ResolvedKitCapabilities;
+       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string }>;
+       mediaSelection?: { mode: string; modelId?: string; modelName?: string; imageModelId?: string; videoModelId?: string };
+       mediaReferences?: Array<{ token: string; mediaType: string; index: number; fileId: string; fileName: string; mimeType: string; localPath?: string; remoteUrl?: string; dataUrl?: string; role?: string }>;
+diff --git a/src/renderer/types/kit.ts b/src/renderer/types/kit.ts
+--- a/src/renderer/types/kit.ts
++++ b/src/renderer/types/kit.ts
+@@ -1,3 +1,4 @@
++import type { InstalledKitRecord } from '../../shared/kit/constants';
+ import type { LocalizedText } from './skill';
+ 
+ export interface KitSkillRef {
+@@ -20,13 +21,8 @@ export interface MarketplaceKit {
+   downloadCount?: string;
+   tryAsking?: (string | LocalizedText)[];
+   skills?: KitSkillBundle;
+-  mcpServers?: any;
+-  connectors?: any;
++  mcpServers?: unknown[] | null;
++  connectors?: unknown[] | null;
+ }
+ 
+-export interface InstalledKit {
+-  id: string;
+-  version: string;
+-  installedAt: number;
+-  skillIds: string[];
+-}
++export type InstalledKit = InstalledKitRecord;
+diff --git a/src/shared/kit/constants.ts b/src/shared/kit/constants.ts
+new file mode 100644
+--- /dev/null
++++ b/src/shared/kit/constants.ts
+@@ -0,0 +1,47 @@
++export const KitReferenceKind = {
++  Kit: 'kit',
++} as const;
++
++export type KitReferenceKind =
++  typeof KitReferenceKind[keyof typeof KitReferenceKind];
++
++export const KitReferenceScheme = {
++  Kit: 'kit',
++} as const;
++
++export const KitReferenceSource = {
++  LobsterAiKits: 'lobsterai-kits',
++} as const;
++
++export type KitReferenceSource =
++  typeof KitReferenceSource[keyof typeof KitReferenceSource];
++
++export interface KitReference {
++  kind: typeof KitReferenceKind.Kit;
++  id: string;
++  name?: string;
++  uri: string;
++  source?: KitReferenceSource | string;
++}
++
++export interface ResolvedKitCapabilities {
++  skillIds: string[];
++  mcpServers: unknown[];
++  connectors: unknown[];
++}
++
++export interface InstalledKitSkills {
++  skillIds: string[];
++}
++
++export interface InstalledKitRecord {
++  id: string;
++  version: string;
++  installedAt: number;
++  skills: InstalledKitSkills | null;
++  mcpServers: unknown[];
++  connectors: unknown[];
++}
++
++export const buildKitReferenceUri = (id: string): string =>
++  `${KitReferenceScheme.Kit}://${encodeURIComponent(id)}@${KitReferenceSource.LobsterAiKits}`;

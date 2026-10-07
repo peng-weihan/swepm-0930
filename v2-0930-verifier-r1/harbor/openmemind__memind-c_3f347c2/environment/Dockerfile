@@ -1,0 +1,1 @@
+FROM key4127/refactor-dockerhub:openmemind__memind-c_3f347c2

@@ -1,0 +1,3361 @@
+diff --git a/migrations/sqlite-drizzle/0020_known_captain_marvel.sql b/migrations/sqlite-drizzle/0020_known_captain_marvel.sql
+new file mode 100644
+--- /dev/null
++++ b/migrations/sqlite-drizzle/0020_known_captain_marvel.sql
+@@ -0,0 +1,10 @@
++CREATE TABLE `prompt` (
++	`id` text PRIMARY KEY NOT NULL,
++	`title` text NOT NULL,
++	`content` text NOT NULL,
++	`order_key` text NOT NULL,
++	`created_at` integer NOT NULL,
++	`updated_at` integer NOT NULL
++);
++--> statement-breakpoint
++CREATE INDEX `prompt_order_key_idx` ON `prompt` (`order_key`);
+diff --git a/migrations/sqlite-drizzle/meta/0020_snapshot.json b/migrations/sqlite-drizzle/meta/0020_snapshot.json
+new file mode 100644
+--- /dev/null
++++ b/migrations/sqlite-drizzle/meta/0020_snapshot.json
+
+diff --git a/migrations/sqlite-drizzle/meta/_journal.json b/migrations/sqlite-drizzle/meta/_journal.json
+--- a/migrations/sqlite-drizzle/meta/_journal.json
++++ b/migrations/sqlite-drizzle/meta/_journal.json
+@@ -140,6 +140,13 @@
+       "when": 1777636561235,
+       "tag": "0019_parallel_annihilus",
+       "breakpoints": true
++    },
++    {
++      "idx": 20,
++      "version": "6",
++      "when": 1778063182815,
++      "tag": "0020_known_captain_marvel",
++      "breakpoints": true
+     }
+   ],
+   "version": "7"
+diff --git a/packages/shared/data/api/schemas/index.ts b/packages/shared/data/api/schemas/index.ts
+--- a/packages/shared/data/api/schemas/index.ts
++++ b/packages/shared/data/api/schemas/index.ts
+@@ -31,6 +31,7 @@ import type { MessageSchemas } from './messages'
+ import type { MiniappSchemas } from './miniapps'
+ import type { ModelSchemas } from './models'
+ import type { PinSchemas } from './pins'
++import type { PromptSchemas } from './prompts'
+ import type { ProviderSchemas } from './providers'
+ import type { TagSchemas } from './tags'
+ import type { TemporaryChatSchemas } from './temporaryChats'
+@@ -49,7 +50,6 @@ import type { TranslateSchemas } from './translate'
+  * 1. Create the schema file (e.g., topic.ts)
+  * 2. Import and add to intersection below
+  */
+-
+ export type ApiSchemas = AssertValidSchemas<
+   TopicSchemas &
+     MessageSchemas &
+@@ -63,6 +63,7 @@ export type ApiSchemas = AssertValidSchemas<
+     MiniappSchemas &
+     AssistantSchemas &
+     TagSchemas &
++    PromptSchemas &
+     GroupSchemas &
+     PinSchemas &
+     AgentSchemas &
+diff --git a/packages/shared/data/api/schemas/prompts.ts b/packages/shared/data/api/schemas/prompts.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/shared/data/api/schemas/prompts.ts
+@@ -0,0 +1,66 @@
++/**
++ * Prompt API Schema definitions
++ *
++ * Contains endpoints for Prompt CRUD and ordering.
++ * Entity schemas and types live in `@shared/data/types/prompt`.
++ */
++
++import type * as z from 'zod'
++
++import { type Prompt, PromptIdSchema as SharedPromptIdSchema, PromptSchema } from '../../types/prompt'
++import type { OrderEndpoints } from './_endpointHelpers'
++
++export const PromptIdSchema = SharedPromptIdSchema
++
++// ============================================================================
++// DTOs
++// ============================================================================
++
++export const CreatePromptSchema = PromptSchema.pick({
++  title: true,
++  content: true
++})
++export type CreatePromptDto = z.infer<typeof CreatePromptSchema>
++
++export const UpdatePromptSchema = CreatePromptSchema.partial().refine(
++  (dto) => dto.title !== undefined || dto.content !== undefined,
++  { message: 'At least one field is required' }
++)
++export type UpdatePromptDto = z.infer<typeof UpdatePromptSchema>
++
++// ============================================================================
++// API Schema Definitions
++// ============================================================================
++
++export type PromptSchemas = {
++  '/prompts': {
++    /** List all prompts, ordered by `orderKey` */
++    GET: {
++      response: Prompt[]
++    }
++    /** Create a new prompt */
++    POST: {
++      body: CreatePromptDto
++      response: Prompt
++    }
++  }
++
++  '/prompts/:id': {
++    /** Get a prompt by ID */
++    GET: {
++      params: { id: string }
++      response: Prompt
++    }
++    /** Patch a prompt */
++    PATCH: {
++      params: { id: string }
++      body: UpdatePromptDto
++      response: Prompt
++    }
++    /** Delete a prompt */
++    DELETE: {
++      params: { id: string }
++      response: void
++    }
++  }
++} & OrderEndpoints<'/prompts'>
+diff --git a/packages/shared/data/migration/v2/types.ts b/packages/shared/data/migration/v2/types.ts
+--- a/packages/shared/data/migration/v2/types.ts
++++ b/packages/shared/data/migration/v2/types.ts
+@@ -46,6 +46,8 @@ export interface MigrationProgress {
+ export interface PrepareResult {
+   success: boolean
+   itemCount: number
++  /** Fatal reason when `success === false`. Non-fatal diagnostics belong in `warnings`. */
++  error?: string
+   warnings?: string[]
+ }
+ 
+diff --git a/packages/shared/data/types/prompt.ts b/packages/shared/data/types/prompt.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/shared/data/types/prompt.ts
+@@ -0,0 +1,35 @@
++/**
++ * Prompt entity types
++ *
++ * Prompts are user-managed prompt snippets.
++ * Replaces the legacy QuickPhrase system.
++ */
++
++import * as z from 'zod'
++
++// ============================================================================
++// Prompt Schemas
++// ============================================================================
++
++/** Prompt IDs are UUIDs from `uuidPrimaryKey()`; migrated legacy quick_phrase IDs are preserved. */
++export const PromptIdSchema = z.uuid()
++export const PROMPT_TITLE_MAX = 256
++export const PROMPT_CONTENT_MAX = 100_000
++export const PromptTitleSchema = z.string().trim().min(1).max(PROMPT_TITLE_MAX)
++export const PromptContentSchema = z.string().min(1).max(PROMPT_CONTENT_MAX)
++
++/** Complete Prompt entity as returned by the API. */
++export const PromptSchema = z.strictObject({
++  id: PromptIdSchema,
++  title: PromptTitleSchema,
++  content: PromptContentSchema,
++  orderKey: z.string().min(1),
++  createdAt: z.iso.datetime(),
++  updatedAt: z.iso.datetime()
++})
++
++// ============================================================================
++// Types (inferred from Zod schemas)
++// ============================================================================
++
++export type Prompt = z.infer<typeof PromptSchema>
+diff --git a/src/main/data/api/handlers/index.ts b/src/main/data/api/handlers/index.ts
+--- a/src/main/data/api/handlers/index.ts
++++ b/src/main/data/api/handlers/index.ts
+@@ -25,6 +25,7 @@ import { messageHandlers } from './messages'
+ import { miniappHandlers } from './miniapps'
+ import { modelHandlers } from './models'
+ import { pinHandlers } from './pins'
++import { promptHandlers } from './prompts'
+ import { providerHandlers } from './providers'
+ import { tagHandlers } from './tags'
+ import { temporaryChatHandlers } from './temporaryChats'
+@@ -54,5 +55,6 @@ export const apiHandlers: ApiImplementation = {
+   ...miniappHandlers,
+   ...tagHandlers,
+   ...groupHandlers,
+-  ...pinHandlers
++  ...pinHandlers,
++  ...promptHandlers
+ }
+diff --git a/src/main/data/api/handlers/prompts.ts b/src/main/data/api/handlers/prompts.ts
+new file mode 100644
+--- /dev/null
++++ b/src/main/data/api/handlers/prompts.ts
+@@ -0,0 +1,65 @@
++/**
++ * Prompt API Handlers
++ *
++ * All input validation happens here at the IPC trust boundary. Business logic
++ * lives in PromptService.
++ */
++
++import { promptService } from '@data/services/PromptService'
++import type { HandlersFor } from '@shared/data/api/apiTypes'
++import { OrderBatchRequestSchema, OrderRequestSchema } from '@shared/data/api/schemas/_endpointHelpers'
++import {
++  CreatePromptSchema,
++  PromptIdSchema,
++  type PromptSchemas,
++  UpdatePromptSchema
++} from '@shared/data/api/schemas/prompts'
++
++export const promptHandlers: HandlersFor<PromptSchemas> = {
++  '/prompts': {
++    GET: async () => {
++      return await promptService.getAll()
++    },
++
++    POST: async ({ body }) => {
++      const parsed = CreatePromptSchema.parse(body)
++      return await promptService.create(parsed)
++    }
++  },
++
++  '/prompts/:id': {
++    GET: async ({ params }) => {
++      const id = PromptIdSchema.parse(params.id)
++      return await promptService.getById(id)
++    },
++
++    PATCH: async ({ params, body }) => {
++      const id = PromptIdSchema.parse(params.id)
++      const parsed = UpdatePromptSchema.parse(body)
++      return await promptService.update(id, parsed)
++    },
++
++    DELETE: async ({ params }) => {
++      const id = PromptIdSchema.parse(params.id)
++      await promptService.delete(id)
++      return undefined
++    }
++  },
++
++  '/prompts/:id/order': {
++    PATCH: async ({ params, body }) => {
++      const id = PromptIdSchema.parse(params.id)
++      const anchor = OrderRequestSchema.parse(body)
++      await promptService.reorder(id, anchor)
++      return undefined
++    }
++  },
++
++  '/prompts/order:batch': {
++    PATCH: async ({ body }) => {
++      const parsed = OrderBatchRequestSchema.parse(body)
++      await promptService.reorderBatch(parsed.moves)
++      return undefined
++    }
++  }
++}
+diff --git a/src/main/data/db/schemas/prompt.ts b/src/main/data/db/schemas/prompt.ts
+new file mode 100644
+--- /dev/null
++++ b/src/main/data/db/schemas/prompt.ts
+@@ -0,0 +1,18 @@
++import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
++
++import { createUpdateTimestamps, orderKeyColumns, orderKeyIndex, uuidPrimaryKey } from './_columnHelpers'
++
++/**
++ * Prompt table - user prompt snippets (replaces legacy QuickPhrase).
++ */
++export const promptTable = sqliteTable(
++  'prompt',
++  {
++    id: uuidPrimaryKey(),
++    title: text().notNull(),
++    content: text().notNull(),
++    ...orderKeyColumns,
++    ...createUpdateTimestamps
++  },
++  (t) => [orderKeyIndex('prompt')(t)]
++)
+diff --git a/src/main/data/migration/v2/core/MigrationEngine.ts b/src/main/data/migration/v2/core/MigrationEngine.ts
+--- a/src/main/data/migration/v2/core/MigrationEngine.ts
++++ b/src/main/data/migration/v2/core/MigrationEngine.ts
+@@ -19,6 +19,7 @@ import { messageTable } from '@data/db/schemas/message'
+ import { miniappTable } from '@data/db/schemas/miniapp'
+ import { pinTable } from '@data/db/schemas/pin'
+ import { preferenceTable } from '@data/db/schemas/preference'
++import { promptTable } from '@data/db/schemas/prompt'
+ import { topicTable } from '@data/db/schemas/topic'
+ import { translateHistoryTable } from '@data/db/schemas/translateHistory'
+ import { translateLanguageTable } from '@data/db/schemas/translateLanguage'
+@@ -212,7 +213,8 @@ export class MigrationEngine {
+         // Phase 1: Prepare (includes dry-run validation)
+         const prepareResult = await migrator.prepare(context)
+         if (!prepareResult.success) {
+-          throw new Error(`${migrator.name} prepare failed: ${prepareResult.warnings?.join(', ')}`)
++          const reason = prepareResult.error ?? prepareResult.warnings?.join(', ') ?? 'unknown reason'
++          throw new Error(`${migrator.name} prepare failed: ${reason}`)
+         }
+ 
+         logger.info(`${migrator.name} prepare completed`, { itemCount: prepareResult.itemCount })
+@@ -272,9 +274,10 @@ export class MigrationEngine {
+         totalDuration: Date.now() - startTime
+       }
+     } catch (error) {
+-      const errorMessage = error instanceof Error ? error.message : String(error)
++      const err = error instanceof Error ? error : new Error(String(error))
++      const errorMessage = err.message
+ 
+-      logger.error('Migration failed', { error: errorMessage })
++      logger.error('Migration failed', err)
+ 
+       // Mark migration as failed with error details
+       await this.markFailed(errorMessage)
+@@ -313,6 +316,7 @@ export class MigrationEngine {
+       { table: translateLanguageTable, name: 'translate_language' },
+       { table: knowledgeItemTable, name: 'knowledge_item' }, // Must clear before knowledge_base (FK reference)
+       { table: knowledgeBaseTable, name: 'knowledge_base' },
++      { table: promptTable, name: 'prompt' },
+       // Agents-domain tables — child → parent order
+       { table: agentSessionMessageTable, name: 'agent_session_message' },
+       { table: agentChannelTaskTable, name: 'agent_channel_task' },
+@@ -335,32 +339,12 @@ export class MigrationEngine {
+       }
+     }
+ 
+-    // Clear tables in dependency order (children before parents)
+-    await db.delete(pinTable)
+-    await db.delete(userModelTable)
+-    await db.delete(userProviderTable)
+-    await db.delete(messageTable) // FK → topic
+-    await db.delete(topicTable) // FK → assistant
+-    await db.delete(assistantMcpServerTable) // FK → assistant, mcp_server
+-    await db.delete(assistantKnowledgeBaseTable) // FK → assistant
+-    await db.delete(assistantTable)
+-    await db.delete(mcpServerTable)
+-    await db.delete(miniappTable)
+-    await db.delete(preferenceTable)
+-    await db.delete(translateHistoryTable)
+-    await db.delete(translateLanguageTable)
+-    await db.delete(knowledgeItemTable) // FK → knowledge_base
+-    await db.delete(knowledgeBaseTable)
+-    // Agents-domain cleanup — child → parent order
+-    await db.delete(agentSessionMessageTable) // FK → agent_session
+-    await db.delete(agentChannelTaskTable) // FK → agent_channel, agent_task
+-    await db.delete(agentTaskRunLogTable) // FK → agent_task
+-    await db.delete(agentChannelTable) // FK → agent, agent_session
+-    await db.delete(agentTaskTable) // FK → agent
+-    await db.delete(agentSkillTable) // FK → agent, agent_global_skill
+-    await db.delete(agentSessionTable) // FK → agent
+-    await db.delete(agentGlobalSkillTable)
+-    await db.delete(agentTable)
++    // Clear tables atomically in dependency order (children before parents).
++    await db.transaction(async (tx) => {
++      for (const { table } of tables) {
++        await tx.delete(table)
++      }
++    })
+ 
+     logger.info('All new architecture tables cleared successfully')
+   }
+diff --git a/src/main/data/migration/v2/migrators/PromptMigrator.ts b/src/main/data/migration/v2/migrators/PromptMigrator.ts
+new file mode 100644
+--- /dev/null
++++ b/src/main/data/migration/v2/migrators/PromptMigrator.ts
+@@ -0,0 +1,224 @@
++/**
++ * Prompt migrator - migrates quick phrases from Dexie to SQLite prompt table.
++ *
++ * Mapping:
++ *   QuickPhrase.id        → prompt.id (legacy QuickPhrase.id was uuidv4; preserve it)
++ *   QuickPhrase.title     → prompt.title (fallback 'Untitled')
++ *   QuickPhrase.content   → prompt.content (${var} syntax preserved)
++ *   QuickPhrase.order     → drives relative order; stamped as fractional-indexing `orderKey`
++ *   QuickPhrase.createdAt → prompt.createdAt
++ *   QuickPhrase.updatedAt → prompt.updatedAt
++ */
++
++import { promptTable } from '@data/db/schemas/prompt'
++import { loggerService } from '@logger'
++import type { ExecuteResult, PrepareResult, ValidateResult, ValidationError } from '@shared/data/migration/v2/types'
++import { PROMPT_CONTENT_MAX } from '@shared/data/types/prompt'
++import { sql } from 'drizzle-orm'
++
++import type { MigrationContext } from '../core/MigrationContext'
++import { assignOrderKeysInSequence } from '../utils/orderKey'
++import { BaseMigrator } from './BaseMigrator'
++
++const logger = loggerService.withContext('PromptMigrator')
++
++type PromptInsertRow = typeof promptTable.$inferInsert
++
++/** Legacy QuickPhrase shape from Dexie. */
++interface LegacyQuickPhrase {
++  id?: string
++  title: string
++  content: string
++  createdAt: number
++  updatedAt: number
++  order?: number
++}
++
++export class PromptMigrator extends BaseMigrator {
++  readonly id = 'prompt'
++  readonly name = 'Prompts'
++  readonly description = 'Migrate quick phrases to prompts'
++  readonly order = 5.5
++
++  private promptCount = 0
++  private skippedCount = 0
++  private preparedPhrases: LegacyQuickPhrase[] = []
++
++  override reset(): void {
++    this.promptCount = 0
++    this.skippedCount = 0
++    this.preparedPhrases = []
++  }
++
++  async prepare(ctx: MigrationContext): Promise<PrepareResult> {
++    try {
++      const exists = await ctx.sources.dexieExport.tableExists('quick_phrases')
++      if (!exists) {
++        logger.info('quick_phrases table not found, skipping')
++        return {
++          success: true,
++          itemCount: 0,
++          warnings: ['quick_phrases table not found - skipping']
++        }
++      }
++
++      const phrases = await ctx.sources.dexieExport.readTable<LegacyQuickPhrase>('quick_phrases')
++      this.preparedPhrases = phrases.filter(
++        (p) =>
++          typeof p.content === 'string' &&
++          p.content.length > 0 &&
++          p.content.length <= PROMPT_CONTENT_MAX &&
++          Number.isFinite(p.createdAt) &&
++          Number.isFinite(p.updatedAt)
++      )
++      this.skippedCount = phrases.length - this.preparedPhrases.length
++      this.promptCount = this.preparedPhrases.length
++
++      if (this.skippedCount > 0) {
++        logger.warn('Skipped invalid quick phrases', { skipped: this.skippedCount })
++      }
++
++      logger.info('Prepared prompt migration', { count: this.promptCount, skipped: this.skippedCount })
++
++      return {
++        success: true,
++        itemCount: this.promptCount,
++        warnings: this.skippedCount > 0 ? [`Skipped ${this.skippedCount} invalid quick phrases`] : undefined
++      }
++    } catch (error) {
++      const message = error instanceof Error ? error.message : String(error)
++      logger.error('Prepare failed', error as Error)
++      return {
++        success: false,
++        itemCount: 0,
++        error: message
++      }
++    }
++  }
++
++  async execute(ctx: MigrationContext): Promise<ExecuteResult> {
++    if (this.promptCount === 0) {
++      return { success: true, processedCount: 0 }
++    }
++
++    // Legacy QuickPhraseService.add() gave older rows larger `order` values,
++    // so this descending sort reproduces its canonical getAll() order: old → new.
++    // PromptService keeps that canonical ascending orderKey; settings UI reverses it for display.
++    const sortedPhrases = [...this.preparedPhrases].sort((a, b) => getLegacyOrder(b) - getLegacyOrder(a))
++    const stamped = assignOrderKeysInSequence(sortedPhrases)
++    const rows: PromptInsertRow[] = []
++
++    try {
++      const db = ctx.db
++
++      for (let index = 0; index < stamped.length; index++) {
++        const row = stamped[index]
++        rows.push({
++          id: row.id,
++          title: normalizeTitle(row.title),
++          content: row.content,
++          orderKey: row.orderKey,
++          createdAt: row.createdAt,
++          updatedAt: row.updatedAt
++        })
++
++        const preparedCount = index + 1
++        if (preparedCount % 10 === 0 || preparedCount === this.promptCount) {
++          this.reportProgress(
++            Math.round((preparedCount / this.promptCount) * 100),
++            `Migrated ${preparedCount}/${this.promptCount} prompts`
++          )
++        }
++      }
++
++      await db.transaction(async (tx) => {
++        await tx.insert(promptTable).values(rows)
++      })
++
++      logger.info('Prompt migration completed', { processedCount: rows.length })
++      return { success: true, processedCount: rows.length }
++    } catch (error) {
++      const err = wrapExecuteError(error, stamped, rows.length)
++      logger.error('Execute failed', err)
++      // The transaction rolled back; no partial rows remain committed.
++      return {
++        success: false,
++        processedCount: 0,
++        error: err.message
++      }
++    }
++  }
++
++  async validate(ctx: MigrationContext): Promise<ValidateResult> {
++    const errors: ValidationError[] = []
++    const db = ctx.db
++
++    try {
++      const promptResult = await db.select({ count: sql<number>`count(*)` }).from(promptTable).get()
++      const targetCount = promptResult?.count ?? 0
++
++      logger.info('Validation counts', {
++        sourceCount: this.promptCount,
++        targetPromptCount: targetCount,
++        skippedCount: this.skippedCount
++      })
++
++      if (targetCount < this.promptCount) {
++        errors.push({
++          key: 'prompt_count_mismatch',
++          expected: this.promptCount,
++          actual: targetCount,
++          message: `Expected at least ${this.promptCount} prompts, got ${targetCount}`
++        })
++      }
++
++      return {
++        success: errors.length === 0,
++        errors,
++        stats: {
++          sourceCount: this.promptCount,
++          targetCount,
++          skippedCount: this.skippedCount
++        }
++      }
++    } catch (error) {
++      logger.error('Validation failed', error as Error)
++      errors.push({
++        key: 'validation_error',
++        message: error instanceof Error ? error.message : String(error)
++      })
++      return {
++        success: false,
++        errors,
++        stats: {
++          sourceCount: this.promptCount,
++          targetCount: 0,
++          skippedCount: this.skippedCount
++        }
++      }
++    }
++  }
++}
++
++function getLegacyOrder(phrase: LegacyQuickPhrase): number {
++  return Number.isFinite(phrase.order) ? (phrase.order as number) : 0
++}
++
++function normalizeTitle(title: LegacyQuickPhrase['title']): string {
++  return typeof title === 'string' && title.length > 0 ? title : 'Untitled'
++}
++
++function wrapExecuteError(
++  error: unknown,
++  stamped: Array<LegacyQuickPhrase & { orderKey: string }>,
++  preparedCount: number
++): Error {
++  const baseMessage = error instanceof Error ? error.message : String(error)
++  const failedBatch = stamped
++    .slice(0, Math.min(stamped.length, preparedCount || stamped.length, 5))
++    .map((row, index) => `source row ${index} title="${normalizeTitle(row.title)}"`)
++    .join('; ')
++  return new Error(`Prompt bulk insert failed${failedBatch ? ` (${failedBatch})` : ''}: ${baseMessage}`, {
++    cause: error
++  })
++}
+diff --git a/src/main/data/migration/v2/migrators/index.ts b/src/main/data/migration/v2/migrators/index.ts
+--- a/src/main/data/migration/v2/migrators/index.ts
++++ b/src/main/data/migration/v2/migrators/index.ts
+@@ -14,6 +14,7 @@ import { KnowledgeVectorMigrator } from './KnowledgeVectorMigrator'
+ import { McpServerMigrator } from './McpServerMigrator'
+ import { MiniAppMigrator } from './MiniAppMigrator'
+ import { PreferencesMigrator } from './PreferencesMigrator'
++import { PromptMigrator } from './PromptMigrator'
+ import { ProviderModelMigrator } from './ProviderModelMigrator'
+ import { TranslateMigrator } from './TranslateMigrator'
+ 
+@@ -28,6 +29,7 @@ export {
+   McpServerMigrator,
+   MiniAppMigrator,
+   PreferencesMigrator,
++  PromptMigrator,
+   ProviderModelMigrator,
+   TranslateMigrator
+ }
+@@ -47,6 +49,7 @@ export function getAllMigrators() {
+     new KnowledgeMigrator(),
+     new KnowledgeVectorMigrator(),
+     new ChatMigrator(),
+-    new TranslateMigrator()
++    new TranslateMigrator(),
++    new PromptMigrator()
+   ]
+ }
+diff --git a/src/main/data/services/PromptService.ts b/src/main/data/services/PromptService.ts
+new file mode 100644
+--- /dev/null
++++ b/src/main/data/services/PromptService.ts
+@@ -0,0 +1,144 @@
++/**
++ * Prompt Service - handles prompt CRUD and ordering
++ *
++ * Invariants maintained by this service:
++ * - Ordering: whole-table fractional-indexing `orderKey`. Reorder paths go
++ *   through `applyMoves`; callers never touch `orderKey` directly.
++ */
++
++import { application } from '@application'
++import { promptTable } from '@data/db/schemas/prompt'
++import type { DbType } from '@data/db/types'
++import { loggerService } from '@logger'
++import { DataApiErrorFactory } from '@shared/data/api'
++import type { OrderRequest } from '@shared/data/api/schemas/_endpointHelpers'
++import type { CreatePromptDto, UpdatePromptDto } from '@shared/data/api/schemas/prompts'
++import type { Prompt } from '@shared/data/types/prompt'
++import { asc, eq, inArray } from 'drizzle-orm'
++
++import { applyMoves, insertWithOrderKey } from './utils/orderKey'
++import { nullsToUndefined, timestampToISO } from './utils/rowMappers'
++
++const logger = loggerService.withContext('DataApi:PromptService')
++
++function rowToPrompt(row: typeof promptTable.$inferSelect): Prompt {
++  const clean = nullsToUndefined(row)
++  return {
++    ...clean,
++    createdAt: timestampToISO(row.createdAt),
++    updatedAt: timestampToISO(row.updatedAt)
++  }
++}
++
++/**
++ * Extract any `before`/`after` id referenced by a set of anchors. Reorder
++ * callers feed these into the existence pre-check so that a missing anchor
++ * surfaces as `NOT_FOUND` from the handler, not a 500 from `applyMoves`.
++ */
++function collectAnchorIds(anchors: OrderRequest[]): string[] {
++  const ids: string[] = []
++  for (const anchor of anchors) {
++    if ('before' in anchor) ids.push(anchor.before)
++    if ('after' in anchor) ids.push(anchor.after)
++  }
++  return ids
++}
++
++export class PromptService {
++  private get db() {
++    return application.get('DbService').getDb()
++  }
++
++  async getAll(): Promise<Prompt[]> {
++    // Canonical API order is old → new; settings UI reverses this for display.
++    const rows = await this.db.select().from(promptTable).orderBy(asc(promptTable.orderKey))
++    return rows.map(rowToPrompt)
++  }
++
++  async getById(id: string): Promise<Prompt> {
++    const [row] = await this.db.select().from(promptTable).where(eq(promptTable.id, id)).limit(1)
++    if (!row) {
++      throw DataApiErrorFactory.notFound('Prompt', id)
++    }
++    return rowToPrompt(row)
++  }
++
++  async create(dto: CreatePromptDto): Promise<Prompt> {
++    return this.db.transaction(async (tx) => {
++      const inserted = await insertWithOrderKey(
++        tx,
++        promptTable,
++        {
++          title: dto.title,
++          content: dto.content
++        },
++        { pkColumn: promptTable.id }
++      )
++      const row = inserted as typeof promptTable.$inferSelect
++
++      logger.info('Created prompt', { id: row.id })
++      return rowToPrompt(row)
++    })
++  }
++
++  async update(id: string, dto: UpdatePromptDto): Promise<Prompt> {
++    return this.db.transaction(async (tx) => {
++      const updates: Partial<typeof promptTable.$inferInsert> = {}
++      if (dto.title !== undefined) updates.title = dto.title
++      if (dto.content !== undefined) updates.content = dto.content
++
++      const result = await tx.update(promptTable).set(updates).where(eq(promptTable.id, id))
++      if (result.rowsAffected === 0) {
++        throw DataApiErrorFactory.notFound('Prompt', id)
++      }
++
++      const [row] = await tx.select().from(promptTable).where(eq(promptTable.id, id)).limit(1)
++      if (!row) {
++        throw DataApiErrorFactory.notFound('Prompt', id)
++      }
++
++      logger.info('Updated prompt', { id, changes: Object.keys(dto) })
++      return rowToPrompt(row)
++    })
++  }
++
++  /** Move a single prompt relative to an anchor. */
++  async reorder(id: string, anchor: OrderRequest): Promise<void> {
++    await this.db.transaction(async (tx) => {
++      await this.assertPromptsExist(tx, [id, ...collectAnchorIds([anchor])])
++      await applyMoves(tx, promptTable, [{ id, anchor }], { pkColumn: promptTable.id })
++    })
++  }
++
++  /** Apply a batch of moves atomically. */
++  async reorderBatch(moves: Array<{ id: string; anchor: OrderRequest }>): Promise<void> {
++    if (moves.length === 0) return
++    await this.db.transaction(async (tx) => {
++      await this.assertPromptsExist(tx, [...moves.map((m) => m.id), ...collectAnchorIds(moves.map((m) => m.anchor))])
++      await applyMoves(tx, promptTable, moves, { pkColumn: promptTable.id })
++    })
++  }
++
++  /** Pre-check that every id in a reorder exists; convert to NOT_FOUND otherwise. */
++  private async assertPromptsExist(tx: Pick<DbType, 'select'>, ids: string[]): Promise<void> {
++    const uniqueIds = Array.from(new Set(ids))
++    const rows = (await tx
++      .select({ id: promptTable.id })
++      .from(promptTable)
++      .where(inArray(promptTable.id, uniqueIds))) as Array<{ id: string }>
++    if (rows.length === uniqueIds.length) return
++    const found = new Set(rows.map((r) => r.id))
++    const missing = uniqueIds.find((id) => !found.has(id)) ?? uniqueIds[0]
++    throw DataApiErrorFactory.notFound('Prompt', missing)
++  }
++
++  async delete(id: string): Promise<void> {
++    const result = await this.db.delete(promptTable).where(eq(promptTable.id, id))
++    if (result.rowsAffected === 0) {
++      throw DataApiErrorFactory.notFound('Prompt', id)
++    }
++    logger.info('Deleted prompt', { id })
++  }
++}
++
++export const promptService = new PromptService()
+diff --git a/src/renderer/src/components/PromptEditModal.tsx b/src/renderer/src/components/PromptEditModal.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/renderer/src/components/PromptEditModal.tsx
+@@ -0,0 +1,123 @@
++import {
++  Button,
++  Dialog,
++  DialogContent,
++  DialogFooter,
++  DialogHeader,
++  DialogTitle,
++  Input,
++  Textarea
++} from '@cherrystudio/ui'
++import type { Prompt } from '@shared/data/types/prompt'
++import { PROMPT_CONTENT_MAX, PROMPT_TITLE_MAX } from '@shared/data/types/prompt'
++import { type FC, useCallback, useEffect, useState } from 'react'
++import { useTranslation } from 'react-i18next'
++
++interface FormData {
++  title: string
++  content: string
++}
++
++interface PromptEditModalProps {
++  open: boolean
++  prompt?: Prompt | null
++  saving?: boolean
++  onSave: (data: { title: string; content: string }) => Promise<void>
++  onCancel: () => void
++}
++
++const PromptEditModal: FC<PromptEditModalProps> = ({ open, prompt, saving, onSave, onCancel }) => {
++  const { t } = useTranslation()
++  const [formData, setFormData] = useState<FormData>({ title: '', content: '' })
++  const [isSubmitting, setIsSubmitting] = useState(false)
++
++  const isEdit = !!prompt
++  const trimmedTitleLength = formData.title.trim().length
++  const canSave =
++    trimmedTitleLength > 0 &&
++    trimmedTitleLength <= PROMPT_TITLE_MAX &&
++    formData.content.length > 0 &&
++    formData.content.length <= PROMPT_CONTENT_MAX
++  const isSaving = saving || isSubmitting
++
++  useEffect(() => {
++    if (open) {
++      setFormData({
++        title: prompt?.title ?? '',
++        content: prompt?.content ?? ''
++      })
++    } else {
++      setIsSubmitting(false)
++    }
++  }, [open, prompt])
++
++  const handleOk = useCallback(async () => {
++    if (!canSave) {
++      return
++    }
++
++    try {
++      setIsSubmitting(true)
++      await onSave({
++        title: formData.title,
++        content: formData.content
++      })
++    } catch {
++      // Parent mutation handlers surface the error; keep the modal usable.
++    } finally {
++      setIsSubmitting(false)
++    }
++  }, [canSave, formData, onSave])
++
++  const handleOpenChange = useCallback(
++    (nextOpen: boolean) => {
++      if (!nextOpen) {
++        onCancel()
++      }
++    },
++    [onCancel]
++  )
++
++  return (
++    <Dialog open={open} onOpenChange={handleOpenChange}>
++      <DialogContent className="sm:max-w-[600px]" onPointerDownOutside={(event) => event.preventDefault()}>
++        <DialogHeader>
++          <DialogTitle>{isEdit ? t('settings.prompts.edit') : t('settings.prompts.add')}</DialogTitle>
++        </DialogHeader>
++
++        <div className="flex flex-col gap-4">
++          <label className="flex flex-col gap-1 font-medium text-foreground text-sm">
++            {t('settings.prompts.titleLabel')}
++            <Input
++              placeholder={t('settings.prompts.titlePlaceholder')}
++              value={formData.title}
++              onChange={(event) => setFormData((current) => ({ ...current, title: event.target.value }))}
++            />
++          </label>
++
++          <label className="flex flex-col gap-1 font-medium text-foreground text-sm">
++            {t('settings.prompts.contentLabel')}
++            <Textarea.Input
++              className="min-h-[184px] resize-none"
++              placeholder={t('settings.prompts.contentPlaceholder')}
++              value={formData.content}
++              onValueChange={(content) => setFormData((current) => ({ ...current, content }))}
++              rows={8}
++            />
++          </label>
++        </div>
++
++        <DialogFooter>
++          <Button variant="outline" onClick={onCancel} disabled={isSaving}>
++            {t('common.cancel')}
++          </Button>
++          <Button onClick={() => void handleOk()} loading={isSaving} disabled={!canSave || isSaving}>
++            {t('common.confirm')}
++          </Button>
++        </DialogFooter>
++      </DialogContent>
++    </Dialog>
++  )
++}
++
++export default PromptEditModal
+diff --git a/src/renderer/src/i18n/locales/en-us.json b/src/renderer/src/i18n/locales/en-us.json
+--- a/src/renderer/src/i18n/locales/en-us.json
++++ b/src/renderer/src/i18n/locales/en-us.json
+@@ -957,17 +957,6 @@
+         "xhigh": "Extra High",
+         "xhigh_description": "Extra high level reasoning"
+       },
+-      "regular_phrases": {
+-        "add": "Add Phrase",
+-        "contentLabel": "Content",
+-        "contentPlaceholder": "Please enter phrase content, support using variables, and press Tab to quickly locate the variable to modify. For example: \nHelp me plan a route from ${from} to ${to}, and send it to ${email}.",
+-        "delete": "Delete Phrase",
+-        "deleteConfirm": "Are you sure to delete this phrase?",
+-        "edit": "Edit Phrase",
+-        "title": "Regular Phrase",
+-        "titleLabel": "Title",
+-        "titlePlaceholder": "Enter title"
+-      },
+       "title": "Assistant Settings",
+       "tool_use_mode": {
+         "function": "Function",
+@@ -5262,6 +5251,24 @@
+       "enable_privacy_mode": "Anonymous reporting of errors and statistics",
+       "title": "Privacy Settings"
+     },
++    "prompts": {
++      "add": "Add Prompt",
++      "contentLabel": "Content",
++      "contentPlaceholder": "Enter prompt content. Supports ${variables}; press Tab to jump between variables. Example:\nHelp me plan a route from ${from} to ${to}, and send it to ${email}.",
++      "delete": "Delete Prompt",
++      "deleteConfirm": "The prompt will be permanently deleted. Continue?",
++      "edit": "Edit Prompt",
++      "errors": {
++        "createFailed": "Failed to create prompt",
++        "deleteFailed": "Failed to delete prompt",
++        "loadFailed": "Failed to load prompts",
++        "reorderFailed": "Failed to reorder prompts",
++        "updateFailed": "Failed to update prompt"
++      },
++      "title": "Prompt Management",
++      "titleLabel": "Title",
++      "titlePlaceholder": "Enter prompt title"
++    },
+     "provider": {
+       "add": {
+         "name": {
+@@ -5555,20 +5562,6 @@
+       "select": "Select",
+       "title": "Quick Menu"
+     },
+-    "quickPhrase": {
+-      "add": "Add Phrase",
+-      "assistant": "Assistant Phrases",
+-      "contentLabel": "Content",
+-      "contentPlaceholder": "Please enter phrase content, support using variables, and press Tab to quickly locate the variable to modify. For example: \nHelp me plan a route from ${from} to ${to}, and send it to ${email}.",
+-      "delete": "Delete Phrase",
+-      "deleteConfirm": "The phrase cannot be recovered after deletion, continue?",
+-      "edit": "Edit Phrase",
+-      "global": "Global Phrases",
+-      "locationLabel": "Add Location",
+-      "title": "Quick Phrases",
+-      "titleLabel": "Title",
+-      "titlePlaceholder": "Please enter phrase title"
+-    },
+     "scheduledTasks": {
+       "description": "Manage scheduled tasks across all agents. Tasks run automatically on the configured schedule.",
+       "noAgents": "Scheduled tasks require agents with Soul Mode or Bypass Permissions enabled. Update an agent's settings to get started.",
+diff --git a/src/renderer/src/i18n/locales/zh-cn.json b/src/renderer/src/i18n/locales/zh-cn.json
+--- a/src/renderer/src/i18n/locales/zh-cn.json
++++ b/src/renderer/src/i18n/locales/zh-cn.json
+@@ -957,17 +957,6 @@
+         "xhigh": "穷究",
+         "xhigh_description": "超高强度推理"
+       },
+-      "regular_phrases": {
+-        "add": "添加短语",
+-        "contentLabel": "内容",
+-        "contentPlaceholder": "请输入短语内容，支持使用变量，然后按 Tab 键可以快速定位到变量进行修改。比如：\n帮我规划从 ${from} 到 ${to} 的路线，然后发送到 ${email}",
+-        "delete": "删除短语",
+-        "deleteConfirm": "确定要删除这个短语吗？",
+-        "edit": "编辑短语",
+-        "title": "常用短语",
+-        "titleLabel": "标题",
+-        "titlePlaceholder": "输入标题"
+-      },
+       "title": "助手设置",
+       "tool_use_mode": {
+         "function": "函数",
+@@ -5262,6 +5251,24 @@
+       "enable_privacy_mode": "匿名发送错误报告和数据统计",
+       "title": "隐私设置"
+     },
++    "prompts": {
++      "add": "添加提示词",
++      "contentLabel": "内容",
++      "contentPlaceholder": "请输入提示词内容，支持使用 ${变量}，按 Tab 可在变量间快速定位。例如：\n帮我规划从 ${from} 到 ${to} 的路线，然后发送到 ${email}",
++      "delete": "删除提示词",
++      "deleteConfirm": "删除提示词后将无法恢复，是否继续？",
++      "edit": "编辑提示词",
++      "errors": {
++        "createFailed": "创建提示词失败",
++        "deleteFailed": "删除提示词失败",
++        "loadFailed": "加载提示词失败",
++        "reorderFailed": "调整提示词顺序失败",
++        "updateFailed": "更新提示词失败"
++      },
++      "title": "提示词管理",
++      "titleLabel": "标题",
++      "titlePlaceholder": "请输入提示词标题"
++    },
+     "provider": {
+       "add": {
+         "name": {
+@@ -5555,20 +5562,6 @@
+       "select": "选择",
+       "title": "快捷菜单"
+     },
+-    "quickPhrase": {
+-      "add": "添加短语",
+-      "assistant": "助手短语",
+-      "contentLabel": "内容",
+-      "contentPlaceholder": "请输入短语内容，支持使用变量，然后按 Tab 键可以快速定位到变量进行修改。比如：\n帮我规划从 ${from} 到 ${to} 的路线，然后发送到 ${email}",
+-      "delete": "删除短语",
+-      "deleteConfirm": "删除短语后将无法恢复，是否继续？",
+-      "edit": "编辑短语",
+-      "global": "全局短语",
+-      "locationLabel": "添加位置",
+-      "title": "快捷短语",
+-      "titleLabel": "标题",
+-      "titlePlaceholder": "请输入短语标题"
+-    },
+     "scheduledTasks": {
+       "description": "管理所有 Agent 的定时任务。任务将按照配置的时间计划自动运行。",
+       "noAgents": "定时任务需要开启灵魂模式或无权限模式的 Agent 才能运行。请先在 Agent 设置中启用。",
+diff --git a/src/renderer/src/i18n/locales/zh-tw.json b/src/renderer/src/i18n/locales/zh-tw.json
+--- a/src/renderer/src/i18n/locales/zh-tw.json
++++ b/src/renderer/src/i18n/locales/zh-tw.json
+@@ -957,17 +957,6 @@
+         "xhigh": "極力思考",
+         "xhigh_description": "超高階推理"
+       },
+-      "regular_phrases": {
+-        "add": "新增短語",
+-        "contentLabel": "內容",
+-        "contentPlaceholder": "請輸入短語內容，支援使用變數，然後按 Tab 鍵可以快速定位到變數進行修改。例如：\n幫我規劃從 ${from} 到 ${to} 的行程，然後傳送到 ${email}",
+-        "delete": "刪除短語",
+-        "deleteConfirm": "確定要刪除這個短語嗎？",
+-        "edit": "編輯短語",
+-        "title": "常用短語",
+-        "titleLabel": "標題",
+-        "titlePlaceholder": "輸入標題"
+-      },
+       "title": "助手設定",
+       "tool_use_mode": {
+         "function": "函式",
+@@ -5262,6 +5251,24 @@
+       "enable_privacy_mode": "匿名傳送錯誤報告和資料統計",
+       "title": "隱私設定"
+     },
++    "prompts": {
++      "add": "新增提示詞",
++      "contentLabel": "內容",
++      "contentPlaceholder": "請輸入提示詞內容，支援使用 ${變數}，按 Tab 可在變數間快速定位。例如：\n幫我規劃從 ${from} 到 ${to} 的路線，然後傳送到 ${email}",
++      "delete": "刪除提示詞",
++      "deleteConfirm": "刪除提示詞後將無法復原，是否繼續？",
++      "edit": "編輯提示詞",
++      "errors": {
++        "createFailed": "建立提示詞失敗",
++        "deleteFailed": "刪除提示詞失敗",
++        "loadFailed": "載入提示詞失敗",
++        "reorderFailed": "調整提示詞順序失敗",
++        "updateFailed": "更新提示詞失敗"
++      },
++      "title": "提示詞管理",
++      "titleLabel": "標題",
++      "titlePlaceholder": "請輸入提示詞標題"
++    },
+     "provider": {
+       "add": {
+         "name": {
+@@ -5555,20 +5562,6 @@
+       "select": "選擇",
+       "title": "快捷選單"
+     },
+-    "quickPhrase": {
+-      "add": "新增短語",
+-      "assistant": "助手提示詞",
+-      "contentLabel": "內容",
+-      "contentPlaceholder": "請輸入短語內容，支援使用變數，然後按 Tab 鍵可以快速定位到變數進行修改。例如：\n幫我規劃從 ${from} 到 ${to} 的行程，然後傳送到 ${email}",
+-      "delete": "刪除短語",
+-      "deleteConfirm": "刪除後無法復原，是否繼續？",
+-      "edit": "編輯短語",
+-      "global": "全域快速短語",
+-      "locationLabel": "新增位置",
+-      "title": "快捷短語",
+-      "titleLabel": "標題",
+-      "titlePlaceholder": "請輸入短語標題"
+-    },
+     "scheduledTasks": {
+       "description": "管理所有代理的排程任務。任務將依設定好的排程自動執行。",
+       "noAgents": "排程任務需要開啟靈魂模式或無權限模式的代理才能執行。請先在代理設定中啟用。",
+diff --git a/src/renderer/src/i18n/translate/de-de.json b/src/renderer/src/i18n/translate/de-de.json
+--- a/src/renderer/src/i18n/translate/de-de.json
++++ b/src/renderer/src/i18n/translate/de-de.json
+@@ -957,17 +957,6 @@
+         "xhigh": "Extra hoch",
+         "xhigh_description": "Extra hohes Denkvermögen"
+       },
+-      "regular_phrases": {
+-        "add": "Phrase hinzufügen",
+-        "contentLabel": "Inhalt",
+-        "contentPlaceholder": "Bitte geben Sie den Phraseninhalt ein. Sie können Variablen verwenden und dann die Tab-Taste drücken, um schnell zu Variablen zu navigieren und sie zu ändern. Zum Beispiel:\nPlanen Sie mir eine Route von ${from} nach ${to} und senden Sie sie an ${email}",
+-        "delete": "Phrase löschen",
+-        "deleteConfirm": "Möchten Sie diese Phrase wirklich löschen?",
+-        "edit": "Phrase bearbeiten",
+-        "title": "Häufig verwendete Phrasen",
+-        "titleLabel": "Titel",
+-        "titlePlaceholder": "Titel eingeben"
+-      },
+       "title": "Assistenteneinstellungen",
+       "tool_use_mode": {
+         "function": "Funktion",
+@@ -5262,6 +5251,24 @@
+       "enable_privacy_mode": "Fehlerberichte und Statistiken anonym senden",
+       "title": "Datenschutzeinstellungen"
+     },
++    "prompts": {
++      "add": "Prompt hinzufügen",
++      "contentLabel": "Inhalt",
++      "contentPlaceholder": "[to be translated]:Enter prompt content. Supports ${variables}; press Tab to jump between variables. Example:\nHelp me plan a route from ${from} to ${to}, and send it to ${email}.",
++      "delete": "Prompt löschen",
++      "deleteConfirm": "Der Prompt wird dauerhaft gelöscht. Fortfahren?",
++      "edit": "Prompt bearbeiten",
++      "errors": {
++        "createFailed": "[to be translated]:Failed to create prompt",
++        "deleteFailed": "[to be translated]:Failed to delete prompt",
++        "loadFailed": "[to be translated]:Failed to load prompts",
++        "reorderFailed": "[to be translated]:Failed to reorder prompts",
++        "updateFailed": "[to be translated]:Failed to update prompt"
++      },
++      "title": "Prompt-Verwaltung",
++      "titleLabel": "Titel",
++      "titlePlaceholder": "Geben Sie einen Titel für den Prompt ein"
++    },
+     "provider": {
+       "add": {
+         "name": {
+@@ -5555,20 +5562,6 @@
+       "select": "Auswählen",
+       "title": "Schnellmenü"
+     },
+-    "quickPhrase": {
+-      "add": "Phrase hinzufügen",
+-      "assistant": "Assistenten-Phrasen",
+-      "contentLabel": "Inhalt",
+-      "contentPlaceholder": "Bitte Phrase-Inhalt eingeben, unterstützt Variablenverwendung, dann Tab-Taste zum schnellen Navigieren zu Variablen für Bearbeitung. Z.B.:\nPlanen Sie eine Route von ${from} nach ${to} und senden Sie sie an ${email}",
+-      "delete": "Phrase löschen",
+-      "deleteConfirm": "Gelöschte Phrase kann nicht wiederhergestellt werden. Fortfahren?",
+-      "edit": "Phrase bearbeiten",
+-      "global": "Globale Phrasen",
+-      "locationLabel": "Position hinzufügen",
+-      "title": "Schnellphrasen",
+-      "titleLabel": "Titel",
+-      "titlePlaceholder": "Bitte Phrasentitel eingeben"
+-    },
+     "scheduledTasks": {
+       "description": "Verwalten Sie geplante Aufgaben über alle Agents hinweg. Aufgaben werden automatisch nach dem konfigurierten Zeitplan ausgeführt.",
+       "noAgents": "Keine Agenten gefunden. Erstellen Sie zuerst einen Agenten, um geplante Aufgaben hinzuzufügen.",
+diff --git a/src/renderer/src/i18n/translate/el-gr.json b/src/renderer/src/i18n/translate/el-gr.json
+--- a/src/renderer/src/i18n/translate/el-gr.json
++++ b/src/renderer/src/i18n/translate/el-gr.json
+@@ -957,17 +957,6 @@
+         "xhigh": "Εξαιρετικά Υψηλή",
+         "xhigh_description": "Εξαιρετικά υψηλού επιπέδου συλλογισμός"
+       },
+-      "regular_phrases": {
+-        "add": "Προσθήκη φράσης",
+-        "contentLabel": "Περιεχόμενο",
+-        "contentPlaceholder": "Παρακαλώ εισάγετε το περιεχόμενο της φράσης. Υποστηρίζονται μεταβλητές, και στη συνέχεια πατήστε Tab για να μεταβείτε γρήγορα στη μεταβλητή και να την επεξεργαστείτε. Για παράδειγμα: \\nΒοήθησέ με να σχεδιάσω μια διαδρομή από το ${from} στο ${to}, και στη συνέχεια στείλε την στο ${email}.",
+-        "delete": "Διαγραφή φράσης",
+-        "deleteConfirm": "Είστε βέβαιος ότι θέλετε να διαγράψετε αυτήν τη φράση;",
+-        "edit": "Επεξεργασία φράσης",
+-        "title": "Δημοφιλείς φράσεις",
+-        "titleLabel": "Τίτλος",
+-        "titlePlaceholder": "Εισαγάγετε τίτλο"
+-      },
+       "title": "Ρυθμίσεις Βοηθού",
+       "tool_use_mode": {
+         "function": "Συνάρτηση",
+@@ -5262,6 +5251,24 @@
+       "enable_privacy_mode": "Αποστολή ανώνυμων αναφορών σφαλμάτων και στατιστικών δεδομένων",
+       "title": "Ρυθμίσεις Απορρήτου"
+     },
++    "prompts": {
++      "add": "Προσθήκη Prompt",
++      "contentLabel": "Περιεχόμενο",
++      "contentPlaceholder": "[to be translated]:Enter prompt content. Supports ${variables}; press Tab to jump between variables. Example:\nHelp me plan a route from ${from} to ${to}, and send it to ${email}.",
++      "delete": "Διαγραφή Prompt",
++      "deleteConfirm": "Το prompt θα διαγραφεί οριστικά. Συνέχεια;",
++      "edit": "Επεξεργασία Prompt",
++      "errors": {
++        "createFailed": "[to be translated]:Failed to create prompt",
++        "deleteFailed": "[to be translated]:Failed to delete prompt",
++        "loadFailed": "[to be translated]:Failed to load prompts",
++        "reorderFailed": "[to be translated]:Failed to reorder prompts",
++        "updateFailed": "[to be translated]:Failed to update prompt"
++      },
++      "title": "Διαχείριση Prompts",
++      "titleLabel": "Τίτλος",
++      "titlePlaceholder": "Εισαγάγετε τίτλο prompt"
++    },
+     "provider": {
+       "add": {
+         "name": {
+@@ -5555,20 +5562,6 @@
+       "select": "Επιλογή",
+       "title": "Γρήγορη Πρόσβαση"
+     },
+-    "quickPhrase": {
+-      "add": "Προσθήκη Φράσης",
+-      "assistant": "Φράσεις Βοηθού",
+-      "contentLabel": "Περιεχόμενο",
+-      "contentPlaceholder": "Παρακαλώ εισάγετε περιεχόμενο φράσης. Υποστηρίζεται η χρήση μεταβλητών, και στη συνέχεια πατήστε Tab για να μεταβείτε γρήγορα στη μεταβλητή και να την τροποποιήσετε. Για παράδειγμα: \\\\n Βοήθησέ με να σχεδιάσω μια διαδρομή από το ${from} στο ${to}, και στη συνέχεια να τη στείλεις στο ${email}.",
+-      "delete": "Διαγραφή Φράσης",
+-      "deleteConfirm": "Η διαγραφή της φράσης δεν μπορεί να αναιρεθεί. Θέλετε να συνεχίσετε;",
+-      "edit": "Επεξεργασία Φράσης",
+-      "global": "Κοινές Φράσεις",
+-      "locationLabel": "Προσθήκη Τοποθεσίας",
+-      "title": "Γρήγορες Φράσεις",
+-      "titleLabel": "Τίτλος",
+-      "titlePlaceholder": "Παρακαλώ εισάγετε τίτλο φράσης"
+-    },
+     "scheduledTasks": {
+       "description": "Διαχειριστείτε προγραμματισμένες εργασίες σε όλους τους πράκτορες. Οι εργασίες εκτελούνται αυτόματα σύμφωνα με το διαμορφωμένο πρόγραμμα.",
+       "noAgents": "Δεν βρέθηκαν πράκτορες. Δημιουργήστε πρώτα έναν πράκτορα για να προσθέσετε προγραμματισμένες εργασίες.",
+diff --git a/src/renderer/src/i18n/translate/es-es.json b/src/renderer/src/i18n/translate/es-es.json
+--- a/src/renderer/src/i18n/translate/es-es.json
++++ b/src/renderer/src/i18n/translate/es-es.json
+@@ -957,17 +957,6 @@
+         "xhigh": "Extra Alta",
+         "xhigh_description": "Razonamiento de extra alto nivel"
+       },
+-      "regular_phrases": {
+-        "add": "Agregar frase",
+-        "contentLabel": "Contenido",
+-        "contentPlaceholder": "Por favor, introduzca el contenido de la frase. Puede usar variables y luego presionar Tab para navegar rápidamente a las variables y modificarlas. Por ejemplo: \\nAyúdame a planificar una ruta desde ${from} hasta ${to}, y luego envíala a ${email}.",
+-        "delete": "Eliminar frase",
+-        "deleteConfirm": "¿Está seguro de que desea eliminar esta frase?",
+-        "edit": "Editar frase",
+-        "title": "Frases comunes",
+-        "titleLabel": "Título",
+-        "titlePlaceholder": "Ingrese el título"
+-      },
+       "title": "Configuración del Asistente",
+       "tool_use_mode": {
+         "function": "Función",
+@@ -5262,6 +5251,24 @@
+       "enable_privacy_mode": "Enviar informes de errores y estadísticas de forma anónima",
+       "title": "Configuración de privacidad"
+     },
++    "prompts": {
++      "add": "Añadir Prompt",
++      "contentLabel": "Contenido",
++      "contentPlaceholder": "[to be translated]:Enter prompt content. Supports ${variables}; press Tab to jump between variables. Example:\nHelp me plan a route from ${from} to ${to}, and send it to ${email}.",
++      "delete": "Eliminar Prompt",
++      "deleteConfirm": "El prompt se eliminará permanentemente. ¿Continuar?",
++      "edit": "Editar Prompt",
++      "errors": {
++        "createFailed": "[to be translated]:Failed to create prompt",
++        "deleteFailed": "[to be translated]:Failed to delete prompt",
++        "loadFailed": "[to be translated]:Failed to load prompts",
++        "reorderFailed": "[to be translated]:Failed to reorder prompts",
++        "updateFailed": "[to be translated]:Failed to update prompt"
++      },
++      "title": "Gestión de Prompts",
++      "titleLabel": "Título",
++      "titlePlaceholder": "Introduce el título del prompt"
++    },
+     "provider": {
+       "add": {
+         "name": {
+@@ -5555,20 +5562,6 @@
+       "select": "Seleccionar",
+       "title": "Menú de acceso rápido"
+     },
+-    "quickPhrase": {
+-      "add": "Agregar frase",
+-      "assistant": "Frase de asistente",
+-      "contentLabel": "Contenido",
+-      "contentPlaceholder": "Ingrese el contenido de la frase. Se admite el uso de variables, y luego puede presionar Tab para ubicar rápidamente la variable y modificarla. Por ejemplo: \\nAyúdame a planificar la ruta desde ${desde} hasta ${hasta}, y luego envíala a ${correo}.",
+-      "delete": "Eliminar frase",
+-      "deleteConfirm": "Una vez eliminada, la frase no podrá recuperarse. ¿Desea continuar?",
+-      "edit": "Editar frase",
+-      "global": "Frase global",
+-      "locationLabel": "Agregar ubicación",
+-      "title": "Frases rápidas",
+-      "titleLabel": "Título",
+-      "titlePlaceholder": "Ingrese el título de la frase"
+-    },
+     "scheduledTasks": {
+       "description": "Administrar tareas programadas en todos los agentes. Las tareas se ejecutan automáticamente según el horario configurado.",
+       "noAgents": "No se encontraron agentes. Crea primero un agente para añadir tareas programadas.",
+diff --git a/src/renderer/src/i18n/translate/fr-fr.json b/src/renderer/src/i18n/translate/fr-fr.json
+--- a/src/renderer/src/i18n/translate/fr-fr.json
++++ b/src/renderer/src/i18n/translate/fr-fr.json
+@@ -957,17 +957,6 @@
+         "xhigh": "Très élevée",
+         "xhigh_description": "Raisonnement de très haut niveau"
+       },
+-      "regular_phrases": {
+-        "add": "Добавить фразу",
+-        "contentLabel": "Содержание",
+-        "contentPlaceholder": "Введите содержание фразы. Поддерживаются переменные, после этого нажмите Tab для быстрого перехода к переменной и изменения её значения. Например:\\n Планируй маршрут из ${from} в ${to}, а затем отправь его на ${email}.",
+-        "delete": "Удалить фразу",
+-        "deleteConfirm": "Вы уверены, что хотите удалить эту фразу?",
+-        "edit": "Редактировать фразу",
+-        "title": "Популярные фразы",
+-        "titleLabel": "Заголовок",
+-        "titlePlaceholder": "Введите заголовок"
+-      },
+       "title": "Paramètres de l'assistant",
+       "tool_use_mode": {
+         "function": "Fonction",
+@@ -5262,6 +5251,24 @@
+       "enable_privacy_mode": "Отправлять анонимные сообщения об ошибках и статистику",
+       "title": "Настройки конфиденциальности"
+     },
++    "prompts": {
++      "add": "Ajouter un prompt",
++      "contentLabel": "Contenu",
++      "contentPlaceholder": "[to be translated]:Enter prompt content. Supports ${variables}; press Tab to jump between variables. Example:\nHelp me plan a route from ${from} to ${to}, and send it to ${email}.",
++      "delete": "Supprimer le prompt",
++      "deleteConfirm": "Le prompt sera définitivement supprimé. Continuer ?",
++      "edit": "Modifier le prompt",
++      "errors": {
++        "createFailed": "[to be translated]:Failed to create prompt",
++        "deleteFailed": "[to be translated]:Failed to delete prompt",
++        "loadFailed": "[to be translated]:Failed to load prompts",
++        "reorderFailed": "[to be translated]:Failed to reorder prompts",
++        "updateFailed": "[to be translated]:Failed to update prompt"
++      },
++      "title": "Gestion des prompts",
++      "titleLabel": "Titre",
++      "titlePlaceholder": "Saisissez le titre du prompt"
++    },
+     "provider": {
+       "add": {
+         "name": {
+@@ -5555,20 +5562,6 @@
+       "select": "Выбрать",
+       "title": "Быстрое меню"
+     },
+-    "quickPhrase": {
+-      "add": "Добавить фразу",
+-      "assistant": "Фразы помощника",
+-      "contentLabel": "Содержание",
+-      "contentPlaceholder": "Введите содержание фразы, поддерживает использование переменных, после этого нажмите Tab, чтобы быстро перейти к переменной для редактирования. Например: \\n Запланируй маршрут от ${from} до ${to}, а затем отправь его на ${email}.",
+-      "delete": "Удалить фразу",
+-      "deleteConfirm": "После удаления фразы её невозможно восстановить. Продолжить?",
+-      "edit": "Редактировать фразу",
+-      "global": "Глобальные фразы",
+-      "locationLabel": "Добавить местоположение",
+-      "title": "Быстрые фразы",
+-      "titleLabel": "Заголовок",
+-      "titlePlaceholder": "Введите заголовок фразы"
+-    },
+     "scheduledTasks": {
+       "description": "Gérez les tâches planifiées sur tous les agents. Les tâches s'exécutent automatiquement selon le planning configuré.",
+       "noAgents": "Aucun agent trouvé. Créez d'abord un agent pour ajouter des tâches planifiées.",
+diff --git a/src/renderer/src/i18n/translate/ja-jp.json b/src/renderer/src/i18n/translate/ja-jp.json
+--- a/src/renderer/src/i18n/translate/ja-jp.json
++++ b/src/renderer/src/i18n/translate/ja-jp.json
+@@ -957,17 +957,6 @@
+         "xhigh": "超高",
+         "xhigh_description": "超高度な推論"
+       },
+-      "regular_phrases": {
+-        "add": "プロンプトを追加",
+-        "contentLabel": "内容",
+-        "contentPlaceholder": "フレーズの内容を入力してください。変数を使用することもできます。変数を使用する場合は、Tabキーを押して変数を選択し、変数を変更してください。例：\n私の名前は${name}です。",
+-        "delete": "プロンプトを削除",
+-        "deleteConfirm": "このプロンプトを削除してもよろしいですか？",
+-        "edit": "プロンプトを編集",
+-        "title": "定型プロンプト",
+-        "titleLabel": "タイトル",
+-        "titlePlaceholder": "タイトルを入力"
+-      },
+       "title": "アシスタント設定",
+       "tool_use_mode": {
+         "function": "関数",
+@@ -5262,6 +5251,24 @@
+       "enable_privacy_mode": "匿名エラーレポートとデータ統計の送信",
+       "title": "プライバシー設定"
+     },
++    "prompts": {
++      "add": "プロンプトを追加",
++      "contentLabel": "内容",
++      "contentPlaceholder": "[to be translated]:Enter prompt content. Supports ${variables}; press Tab to jump between variables. Example:\nHelp me plan a route from ${from} to ${to}, and send it to ${email}.",
++      "delete": "プロンプトを削除",
++      "deleteConfirm": "プロンプトは完全に削除されます。続行しますか？",
++      "edit": "プロンプトを編集",
++      "errors": {
++        "createFailed": "[to be translated]:Failed to create prompt",
++        "deleteFailed": "[to be translated]:Failed to delete prompt",
++        "loadFailed": "[to be translated]:Failed to load prompts",
++        "reorderFailed": "[to be translated]:Failed to reorder prompts",
++        "updateFailed": "[to be translated]:Failed to update prompt"
++      },
++      "title": "プロンプト管理",
++      "titleLabel": "タイトル",
++      "titlePlaceholder": "プロンプトのタイトルを入力してください"
++    },
+     "provider": {
+       "add": {
+         "name": {
+@@ -5555,20 +5562,6 @@
+       "select": "選択",
+       "title": "クイックメニュー"
+     },
+-    "quickPhrase": {
+-      "add": "フレーズを追加",
+-      "assistant": "アシスタントプロンプト",
+-      "contentLabel": "内容",
+-      "contentPlaceholder": "フレーズの内容を入力してください。変数を使用することもできます。変数を使用する場合は、Tabキーを押して変数を選択し、変数を変更してください。例：\n私の名前は${name}です。",
+-      "delete": "フレーズを削除",
+-      "deleteConfirm": "削除後は復元できません。続行しますか？",
+-      "edit": "フレーズを編集",
+-      "global": "グローバルクイックフレーズ",
+-      "locationLabel": "追加場所",
+-      "title": "クイックフレーズ",
+-      "titleLabel": "タイトル",
+-      "titlePlaceholder": "フレーズのタイトルを入力してください"
+-    },
+     "scheduledTasks": {
+       "description": "すべてのエージェントにわたるスケジュールされたタスクを管理します。タスクは設定されたスケジュールに従って自動的に実行されます。",
+       "noAgents": "エージェントが見つかりません。スケジュールされたタスクを追加するには、まずエージェントを作成してください。",
+diff --git a/src/renderer/src/i18n/translate/pt-pt.json b/src/renderer/src/i18n/translate/pt-pt.json
+--- a/src/renderer/src/i18n/translate/pt-pt.json
++++ b/src/renderer/src/i18n/translate/pt-pt.json
+@@ -957,17 +957,6 @@
+         "xhigh": "Extra Alta",
+         "xhigh_description": "Raciocínio de altíssimo nível"
+       },
+-      "regular_phrases": {
+-        "add": "Adicionar Frase",
+-        "contentLabel": "Conteúdo",
+-        "contentPlaceholder": "Por favor, insira o conteúdo da frase. Há suporte para o uso de variáveis, e em seguida você pode pressionar a tecla Tab para localizar rapidamente a variável e editá-la. Por exemplo:\\n Planeie uma rota de ${from} para ${to} e depois envie para ${email}.",
+-        "delete": "Excluir Frase",
+-        "deleteConfirm": "Tem certeza de que deseja excluir esta frase?",
+-        "edit": "Editar Frase",
+-        "title": "Frases Comuns",
+-        "titleLabel": "Título",
+-        "titlePlaceholder": "Digite o título"
+-      },
+       "title": "Configurações do Assistente",
+       "tool_use_mode": {
+         "function": "Função",
+@@ -5262,6 +5251,24 @@
+       "enable_privacy_mode": "Enviar relatórios de erro e estatísticas de forma anônima",
+       "title": "Configurações de Privacidade"
+     },
++    "prompts": {
++      "add": "Adicionar Prompt",
++      "contentLabel": "Conteúdo",
++      "contentPlaceholder": "[to be translated]:Enter prompt content. Supports ${variables}; press Tab to jump between variables. Example:\nHelp me plan a route from ${from} to ${to}, and send it to ${email}.",
++      "delete": "Eliminar Prompt",
++      "deleteConfirm": "O prompt será eliminado permanentemente. Continuar?",
++      "edit": "Editar Prompt",
++      "errors": {
++        "createFailed": "[to be translated]:Failed to create prompt",
++        "deleteFailed": "[to be translated]:Failed to delete prompt",
++        "loadFailed": "[to be translated]:Failed to load prompts",
++        "reorderFailed": "[to be translated]:Failed to reorder prompts",
++        "updateFailed": "[to be translated]:Failed to update prompt"
++      },
++      "title": "Gestão de Prompts",
++      "titleLabel": "Título",
++      "titlePlaceholder": "Introduza o título do prompt"
++    },
+     "provider": {
+       "add": {
+         "name": {
+@@ -5555,20 +5562,6 @@
+       "select": "Selecionar",
+       "title": "Menu de Atalho"
+     },
+-    "quickPhrase": {
+-      "add": "Adicionar Frase",
+-      "assistant": "Frase do Assistente",
+-      "contentLabel": "Conteúdo",
+-      "contentPlaceholder": "Por favor, insira o conteúdo da frase. É permitido usar variáveis, e em seguida pressionar a tecla Tab para localizar rapidamente as variáveis e editá-las. Por exemplo:\\nPlaneje uma rota de ${from} para ${to} e envie para ${email}.",
+-      "delete": "Excluir Frase",
+-      "deleteConfirm": "A frase excluída não poderá ser recuperada. Deseja continuar?",
+-      "edit": "Editar Frase",
+-      "global": "Frase Global",
+-      "locationLabel": "Adicionar Localização",
+-      "title": "Frases Rápidas",
+-      "titleLabel": "Título",
+-      "titlePlaceholder": "Por favor, insira o título da frase"
+-    },
+     "scheduledTasks": {
+       "description": "Gerencie tarefas agendadas em todos os agentes. As tarefas são executadas automaticamente conforme o agendamento configurado.",
+       "noAgents": "Nenhum agente encontrado. Crie um agente primeiro para adicionar tarefas agendadas.",
+diff --git a/src/renderer/src/i18n/translate/ro-ro.json b/src/renderer/src/i18n/translate/ro-ro.json
+--- a/src/renderer/src/i18n/translate/ro-ro.json
++++ b/src/renderer/src/i18n/translate/ro-ro.json
+@@ -957,17 +957,6 @@
+         "xhigh": "Extra ridicat",
+         "xhigh_description": "Raționament de nivel extra ridicat"
+       },
+-      "regular_phrases": {
+-        "add": "Adaugă expresie",
+-        "contentLabel": "Conținut",
+-        "contentPlaceholder": "Te rugăm să introduci conținutul expresiei; poți folosi variabile și poți apăsa Tab pentru a localiza rapid variabila de modificat. De exemplu: \nAjută-mă să planific o rută de la ${from} până la ${to} și trimite-o la ${email}.",
+-        "delete": "Șterge expresia",
+-        "deleteConfirm": "Ești sigur că vrei să ștergi această expresie?",
+-        "edit": "Editează expresia",
+-        "title": "Expresie uzuală",
+-        "titleLabel": "Titlu",
+-        "titlePlaceholder": "Introdu titlul"
+-      },
+       "title": "Setări asistent",
+       "tool_use_mode": {
+         "function": "Funcție",
+@@ -5262,6 +5251,24 @@
+       "enable_privacy_mode": "Raportare anonimă a erorilor și statisticilor",
+       "title": "Setări confidențialitate"
+     },
++    "prompts": {
++      "add": "[to be translated]:Add Prompt",
++      "contentLabel": "[to be translated]:Content",
++      "contentPlaceholder": "[to be translated]:Enter prompt content. Supports ${variables}; press Tab to jump between variables. Example:\nHelp me plan a route from ${from} to ${to}, and send it to ${email}.",
++      "delete": "[to be translated]:Delete Prompt",
++      "deleteConfirm": "[to be translated]:The prompt will be permanently deleted. Continue?",
++      "edit": "[to be translated]:Edit Prompt",
++      "errors": {
++        "createFailed": "[to be translated]:Failed to create prompt",
++        "deleteFailed": "[to be translated]:Failed to delete prompt",
++        "loadFailed": "[to be translated]:Failed to load prompts",
++        "reorderFailed": "[to be translated]:Failed to reorder prompts",
++        "updateFailed": "[to be translated]:Failed to update prompt"
++      },
++      "title": "[to be translated]:Prompt Management",
++      "titleLabel": "[to be translated]:Title",
++      "titlePlaceholder": "[to be translated]:Enter prompt title"
++    },
+     "provider": {
+       "add": {
+         "name": {
+@@ -5555,20 +5562,6 @@
+       "select": "Selectează",
+       "title": "Meniu rapid"
+     },
+-    "quickPhrase": {
+-      "add": "Adaugă expresie",
+-      "assistant": "Expresii asistent",
+-      "contentLabel": "Conținut",
+-      "contentPlaceholder": "Te rugăm să introduci conținutul expresiei, poți folosi variabile și poți apăsa Tab pentru a localiza rapid variabila de modificat. De exemplu: \nAjută-mă să planific o rută de la ${from} la ${to} și trimite-o la ${email}.",
+-      "delete": "Șterge expresia",
+-      "deleteConfirm": "Expresia nu poate fi recuperată după ștergere, continui?",
+-      "edit": "Editează expresia",
+-      "global": "Expresii globale",
+-      "locationLabel": "Adaugă locație",
+-      "title": "Expresii rapide",
+-      "titleLabel": "Titlu",
+-      "titlePlaceholder": "Te rugăm să introduci titlul expresiei"
+-    },
+     "scheduledTasks": {
+       "description": "Gestionați sarcinile programate pentru toți agenții. Sarcinile rulează automat conform programului configurat.",
+       "noAgents": "Niciun agent găsit. Creează mai întâi un agent pentru a adăuga sarcini programate.",
+diff --git a/src/renderer/src/i18n/translate/ru-ru.json b/src/renderer/src/i18n/translate/ru-ru.json
+--- a/src/renderer/src/i18n/translate/ru-ru.json
++++ b/src/renderer/src/i18n/translate/ru-ru.json
+@@ -957,17 +957,6 @@
+         "xhigh": "Сверхвысокое",
+         "xhigh_description": "Высочайший уровень рассуждений"
+       },
+-      "regular_phrases": {
+-        "add": "Добавить подсказку",
+-        "contentLabel": "Содержание",
+-        "contentPlaceholder": "Введите содержание фразы, поддерживает использование переменных, и нажмите Tab для быстрого перехода к переменной для изменения. Например: \nПомоги мне спланировать маршрут от ${from} до ${to} и отправить его на ${email}.",
+-        "delete": "Удалить подсказку",
+-        "deleteConfirm": "Вы уверены, что хотите удалить эту подсказку?",
+-        "edit": "Редактировать подсказку",
+-        "title": "Регулярные подсказки",
+-        "titleLabel": "Заголовок",
+-        "titlePlaceholder": "Введите заголовок"
+-      },
+       "title": "Настройки ассистента",
+       "tool_use_mode": {
+         "function": "Функция",
+@@ -5262,6 +5251,24 @@
+       "enable_privacy_mode": "Анонимная отчетность об ошибках и статистике",
+       "title": "Настройки конфиденциальности"
+     },
++    "prompts": {
++      "add": "Добавить промпт",
++      "contentLabel": "Содержание",
++      "contentPlaceholder": "[to be translated]:Enter prompt content. Supports ${variables}; press Tab to jump between variables. Example:\nHelp me plan a route from ${from} to ${to}, and send it to ${email}.",
++      "delete": "Удалить промпт",
++      "deleteConfirm": "Промпт будет удален без возможности восстановления. Продолжить?",
++      "edit": "Редактировать промпт",
++      "errors": {
++        "createFailed": "[to be translated]:Failed to create prompt",
++        "deleteFailed": "[to be translated]:Failed to delete prompt",
++        "loadFailed": "[to be translated]:Failed to load prompts",
++        "reorderFailed": "[to be translated]:Failed to reorder prompts",
++        "updateFailed": "[to be translated]:Failed to update prompt"
++      },
++      "title": "Управление промптами",
++      "titleLabel": "Заголовок",
++      "titlePlaceholder": "Введите заголовок промпта"
++    },
+     "provider": {
+       "add": {
+         "name": {
+@@ -5555,20 +5562,6 @@
+       "select": "Выбрать",
+       "title": "Быстрое меню"
+     },
+-    "quickPhrase": {
+-      "add": "Добавить фразу",
+-      "assistant": "Подсказки ассистента",
+-      "contentLabel": "Содержание",
+-      "contentPlaceholder": "Введите содержание фразы, поддерживает использование переменных, и нажмите Tab для быстрого перехода к переменной для изменения. Например: \nПомоги мне спланировать маршрут от ${from} до ${to} и отправить его на ${email}.",
+-      "delete": "Удалить фразу",
+-      "deleteConfirm": "После удаления фраза не может быть восстановлена, продолжить?",
+-      "edit": "Редактировать фразу",
+-      "global": "Глобальные быстрые фразы",
+-      "locationLabel": "Место добавления",
+-      "title": "Быстрые фразы",
+-      "titleLabel": "Заголовок",
+-      "titlePlaceholder": "Введите заголовок фразы"
+-    },
+     "scheduledTasks": {
+       "description": "Управляйте запланированными задачами на всех агентах. Задачи выполняются автоматически по заданному расписанию.",
+       "noAgents": "Агенты не найдены. Сначала создайте агента, чтобы добавить запланированные задачи.",
+diff --git a/src/renderer/src/i18n/translate/vi-vn.json b/src/renderer/src/i18n/translate/vi-vn.json
+--- a/src/renderer/src/i18n/translate/vi-vn.json
++++ b/src/renderer/src/i18n/translate/vi-vn.json
+@@ -957,17 +957,6 @@
+         "xhigh": "Cao đặc biệt",
+         "xhigh_description": "Lý luận cấp độ cực cao"
+       },
+-      "regular_phrases": {
+-        "add": "Thêm Cụm từ",
+-        "contentLabel": "Nội dung",
+-        "contentPlaceholder": "Vui lòng nhập nội dung cụm từ, hỗ trợ sử dụng biến và nhấn Tab để nhanh chóng định vị biến cần sửa. Ví dụ:  \nHãy giúp tôi lên lộ trình từ ${from} đến ${to} và gửi nó đến ${email}.",
+-        "delete": "Xóa cụm từ",
+-        "deleteConfirm": "Bạn có chắc chắn muốn xóa cụm từ này không?",
+-        "edit": "Chỉnh sửa cụm từ",
+-        "title": "Cụm từ thông dụng",
+-        "titleLabel": "Tiêu đề",
+-        "titlePlaceholder": "Nhập tiêu đề"
+-      },
+       "title": "Cài đặt Trợ lý",
+       "tool_use_mode": {
+         "function": "Chức năng",
+@@ -5262,6 +5251,24 @@
+       "enable_privacy_mode": "Báo cáo lỗi và thống kê ẩn danh",
+       "title": "Cài đặt quyền riêng tư"
+     },
++    "prompts": {
++      "add": "[to be translated]:Add Prompt",
++      "contentLabel": "[to be translated]:Content",
++      "contentPlaceholder": "[to be translated]:Enter prompt content. Supports ${variables}; press Tab to jump between variables. Example:\nHelp me plan a route from ${from} to ${to}, and send it to ${email}.",
++      "delete": "[to be translated]:Delete Prompt",
++      "deleteConfirm": "[to be translated]:The prompt will be permanently deleted. Continue?",
++      "edit": "[to be translated]:Edit Prompt",
++      "errors": {
++        "createFailed": "[to be translated]:Failed to create prompt",
++        "deleteFailed": "[to be translated]:Failed to delete prompt",
++        "loadFailed": "[to be translated]:Failed to load prompts",
++        "reorderFailed": "[to be translated]:Failed to reorder prompts",
++        "updateFailed": "[to be translated]:Failed to update prompt"
++      },
++      "title": "[to be translated]:Prompt Management",
++      "titleLabel": "[to be translated]:Title",
++      "titlePlaceholder": "[to be translated]:Enter prompt title"
++    },
+     "provider": {
+       "add": {
+         "name": {
+@@ -5555,20 +5562,6 @@
+       "select": "Chọn",
+       "title": "Menú Rápido"
+     },
+-    "quickPhrase": {
+-      "add": "Thêm cụm từ",
+-      "assistant": "Cụm từ Trợ lý",
+-      "contentLabel": "Nội dung",
+-      "contentPlaceholder": "Vui lòng nhập nội dung cụm từ, hỗ trợ sử dụng biến và nhấn Tab để nhanh chóng định vị biến cần sửa. Ví dụ:  \nHãy giúp tôi lên lộ trình từ ${from} đến ${to} và gửi nó đến ${email}.",
+-      "delete": "Xóa cụm từ",
+-      "deleteConfirm": "Cụm từ này không thể khôi phục sau khi xóa, tiếp tục?",
+-      "edit": "Bearbeite Phrase",
+-      "global": "Frases Globales",
+-      "locationLabel": "Thêm Vị trí",
+-      "title": "Cụm từ nhanh",
+-      "titleLabel": "Tiêu đề",
+-      "titlePlaceholder": "Vui lòng nhập tiêu đề cụm từ"
+-    },
+     "scheduledTasks": {
+       "description": "Quản lý các tác vụ đã lên lịch trên tất cả các tác nhân. Các tác vụ sẽ tự động chạy theo lịch đã cấu hình.",
+       "noAgents": "Các tác vụ theo lịch trình yêu cầu các tác nhân có chế độ Soul hoặc Quyền Bypass được bật. Cập nhật cài đặt của một tác nhân để bắt đầu.",
+diff --git a/src/renderer/src/pages/home/Inputbar/components/InputbarCore.tsx b/src/renderer/src/pages/home/Inputbar/components/InputbarCore.tsx
+--- a/src/renderer/src/pages/home/Inputbar/components/InputbarCore.tsx
++++ b/src/renderer/src/pages/home/Inputbar/components/InputbarCore.tsx
+@@ -36,6 +36,7 @@ import { usePasteHandler } from '../hooks/usePasteHandler'
+ import { getInputbarConfig } from '../registry'
+ import SendMessageButton from '../SendMessageButton'
+ import type { InputbarScope } from '../types'
++import { findNextPromptVariableRange } from './promptVariableNavigation'
+ 
+ const logger = loggerService.withContext('InputbarCore')
+ 
+@@ -126,7 +127,6 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
+   const { setFiles, setIsExpanded, toolsRegistry, triggers } = useInputbarToolsDispatch()
+   const { setExtensions } = useInputbarToolsInternalDispatch()
+   const isEmpty = text.trim().length === 0
+-  const [inputFocus, setInputFocus] = useState(false)
+   const [targetLanguage] = usePreference('feature.translate.chat.target_language')
+   const [sendMessageShortcut] = usePreference('chat.input.send_message_shortcut')
+   const [pasteLongTextAsFile] = usePreference('chat.input.paste_long_text_as_file')
+@@ -264,32 +264,18 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
+ 
+   const handleKeyDown = useCallback(
+     (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+-      if (event.key === 'Tab' && inputFocus) {
+-        event.preventDefault()
+-        const textArea = textareaRef.current?.resizableTextArea?.textArea
+-        if (!textArea) {
+-          return
+-        }
+-        const cursorPosition = textArea.selectionStart
++      if (event.key === 'Tab') {
++        const textArea = textareaRef.current?.resizableTextArea?.textArea ?? event.currentTarget
+         const selectionLength = textArea.selectionEnd - textArea.selectionStart
+-        const text = textArea.value
+-
+-        let match = text.slice(cursorPosition + selectionLength).match(/\$\{[^}]+\}/)
+-        let startIndex: number
++        const variableRange = findNextPromptVariableRange(textArea.value, textArea.selectionStart, selectionLength)
+ 
+-        if (!match) {
+-          match = text.match(/\$\{[^}]+\}/)
+-          startIndex = match?.index ?? -1
+-        } else {
+-          startIndex = cursorPosition + selectionLength + match.index!
+-        }
+-
+-        if (startIndex !== -1) {
+-          const endIndex = startIndex + match![0].length
+-          textArea.setSelectionRange(startIndex, endIndex)
++        if (variableRange) {
++          event.preventDefault()
++          textArea.setSelectionRange(variableRange.start, variableRange.end)
+           return
+         }
+       }
++
+       if (autoTranslateWithSpace && event.key === ' ') {
+         setSpaceClickCount((prev) => prev + 1)
+         if (spaceClickTimer.current) {
+@@ -332,19 +318,18 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
+       }
+     },
+     [
+-      inputFocus,
+       autoTranslateWithSpace,
+       isExpanded,
+       text.length,
+       files.length,
+-      textareaRef,
+       spaceClickCount,
+       translate,
+       handleToggleExpanded,
+       sendMessageShortcut,
+       isSendDisabled,
+       handleSendMessage,
+-      setFiles
++      setFiles,
++      textareaRef
+     ]
+   )
+ 
+@@ -503,7 +488,6 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
+   )
+ 
+   const handleFocus = useCallback(() => {
+-    setInputFocus(true)
+     setSearching(false)
+     // Don't close panel in multiple selection mode, or if triggered by input
+     if (quickPanel.isVisible && quickPanel.triggerInfo?.type !== 'input' && !quickPanel.multiple) {
+@@ -657,7 +641,6 @@ export const InputbarCore: FC<InputbarCoreProps> = ({
+             onKeyDown={handleKeyDown}
+             onPaste={(e) => handlePaste(e.nativeEvent)}
+             onFocus={handleFocus}
+-            onBlur={() => setInputFocus(false)}
+             placeholder={isTranslating ? t('chat.input.translating') : placeholder}
+             autoFocus
+             variant="borderless"
+diff --git a/src/renderer/src/pages/home/Inputbar/components/promptVariableNavigation.ts b/src/renderer/src/pages/home/Inputbar/components/promptVariableNavigation.ts
+new file mode 100644
+--- /dev/null
++++ b/src/renderer/src/pages/home/Inputbar/components/promptVariableNavigation.ts
+@@ -0,0 +1,27 @@
++const PROMPT_VARIABLE_PATTERN = /\$\{[^}]+\}/
++
++export type PromptVariableRange = {
++  start: number
++  end: number
++}
++
++export function findNextPromptVariableRange(
++  text: string,
++  cursorPosition: number,
++  selectionLength: number
++): PromptVariableRange | null {
++  const searchStart = Math.max(0, Math.min(cursorPosition + selectionLength, text.length))
++  const nextMatch = text.slice(searchStart).match(PROMPT_VARIABLE_PATTERN)
++
++  if (nextMatch?.index !== undefined) {
++    const start = searchStart + nextMatch.index
++    return { start, end: start + nextMatch[0].length }
++  }
++
++  const firstMatch = text.match(PROMPT_VARIABLE_PATTERN)
++  if (firstMatch?.index === undefined) {
++    return null
++  }
++
++  return { start: firstMatch.index, end: firstMatch.index + firstMatch[0].length }
++}
+diff --git a/src/renderer/src/pages/home/Inputbar/tools/components/QuickPhrasesButton.tsx b/src/renderer/src/pages/home/Inputbar/tools/components/QuickPhrasesButton.tsx
+--- a/src/renderer/src/pages/home/Inputbar/tools/components/QuickPhrasesButton.tsx
++++ b/src/renderer/src/pages/home/Inputbar/tools/components/QuickPhrasesButton.tsx
+@@ -1,120 +1,91 @@
+ import { Tooltip } from '@cherrystudio/ui'
++import { useMutation, useQuery } from '@data/hooks/useDataApi'
++import { loggerService } from '@logger'
+ import { ActionIconButton } from '@renderer/components/Buttons'
++import PromptEditModal from '@renderer/components/PromptEditModal'
+ import {
+   type QuickPanelListItem,
+   type QuickPanelOpenOptions,
+   QuickPanelReservedSymbol,
+   type QuickPanelTriggerInfo
+ } from '@renderer/components/QuickPanel'
+ import { useQuickPanel } from '@renderer/components/QuickPanel'
+-import { useAssistant } from '@renderer/hooks/useAssistant'
+ import { useTimer } from '@renderer/hooks/useTimer'
+ import type { ToolQuickPanelApi } from '@renderer/pages/home/Inputbar/types'
+-import QuickPhraseService from '@renderer/services/QuickPhraseService'
+-import type { QuickPhrase } from '@renderer/types'
+-import { Input, Modal, Radio, Space } from 'antd'
+-import { BotMessageSquare, Plus, Zap } from 'lucide-react'
++import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
++import type { Prompt } from '@shared/data/types/prompt'
++import { Plus, Zap } from 'lucide-react'
+ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+ import { useTranslation } from 'react-i18next'
+-import styled from 'styled-components'
++
++import { computeQuickPhraseInsertResult } from './quickPhraseInsert'
+ 
+ interface Props {
+   quickPanel: ToolQuickPanelApi
+   setInputValue: React.Dispatch<React.SetStateAction<string>>
+   resizeTextArea: () => void
+-  assistantId: string
+ }
+ 
+-const QuickPhrasesButton = ({ quickPanel, setInputValue, resizeTextArea, assistantId }: Props) => {
+-  const [quickPhrasesList, setQuickPhrasesList] = useState<QuickPhrase[]>([])
+-  const [isModalOpen, setIsModalOpen] = useState(false)
+-  const [formData, setFormData] = useState({ title: '', content: '', location: 'global' })
++const logger = loggerService.withContext('QuickPhrasesButton')
++
++const QuickPhrasesButton = ({ quickPanel, setInputValue, resizeTextArea }: Props) => {
++  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
+   const { t } = useTranslation()
+-  const quickPanelHook = useQuickPanel()
+-  const { assistant, updateAssistant } = useAssistant(assistantId)
++  const {
++    close: closeQuickPanel,
++    isVisible: isQuickPanelVisible,
++    open: openQuickPanelContext,
++    symbol: quickPanelSymbol,
++    updateList: updateQuickPanelList
++  } = useQuickPanel()
+   const { setTimeoutTimer } = useTimer()
+   const triggerInfoRef = useRef<
+     (QuickPanelTriggerInfo & { symbol?: QuickPanelReservedSymbol; searchText?: string }) | undefined
+   >(undefined)
+ 
+-  const loadQuickListPhrases = useCallback(
+-    async (regularPhrases: QuickPhrase[] = []) => {
+-      const phrases = await QuickPhraseService.getAll()
+-      if (regularPhrases.length) {
+-        setQuickPhrasesList([...regularPhrases, ...phrases])
+-        return
+-      }
+-      const assistantPrompts = assistant.regularPhrases || []
+-      setQuickPhrasesList([...assistantPrompts, ...phrases])
+-    },
+-    [assistant.regularPhrases]
+-  )
++  const { data: promptsRaw, isLoading: isPromptsLoading, error: promptsError } = useQuery('/prompts')
+ 
+-  useEffect(() => {
+-    void loadQuickListPhrases()
+-  }, [loadQuickListPhrases])
++  const { trigger: createPrompt, isLoading: isCreatingPrompt } = useMutation('POST', '/prompts', {
++    refresh: ['/prompts'],
++    onError: (error) => {
++      logger.error('Failed to create prompt', error)
++      window.toast.error(formatErrorMessageWithPrefix(error, t('settings.prompts.errors.createFailed')))
++    }
++  })
++
++  const promptItems = useMemo(() => promptsRaw || [], [promptsRaw])
+ 
+-  const handlePhraseSelect = useCallback(
+-    (phrase: QuickPhrase) => {
++  const insertText = useCallback(
++    (text: string) => {
+       setTimeoutTimer(
+         'handlePhraseSelect_1',
+         () => {
+           setInputValue((prev) => {
+             const triggerInfo = triggerInfoRef.current
+-            const textArea = document.querySelector<HTMLTextAreaElement>('.inputbar textarea')
+-
+-            const focusAndSelect = (start: number) => {
+-              setTimeoutTimer(
+-                'handlePhraseSelect_2',
+-                () => {
+-                  if (textArea) {
+-                    textArea.focus()
+-                    textArea.setSelectionRange(start, start + phrase.content.length)
+-                  }
+-                  resizeTextArea()
+-                },
+-                10
+-              )
+-            }
++            const textArea = document.querySelector('.inputbar textarea') as HTMLTextAreaElement | null
+ 
+-            if (triggerInfo?.type === 'input' && triggerInfo.position !== undefined) {
+-              const symbol = triggerInfo.symbol ?? QuickPanelReservedSymbol.Root
+-              const searchText = triggerInfo.searchText ?? ''
+-              const startIndex = triggerInfo.position
++            const result = computeQuickPhraseInsertResult({
++              currentValue: prev,
++              insertText: text,
++              rootSymbol: QuickPanelReservedSymbol.Root,
++              triggerInfo,
++              selectionStart: textArea?.selectionStart,
++              selectionEnd: textArea?.selectionEnd
++            })
++            triggerInfoRef.current = undefined
+ 
+-              let endIndex = startIndex + 1
+-              if (searchText) {
+-                const expected = symbol + searchText
+-                const actual = prev.slice(startIndex, startIndex + expected.length)
+-                if (actual === expected) {
+-                  endIndex = startIndex + expected.length
+-                } else {
+-                  while (endIndex < prev.length && !/\s/.test(prev[endIndex])) {
+-                    endIndex++
+-                  }
+-                }
+-              } else {
+-                while (endIndex < prev.length && !/\s/.test(prev[endIndex])) {
+-                  endIndex++
++            setTimeoutTimer(
++              'handlePhraseSelect_2',
++              () => {
++                if (textArea) {
++                  textArea.focus()
++                  textArea.setSelectionRange(result.selectionStart, result.selectionEnd)
+                 }
+-              }
+-
+-              const newText = prev.slice(0, startIndex) + phrase.content + prev.slice(endIndex)
+-              triggerInfoRef.current = undefined
+-              focusAndSelect(startIndex)
+-              return newText
+-            }
+-
+-            if (!textArea) {
+-              triggerInfoRef.current = undefined
+-              return prev + phrase.content
+-            }
+-
+-            const cursorPosition = textArea.selectionStart ?? prev.length
+-            const newText = prev.slice(0, cursorPosition) + phrase.content + prev.slice(cursorPosition)
+-            triggerInfoRef.current = undefined
+-            focusAndSelect(cursorPosition)
+-            return newText
++                resizeTextArea()
++              },
++              10
++            )
++            return result.value
+           })
+         },
+         10
+@@ -123,71 +94,95 @@ const QuickPhrasesButton = ({ quickPanel, setInputValue, resizeTextArea, assista
+     [setTimeoutTimer, setInputValue, resizeTextArea]
+   )
+ 
+-  const handleModalOk = async () => {
+-    if (!formData.title.trim() || !formData.content.trim()) {
+-      return
+-    }
++  const handleItemSelect = useCallback(
++    (item: Prompt) => {
++      insertText(item.content)
++    },
++    [insertText]
++  )
+ 
+-    const updatedPrompts = [
+-      ...(assistant.regularPhrases || []),
+-      {
+-        id: crypto.randomUUID(),
+-        title: formData.title,
+-        content: formData.content,
+-        createdAt: Date.now(),
+-        updatedAt: Date.now()
++  const handleAddModalSave = useCallback(
++    async (data: { title: string; content: string }) => {
++      try {
++        await createPrompt({
++          body: {
++            title: data.title,
++            content: data.content
++          }
++        })
++        setIsAddModalOpen(false)
++      } catch {
++        // handled by useMutation onError
+       }
+-    ]
+-    if (formData.location === 'assistant') {
+-      // 添加到助手的 regularPhrases
+-      updateAssistant({ ...assistant, regularPhrases: updatedPrompts })
+-    } else {
+-      // 添加到全局 Quick Phrases
+-      await QuickPhraseService.add(formData)
+-    }
+-    setIsModalOpen(false)
+-    setFormData({ title: '', content: '', location: 'global' })
+-    if (formData.location === 'assistant') {
+-      await loadQuickListPhrases(updatedPrompts)
+-      return
+-    }
+-    await loadQuickListPhrases()
+-  }
++    },
++    [createPrompt]
++  )
+ 
+   const phraseItems = useMemo(() => {
+-    const newList: QuickPanelListItem[] = quickPhrasesList.map((phrase, index) => ({
+-      label: phrase.title,
+-      description: phrase.content,
+-      icon: index < (assistant.regularPhrases?.length || 0) ? <BotMessageSquare /> : <Zap />,
+-      action: () => handlePhraseSelect(phrase)
+-    }))
++    const newList: QuickPanelListItem[] = []
++
++    if (isPromptsLoading && promptItems.length === 0) {
++      newList.push({
++        label: t('common.loading'),
++        icon: <Zap />,
++        disabled: true
++      })
++    } else if (promptsError && promptItems.length === 0) {
++      newList.push({
++        label: formatErrorMessageWithPrefix(promptsError, t('settings.prompts.errors.loadFailed')),
++        icon: <Zap />,
++        disabled: true
++      })
++    } else {
++      newList.push(
++        ...promptItems.map((item) => ({
++          label: item.title,
++          description: item.content,
++          icon: <Zap />,
++          action: () => handleItemSelect(item)
++        }))
++      )
++    }
+ 
+     newList.push({
+-      label: t('settings.quickPhrase.add') + '...',
++      label: t('settings.prompts.add') + '...',
+       icon: <Plus />,
+-      action: () => setIsModalOpen(true)
++      action: () => setIsAddModalOpen(true)
+     })
++
+     return newList
+-  }, [quickPhrasesList, t, handlePhraseSelect, assistant])
++  }, [handleItemSelect, isPromptsLoading, promptItems, promptsError, t])
+ 
+   const quickPanelOpenOptions = useMemo<QuickPanelOpenOptions>(
+     () => ({
+-      title: t('settings.quickPhrase.title'),
++      title: t('settings.prompts.title'),
+       list: phraseItems,
+       symbol: QuickPanelReservedSymbol.QuickPhrases
+     }),
+     [phraseItems, t]
+   )
+ 
++  const quickPanelOpenOptionsRef = useRef(quickPanelOpenOptions)
++
++  useEffect(() => {
++    quickPanelOpenOptionsRef.current = quickPanelOpenOptions
++  }, [quickPanelOpenOptions])
++
++  useEffect(() => {
++    if (isQuickPanelVisible && quickPanelSymbol === QuickPanelReservedSymbol.QuickPhrases) {
++      updateQuickPanelList(phraseItems)
++    }
++  }, [isQuickPanelVisible, phraseItems, quickPanelSymbol, updateQuickPanelList])
++
+   type QuickPhraseTrigger =
+     | (QuickPanelTriggerInfo & { symbol?: QuickPanelReservedSymbol; searchText?: string })
+     | undefined
+ 
+   const openQuickPanel = useCallback(
+     (triggerInfo?: QuickPhraseTrigger) => {
+       triggerInfoRef.current = triggerInfo
+-      quickPanelHook.open({
+-        ...quickPanelOpenOptions,
++      openQuickPanelContext({
++        ...quickPanelOpenOptionsRef.current,
+         triggerInfo:
+           triggerInfo && triggerInfo.type === 'input'
+             ? {
+@@ -201,21 +196,21 @@ const QuickPhrasesButton = ({ quickPanel, setInputValue, resizeTextArea, assista
+         }
+       })
+     },
+-    [quickPanelHook, quickPanelOpenOptions]
++    [openQuickPanelContext]
+   )
+ 
+   const handleOpenQuickPanel = useCallback(() => {
+-    if (quickPanelHook.isVisible && quickPanelHook.symbol === QuickPanelReservedSymbol.QuickPhrases) {
+-      quickPanelHook.close()
++    if (isQuickPanelVisible && quickPanelSymbol === QuickPanelReservedSymbol.QuickPhrases) {
++      closeQuickPanel()
+     } else {
+       openQuickPanel()
+     }
+-  }, [openQuickPanel, quickPanelHook])
++  }, [closeQuickPanel, isQuickPanelVisible, openQuickPanel, quickPanelSymbol])
+ 
+   useEffect(() => {
+     const disposeRootMenu = quickPanel.registerRootMenu([
+       {
+-        label: t('settings.quickPhrase.title'),
++        label: t('settings.prompts.title'),
+         description: '',
+         icon: <Zap />,
+         isMenu: true,
+@@ -230,9 +225,7 @@ const QuickPhrasesButton = ({ quickPanel, setInputValue, resizeTextArea, assista
+               : undefined
+ 
+           context.close('select')
+-          setTimeout(() => {
+-            openQuickPanel(rootTrigger)
+-          }, 0)
++          setTimeoutTimer('openQuickPhrasesRootMenu', () => openQuickPanel(rootTrigger), 0)
+         }
+       }
+     ])
+@@ -246,77 +239,26 @@ const QuickPhrasesButton = ({ quickPanel, setInputValue, resizeTextArea, assista
+       disposeRootMenu()
+       disposeTrigger()
+     }
+-  }, [openQuickPanel, quickPanel, t])
++  }, [openQuickPanel, quickPanel, setTimeoutTimer, t])
+ 
+   return (
+     <>
+-      <Tooltip content={t('settings.quickPhrase.title')}>
++      <Tooltip content={t('settings.prompts.title')}>
+         <ActionIconButton
+           onClick={handleOpenQuickPanel}
+-          aria-label={t('settings.quickPhrase.title')}
++          aria-label={t('settings.prompts.title')}
+           icon={<Zap size={18} />}
+         />
+       </Tooltip>
+ 
+-      <Modal
+-        title={t('settings.quickPhrase.add')}
+-        open={isModalOpen}
+-        onOk={handleModalOk}
+-        maskClosable={false}
+-        onCancel={() => {
+-          setIsModalOpen(false)
+-          setFormData({ title: '', content: '', location: 'global' })
+-        }}
+-        width={520}
+-        transitionName="animation-move-down"
+-        centered>
+-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+-          <div>
+-            <Label>{t('settings.quickPhrase.titleLabel')}</Label>
+-            <Input
+-              placeholder={t('settings.quickPhrase.titlePlaceholder')}
+-              value={formData.title}
+-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+-            />
+-          </div>
+-          <div>
+-            <Label>{t('settings.quickPhrase.contentLabel')}</Label>
+-            <Input.TextArea
+-              placeholder={t('settings.quickPhrase.contentPlaceholder')}
+-              value={formData.content}
+-              onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+-              rows={6}
+-              style={{ resize: 'none' }}
+-            />
+-          </div>
+-          <div>
+-            <Label>{t('settings.quickPhrase.locationLabel', '添加位置')}</Label>
+-            <Radio.Group
+-              value={formData.location}
+-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}>
+-              <Radio value="global">
+-                <Zap size={20} style={{ paddingRight: '4px', verticalAlign: 'middle', paddingBottom: '3px' }} />
+-                {t('settings.quickPhrase.global', '全局快速短语')}
+-              </Radio>
+-              <Radio value="assistant">
+-                <BotMessageSquare
+-                  size={20}
+-                  style={{ paddingRight: '4px', verticalAlign: 'middle', paddingBottom: '3px' }}
+-                />
+-                {t('settings.quickPhrase.assistant', '助手提示词')}
+-              </Radio>
+-            </Radio.Group>
+-          </div>
+-        </Space>
+-      </Modal>
++      <PromptEditModal
++        open={isAddModalOpen}
++        saving={isCreatingPrompt}
++        onSave={handleAddModalSave}
++        onCancel={() => setIsAddModalOpen(false)}
++      />
+     </>
+   )
+ }
+ 
+-const Label = styled.div`
+-  font-size: 14px;
+-  color: var(--color-text);
+-  margin-bottom: 8px;
+-`
+-
+ export default memo(QuickPhrasesButton)
+diff --git a/src/renderer/src/pages/home/Inputbar/tools/components/quickPhraseInsert.ts b/src/renderer/src/pages/home/Inputbar/tools/components/quickPhraseInsert.ts
+new file mode 100644
+--- /dev/null
++++ b/src/renderer/src/pages/home/Inputbar/tools/components/quickPhraseInsert.ts
+@@ -0,0 +1,70 @@
++export interface QuickPhraseInsertTrigger {
++  type: 'input' | 'button'
++  position?: number
++  symbol?: string
++  searchText?: string
++}
++
++export interface QuickPhraseInsertResult {
++  value: string
++  selectionStart: number
++  selectionEnd: number
++}
++
++interface ComputeQuickPhraseInsertOptions {
++  currentValue: string
++  insertText: string
++  rootSymbol: string
++  triggerInfo?: QuickPhraseInsertTrigger
++  selectionStart?: number | null
++  selectionEnd?: number | null
++}
++
++export function computeQuickPhraseInsertResult({
++  currentValue,
++  insertText,
++  rootSymbol,
++  triggerInfo,
++  selectionStart,
++  selectionEnd
++}: ComputeQuickPhraseInsertOptions): QuickPhraseInsertResult {
++  if (triggerInfo?.type === 'input' && triggerInfo.position !== undefined) {
++    const start = clampIndex(triggerInfo.position, currentValue.length)
++    const symbol = triggerInfo.symbol ?? rootSymbol
++    const searchText = triggerInfo.searchText ?? ''
++    const end = findQuickPanelTokenEnd(currentValue, start, symbol, searchText)
++    return replaceRange(currentValue, insertText, start, end)
++  }
++
++  const start = clampIndex(selectionStart ?? currentValue.length, currentValue.length)
++  const end = clampIndex(selectionEnd ?? start, currentValue.length)
++  return replaceRange(currentValue, insertText, Math.min(start, end), Math.max(start, end))
++}
++
++function findQuickPanelTokenEnd(text: string, start: number, symbol: string, searchText: string): number {
++  let end = start + 1
++  if (searchText) {
++    const expected = symbol + searchText
++    const actual = text.slice(start, start + expected.length)
++    if (actual === expected) {
++      return start + expected.length
++    }
++  }
++
++  while (end < text.length && !/\s/.test(text[end])) {
++    end++
++  }
++  return end
++}
++
++function replaceRange(value: string, insertText: string, start: number, end: number): QuickPhraseInsertResult {
++  return {
++    value: value.slice(0, start) + insertText + value.slice(end),
++    selectionStart: start,
++    selectionEnd: start + insertText.length
++  }
++}
++
++function clampIndex(index: number, length: number): number {
++  return Math.max(0, Math.min(index, length))
++}
+diff --git a/src/renderer/src/pages/home/Inputbar/tools/quickPhrasesTool.tsx b/src/renderer/src/pages/home/Inputbar/tools/quickPhrasesTool.tsx
+--- a/src/renderer/src/pages/home/Inputbar/tools/quickPhrasesTool.tsx
++++ b/src/renderer/src/pages/home/Inputbar/tools/quickPhrasesTool.tsx
+@@ -3,7 +3,7 @@ import { defineTool, registerTool, TopicType } from '@renderer/pages/home/Inputb
+ 
+ const quickPhrasesTool = defineTool({
+   key: 'quick_phrases',
+-  label: (t) => t('settings.quickPhrase.title'),
++  label: (t) => t('settings.prompts.title'),
+ 
+   visibleInScopes: [TopicType.Chat, TopicType.Session, 'quick-assistant'],
+ 
+@@ -12,14 +12,13 @@ const quickPhrasesTool = defineTool({
+   },
+ 
+   render: (context) => {
+-    const { assistant, actions, quickPanel } = context
++    const { actions, quickPanel } = context
+ 
+     return (
+       <QuickPhrasesButton
+         quickPanel={quickPanel}
+         setInputValue={actions.onTextChange}
+         resizeTextArea={actions.resizeTextArea}
+-        assistantId={assistant.id}
+       />
+     )
+   }
+diff --git a/src/renderer/src/pages/home/Messages/Tools/MessageAgentTools/NavigateTool.tsx b/src/renderer/src/pages/home/Messages/Tools/MessageAgentTools/NavigateTool.tsx
+--- a/src/renderer/src/pages/home/Messages/Tools/MessageAgentTools/NavigateTool.tsx
++++ b/src/renderer/src/pages/home/Messages/Tools/MessageAgentTools/NavigateTool.tsx
+@@ -31,7 +31,7 @@ const ROUTE_LABELS: Record<string, { icon: string; label: string }> = {
+   '/settings/websearch': { icon: '🔍', label: 'Web Search' },
+   '/settings/api-server': { icon: '🌐', label: 'API Server' },
+   '/settings/docprocess': { icon: '📄', label: 'Doc Processing' },
+-  '/settings/quickphrase': { icon: '⚡', label: 'Quick Phrases' },
++  '/settings/prompts': { icon: '⚡', label: 'Prompt Management' },
+   '/settings/shortcut': { icon: '⌨️', label: 'Shortcuts' },
+   '/settings/quickAssistant': { icon: '🪟', label: 'Quick Assistant' },
+   '/settings/selectionAssistant': { icon: '✂️', label: 'Selection Assistant' },
+diff --git a/src/renderer/src/pages/settings/AssistantSettings/AssistantRegularPromptsSettings.tsx b/src/renderer/src/pages/settings/AssistantSettings/AssistantRegularPromptsSettings.tsx
+deleted file mode 100644
+--- a/src/renderer/src/pages/settings/AssistantSettings/AssistantRegularPromptsSettings.tsx
++++ /dev/null
+@@ -1,194 +0,0 @@
+-import { ExclamationCircleOutlined } from '@ant-design/icons'
+-import { Flex } from '@cherrystudio/ui'
+-import { Button } from '@cherrystudio/ui'
+-import { DraggableList } from '@renderer/components/DraggableList'
+-import { DeleteIcon, EditIcon } from '@renderer/components/Icons'
+-import FileItem from '@renderer/pages/files/FileItem'
+-import type { Assistant, QuickPhrase } from '@renderer/types'
+-import { Input, Modal, Popconfirm, Space } from 'antd'
+-import { PlusIcon } from 'lucide-react'
+-import type { FC } from 'react'
+-import { useEffect, useState } from 'react'
+-import { useTranslation } from 'react-i18next'
+-import styled from 'styled-components'
+-import { v4 as uuidv4 } from 'uuid'
+-
+-import { SettingDivider, SettingRow, SettingTitle } from '..'
+-
+-const { TextArea } = Input
+-
+-interface AssistantRegularPromptsSettingsProps {
+-  assistant: Assistant
+-  updateAssistant: (assistant: Assistant) => void
+-}
+-
+-const AssistantRegularPromptsSettings: FC<AssistantRegularPromptsSettingsProps> = ({ assistant, updateAssistant }) => {
+-  const { t } = useTranslation()
+-  const [promptsList, setPromptsList] = useState<QuickPhrase[]>([])
+-  const [isModalOpen, setIsModalOpen] = useState(false)
+-  const [editingPrompt, setEditingPrompt] = useState<QuickPhrase | null>(null)
+-  const [formData, setFormData] = useState({ title: '', content: '' })
+-  const [dragging, setDragging] = useState(false)
+-
+-  useEffect(() => {
+-    setPromptsList(assistant.regularPhrases || [])
+-  }, [assistant.regularPhrases])
+-
+-  const handleAdd = () => {
+-    setEditingPrompt(null)
+-    setFormData({ title: '', content: '' })
+-    setIsModalOpen(true)
+-  }
+-
+-  const handleEdit = (prompt: QuickPhrase) => {
+-    setEditingPrompt(prompt)
+-    setFormData({ title: prompt.title, content: prompt.content })
+-    setIsModalOpen(true)
+-  }
+-
+-  const handleDelete = async (id: string) => {
+-    const updatedPrompts = promptsList.filter((prompt) => prompt.id !== id)
+-    setPromptsList(updatedPrompts)
+-    updateAssistant({ ...assistant, regularPhrases: updatedPrompts })
+-  }
+-
+-  const handleModalOk = async () => {
+-    if (!formData.title.trim() || !formData.content.trim()) {
+-      return
+-    }
+-
+-    let updatedPrompts: QuickPhrase[]
+-    if (editingPrompt) {
+-      updatedPrompts = promptsList.map((prompt) =>
+-        prompt.id === editingPrompt.id ? { ...prompt, ...formData } : prompt
+-      )
+-    } else {
+-      const newPrompt: QuickPhrase = {
+-        id: uuidv4(),
+-        createdAt: Date.now(),
+-        updatedAt: Date.now(),
+-        ...formData
+-      }
+-      updatedPrompts = [...promptsList, newPrompt]
+-    }
+-    setPromptsList(updatedPrompts)
+-    updateAssistant({ ...assistant, regularPhrases: updatedPrompts })
+-    setIsModalOpen(false)
+-  }
+-
+-  const handleUpdateOrder = async (newPrompts: QuickPhrase[]) => {
+-    setPromptsList(newPrompts)
+-    updateAssistant({ ...assistant, regularPhrases: newPrompts })
+-  }
+-
+-  const reversedPrompts = [...promptsList].reverse()
+-
+-  return (
+-    <Container>
+-      <SettingTitle>
+-        {t('assistants.settings.regular_phrases.title', 'Regular Prompts')}
+-        <Button variant="ghost" size="icon" onClick={handleAdd}>
+-          <PlusIcon size={18} />
+-        </Button>
+-      </SettingTitle>
+-      <SettingDivider />
+-      <SettingRow>
+-        <StyledPromptList>
+-          <DraggableList
+-            list={reversedPrompts}
+-            onUpdate={(newPrompts) => handleUpdateOrder([...newPrompts].reverse())}
+-            style={{ paddingBottom: dragging ? '34px' : 0 }}
+-            onDragStart={() => setDragging(true)}
+-            onDragEnd={() => setDragging(false)}>
+-            {(prompt) => (
+-              <FileItem
+-                key={prompt.id}
+-                fileInfo={{
+-                  name: prompt.title,
+-                  ext: '.txt',
+-                  extra: prompt.content,
+-                  actions: (
+-                    <Flex className="gap-1 opacity-60">
+-                      <Button key="edit" variant="ghost" size="icon" onClick={() => handleEdit(prompt)}>
+-                        <EditIcon size={14} />
+-                      </Button>
+-                      <Popconfirm
+-                        title={t('assistants.settings.regular_phrases.delete', 'Delete Prompt')}
+-                        description={t(
+-                          'assistants.settings.regular_phrases.deleteConfirm',
+-                          'Are you sure to delete this prompt?'
+-                        )}
+-                        okText={t('common.confirm')}
+-                        cancelText={t('common.cancel')}
+-                        onConfirm={() => handleDelete(prompt.id)}
+-                        icon={<ExclamationCircleOutlined style={{ color: 'red' }} />}>
+-                        <Button key="delete" variant="ghost" size="icon">
+-                          <DeleteIcon size={14} className="lucide-custom text-destructive" />
+-                        </Button>
+-                      </Popconfirm>
+-                    </Flex>
+-                  )
+-                }}
+-              />
+-            )}
+-          </DraggableList>
+-        </StyledPromptList>
+-      </SettingRow>
+-
+-      <Modal
+-        title={
+-          editingPrompt
+-            ? t('assistants.settings.regular_phrases.edit', 'Edit Prompt')
+-            : t('assistants.settings.regular_phrases.add', 'Add Prompt')
+-        }
+-        open={isModalOpen}
+-        onOk={handleModalOk}
+-        onCancel={() => setIsModalOpen(false)}
+-        width={520}
+-        transitionName="animation-move-down"
+-        centered>
+-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+-          <div>
+-            <Label>{t('assistants.settings.regular_phrases.titleLabel', 'Title')}</Label>
+-            <Input
+-              placeholder={t('assistants.settings.regular_phrases.titlePlaceholder', 'Enter title')}
+-              value={formData.title}
+-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+-            />
+-          </div>
+-          <div>
+-            <Label>{t('assistants.settings.regular_phrases.contentLabel', 'Content')}</Label>
+-            <TextArea
+-              placeholder={t('assistants.settings.regular_phrases.contentPlaceholder', 'Enter content')}
+-              value={formData.content}
+-              onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+-              rows={6}
+-              style={{ resize: 'none' }}
+-            />
+-          </div>
+-        </Space>
+-      </Modal>
+-    </Container>
+-  )
+-}
+-
+-const Container = styled.div`
+-  display: flex;
+-  flex: 1;
+-  flex-direction: column;
+-`
+-
+-const Label = styled.div`
+-  font-size: 14px;
+-  color: var(--color-text);
+-  margin-bottom: 8px;
+-`
+-
+-const StyledPromptList = styled.div`
+-  width: 100%;
+-  display: flex;
+-  flex-direction: column;
+-  gap: 8px;
+-`
+-
+-export default AssistantRegularPromptsSettings
+diff --git a/src/renderer/src/pages/settings/AssistantSettings/index.tsx b/src/renderer/src/pages/settings/AssistantSettings/index.tsx
+--- a/src/renderer/src/pages/settings/AssistantSettings/index.tsx
++++ b/src/renderer/src/pages/settings/AssistantSettings/index.tsx
+@@ -13,14 +13,13 @@ import AssistantKnowledgeBaseSettings from './AssistantKnowledgeBaseSettings'
+ import AssistantMCPSettings from './AssistantMCPSettings'
+ import AssistantModelSettings from './AssistantModelSettings'
+ import AssistantPromptSettings from './AssistantPromptSettings'
+-import AssistantRegularPromptsSettings from './AssistantRegularPromptsSettings'
+ 
+ interface AssistantSettingPopupShowParams {
+   assistant: Assistant
+   tab?: AssistantSettingPopupTab
+ }
+ 
+-type AssistantSettingPopupTab = 'prompt' | 'model' | 'messages' | 'knowledge_base' | 'mcp' | 'regular_phrases'
++type AssistantSettingPopupTab = 'prompt' | 'model' | 'messages' | 'knowledge_base' | 'mcp'
+ 
+ interface Props extends AssistantSettingPopupShowParams {
+   resolve: (assistant: Assistant) => void
+@@ -71,10 +70,6 @@ const AssistantSettingPopupContainer: React.FC<Props> = ({ resolve, tab, ...prop
+     {
+       key: 'mcp',
+       label: t('assistants.settings.mcp.label')
+-    },
+-    {
+-      key: 'regular_phrases',
+-      label: t('assistants.settings.regular_phrases.title', 'Regular Prompts')
+     }
+   ].filter(Boolean) as { key: string; label: string }[]
+ 
+@@ -133,9 +128,6 @@ const AssistantSettingPopupContainer: React.FC<Props> = ({ resolve, tab, ...prop
+             />
+           )}
+           {menu === 'mcp' && <AssistantMCPSettings assistant={assistant} updateAssistant={updateAssistant} />}
+-          {menu === 'regular_phrases' && (
+-            <AssistantRegularPromptsSettings assistant={assistant} updateAssistant={updateAssistant} />
+-          )}
+         </Settings>
+       </RowFlex>
+     </StyledModal>
+diff --git a/src/renderer/src/pages/settings/PromptSettings.tsx b/src/renderer/src/pages/settings/PromptSettings.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/renderer/src/pages/settings/PromptSettings.tsx
+@@ -0,0 +1,221 @@
++import { Button, ConfirmDialog, Flex, Spinner } from '@cherrystudio/ui'
++import { useMutation, useQuery } from '@data/hooks/useDataApi'
++import { useReorder } from '@data/hooks/useReorder'
++import { loggerService } from '@logger'
++import { DraggableList } from '@renderer/components/DraggableList'
++import { DeleteIcon, EditIcon } from '@renderer/components/Icons'
++import PromptEditModal from '@renderer/components/PromptEditModal'
++import { useTheme } from '@renderer/context/ThemeProvider'
++import FileItem from '@renderer/pages/files/FileItem'
++import { formatErrorMessageWithPrefix } from '@renderer/utils/error'
++import type { Prompt } from '@shared/data/types/prompt'
++import { PlusIcon } from 'lucide-react'
++import type { FC } from 'react'
++import { useCallback, useMemo, useState } from 'react'
++import { useTranslation } from 'react-i18next'
++
++import { SettingContainer, SettingDivider, SettingGroup, SettingRow, SettingTitle } from '.'
++
++const logger = loggerService.withContext('PromptSettings')
++
++const PromptSettings: FC = () => {
++  const { t } = useTranslation()
++  const { theme } = useTheme()
++  const [isModalOpen, setIsModalOpen] = useState(false)
++  const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null)
++  const [dragging, setDragging] = useState(false)
++  const [deletePromptId, setDeletePromptId] = useState<string | null>(null)
++
++  const { data: promptsList = [], isLoading: isPromptsLoading, error: promptsError } = useQuery('/prompts')
++
++  const { trigger: createPrompt, isLoading: isCreatingPrompt } = useMutation('POST', '/prompts', {
++    refresh: ['/prompts'],
++    onError: (error) =>
++      window.toast.error(formatErrorMessageWithPrefix(error, t('settings.prompts.errors.createFailed')))
++  })
++
++  const { trigger: updatePrompt, isLoading: isUpdatingPrompt } = useMutation('PATCH', '/prompts/:id', {
++    refresh: ['/prompts'],
++    onError: (error) =>
++      window.toast.error(formatErrorMessageWithPrefix(error, t('settings.prompts.errors.updateFailed')))
++  })
++
++  const { trigger: deletePrompt, isLoading: isDeletingPrompt } = useMutation('DELETE', '/prompts/:id', {
++    refresh: ['/prompts'],
++    onError: (error) =>
++      window.toast.error(formatErrorMessageWithPrefix(error, t('settings.prompts.errors.deleteFailed')))
++  })
++
++  const { applyReorderedList } = useReorder('/prompts')
++
++  const handleAdd = () => {
++    setEditingPrompt(null)
++    setIsModalOpen(true)
++  }
++
++  const handleEdit = (prompt: Prompt) => {
++    setEditingPrompt(prompt)
++    setIsModalOpen(true)
++  }
++
++  const handleDelete = (id: string) => {
++    setDeletePromptId(id)
++  }
++
++  const handleConfirmDelete = useCallback(async () => {
++    if (!deletePromptId) {
++      return
++    }
++
++    try {
++      await deletePrompt({ params: { id: deletePromptId } })
++      setDeletePromptId(null)
++    } catch {
++      // handled by useMutation onError
++    }
++  }, [deletePrompt, deletePromptId])
++
++  const handleCloseDeleteDialog = useCallback((open: boolean) => {
++    if (!open) {
++      setDeletePromptId(null)
++    }
++  }, [])
++
++  const handleUpdateOrder = useCallback(
++    async (newPrompts: Prompt[]) => {
++      if (newPrompts.length === 0) return
++
++      try {
++        await applyReorderedList(newPrompts)
++      } catch (error) {
++        logger.error('Failed to reorder prompts', error as Error)
++        window.toast.error(formatErrorMessageWithPrefix(error, t('settings.prompts.errors.reorderFailed')))
++      }
++    },
++    [applyReorderedList, t]
++  )
++
++  const handleDraggableUpdate = useCallback(
++    (newList: Prompt[]) => {
++      // The API returns canonical orderKey ascending (old → new), while this page displays new → old.
++      void handleUpdateOrder([...newList].reverse())
++    },
++    [handleUpdateOrder]
++  )
++
++  const handleCancelModal = useCallback(() => {
++    setIsModalOpen(false)
++  }, [])
++
++  const handleModalSave = async (data: { title: string; content: string }) => {
++    try {
++      const body = {
++        title: data.title,
++        content: data.content
++      }
++      if (editingPrompt) {
++        await updatePrompt({ params: { id: editingPrompt.id }, body })
++      } else {
++        await createPrompt({ body })
++      }
++      handleCancelModal()
++    } catch {
++      // handled by useMutation onError
++    }
++  }
++
++  // Keep the legacy settings affordance: newest prompts render first, backed by old → new API order.
++  const reversedPrompts = useMemo(() => [...promptsList].reverse(), [promptsList])
++  const promptErrorText =
++    promptsError && formatErrorMessageWithPrefix(promptsError, t('settings.prompts.errors.loadFailed'))
++  const isSavingPrompt = isCreatingPrompt || isUpdatingPrompt
++
++  return (
++    <SettingContainer theme={theme}>
++      <SettingGroup style={{ marginBottom: 0 }} theme={theme}>
++        <SettingTitle>
++          {t('settings.prompts.title')}
++          <Button variant="ghost" onClick={handleAdd} size="icon">
++            <PlusIcon size={18} />
++          </Button>
++        </SettingTitle>
++        <SettingDivider />
++        <SettingRow>
++          <div className="flex h-[calc(100vh-162px)] w-full flex-col gap-2 overflow-y-auto">
++            {isPromptsLoading && reversedPrompts.length === 0 ? (
++              <div className="flex flex-1 items-center justify-center">
++                <Spinner text={t('common.loading')} />
++              </div>
++            ) : promptsError && reversedPrompts.length === 0 ? (
++              <div className="flex flex-1 items-center justify-center text-[var(--color-text-3)] text-sm">
++                {promptErrorText}
++              </div>
++            ) : (
++              <div className={dragging ? 'pb-[34px]' : 'pb-0'}>
++                <DraggableList
++                  list={reversedPrompts}
++                  onUpdate={handleDraggableUpdate}
++                  onDragStart={() => setDragging(true)}
++                  onDragEnd={() => setDragging(false)}>
++                  {(prompt) => (
++                    <FileItem
++                      key={prompt.id}
++                      fileInfo={{
++                        name: prompt.title,
++                        ext: '.txt',
++                        extra: (
++                          <div className="flex items-center gap-2 text-[var(--color-text-3)] text-xs">
++                            <span>
++                              {prompt.content.slice(0, 80)}
++                              {prompt.content.length > 80 ? '...' : ''}
++                            </span>
++                          </div>
++                        ),
++                        actions: (
++                          <Flex className="gap-1 opacity-60">
++                            <Button key="edit" variant="ghost" onClick={() => handleEdit(prompt)} size="icon">
++                              <EditIcon size={14} />
++                            </Button>
++                            <Button
++                              key="delete"
++                              variant="ghost"
++                              onClick={() => handleDelete(prompt.id)}
++                              size="icon"
++                              loading={isDeletingPrompt && deletePromptId === prompt.id}>
++                              <DeleteIcon size={14} className="lucide-custom" />
++                            </Button>
++                          </Flex>
++                        )
++                      }}
++                    />
++                  )}
++                </DraggableList>
++              </div>
++            )}
++          </div>
++        </SettingRow>
++      </SettingGroup>
++
++      <PromptEditModal
++        open={isModalOpen}
++        prompt={editingPrompt}
++        saving={isSavingPrompt}
++        onSave={handleModalSave}
++        onCancel={handleCancelModal}
++      />
++      <ConfirmDialog
++        open={!!deletePromptId}
++        onOpenChange={handleCloseDeleteDialog}
++        title={t('settings.prompts.delete')}
++        description={t('settings.prompts.deleteConfirm')}
++        confirmText={t('common.confirm')}
++        cancelText={t('common.cancel')}
++        onConfirm={handleConfirmDelete}
++        destructive
++        confirmLoading={isDeletingPrompt}
++      />
++    </SettingContainer>
++  )
++}
++
++export default PromptSettings
+diff --git a/src/renderer/src/pages/settings/QuickPhraseSettings.tsx b/src/renderer/src/pages/settings/QuickPhraseSettings.tsx
+deleted file mode 100644
+--- a/src/renderer/src/pages/settings/QuickPhraseSettings.tsx
++++ /dev/null
+@@ -1,177 +0,0 @@
+-import { ExclamationCircleOutlined } from '@ant-design/icons'
+-import { Flex } from '@cherrystudio/ui'
+-import { Button } from '@cherrystudio/ui'
+-import { DraggableList } from '@renderer/components/DraggableList'
+-import { DeleteIcon, EditIcon } from '@renderer/components/Icons'
+-import { useTheme } from '@renderer/context/ThemeProvider'
+-import FileItem from '@renderer/pages/files/FileItem'
+-import QuickPhraseService from '@renderer/services/QuickPhraseService'
+-import type { QuickPhrase } from '@renderer/types'
+-import { Input, Modal, Popconfirm, Space } from 'antd'
+-import { PlusIcon } from 'lucide-react'
+-import type { FC } from 'react'
+-import { useEffect, useState } from 'react'
+-import { useTranslation } from 'react-i18next'
+-import styled from 'styled-components'
+-
+-import { SettingContainer, SettingDivider, SettingGroup, SettingRow, SettingTitle } from '.'
+-
+-const { TextArea } = Input
+-
+-const QuickPhraseSettings: FC = () => {
+-  const { t } = useTranslation()
+-  const [phrasesList, setPhrasesList] = useState<QuickPhrase[]>([])
+-  const [isModalOpen, setIsModalOpen] = useState(false)
+-  const [editingPhrase, setEditingPhrase] = useState<QuickPhrase | null>(null)
+-  const [formData, setFormData] = useState({ title: '', content: '' })
+-  const [dragging, setDragging] = useState(false)
+-  const { theme } = useTheme()
+-
+-  const loadPhrases = async () => {
+-    const data = await QuickPhraseService.getAll()
+-    setPhrasesList(data)
+-  }
+-
+-  useEffect(() => {
+-    void loadPhrases()
+-  }, [])
+-
+-  const handleAdd = () => {
+-    setEditingPhrase(null)
+-    setFormData({ title: '', content: '' })
+-    setIsModalOpen(true)
+-  }
+-
+-  const handleEdit = (phrase: QuickPhrase) => {
+-    setEditingPhrase(phrase)
+-    setFormData({ title: phrase.title, content: phrase.content })
+-    setIsModalOpen(true)
+-  }
+-
+-  const handleDelete = async (id: string) => {
+-    await QuickPhraseService.delete(id)
+-    await loadPhrases()
+-  }
+-
+-  const handleModalOk = async () => {
+-    if (!formData.title.trim() || !formData.content.trim()) {
+-      return
+-    }
+-
+-    if (editingPhrase) {
+-      await QuickPhraseService.update(editingPhrase.id, formData)
+-    } else {
+-      await QuickPhraseService.add(formData)
+-    }
+-    setIsModalOpen(false)
+-    await loadPhrases()
+-  }
+-
+-  const handleUpdateOrder = async (newPhrases: QuickPhrase[]) => {
+-    setPhrasesList(newPhrases)
+-    await QuickPhraseService.updateOrder(newPhrases)
+-  }
+-
+-  const reversedPhrases = [...phrasesList].reverse()
+-
+-  return (
+-    <SettingContainer theme={theme}>
+-      <SettingGroup style={{ marginBottom: 0 }} theme={theme}>
+-        <SettingTitle>
+-          {t('settings.quickPhrase.title')}
+-          <Button variant="ghost" onClick={handleAdd} size="icon">
+-            <PlusIcon size={18} />
+-          </Button>
+-        </SettingTitle>
+-        <SettingDivider />
+-        <SettingRow>
+-          <QuickPhraseList>
+-            <DraggableList
+-              list={reversedPhrases}
+-              onUpdate={(newPhrases) => handleUpdateOrder([...newPhrases].reverse())}
+-              style={{ paddingBottom: dragging ? '34px' : 0 }}
+-              onDragStart={() => setDragging(true)}
+-              onDragEnd={() => setDragging(false)}>
+-              {(phrase) => (
+-                <FileItem
+-                  key={phrase.id}
+-                  fileInfo={{
+-                    name: phrase.title,
+-                    ext: '.txt',
+-                    extra: phrase.content,
+-                    actions: (
+-                      <Flex className="gap-1 opacity-60">
+-                        <Button key="edit" variant="ghost" onClick={() => handleEdit(phrase)} size="icon">
+-                          <EditIcon size={14} />
+-                        </Button>
+-                        <Popconfirm
+-                          title={t('settings.quickPhrase.delete')}
+-                          description={t('settings.quickPhrase.deleteConfirm')}
+-                          okText={t('common.confirm')}
+-                          cancelText={t('common.cancel')}
+-                          onConfirm={() => handleDelete(phrase.id)}
+-                          icon={<ExclamationCircleOutlined style={{ color: 'red' }} />}>
+-                          <Button key="delete" variant="ghost" onClick={() => {}} size="icon">
+-                            <DeleteIcon size={14} className="lucide-custom" />
+-                          </Button>
+-                        </Popconfirm>
+-                      </Flex>
+-                    )
+-                  }}
+-                />
+-              )}
+-            </DraggableList>
+-          </QuickPhraseList>
+-        </SettingRow>
+-      </SettingGroup>
+-
+-      <Modal
+-        title={editingPhrase ? t('settings.quickPhrase.edit') : t('settings.quickPhrase.add')}
+-        open={isModalOpen}
+-        onOk={handleModalOk}
+-        onCancel={() => setIsModalOpen(false)}
+-        width={520}
+-        transitionName="animation-move-down"
+-        centered
+-        maskClosable={false}>
+-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+-          <div>
+-            <Label>{t('settings.quickPhrase.titleLabel')}</Label>
+-            <Input
+-              placeholder={t('settings.quickPhrase.titlePlaceholder')}
+-              value={formData.title}
+-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+-            />
+-          </div>
+-          <div>
+-            <Label>{t('settings.quickPhrase.contentLabel')}</Label>
+-            <TextArea
+-              placeholder={t('settings.quickPhrase.contentPlaceholder')}
+-              value={formData.content}
+-              onChange={(e) => setFormData({ ...formData, content: e.target.value })}
+-              rows={6}
+-              style={{ resize: 'none' }}
+-            />
+-          </div>
+-        </Space>
+-      </Modal>
+-    </SettingContainer>
+-  )
+-}
+-
+-const Label = styled.div`
+-  font-size: 14px;
+-  color: var(--color-text);
+-  margin-bottom: 8px;
+-`
+-
+-const QuickPhraseList = styled.div`
+-  width: 100%;
+-  height: calc(100vh - 162px);
+-  overflow-y: auto;
+-  display: flex;
+-  flex-direction: column;
+-  gap: 8px;
+-`
+-
+-export default QuickPhraseSettings
+diff --git a/src/renderer/src/pages/settings/SettingsPage.tsx b/src/renderer/src/pages/settings/SettingsPage.tsx
+--- a/src/renderer/src/pages/settings/SettingsPage.tsx
++++ b/src/renderer/src/pages/settings/SettingsPage.tsx
+@@ -120,9 +120,9 @@ const SettingsPage: FC = () => {
+             />
+             <MenuItem
+               icon={<Zap size={18} />}
+-              label={t('settings.quickPhrase.title')}
+-              active={isActive('/settings/quickphrase')}
+-              onClick={() => go('/settings/quickphrase')}
++              label={t('settings.prompts.title')}
++              active={isActive('/settings/prompts')}
++              onClick={() => go('/settings/prompts')}
+             />
+             <MenuItem
+               icon={<Command size={18} />}
+diff --git a/src/renderer/src/routeTree.gen.ts b/src/renderer/src/routeTree.gen.ts
+--- a/src/renderer/src/routeTree.gen.ts
++++ b/src/renderer/src/routeTree.gen.ts
+@@ -19,9 +19,9 @@ import { Route as SettingsSkillsRouteImport } from './routes/settings/skills'
+ import { Route as SettingsShortcutRouteImport } from './routes/settings/shortcut'
+ import { Route as SettingsSelectionAssistantRouteImport } from './routes/settings/selectionAssistant'
+ import { Route as SettingsScheduledTasksRouteImport } from './routes/settings/scheduled-tasks'
+-import { Route as SettingsQuickphraseRouteImport } from './routes/settings/quickphrase'
+ import { Route as SettingsQuickAssistantRouteImport } from './routes/settings/quickAssistant'
+ import { Route as SettingsProviderRouteImport } from './routes/settings/provider'
++import { Route as SettingsPromptsRouteImport } from './routes/settings/prompts'
+ import { Route as SettingsNotesRouteImport } from './routes/settings/notes'
+ import { Route as SettingsModelRouteImport } from './routes/settings/model'
+ import { Route as SettingsMcpRouteImport } from './routes/settings/mcp'
+@@ -109,11 +109,6 @@ const SettingsScheduledTasksRoute = SettingsScheduledTasksRouteImport.update({
+   path: '/scheduled-tasks',
+   getParentRoute: () => SettingsRoute,
+ } as any)
+-const SettingsQuickphraseRoute = SettingsQuickphraseRouteImport.update({
+-  id: '/quickphrase',
+-  path: '/quickphrase',
+-  getParentRoute: () => SettingsRoute,
+-} as any)
+ const SettingsQuickAssistantRoute = SettingsQuickAssistantRouteImport.update({
+   id: '/quickAssistant',
+   path: '/quickAssistant',
+@@ -124,6 +119,11 @@ const SettingsProviderRoute = SettingsProviderRouteImport.update({
+   path: '/provider',
+   getParentRoute: () => SettingsRoute,
+ } as any)
++const SettingsPromptsRoute = SettingsPromptsRouteImport.update({
++  id: '/prompts',
++  path: '/prompts',
++  getParentRoute: () => SettingsRoute,
++} as any)
+ const SettingsNotesRoute = SettingsNotesRouteImport.update({
+   id: '/notes',
+   path: '/notes',
+@@ -328,9 +328,9 @@ export interface FileRoutesByFullPath {
+   '/settings/mcp': typeof SettingsMcpRouteWithChildren
+   '/settings/model': typeof SettingsModelRoute
+   '/settings/notes': typeof SettingsNotesRoute
++  '/settings/prompts': typeof SettingsPromptsRoute
+   '/settings/provider': typeof SettingsProviderRoute
+   '/settings/quickAssistant': typeof SettingsQuickAssistantRoute
+-  '/settings/quickphrase': typeof SettingsQuickphraseRoute
+   '/settings/scheduled-tasks': typeof SettingsScheduledTasksRoute
+   '/settings/selectionAssistant': typeof SettingsSelectionAssistantRoute
+   '/settings/shortcut': typeof SettingsShortcutRoute
+@@ -376,9 +376,9 @@ export interface FileRoutesByTo {
+   '/settings/general': typeof SettingsGeneralRoute
+   '/settings/model': typeof SettingsModelRoute
+   '/settings/notes': typeof SettingsNotesRoute
++  '/settings/prompts': typeof SettingsPromptsRoute
+   '/settings/provider': typeof SettingsProviderRoute
+   '/settings/quickAssistant': typeof SettingsQuickAssistantRoute
+-  '/settings/quickphrase': typeof SettingsQuickphraseRoute
+   '/settings/scheduled-tasks': typeof SettingsScheduledTasksRoute
+   '/settings/selectionAssistant': typeof SettingsSelectionAssistantRoute
+   '/settings/shortcut': typeof SettingsShortcutRoute
+@@ -426,9 +426,9 @@ export interface FileRoutesById {
+   '/settings/mcp': typeof SettingsMcpRouteWithChildren
+   '/settings/model': typeof SettingsModelRoute
+   '/settings/notes': typeof SettingsNotesRoute
++  '/settings/prompts': typeof SettingsPromptsRoute
+   '/settings/provider': typeof SettingsProviderRoute
+   '/settings/quickAssistant': typeof SettingsQuickAssistantRoute
+-  '/settings/quickphrase': typeof SettingsQuickphraseRoute
+   '/settings/scheduled-tasks': typeof SettingsScheduledTasksRoute
+   '/settings/selectionAssistant': typeof SettingsSelectionAssistantRoute
+   '/settings/shortcut': typeof SettingsShortcutRoute
+@@ -478,9 +478,9 @@ export interface FileRouteTypes {
+     | '/settings/mcp'
+     | '/settings/model'
+     | '/settings/notes'
++    | '/settings/prompts'
+     | '/settings/provider'
+     | '/settings/quickAssistant'
+-    | '/settings/quickphrase'
+     | '/settings/scheduled-tasks'
+     | '/settings/selectionAssistant'
+     | '/settings/shortcut'
+@@ -526,9 +526,9 @@ export interface FileRouteTypes {
+     | '/settings/general'
+     | '/settings/model'
+     | '/settings/notes'
++    | '/settings/prompts'
+     | '/settings/provider'
+     | '/settings/quickAssistant'
+-    | '/settings/quickphrase'
+     | '/settings/scheduled-tasks'
+     | '/settings/selectionAssistant'
+     | '/settings/shortcut'
+@@ -575,9 +575,9 @@ export interface FileRouteTypes {
+     | '/settings/mcp'
+     | '/settings/model'
+     | '/settings/notes'
++    | '/settings/prompts'
+     | '/settings/provider'
+     | '/settings/quickAssistant'
+-    | '/settings/quickphrase'
+     | '/settings/scheduled-tasks'
+     | '/settings/selectionAssistant'
+     | '/settings/shortcut'
+@@ -680,13 +680,6 @@ declare module '@tanstack/react-router' {
+       preLoaderRoute: typeof SettingsScheduledTasksRouteImport
+       parentRoute: typeof SettingsRoute
+     }
+-    '/settings/quickphrase': {
+-      id: '/settings/quickphrase'
+-      path: '/quickphrase'
+-      fullPath: '/settings/quickphrase'
+-      preLoaderRoute: typeof SettingsQuickphraseRouteImport
+-      parentRoute: typeof SettingsRoute
+-    }
+     '/settings/quickAssistant': {
+       id: '/settings/quickAssistant'
+       path: '/quickAssistant'
+@@ -701,6 +694,13 @@ declare module '@tanstack/react-router' {
+       preLoaderRoute: typeof SettingsProviderRouteImport
+       parentRoute: typeof SettingsRoute
+     }
++    '/settings/prompts': {
++      id: '/settings/prompts'
++      path: '/prompts'
++      fullPath: '/settings/prompts'
++      preLoaderRoute: typeof SettingsPromptsRouteImport
++      parentRoute: typeof SettingsRoute
++    }
+     '/settings/notes': {
+       id: '/settings/notes'
+       path: '/notes'
+@@ -1037,9 +1037,9 @@ interface SettingsRouteChildren {
+   SettingsMcpRoute: typeof SettingsMcpRouteWithChildren
+   SettingsModelRoute: typeof SettingsModelRoute
+   SettingsNotesRoute: typeof SettingsNotesRoute
++  SettingsPromptsRoute: typeof SettingsPromptsRoute
+   SettingsProviderRoute: typeof SettingsProviderRoute
+   SettingsQuickAssistantRoute: typeof SettingsQuickAssistantRoute
+-  SettingsQuickphraseRoute: typeof SettingsQuickphraseRoute
+   SettingsScheduledTasksRoute: typeof SettingsScheduledTasksRoute
+   SettingsSelectionAssistantRoute: typeof SettingsSelectionAssistantRoute
+   SettingsShortcutRoute: typeof SettingsShortcutRoute
+@@ -1060,9 +1060,9 @@ const SettingsRouteChildren: SettingsRouteChildren = {
+   SettingsMcpRoute: SettingsMcpRouteWithChildren,
+   SettingsModelRoute: SettingsModelRoute,
+   SettingsNotesRoute: SettingsNotesRoute,
++  SettingsPromptsRoute: SettingsPromptsRoute,
+   SettingsProviderRoute: SettingsProviderRoute,
+   SettingsQuickAssistantRoute: SettingsQuickAssistantRoute,
+-  SettingsQuickphraseRoute: SettingsQuickphraseRoute,
+   SettingsScheduledTasksRoute: SettingsScheduledTasksRoute,
+   SettingsSelectionAssistantRoute: SettingsSelectionAssistantRoute,
+   SettingsShortcutRoute: SettingsShortcutRoute,
+diff --git a/src/renderer/src/routes/settings/prompts.tsx b/src/renderer/src/routes/settings/prompts.tsx
+new file mode 100644
+--- /dev/null
++++ b/src/renderer/src/routes/settings/prompts.tsx
+@@ -0,0 +1,6 @@
++import PromptSettings from '@renderer/pages/settings/PromptSettings'
++import { createFileRoute } from '@tanstack/react-router'
++
++export const Route = createFileRoute('/settings/prompts')({
++  component: PromptSettings
++})
+diff --git a/src/renderer/src/routes/settings/quickphrase.tsx b/src/renderer/src/routes/settings/quickphrase.tsx
+deleted file mode 100644
+--- a/src/renderer/src/routes/settings/quickphrase.tsx
++++ /dev/null
+@@ -1,6 +0,0 @@
+-import QuickPhraseSettings from '@renderer/pages/settings/QuickPhraseSettings'
+-import { createFileRoute } from '@tanstack/react-router'
+-
+-export const Route = createFileRoute('/settings/quickphrase')({
+-  component: QuickPhraseSettings
+-})
+diff --git a/src/renderer/src/services/QuickPhraseService.ts b/src/renderer/src/services/QuickPhraseService.ts
+deleted file mode 100644
+--- a/src/renderer/src/services/QuickPhraseService.ts
++++ /dev/null
+@@ -1,90 +0,0 @@
+-import { loggerService } from '@logger'
+-import db from '@renderer/databases'
+-import type { QuickPhrase } from '@renderer/types'
+-import { v4 as uuidv4 } from 'uuid'
+-
+-const logger = loggerService.withContext('QuickPhraseService')
+-
+-export class QuickPhraseService {
+-  private static _isInitialized: boolean = false
+-
+-  static async init() {
+-    if (QuickPhraseService._isInitialized) {
+-      return
+-    }
+-
+-    try {
+-      await db.open()
+-      QuickPhraseService._isInitialized = true
+-    } catch (error) {
+-      logger.error('Failed to open Dexie database:', error as Error)
+-    }
+-  }
+-
+-  static async getAll(): Promise<QuickPhrase[]> {
+-    // Ensure database is initialized before
+-    await QuickPhraseService.init()
+-    const phrases = await db.quick_phrases.toArray()
+-    return phrases.sort((a, b) => (b.order ?? 0) - (a.order ?? 0))
+-  }
+-
+-  static async add(data: Pick<QuickPhrase, 'title' | 'content'>): Promise<QuickPhrase> {
+-    const now = Date.now()
+-    const phrases = await this.getAll()
+-
+-    await Promise.all(
+-      phrases.map((phrase) =>
+-        db.quick_phrases.update(phrase.id, {
+-          order: (phrase.order ?? 0) + 1
+-        })
+-      )
+-    )
+-
+-    const phrase: QuickPhrase = {
+-      id: uuidv4(),
+-      title: data.title,
+-      content: data.content,
+-      createdAt: now,
+-      updatedAt: now,
+-      order: 0
+-    }
+-
+-    await db.quick_phrases.add(phrase)
+-    return phrase
+-  }
+-
+-  static async update(id: string, data: Pick<QuickPhrase, 'title' | 'content'>): Promise<void> {
+-    await QuickPhraseService.init()
+-    await db.quick_phrases.update(id, {
+-      ...data,
+-      updatedAt: Date.now()
+-    })
+-  }
+-
+-  static async delete(id: string): Promise<void> {
+-    await db.quick_phrases.delete(id)
+-    const phrases = await this.getAll()
+-    await Promise.all(
+-      phrases.map((phrase, index) =>
+-        db.quick_phrases.update(phrase.id, {
+-          order: phrases.length - 1 - index
+-        })
+-      )
+-    )
+-  }
+-
+-  static async updateOrder(phrases: QuickPhrase[]): Promise<void> {
+-    const now = Date.now()
+-    await QuickPhraseService.init()
+-    await Promise.all(
+-      phrases.map((phrase, index) =>
+-        db.quick_phrases.update(phrase.id, {
+-          order: phrases.length - 1 - index,
+-          updatedAt: now
+-        })
+-      )
+-    )
+-  }
+-}
+-
+-export default QuickPhraseService
+diff --git a/v2-refactor-temp/docs/breaking-changes/2026-05-06-simplify-prompt-management.md b/v2-refactor-temp/docs/breaking-changes/2026-05-06-simplify-prompt-management.md
+new file mode 100644
+--- /dev/null
++++ b/v2-refactor-temp/docs/breaking-changes/2026-05-06-simplify-prompt-management.md
+@@ -0,0 +1,23 @@
++---
++title: Prompt Management simplified
++category: changed
++severity: notice
++introduced_in_pr: "#13430"
++date: 2026-05-06
++---
++
++## What changed
++
++Prompt Management is now a single SQLite-backed prompt list with title and content only. Quick phrases are migrated into this list, while prompt versions, rollback, variables, and separate global/assistant prompt lists are removed.
++
++## Why this matters to the user
++
++Users will see the Quick Phrase settings entry replaced by Prompt Management, and prompt insertion from the Quick Panel now reads from the unified prompt list. Existing assistant-specific regular phrases are not migrated into the new prompt table.
++
++## What the user should do
++
++Review the unified Prompt Management list after upgrading and recreate any assistant-specific regular phrases that are still needed.
++
++## Notes for release manager
++
++Merge this with other v2 prompt-management release notes if the final product wording changes before v2.0.0.

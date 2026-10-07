@@ -1,0 +1,3225 @@
+diff --git a/src/__tests__/base-plugin.test.ts b/src/__tests__/base-plugin.test.ts
+index 7bf2568..d2b8368 100644
+--- a/src/__tests__/base-plugin.test.ts
++++ b/src/__tests__/base-plugin.test.ts
+@@ -26,4 +26,45 @@ describe('BasePlugin', () => {
+     expect(spy).toHaveBeenCalled()
+     expect(unsub).toHaveBeenCalled()
+   })
++
++  describe('BasePlugin hardening', () => {
++    class TestPluginHardened extends BasePlugin<{ destroy: [] }, unknown> {
++      public initCount = 0
++      protected onInit() {
++        this.initCount++
++      }
++      public get isDestroyedPublic() {
++        return (this as any).destroyed
++      }
++    }
++
++    it('destroy is idempotent: second call does not re-emit destroy', () => {
++      const plugin = new TestPluginHardened({})
++      const onDestroy = jest.fn()
++      plugin.on('destroy', onDestroy)
++      plugin.destroy()
++      plugin.destroy()
++      expect(onDestroy).toHaveBeenCalledTimes(1)
++    })
++
++    it('clears all own listeners after destroy (unAll)', () => {
++      const plugin = new TestPluginHardened({})
++      const cb = jest.fn()
++      plugin.on('destroy', cb)
++      plugin.destroy()
++      // re-init + destroy again: old listener must NOT fire a second time
++      plugin._init({} as never)
++      plugin.destroy()
++      expect(cb).toHaveBeenCalledTimes(1)
++    })
++
++    it('exposes protected destroyed flag to subclasses', () => {
++      const plugin = new TestPluginHardened({})
++      expect(plugin.isDestroyedPublic).toBe(false)
++      plugin.destroy()
++      expect(plugin.isDestroyedPublic).toBe(true)
++      plugin._init({} as never)
++      expect(plugin.isDestroyedPublic).toBe(false)
++    })
++  })
+ })
+diff --git a/src/__tests__/draggable.test.ts b/src/__tests__/draggable.test.ts
+deleted file mode 100644
+index 0bb404d..0000000
+--- a/src/__tests__/draggable.test.ts
++++ /dev/null
+@@ -1,93 +0,0 @@
+-import { makeDraggable } from '../draggable.js'
+-
+-describe('makeDraggable', () => {
+-  beforeAll(() => {
+-    Object.defineProperty(window, 'matchMedia', {
+-      writable: true,
+-      value: jest.fn().mockReturnValue({
+-        matches: false,
+-        addListener: jest.fn(),
+-        removeListener: jest.fn(),
+-      }),
+-    })
+-    if (typeof window.PointerEvent === 'undefined') {
+-      class FakePointerEvent extends MouseEvent {
+-        constructor(type: string, props: any) {
+-          super(type, props)
+-        }
+-      }
+-      // @ts-expect-error
+-      window.PointerEvent = FakePointerEvent
+-      // @ts-expect-error
+-      global.PointerEvent = FakePointerEvent
+-    }
+-  })
+-  test('drag still works after a two-finger touch', () => {
+-    const el = document.createElement('div')
+-    document.body.appendChild(el)
+-    jest.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+-      left: 0,
+-      top: 0,
+-      width: 100,
+-      height: 100,
+-      right: 100,
+-      bottom: 100,
+-      x: 0,
+-      y: 0,
+-      toJSON: () => {},
+-    })
+-    const pointerEvent = (type: string, props: { clientX: number; clientY: number; pointerId: number }) => {
+-      const e = new PointerEvent(type, props)
+-      Object.defineProperty(e, 'pointerId', { value: props.pointerId, configurable: true })
+-      return e
+-    }
+-    const onDrag = jest.fn()
+-    const unsubscribe = makeDraggable(el, onDrag, undefined, undefined, 0)
+-
+-    // Two-finger tap: the second finger lifts before the first
+-    el.dispatchEvent(pointerEvent('pointerdown', { clientX: 10, clientY: 10, pointerId: 1 }))
+-    el.dispatchEvent(pointerEvent('pointerdown', { clientX: 50, clientY: 10, pointerId: 2 }))
+-    document.dispatchEvent(pointerEvent('pointerup', { clientX: 50, clientY: 10, pointerId: 2 }))
+-    document.dispatchEvent(pointerEvent('pointerup', { clientX: 10, clientY: 10, pointerId: 1 }))
+-
+-    // A subsequent single-finger drag should work
+-    el.dispatchEvent(pointerEvent('pointerdown', { clientX: 10, clientY: 10, pointerId: 3 }))
+-    document.dispatchEvent(pointerEvent('pointermove', { clientX: 30, clientY: 10, pointerId: 3 }))
+-    document.dispatchEvent(pointerEvent('pointerup', { clientX: 30, clientY: 10, pointerId: 3 }))
+-
+-    expect(onDrag).toHaveBeenCalled()
+-
+-    unsubscribe()
+-    el.remove()
+-  })
+-
+-  test('invokes callbacks on drag', () => {
+-    const el = document.createElement('div')
+-    document.body.appendChild(el)
+-    jest.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+-      left: 0,
+-      top: 0,
+-      width: 100,
+-      height: 100,
+-      right: 100,
+-      bottom: 100,
+-      x: 0,
+-      y: 0,
+-      toJSON: () => {},
+-    })
+-    const onDrag = jest.fn()
+-    const onStart = jest.fn()
+-    const onEnd = jest.fn()
+-    const unsubscribe = makeDraggable(el, onDrag, onStart, onEnd, 0)
+-
+-    el.dispatchEvent(new PointerEvent('pointerdown', { clientX: 10, clientY: 10 }))
+-    document.dispatchEvent(new PointerEvent('pointermove', { clientX: 20, clientY: 20 }))
+-    document.dispatchEvent(new PointerEvent('pointerup', { clientX: 20, clientY: 20 }))
+-
+-    expect(onStart).toHaveBeenCalled()
+-    expect(onDrag).toHaveBeenCalled()
+-    expect(onEnd).toHaveBeenCalled()
+-
+-    unsubscribe()
+-  })
+-})
+diff --git a/src/__tests__/envelope-leaks.test.ts b/src/__tests__/envelope-leaks.test.ts
+new file mode 100644
+index 0000000..6508173
+--- /dev/null
++++ b/src/__tests__/envelope-leaks.test.ts
+@@ -0,0 +1,164 @@
++import EnvelopePlugin from '../plugins/envelope.js'
++
++// jsdom implements almost none of the SVG geometry APIs envelope.ts relies on
++// (SVGSVGElement.viewBox, SVGSVGElement.createSVGPoint, SVGPointList). Stub
++// just enough of them, on the specific svg/polyline instances Polyline
++// creates, for addPolyPoint/removePolyPoint to run through their real logic.
++class FakeSvgPointList {
++  private items: { x: number; y: number }[]
++  constructor(initial: { x: number; y: number }[]) {
++    this.items = initial
++  }
++  get numberOfItems() {
++    return this.items.length
++  }
++  getItem(i: number) {
++    return this.items[i]
++  }
++  insertItemBefore(item: { x: number; y: number }, index: number) {
++    this.items.splice(index, 0, item)
++    return item
++  }
++  removeItem(index: number) {
++    return this.items.splice(index, 1)[0]
++  }
++  [Symbol.iterator]() {
++    return this.items[Symbol.iterator]()
++  }
++}
++
++const mockSvgGeometry = (svg: SVGSVGElement, width = 100, height = 100) => {
++  Object.defineProperty(svg, 'viewBox', {
++    configurable: true,
++    value: { baseVal: { width, height } },
++  })
++  ;(svg as any).createSVGPoint = () => ({ x: 0, y: 0 })
++
++  const polylineEl = svg.querySelector('polyline') as SVGPolylineElement
++  Object.defineProperty(polylineEl, 'points', {
++    configurable: true,
++    value: new FakeSvgPointList([
++      { x: 0, y: height },
++      { x: width, y: height },
++    ]),
++  })
++}
++
++const createWaveSurfer = (duration = 10) => {
++  const wrapper = document.createElement('div')
++  document.body.appendChild(wrapper)
++
++  return {
++    getWrapper: () => wrapper,
++    getDuration: () => duration,
++    getDecodedData: () => null,
++    getVolume: () => 1,
++    getCurrentTime: () => 0,
++    setVolume: () => undefined,
++    on: () => () => undefined,
++  }
++}
++
++describe('EnvelopePlugin leak fixes', () => {
++  beforeAll(() => {
++    Object.defineProperty(window, 'matchMedia', {
++      writable: true,
++      value: jest.fn().mockReturnValue({
++        matches: false,
++        addListener: jest.fn(),
++        removeListener: jest.fn(),
++      }),
++    })
++  })
++
++  afterEach(() => {
++    document.body.innerHTML = ''
++  })
++
++  it('does not accumulate polyline subscriptions across re-inits of the polyline', () => {
++    const plugin = EnvelopePlugin.create({ points: [] })
++    const anyPlugin = plugin as any
++    anyPlugin.wavesurfer = createWaveSurfer()
++
++    anyPlugin.initPolyline()
++    const after1 = anyPlugin.polylineSubscriptions.length
++
++    anyPlugin.initPolyline()
++    const after2 = anyPlugin.polylineSubscriptions.length
++
++    expect(after1).toBeGreaterThan(0)
++    expect(after2).toBe(after1) // replaced, not accumulated
++  })
++
++  it('drains polyline subscriptions on plugin destroy', () => {
++    const plugin = EnvelopePlugin.create({ points: [] })
++    const anyPlugin = plugin as any
++    anyPlugin.wavesurfer = createWaveSurfer()
++
++    anyPlugin.initPolyline()
++    expect(anyPlugin.polylineSubscriptions.length).toBeGreaterThan(0)
++
++    plugin.destroy()
++    expect(anyPlugin.polylineSubscriptions.length).toBe(0)
++  })
++
++  it('removePolyPoint disposes the per-point drag stream instead of leaking it', () => {
++    const plugin = EnvelopePlugin.create({ points: [] })
++    const anyPlugin = plugin as any
++    anyPlugin.wavesurfer = createWaveSurfer()
++    anyPlugin.initPolyline()
++    mockSvgGeometry(anyPlugin.polyline.svg)
++
++    const point = { time: 5, volume: 0.5 }
++    plugin.addPoint(point)
++
++    const circle = anyPlugin.polyline.svg.querySelector('ellipse') as SVGEllipseElement
++    expect(circle).toBeTruthy()
++    const removeSpy = jest.spyOn(circle, 'removeEventListener')
++
++    plugin.removePoint(point)
++
++    // The drag-stream cleanup removes the pointerdown listener from the
++    // (now detached) circle element as soon as the point is removed, rather
++    // than waiting for the whole polyline to be torn down.
++    expect(removeSpy).toHaveBeenCalledWith('pointerdown', expect.any(Function))
++  })
++
++  it('setPoints does not leak one drag stream per pre-existing point', () => {
++    const plugin = EnvelopePlugin.create({ points: [] })
++    const anyPlugin = plugin as any
++    anyPlugin.wavesurfer = createWaveSurfer()
++    anyPlugin.initPolyline()
++    mockSvgGeometry(anyPlugin.polyline.svg)
++
++    const pointA = { time: 2, volume: 0.2 }
++    const pointB = { time: 4, volume: 0.4 }
++    plugin.addPoint(pointA)
++    plugin.addPoint(pointB)
++
++    expect(anyPlugin.polyline.pointCleanups.size).toBe(2)
++
++    plugin.setPoints([{ time: 6, volume: 0.6 }])
++
++    // Only the freshly-added point's cleanup should remain; the two
++    // pre-existing points' drag streams must have been disposed by
++    // removePolyPoint, not merely orphaned.
++    expect(anyPlugin.polyline.pointCleanups.size).toBe(1)
++  })
++
++  it('double Polyline.destroy() does not throw and empties its subscriptions', () => {
++    const plugin = EnvelopePlugin.create({ points: [] })
++    const anyPlugin = plugin as any
++    anyPlugin.wavesurfer = createWaveSurfer()
++    anyPlugin.initPolyline()
++
++    const polyline = anyPlugin.polyline
++
++    expect(() => {
++      polyline.destroy()
++      polyline.destroy()
++    }).not.toThrow()
++
++    expect(polyline.subscriptions.length).toBe(0)
++  })
++})
+diff --git a/src/__tests__/hover.test.ts b/src/__tests__/hover.test.ts
+index 14428b1..f71d57d 100644
+--- a/src/__tests__/hover.test.ts
++++ b/src/__tests__/hover.test.ts
+@@ -90,4 +90,24 @@ describe('HoverPlugin', () => {
+     expect(hover?.style.transform).toBe('')
+     expect(formatTimeCallback).toHaveBeenCalledTimes(1)
+   })
++
++  test('does not accumulate transitionend listeners across pointerleave events', () => {
++    const container = document.createElement('div')
++    const { wavesurfer } = createWaveSurfer(container, 10)
++
++    const plugin = HoverPlugin.create()
++    plugin._init(wavesurfer as any)
++
++    const hover = container.querySelector<HTMLElement>('[part="hover"]')!
++    const addSpy = jest.spyOn(hover, 'addEventListener')
++    const removeSpy = jest.spyOn(hover, 'removeEventListener')
++
++    for (let i = 0; i < 5; i++) {
++      container.dispatchEvent(new MouseEvent('pointerleave', { bubbles: true }))
++    }
++
++    const added = addSpy.mock.calls.filter(([type]) => type === 'transitionend').length
++    const removed = removeSpy.mock.calls.filter(([type]) => type === 'transitionend').length
++    expect(added - removed).toBeLessThanOrEqual(1)
++  })
+ })
+diff --git a/src/__tests__/memory-leaks.test.ts b/src/__tests__/memory-leaks.test.ts
+index f4aaaf2..8cb7074 100644
+--- a/src/__tests__/memory-leaks.test.ts
++++ b/src/__tests__/memory-leaks.test.ts
+@@ -361,4 +361,45 @@ describe('Memory Leak Detection', () => {
+       expect(destroyHandler).toHaveBeenCalled()
+     })
+   })
++
++  describe('Scope ownership tree', () => {
++    it('root scope is disposed on destroy and a fresh scope replaces it for reuse', () => {
++      const ws = WaveSurfer.create({ container: document.createElement('div') })
++      // Capture the scope reference BEFORE destroy: destroy() must recreate
++      // `this.scope` afterwards so a subsequent load() can still register
++      // cleanups (a disposed Scope runs late registrations immediately, see
++      // issue #3637 / the loadAudio re-entrancy comment).
++      const originalScope = (ws as any).scope
++
++      ws.destroy()
++
++      expect(originalScope.disposed).toBe(true)
++      const late = jest.fn()
++      originalScope.add(late)
++      expect(late).toHaveBeenCalledTimes(1)
++
++      // A fresh, non-disposed scope must be in place for reuse.
++      const freshScope = (ws as any).scope
++      expect(freshScope).not.toBe(originalScope)
++      expect(freshScope.disposed).toBe(false)
++    })
++
++    it('media event listeners registered after destroy still fire (issue #3637 reuse)', () => {
++      const ws = WaveSurfer.create({ container })
++      ws.destroy()
++
++      // Reuse the instance: attach a new media element after destroy, as
++      // load() after destroy() is a supported flow.
++      const newMedia = document.createElement('audio')
++      ws.setMediaElement(newMedia)
++
++      const timeupdateHandler = jest.fn()
++      ws.on('timeupdate', timeupdateHandler)
++
++      Object.defineProperty(newMedia, 'currentTime', { value: 5, configurable: true })
++      newMedia.dispatchEvent(new Event('timeupdate'))
++
++      expect(timeupdateHandler).toHaveBeenCalledWith(5)
++    })
++  })
+ })
+diff --git a/src/__tests__/minimap.test.ts b/src/__tests__/minimap.test.ts
+index 706c7f0..636f58a 100644
+--- a/src/__tests__/minimap.test.ts
++++ b/src/__tests__/minimap.test.ts
+@@ -90,6 +90,19 @@ const createMainWaveSurfer = (dragToSeek: boolean | { debounceTime: number } = t
+ 
+ const createMock = WaveSurfer.create as jest.Mock
+ 
++const createInitializedMinimap = async () => {
++  const miniWaveSurfer = createMiniWaveSurfer()
++  const mainWaveSurfer = createMainWaveSurfer()
++
++  createMock.mockReturnValue(miniWaveSurfer)
++
++  const plugin = MinimapPlugin.create({ height: 20 })
++  plugin._init(mainWaveSurfer as any)
++  await Promise.resolve()
++
++  return { plugin, miniWaveSurfer, mainWaveSurfer }
++}
++
+ describe('MinimapPlugin', () => {
+   afterEach(() => {
+     jest.clearAllMocks()
+@@ -177,4 +190,12 @@ describe('MinimapPlugin', () => {
+     expect(overlay.style.left).toBe('50%')
+     expect(overlay.style.width).toBe('50%')
+   })
++
++  test('does not re-emit destroy when the nested wavesurfer is recreated', async () => {
++    const { plugin } = await createInitializedMinimap()
++    const onDestroy = jest.fn()
++    plugin.on('destroy', onDestroy)
++    ;(plugin as any).destroyMinimap()
++    expect(onDestroy).not.toHaveBeenCalled()
++  })
+ })
+diff --git a/src/__tests__/record.test.ts b/src/__tests__/record.test.ts
+new file mode 100644
+index 0000000..1834126
+--- /dev/null
++++ b/src/__tests__/record.test.ts
+@@ -0,0 +1,195 @@
++import RecordPlugin from '../plugins/record.js'
++
++describe('RecordPlugin teardown', () => {
++  it('emits record-end BEFORE listeners are cleared on destroy', () => {
++    const plugin = RecordPlugin.create()
++    const onEnd = jest.fn()
++    plugin.on('record-end', onEnd)
++
++    // Simulate an active recorder whose stop() triggers the browser's
++    // onstop handler synchronously, which in real code emits 'record-end'.
++    const anyPlugin = plugin as any
++    anyPlugin.mediaRecorder = {
++      state: 'recording',
++      stop: () => anyPlugin.emit('record-end', new Blob()),
++      stream: { getTracks: () => [] },
++    }
++
++    plugin.destroy()
++
++    expect(onEnd).toHaveBeenCalledTimes(1)
++  })
++
++  it('record-progress works after destroy + re-init', () => {
++    const plugin = RecordPlugin.create()
++    plugin.destroy()
++    plugin._init({} as never)
++
++    const anyPlugin = plugin as any
++    const onProgress = jest.fn()
++    plugin.on('record-progress', onProgress)
++
++    anyPlugin.timer.emit('tick')
++
++    expect(onProgress).toHaveBeenCalled()
++  })
++
++  it('destroys the timer on plugin destroy', () => {
++    const plugin = RecordPlugin.create()
++    const anyPlugin = plugin as any
++    const timerDestroySpy = jest.spyOn(anyPlugin.timer, 'destroy')
++
++    plugin.destroy()
++
++    expect(timerDestroySpy).toHaveBeenCalledTimes(1)
++  })
++
++  it('destroy is idempotent', () => {
++    const plugin = RecordPlugin.create()
++    expect(() => {
++      plugin.destroy()
++      plugin.destroy()
++    }).not.toThrow()
++  })
++})
++
++// A minimal, spec-shaped MediaRecorder mock: `stop()` transitions state to 'inactive'
++// synchronously but fires 'onstop' asynchronously via a queued microtask, matching
++// real MediaRecorder semantics (and the bug: destroy() completes, including
++// super.destroy()'s unAll(), before 'onstop' ever runs).
++class MockMediaRecorder {
++  static isTypeSupported = () => true
++  state: 'inactive' | 'recording' | 'paused' = 'inactive'
++  mimeType: string
++  ondataavailable: ((event: { data: Blob }) => void) | null = null
++  onpause: (() => void) | null = null
++  onstop: (() => void) | null = null
++
++  constructor(_stream: MediaStream, opts?: { mimeType?: string }) {
++    this.mimeType = opts?.mimeType ?? 'audio/webm'
++  }
++
++  start() {
++    this.state = 'recording'
++  }
++
++  stop() {
++    this.state = 'inactive'
++    queueMicrotask(() => this.onstop?.())
++  }
++
++  pause() {
++    this.state = 'paused'
++  }
++
++  resume() {
++    this.state = 'recording'
++  }
++
++  requestData() {
++    // no-op
++  }
++}
++
++class MockAudioContext {
++  createMediaStreamSource() {
++    return { connect: jest.fn(), disconnect: jest.fn() }
++  }
++  createAnalyser() {
++    return {
++      fftSize: 2048,
++      frequencyBinCount: 1024,
++      getFloatTimeDomainData: jest.fn(),
++    }
++  }
++  close() {
++    return Promise.resolve()
++  }
++}
++
++function createFakeMicStream(): MediaStream {
++  return {
++    getTracks: () => [{ stop: jest.fn() }],
++  } as unknown as MediaStream
++}
++
++const flushMicrotasks = async () => {
++  await Promise.resolve()
++  await Promise.resolve()
++}
++
++describe('RecordPlugin destroy-time record-end delivery (realistic async onstop)', () => {
++  const originalAudioContext = global.AudioContext
++  const originalMediaRecorder = global.MediaRecorder
++  const originalMediaDevices = navigator.mediaDevices
++  const originalCreateObjectURL = URL.createObjectURL
++  const originalRevokeObjectURL = URL.revokeObjectURL
++
++  beforeEach(() => {
++    global.AudioContext = MockAudioContext as unknown as typeof AudioContext
++    global.MediaRecorder = MockMediaRecorder as unknown as typeof MediaRecorder
++    Object.defineProperty(navigator, 'mediaDevices', {
++      configurable: true,
++      writable: true,
++      value: { getUserMedia: jest.fn().mockResolvedValue(createFakeMicStream()) },
++    })
++    // jsdom doesn't implement the Blob URL registry
++    URL.createObjectURL = jest.fn(() => 'blob:mock-url')
++    URL.revokeObjectURL = jest.fn()
++  })
++
++  afterEach(() => {
++    global.AudioContext = originalAudioContext
++    global.MediaRecorder = originalMediaRecorder
++    Object.defineProperty(navigator, 'mediaDevices', {
++      configurable: true,
++      writable: true,
++      value: originalMediaDevices,
++    })
++    URL.createObjectURL = originalCreateObjectURL
++    URL.revokeObjectURL = originalRevokeObjectURL
++  })
++
++  it('delivers the final record-end blob to listeners even though onstop fires after destroy() returns', async () => {
++    const plugin = RecordPlugin.create()
++    const onEnd = jest.fn()
++    plugin.on('record-end', onEnd)
++
++    await plugin.startRecording()
++    plugin.destroy()
++
++    // The real MediaRecorder mock's 'onstop' hasn't run yet at this point —
++    // it's a queued microtask, exactly like the browser.
++    expect(onEnd).not.toHaveBeenCalled()
++
++    await flushMicrotasks()
++
++    expect(onEnd).toHaveBeenCalledTimes(1)
++    expect(onEnd.mock.calls[0][0]).toBeInstanceOf(Blob)
++
++    // renderRecordedAudio defaults to true, so without the post-destroy guard
++    // this post-destroy onstop would call createObjectURL() again for a blob
++    // URL that destroy()'s own revocation pass (which already ran) would
++    // never revoke -- a leak. destroy() itself revoked once synchronously;
++    // the guard must prevent any further calls from this async onstop.
++    expect(URL.createObjectURL).not.toHaveBeenCalled()
++  })
++
++  it('does not double-deliver record-end on a normal (non-destroy) stop', async () => {
++    const plugin = RecordPlugin.create()
++    const onEnd = jest.fn()
++    plugin.on('record-end', onEnd)
++
++    await plugin.startRecording()
++    plugin.stopRecording()
++    await flushMicrotasks()
++
++    expect(onEnd).toHaveBeenCalledTimes(1)
++
++    // Destroying afterwards (recorder already inactive) must not re-deliver.
++    plugin.destroy()
++    await flushMicrotasks()
++
++    expect(onEnd).toHaveBeenCalledTimes(1)
++  })
++})
+diff --git a/src/__tests__/regions.test.ts b/src/__tests__/regions.test.ts
+index 1b93f83..e425d43 100644
+--- a/src/__tests__/regions.test.ts
++++ b/src/__tests__/regions.test.ts
+@@ -98,6 +98,59 @@ describe('RegionsPlugin', () => {
+     expect(region.element?.parentElement).toBeNull()
+   })
+ 
++  test('cleans up drag selection on plugin destroy', () => {
++    const wavesurfer = createWaveSurfer()
++    const plugin = RegionsPlugin.create()
++
++    plugin._init(wavesurfer as any)
++
++    const wrapper = wavesurfer.getWrapper()
++    const addSpy = jest.spyOn(wrapper, 'addEventListener')
++    const removeSpy = jest.spyOn(wrapper, 'removeEventListener')
++
++    plugin.enableDragSelection({})
++    plugin.destroy()
++
++    const addCount = addSpy.mock.calls.filter(([type]) => type === 'pointerdown').length
++    const removeCount = removeSpy.mock.calls.filter(([type]) => type === 'pointerdown').length
++    expect(addCount).toBeGreaterThan(0)
++    expect(addCount).toBe(removeCount)
++  })
++
++  test('attaches only one click listener to region content', () => {
++    const wavesurfer = createWaveSurfer()
++    const plugin = RegionsPlugin.create()
++
++    plugin._init(wavesurfer as any)
++
++    const region = plugin.addRegion({ start: 0, end: 1, content: 'label', contentEditable: true })
++    const clicked = jest.fn()
++    plugin.on('region-clicked', clicked)
++
++    region.content!.dispatchEvent(new MouseEvent('click'))
++
++    expect(clicked).toHaveBeenCalledTimes(1)
++  })
++
++  test('toggling resize option repeatedly does not grow region subscriptions', () => {
++    const wavesurfer = createWaveSurfer()
++    const plugin = RegionsPlugin.create()
++
++    plugin._init(wavesurfer as any)
++
++    const region = plugin.addRegion({ start: 0, end: 1, resize: true })
++
++    region.setOptions({ resize: false })
++    region.setOptions({ resize: true })
++    const lengthAfterFirstToggle = region.subscriptions.length
++
++    region.setOptions({ resize: false })
++    region.setOptions({ resize: true })
++    const lengthAfterSecondToggle = region.subscriptions.length
++
++    expect(lengthAfterSecondToggle).toBe(lengthAfterFirstToggle)
++  })
++
+   test('places a region in the first free row instead of summing all prior overlaps', () => {
+     const wavesurfer = createWaveSurfer()
+     const plugin = RegionsPlugin.create()
+diff --git a/src/__tests__/renderer.test.ts b/src/__tests__/renderer.test.ts
+index d6fe734..6cd86b1 100644
+--- a/src/__tests__/renderer.test.ts
++++ b/src/__tests__/renderer.test.ts
+@@ -249,4 +249,64 @@ describe('Renderer', () => {
+     renderer.destroy()
+     expect(container.contains(renderer.getWrapper())).toBe(false)
+   })
++
++  test('render() after destroy recreates scopes instead of installing pre-disposed ones', async () => {
++    // Renderer is reused after WaveSurfer.destroy(): a subsequent load() call
++    // reaches renderer.render(...), and setOptions() reaches reRender(). If
++    // Renderer's own scope stays disposed forever, `this.scope.child()` hands
++    // back an already-disposed child (per Scope's documented behavior), so
++    // render() would install pre-disposed scrollRenderScope/delayScope and
++    // any lazy-render scroll subscription registered afterward would be torn
++    // down immediately -- long scrollable waveforms would only ever draw
++    // their initial canvas range post destroy->load.
++    const buffer = createAudioBuffer([[0, 0.5, -0.5]])
++
++    renderer.destroy()
++    await renderer.render(buffer)
++
++    expect((renderer as any).scope.disposed).toBe(false)
++    expect((renderer as any).scrollRenderScope.disposed).toBe(false)
++    expect((renderer as any).delayScope.disposed).toBe(false)
++
++    // And a fresh scroll subscription registered after the reuse must
++    // actually stick instead of being disposed on arrival.
++    const lateUnsubscribe = jest.fn()
++    ;(renderer as any).scrollRenderScope.add(lateUnsubscribe)
++    expect(lateUnsubscribe).not.toHaveBeenCalled()
++  })
++
++  it('cancels a pending resize debounce on destroy even after a render', async () => {
++    // The debounce delay() is created once in initEvents(), but render()
++    // replaces delayScope; its cancellation must re-register per call or
++    // destroy() cannot cancel a debounce scheduled after the first render.
++    jest.useFakeTimers()
++    let roCallback: (() => void) | undefined
++    const OriginalRO = (global as any).ResizeObserver
++    ;(global as any).ResizeObserver = class {
++      constructor(cb: () => void) {
++        roCallback = cb
++      }
++      observe() {}
++      unobserve() {}
++      disconnect() {}
++    }
++    const resizeSpy = jest.spyOn(Renderer.prototype as any, 'onContainerResize')
++    const localContainer = document.createElement('div')
++    document.body.appendChild(localContainer)
++    const localRenderer = new Renderer({ container: localContainer })
++    try {
++      await localRenderer.render(createAudioBuffer([[0, 0.5, -0.5]]))
++      roCallback?.() // schedules the 100ms resize debounce
++      localRenderer.destroy()
++      jest.advanceTimersByTime(1000)
++      await Promise.resolve()
++      await Promise.resolve()
++      expect(resizeSpy).not.toHaveBeenCalled()
++    } finally {
++      resizeSpy.mockRestore()
++      ;(global as any).ResizeObserver = OriginalRO
++      jest.useRealTimers()
++      localContainer.remove()
++    }
++  })
+ })
+diff --git a/src/__tests__/scope-subject.ts b/src/__tests__/scope-subject.ts
+new file mode 100644
+index 0000000..5f3b79e
+--- /dev/null
++++ b/src/__tests__/scope-subject.ts
+@@ -0,0 +1,53 @@
++/** Resolve the candidate's real Scope, without prescribing its source filename. */
++import * as fs from 'node:fs'
++import * as path from 'node:path'
++import * as ts from 'typescript'
++
++const root = path.resolve(__dirname, '..')
++const sources = new Map<string, ts.SourceFile>()
++const scan = (directory: string) => {
++  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
++    if (entry.name === '__tests__' || entry.name === 'node_modules') continue
++    const file = path.join(directory, entry.name)
++    if (entry.isDirectory()) scan(file)
++    else if (entry.isFile() && /\.tsx?$/.test(file) && !/\.(?:test|spec)\.tsx?$/.test(file)) {
++      sources.set(file, ts.createSourceFile(file, fs.readFileSync(file, 'utf8'), ts.ScriptTarget.Latest, true))
++    }
++  }
++}
++scan(root)
++
++const resolveImport = (file: string, specifier: string) => {
++  if (!specifier.startsWith('.')) return undefined
++  const base = path.resolve(path.dirname(file), specifier.replace(/\.js$/, ''))
++  return [base + '.ts', base + '.tsx', path.join(base, 'index.ts')].find((candidate) => sources.has(candidate))
++}
++
++// Existing production entry points, not permitted Scope implementation paths.
++const pending = ['wavesurfer.ts', 'player.ts', 'renderer.ts', 'base-plugin.ts']
++  .map((name) => path.join(root, name)).filter((file) => sources.has(file))
++const visited = new Set<string>()
++while (pending.length) {
++  const file = pending.pop()!
++  if (visited.has(file)) continue
++  visited.add(file)
++  const source = sources.get(file)!
++  for (const statement of source.statements) {
++    if ((ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)) &&
++        statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)) {
++      const target = resolveImport(file, statement.moduleSpecifier.text)
++      if (target) pending.push(target)
++    }
++  }
++}
++const candidates = [...visited].filter((file) => sources.get(file)!.statements.some(
++  (node) => ts.isClassDeclaration(node) && node.name?.text === 'Scope',
++))
++if (candidates.length !== 1) {
++  throw new Error(`Cannot resolve one production-owned Scope without guessing: ${candidates.join(', ')}`)
++}
++// Jest transforms this actual candidate source. No class/method fallback exists.
++const subjectExports = require(candidates[0])
++const actual = subjectExports.Scope ?? (subjectExports.default?.name === 'Scope' ? subjectExports.default : undefined)
++if (typeof actual !== 'function') throw new Error(`Candidate module does not export Scope: ${candidates[0]}`)
++export const Scope = actual
+diff --git a/src/__tests__/scope.test.ts b/src/__tests__/scope.test.ts
+new file mode 100644
+index 0000000..abd43a5
+--- /dev/null
++++ b/src/__tests__/scope.test.ts
+@@ -0,0 +1,97 @@
++import { Scope } from './scope-subject'
++
++describe('Scope', () => {
++  it('runs added disposers on dispose, once, in reverse order', () => {
++    const scope = new Scope()
++    const order: number[] = []
++    scope.add(() => order.push(1))
++    scope.add(() => order.push(2))
++    scope.dispose()
++    scope.dispose()
++    expect(order).toEqual([2, 1])
++  })
++
++  it('disposes children before own disposers', () => {
++    const scope = new Scope()
++    const order: string[] = []
++    scope.add(() => order.push('parent'))
++    scope.child().add(() => order.push('child'))
++    scope.dispose()
++    expect(order).toEqual(['child', 'parent'])
++  })
++
++  it('a directly-disposed child detaches from the parent', () => {
++    const scope = new Scope()
++    const child = scope.child()
++    const spy = jest.fn()
++    child.add(spy)
++    child.dispose()
++    scope.dispose()
++    expect(spy).toHaveBeenCalledTimes(1)
++  })
++
++  it('isolates disposer errors', () => {
++    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
++    const scope = new Scope()
++    const second = jest.fn()
++    scope.add(second)
++    scope.add(() => {
++      throw new Error('boom')
++    })
++    scope.dispose()
++    expect(second).toHaveBeenCalled()
++    errSpy.mockRestore()
++  })
++
++  it('listen removes the DOM listener on dispose', () => {
++    const scope = new Scope()
++    const el = document.createElement('div')
++    const fn = jest.fn()
++    scope.listen(el, 'click', fn)
++    scope.dispose()
++    el.dispatchEvent(new Event('click'))
++    expect(fn).not.toHaveBeenCalled()
++  })
++
++  it('timeout does not fire after dispose', () => {
++    jest.useFakeTimers()
++    const scope = new Scope()
++    const fn = jest.fn()
++    scope.timeout(fn, 100)
++    scope.dispose()
++    jest.advanceTimersByTime(200)
++    expect(fn).not.toHaveBeenCalled()
++    jest.useRealTimers()
++  })
++
++  it('abortSignal aborts on dispose', () => {
++    const scope = new Scope()
++    const signal = scope.abortSignal()
++    expect(signal.aborted).toBe(false)
++    scope.dispose()
++    expect(signal.aborted).toBe(true)
++  })
++
++  it('refuses new registrations after dispose by running them immediately', () => {
++    const scope = new Scope()
++    scope.dispose()
++    const spy = jest.fn()
++    scope.add(spy)
++    expect(spy).toHaveBeenCalledTimes(1) // late registration disposed immediately, never leaks
++  })
++
++  it('observeResize unobserves element without disconnecting observer', () => {
++    const scope = new Scope()
++    const el = document.createElement('div')
++    const observer = {
++      observe: jest.fn(),
++      unobserve: jest.fn(),
++      disconnect: jest.fn(),
++    } as unknown as ResizeObserver
++    scope.observeResize(observer, el)
++    expect(observer.observe).toHaveBeenCalledWith(el)
++    scope.dispose()
++    expect(observer.unobserve).toHaveBeenCalledWith(el)
++    expect(observer.disconnect).not.toHaveBeenCalled()
++  })
++})
+diff --git a/src/__tests__/spectrogram-destroy.test.ts b/src/__tests__/spectrogram-destroy.test.ts
+new file mode 100644
+index 0000000..3dd96e0
+--- /dev/null
++++ b/src/__tests__/spectrogram-destroy.test.ts
+@@ -0,0 +1,69 @@
++jest.mock(
++  'web-worker:./spectrogram-worker.ts',
++  () => ({
++    __esModule: true,
++    default: class MockSpectrogramWorker {
++      onmessage: ((e: { data: any }) => void) | null = null
++      onerror: ((e: Event) => void) | null = null
++      postMessage = jest.fn()
++      terminate = jest.fn()
++    },
++  }),
++  { virtual: true },
++)
++
++import SpectrogramPlugin from '../plugins/spectrogram.js'
++
++describe('SpectrogramPlugin destroy', () => {
++  it('delivers the destroy event to subscribers', () => {
++    const plugin = SpectrogramPlugin.create({})
++    const onDestroy = jest.fn()
++    plugin.on('destroy', onDestroy)
++    plugin.destroy()
++    expect(onDestroy).toHaveBeenCalledTimes(1)
++  })
++
++  it('releases the decoded buffer on destroy', () => {
++    const plugin = SpectrogramPlugin.create({})
++    ;(plugin as any).buffer = { length: 1 } // simulate a render having cached it
++    plugin.destroy()
++    expect((plugin as any).buffer).toBeNull()
++  })
++
++  it('does not let one instance override another instance maxCanvasWidth', () => {
++    const a = SpectrogramPlugin.create({ maxCanvasWidth: 1000 })
++    const b = SpectrogramPlugin.create({})
++    expect((a as any).maxCanvasWidth).toBe(1000)
++    expect((b as any).maxCanvasWidth).toBe(30000)
++  })
++
++  describe('async continuations after destroy', () => {
++    const originalFetch = global.fetch
++
++    afterEach(() => {
++      global.fetch = originalFetch
++    })
++
++    it('does not touch destroyed DOM state when frequenciesData arrives after destroy', async () => {
++      let resolveJson: (value: unknown) => void = () => {}
++      const jsonPromise = new Promise((resolve) => {
++        resolveJson = resolve
++      })
++      global.fetch = jest.fn().mockResolvedValue({
++        ok: true,
++        json: () => jsonPromise,
++      }) as any
++
++      const plugin = SpectrogramPlugin.create({})
++      const drawSpy = jest.spyOn(plugin as any, 'drawSpectrogram')
++
++      const loadPromise = plugin.loadFrequenciesData('https://example.com/data.json')
++      plugin.destroy()
++
++      resolveJson([[1, 2, 3]])
++
++      await expect(loadPromise).resolves.toBeUndefined()
++      expect(drawSpy).not.toHaveBeenCalled()
++    })
++  })
++})
+diff --git a/src/__tests__/spectrogram-windowed-destroy.test.ts b/src/__tests__/spectrogram-windowed-destroy.test.ts
+new file mode 100644
+index 0000000..96d9bcf
+--- /dev/null
++++ b/src/__tests__/spectrogram-windowed-destroy.test.ts
+@@ -0,0 +1,182 @@
++jest.mock(
++  'web-worker:./spectrogram-worker.ts',
++  () => ({
++    __esModule: true,
++    default: class MockSpectrogramWorker {
++      onmessage: ((e: { data: any }) => void) | null = null
++      onerror: ((e: Event) => void) | null = null
++      onmessageerror: ((e: Event) => void) | null = null
++      postMessage = jest.fn()
++      terminate = jest.fn()
++    },
++  }),
++  { virtual: true },
++)
++
++import WindowedSpectrogramPlugin from '../plugins/spectrogram-windowed.js'
++
++describe('WindowedSpectrogramPlugin destroy', () => {
++  it('delivers the destroy event to subscribers', () => {
++    const plugin = WindowedSpectrogramPlugin.create({})
++    const onDestroy = jest.fn()
++    plugin.on('destroy', onDestroy)
++    plugin.destroy()
++    expect(onDestroy).toHaveBeenCalledTimes(1)
++  })
++
++  it('is idempotent and still only delivers the destroy event once', () => {
++    const plugin = WindowedSpectrogramPlugin.create({})
++    const onDestroy = jest.fn()
++    plugin.on('destroy', onDestroy)
++    plugin.destroy()
++    plugin.destroy()
++    expect(onDestroy).toHaveBeenCalledTimes(1)
++  })
++
++  describe('segment eviction', () => {
++    it('caps retained segments', () => {
++      const plugin = WindowedSpectrogramPlugin.create({})
++      const cap = (plugin as any).maxRetainedSegments
++      expect(typeof cap).toBe('number')
++      for (let i = 0; i < cap + 10; i++) {
++        ;(plugin as any).segments.set(i, {
++          startTime: i * 30,
++          endTime: (i + 1) * 30,
++          startPixel: i * 30,
++          endPixel: (i + 1) * 30,
++          canvas: document.createElement('canvas'),
++          frequencies: [],
++        })
++      }
++      ;(plugin as any).evictDistantSegments(0) // current view at t=0
++      expect((plugin as any).segments.size).toBeLessThanOrEqual(cap)
++    })
++
++    it('evicts segments farthest from the current time and removes their canvases from the DOM', () => {
++      const plugin = WindowedSpectrogramPlugin.create({})
++      const cap = (plugin as any).maxRetainedSegments
++      const container = document.createElement('div')
++      document.body.appendChild(container)
++
++      const total = cap + 10
++      for (let i = 0; i < total; i++) {
++        const canvas = document.createElement('canvas')
++        container.appendChild(canvas)
++        ;(plugin as any).segments.set(i, {
++          startTime: i * 30,
++          endTime: (i + 1) * 30,
++          startPixel: i * 30,
++          endPixel: (i + 1) * 30,
++          canvas,
++          frequencies: [],
++        })
++      }
++
++      // Current view is near the start (t=0), so the segments with the highest
++      // indices (farthest midpoints) should be the ones evicted.
++      ;(plugin as any).evictDistantSegments(0)
++
++      expect((plugin as any).segments.size).toBe(cap)
++      // Every remaining segment's canvas should still be attached to the DOM.
++      for (const segment of (plugin as any).segments.values()) {
++        expect(segment.canvas.isConnected).toBe(true)
++      }
++      // The DOM should have exactly as many canvases left as retained segments -
++      // the evicted ones were actually removed, not just dropped from the map.
++      expect(container.children.length).toBe(cap)
++      // The segments closest to t=0 (lowest indices) must have survived.
++      expect((plugin as any).segments.has(0)).toBe(true)
++      expect((plugin as any).segments.has(total - 1)).toBe(false)
++    })
++
++    it('enforces the segment cap during progressive loading even with no renderVisibleWindow calls', async () => {
++      jest.useFakeTimers()
++      try {
++        const plugin = WindowedSpectrogramPlugin.create({ progressiveLoading: true })
++        ;(plugin as any).maxRetainedSegments = 3
++        // Long enough for far more than maxRetainedSegments 30s segments.
++        ;(plugin as any).buffer = { duration: 30 * 20 }
++        ;(plugin as any).isProgressiveLoading = true
++
++        // Stand in for the real FFT pipeline: just record a segment for the requested range,
++        // the same way generateSegments would after computing frequencies.
++        jest.spyOn(plugin as any, 'generateSegments').mockImplementation(async (...args: unknown[]) => {
++          const [start, end] = args as [number, number]
++          const key = `${Math.floor(start * 10)}_${Math.floor(end * 10)}`
++          ;(plugin as any).segments.set(key, {
++            startTime: start,
++            endTime: end,
++            startPixel: 0,
++            endPixel: 0,
++            canvas: document.createElement('canvas'),
++            frequencies: [],
++          })
++        })
++
++        // Drive several progressive-load ticks directly (no scroll/resize/playback, so
++        // renderVisibleWindow - and its evictDistantSegments call - never runs).
++        for (let i = 0; i < 10; i++) {
++          await (plugin as any).progressiveLoadNextSegment()
++        }
++
++        expect((plugin as any).segments.size).toBeLessThanOrEqual(3)
++      } finally {
++        jest.useRealTimers()
++      }
++    })
++  })
++
++  describe('async continuations after destroy', () => {
++    it('does not re-arm the progressive-load timer once destroy runs mid-await', async () => {
++      jest.useFakeTimers()
++      try {
++        const plugin = WindowedSpectrogramPlugin.create({ progressiveLoading: true })
++        ;(plugin as any).buffer = { duration: 120 }
++        ;(plugin as any).isProgressiveLoading = true
++
++        let resolveGenerate: () => void = () => {}
++        const generatePromise = new Promise<void>((resolve) => {
++          resolveGenerate = resolve
++        })
++        jest.spyOn(plugin as any, 'generateSegments').mockReturnValue(generatePromise)
++
++        const continuation = (plugin as any).progressiveLoadNextSegment()
++
++        // Destroy while the generateSegments() await is still pending.
++        plugin.destroy()
++        expect(jest.getTimerCount()).toBe(0)
++
++        resolveGenerate()
++        await expect(continuation).resolves.toBeUndefined()
++
++        // The post-await continuation must not have scheduled a new timer.
++        expect(jest.getTimerCount()).toBe(0)
++        jest.advanceTimersByTime(5000)
++        expect(jest.getTimerCount()).toBe(0)
++      } finally {
++        jest.useRealTimers()
++      }
++    })
++
++    it('does not throw or touch destroyed DOM state when renderVisibleWindow resumes after destroy', async () => {
++      const plugin = WindowedSpectrogramPlugin.create({})
++      ;(plugin as any).buffer = { duration: 60 }
++      const fakeWrapper = document.createElement('div')
++      ;(plugin as any).wavesurfer = { getWrapper: () => fakeWrapper, options: {} }
++
++      let resolveGenerate: () => void = () => {}
++      const generatePromise = new Promise<void>((resolve) => {
++        resolveGenerate = resolve
++      })
++      jest.spyOn(plugin as any, 'generateSegments').mockReturnValue(generatePromise)
++      const evictSpy = jest.spyOn(plugin as any, 'evictDistantSegments')
++
++      const renderPromise = (plugin as any).renderVisibleWindow()
++      plugin.destroy()
++      resolveGenerate()
++
++      await expect(renderPromise).resolves.toBeUndefined()
++      expect(evictSpy).not.toHaveBeenCalled()
++    })
++  })
++})
+diff --git a/src/__tests__/timeline.test.ts b/src/__tests__/timeline.test.ts
+index b4bb412..1511df1 100644
+--- a/src/__tests__/timeline.test.ts
++++ b/src/__tests__/timeline.test.ts
+@@ -63,4 +63,19 @@ describe('TimelinePlugin', () => {
+     expect(offsets[2]).toBeCloseTo(66.7)
+     expect(offsets[3]).toBeCloseTo(100)
+   })
++
++  test('clears notch element cache on destroy', () => {
++    const wavesurfer = createWaveSurfer(1, 100)
++    const plugin = TimelinePlugin.create({ duration: 1 })
++
++    plugin._init(wavesurfer as any)
++
++    expect((plugin as any).notchElements.size).toBeGreaterThan(0)
++    expect((plugin as any).currentTimeline).not.toBeUndefined()
++
++    plugin.destroy()
++
++    expect((plugin as any).notchElements.size).toBe(0)
++    expect((plugin as any).currentTimeline).toBeUndefined()
++  })
+ })
+diff --git a/src/__tests__/wavesurfer.test.ts b/src/__tests__/wavesurfer.test.ts
+index 9ec4fac..ada612f 100644
+--- a/src/__tests__/wavesurfer.test.ts
++++ b/src/__tests__/wavesurfer.test.ts
+@@ -253,4 +253,139 @@ describe('WaveSurfer public methods', () => {
+     expect(getRenderer().destroy).toHaveBeenCalled()
+     expect(getTimer().destroy).toHaveBeenCalled()
+   })
++
++  test('does not emit pause or timeupdate during construction', async () => {
++    // Record every event emitted (not just pause/timeupdate observed via a listener
++    // attached after construction) so a synchronous emit during the constructor -
++    // before any test code can call ws.on() - is actually caught.
++    const emittedDuringConstruction: string[] = []
++    const originalEmit = (WaveSurfer.prototype as any).emit
++    ;(WaveSurfer.prototype as any).emit = function (this: WaveSurfer, event: string, ...args: unknown[]) {
++      emittedDuringConstruction.push(event)
++      return originalEmit.call(this, event, ...args)
++    }
++
++    let ws!: WaveSurfer
++    try {
++      ws = createWs()
++      await Promise.resolve() // let the constructor's deferred init run
++    } finally {
++      ;(WaveSurfer.prototype as any).emit = originalEmit
++    }
++
++    expect(emittedDuringConstruction).not.toContain('pause')
++    expect(emittedDuringConstruction).not.toContain('timeupdate')
++    ws.destroy()
++  })
++
++  test('emits play exactly once per media play event', () => {
++    const ws = createWs()
++    const onPlay = jest.fn()
++    ws.on('play', onPlay)
++    ws.getMediaElement().dispatchEvent(new Event('play'))
++    expect(onPlay).toHaveBeenCalledTimes(1)
++    ws.destroy()
++  })
++
++  test('emits pause exactly once per media pause event', () => {
++    const ws = createWs()
++    const onPause = jest.fn()
++    ws.on('pause', onPause)
++    ws.getMediaElement().dispatchEvent(new Event('pause'))
++    expect(onPause).toHaveBeenCalledTimes(1)
++    ws.destroy()
++  })
++
++  test('emits seeking exactly once per media seeking event', () => {
++    const ws = createWs()
++    const onSeeking = jest.fn()
++    ws.on('seeking', onSeeking)
++    ws.getMediaElement().dispatchEvent(new Event('seeking'))
++    expect(onSeeking).toHaveBeenCalledTimes(1)
++    ws.destroy()
++  })
++
++  test('emits finish exactly once per media ended event', () => {
++    const ws = createWs()
++    const onFinish = jest.fn()
++    ws.on('finish', onFinish)
++    ws.getMediaElement().dispatchEvent(new Event('ended'))
++    expect(onFinish).toHaveBeenCalledTimes(1)
++    ws.destroy()
++  })
++
++  test('emits timeupdate exactly once per media timeupdate event while paused', () => {
++    // audioprocess is only driven by the 16ms timer during playback (see
++    // initTimerEvents in wavesurfer.ts) - simulating a timer tick isn't worth it for
++    // a doubled-emission regression test, so this only covers the imperative
++    // onMediaEvent('timeupdate', ...) -> emit('timeupdate') path exercised here.
++    const ws = createWs()
++    const onTimeupdate = jest.fn()
++    ws.on('timeupdate', onTimeupdate)
++    ws.getMediaElement().dispatchEvent(new Event('timeupdate'))
++    expect(onTimeupdate).toHaveBeenCalledTimes(1)
++    ws.destroy()
++  })
++
++  test('reflects zoom and decoded audio in reactive state', async () => {
++    const ws = createWs({
++      peaks: [[0, 0.5, 1]],
++      duration: 1,
++    })
++    await new Promise((resolve) => ws.once('ready', resolve))
++    expect(ws.getState().audioBuffer.value).not.toBeNull()
++    ws.zoom(123)
++    expect(ws.getState().zoom.value).toBe(123)
++    ws.destroy()
++  })
++
++  test('resets peaks state at the start of a load that provides no channelData', async () => {
++    const ws = createWs({
++      peaks: [[0, 0.5, 1]],
++      duration: 1,
++    })
++    await new Promise((resolve) => ws.once('ready', resolve))
++    expect(ws.getState().peaks.value).not.toBeNull()
++
++    // The URL-only load can't complete in jsdom (no fetch polyfill/mock), but the
++    // peaks reset happens synchronously at the top of loadAudio, before the first
++    // await, so it's observable immediately without waiting for the load to settle.
++    const loadPromise = ws.load('http://example.com/audio.mp3').catch(() => {})
++    expect(ws.getState().peaks.value).toBeNull()
++
++    await loadPromise
++    ws.destroy()
++  })
++
++  test('getState() computeds keep reacting to signal writes after destroy -> reuse', async () => {
++    // Regression test: destroy() used to register the wavesurfer-state `dispose`
++    // callback on `this.scope`, so scope.dispose() permanently unsubscribed the
++    // derived computeds (isPaused, canPlay, isReady, progress, progressPercent)
++    // from their base signals. destroy() then recreates `this.scope` for the
++    // (supported) destroy -> load() reuse pattern, but createWaveSurferState()
++    // is only ever called once, in the constructor -- so the computeds were
++    // never recreated and stayed frozen at their pre-destroy values forever.
++    const media = createMedia()
++    const container = document.createElement('div')
++    const ws = WaveSurfer.create({ container, media, peaks: [[0, 0.5, 1]], duration: 1 })
++    await new Promise((resolve) => ws.once('ready', resolve))
++
++    ws.destroy()
++
++    // Reusing an instance after destroy() is supported (see loadAudio's issue
++    // #3637 comment / cypress/e2e/abort.cy.js). setMediaElement() re-registers
++    // the media event listeners the same way a reused instance needs them
++    // re-registered, then a real 'timeupdate' event drives the base
++    // `currentTime` signal exactly as the browser would during playback.
++    ws.setMediaElement(media)
++    Object.defineProperty(media, 'currentTime', { configurable: true, value: 42, writable: true })
++    media.dispatchEvent(new Event('timeupdate'))
++
++    // The load-bearing assertion: this base-signal write must still propagate
++    // to the derived `progress` computed. Before the fix this stayed frozen at
++    // the pre-destroy value (0) because the computed had been disposed.
++    expect(ws.getState().progress.value).toBe(42)
++
++    ws.destroy()
++  })
+ })
+diff --git a/src/__tests__/webaudio.test.ts b/src/__tests__/webaudio.test.ts
+index fad7eee..d57782b 100644
+--- a/src/__tests__/webaudio.test.ts
++++ b/src/__tests__/webaudio.test.ts
+@@ -288,4 +288,39 @@ describe('WebAudioPlayer', () => {
+       expect(endedSpy).not.toHaveBeenCalled()
+     })
+   })
++
++  describe('error event', () => {
++    const originalFetch = global.fetch
++
++    afterEach(() => {
++      global.fetch = originalFetch
++    })
++
++    test('emits error when fetch fails', async () => {
++      const { audioContext } = createMockAudioContext()
++      const player = new WebAudioPlayer(audioContext)
++      const onError = jest.fn()
++      player.on('error', onError)
++      global.fetch = jest.fn().mockResolvedValue({ status: 404, statusText: 'Not Found' } as Response)
++      player.src = 'http://example.com/missing.mp3'
++      await new Promise((r) => setTimeout(r, 0))
++      expect(onError).toHaveBeenCalledWith(expect.any(Error))
++    })
++
++    test('clears a stale error when a new source is set', async () => {
++      const { audioContext } = createMockAudioContext()
++      const player = new WebAudioPlayer(audioContext)
++      global.fetch = jest.fn().mockRejectedValue(new Error('network'))
++      player.src = 'http://example.com/bad.mp3'
++      await new Promise((r) => setTimeout(r, 0))
++      expect(player.error).toBeInstanceOf(Error)
++
++      global.fetch = jest.fn().mockResolvedValue({
++        status: 200,
++        arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)),
++      } as unknown as Response)
++      player.src = 'http://example.com/good.mp3'
++      expect(player.error).toBeNull()
++    })
++  })
+ })
+diff --git a/src/reactive/__tests__/event-stream-emitter.test.ts b/src/reactive/__tests__/event-stream-emitter.test.ts
+deleted file mode 100644
+index ea61065..0000000
+--- a/src/reactive/__tests__/event-stream-emitter.test.ts
++++ /dev/null
+@@ -1,335 +0,0 @@
+-import { toStream, toStreams, mergeStreams, mapStream, filterStream } from '../event-stream-emitter'
+-import EventEmitter from '../../event-emitter'
+-
+-type TestEvents = {
+-  play: []
+-  pause: []
+-  timeupdate: [time: number]
+-  error: [error: Error]
+-  customEvent: [data: string, count: number]
+-}
+-
+-// Test class that exposes emit for testing
+-class TestEmitter extends EventEmitter<TestEvents> {
+-  public emit<E extends keyof TestEvents>(event: E, ...args: TestEvents[E]): void {
+-    super.emit(event, ...args)
+-  }
+-}
+-
+-describe('event-stream-emitter', () => {
+-  let emitter: TestEmitter
+-
+-  beforeEach(() => {
+-    emitter = new TestEmitter()
+-  })
+-
+-  describe('toStream', () => {
+-    it('should create a stream from event', () => {
+-      const { stream, cleanup } = toStream(emitter, 'play')
+-
+-      expect(stream.value).toBeNull()
+-
+-      const values: any[] = []
+-      stream.subscribe((value) => values.push(value))
+-
+-      emitter.emit('play')
+-      expect(stream.value).toEqual([])
+-      // Values includes initial null and then the event
+-      expect(values.length).toBeGreaterThanOrEqual(1)
+-      expect(values[values.length - 1]).toEqual([])
+-
+-      cleanup()
+-    })
+-
+-    it('should update stream with event arguments', () => {
+-      const { stream, cleanup } = toStream(emitter, 'timeupdate')
+-
+-      emitter.emit('timeupdate', 42)
+-      expect(stream.value).toEqual([42])
+-
+-      emitter.emit('timeupdate', 100)
+-      expect(stream.value).toEqual([100])
+-
+-      cleanup()
+-    })
+-
+-    it('should handle multiple arguments', () => {
+-      const { stream, cleanup } = toStream(emitter, 'customEvent')
+-
+-      emitter.emit('customEvent', 'hello', 5)
+-      expect(stream.value).toEqual(['hello', 5])
+-
+-      cleanup()
+-    })
+-
+-    it('should cleanup event listener', () => {
+-      const { stream, cleanup } = toStream(emitter, 'play')
+-
+-      emitter.emit('play')
+-      expect(stream.value).toEqual([])
+-
+-      cleanup()
+-
+-      // After cleanup, event should not update stream
+-      const oldValue = stream.value
+-      emitter.emit('play')
+-      expect(stream.value).toBe(oldValue) // Value should not change after cleanup
+-    })
+-
+-    it('should allow multiple subscriptions to stream', () => {
+-      const { stream, cleanup } = toStream(emitter, 'timeupdate')
+-
+-      const values1: any[] = []
+-      const values2: any[] = []
+-
+-      stream.subscribe((value) => values1.push(value))
+-      stream.subscribe((value) => values2.push(value))
+-
+-      emitter.emit('timeupdate', 10)
+-      emitter.emit('timeupdate', 20)
+-
+-      expect(values1).toContainEqual([10])
+-      expect(values1).toContainEqual([20])
+-      expect(values2).toContainEqual([10])
+-      expect(values2).toContainEqual([20])
+-
+-      cleanup()
+-    })
+-  })
+-
+-  describe('toStreams', () => {
+-    it('should create multiple streams', () => {
+-      const streams = toStreams(emitter, ['play', 'pause', 'timeupdate'])
+-
+-      expect(streams.play).toBeDefined()
+-      expect(streams.pause).toBeDefined()
+-      expect(streams.timeupdate).toBeDefined()
+-
+-      emitter.emit('play')
+-      expect(streams.play.value).toEqual([])
+-
+-      emitter.emit('pause')
+-      expect(streams.pause.value).toEqual([])
+-
+-      emitter.emit('timeupdate', 50)
+-      expect(streams.timeupdate.value).toEqual([50])
+-
+-      streams.cleanup()
+-    })
+-
+-    it('should cleanup all streams', () => {
+-      const streams = toStreams(emitter, ['play', 'pause'])
+-
+-      streams.cleanup()
+-
+-      emitter.emit('play')
+-      emitter.emit('pause')
+-
+-      // Streams should not update after cleanup
+-      expect(streams.play.value).toBeNull()
+-      expect(streams.pause.value).toBeNull()
+-    })
+-
+-    it('should handle empty event list', () => {
+-      const streams = toStreams(emitter, [])
+-
+-      expect(streams.cleanup).toBeDefined()
+-      expect(typeof streams.cleanup).toBe('function')
+-
+-      streams.cleanup() // Should not throw
+-    })
+-  })
+-
+-  describe('mergeStreams', () => {
+-    it('should merge multiple events into one stream', () => {
+-      const { stream, cleanup } = mergeStreams(emitter, ['play', 'pause'])
+-
+-      expect(stream.value).toBeNull()
+-
+-      const values: any[] = []
+-      stream.subscribe((value) => values.push(value))
+-
+-      emitter.emit('play')
+-      expect(stream.value).toEqual({ event: 'play', args: [] })
+-
+-      emitter.emit('pause')
+-      expect(stream.value).toEqual({ event: 'pause', args: [] })
+-
+-      expect(values).toContainEqual({ event: 'play', args: [] })
+-      expect(values).toContainEqual({ event: 'pause', args: [] })
+-
+-      cleanup()
+-    })
+-
+-    it('should include event arguments in merged stream', () => {
+-      const { stream, cleanup } = mergeStreams(emitter, ['timeupdate', 'error'])
+-
+-      emitter.emit('timeupdate', 42)
+-      expect(stream.value).toEqual({ event: 'timeupdate', args: [42] })
+-
+-      const error = new Error('Test error')
+-      emitter.emit('error', error)
+-      expect(stream.value).toEqual({ event: 'error', args: [error] })
+-
+-      cleanup()
+-    })
+-
+-    it('should cleanup all merged event listeners', () => {
+-      const { stream, cleanup } = mergeStreams(emitter, ['play', 'pause'])
+-
+-      cleanup()
+-
+-      emitter.emit('play')
+-      emitter.emit('pause')
+-
+-      // Stream should not update after cleanup
+-      expect(stream.value).toBeNull()
+-    })
+-
+-    it('should handle single event', () => {
+-      const { stream, cleanup } = mergeStreams(emitter, ['play'])
+-
+-      emitter.emit('play')
+-      expect(stream.value).toEqual({ event: 'play', args: [] })
+-
+-      cleanup()
+-    })
+-  })
+-
+-  describe('mapStream', () => {
+-    it('should transform stream values', () => {
+-      const { stream: timeStream, cleanup } = toStream(emitter, 'timeupdate')
+-      const seconds = mapStream(timeStream, (value) => (value ? Math.floor(value[0]) : 0))
+-
+-      expect(seconds.value).toBe(0)
+-
+-      emitter.emit('timeupdate', 42.7)
+-      expect(seconds.value).toBe(42)
+-
+-      emitter.emit('timeupdate', 99.9)
+-      expect(seconds.value).toBe(99)
+-
+-      cleanup()
+-    })
+-
+-    it('should work with multiple subscriptions', () => {
+-      const { stream: timeStream, cleanup } = toStream(emitter, 'timeupdate')
+-      const doubled = mapStream(timeStream, (value) => (value ? value[0] * 2 : 0))
+-
+-      const values: number[] = []
+-      doubled.subscribe((value) => values.push(value))
+-
+-      emitter.emit('timeupdate', 5)
+-      emitter.emit('timeupdate', 10)
+-
+-      expect(values).toContain(10)
+-      expect(values).toContain(20)
+-
+-      cleanup()
+-    })
+-
+-    it('should handle null values', () => {
+-      const { stream, cleanup } = toStream(emitter, 'play')
+-      const mapped = mapStream(stream, (value) => (value ? 'playing' : 'not playing'))
+-
+-      expect(mapped.value).toBe('not playing')
+-
+-      emitter.emit('play')
+-      expect(mapped.value).toBe('playing')
+-
+-      cleanup()
+-    })
+-  })
+-
+-  describe('filterStream', () => {
+-    it('should filter stream values', () => {
+-      const { stream: timeStream, cleanup } = toStream(emitter, 'timeupdate')
+-      const afterTen = filterStream(timeStream, (value) => (value ? value[0] > 10 : false))
+-
+-      expect(afterTen.value).toBeNull()
+-
+-      emitter.emit('timeupdate', 5)
+-      expect(afterTen.value).toBeNull()
+-
+-      emitter.emit('timeupdate', 15)
+-      expect(afterTen.value).toEqual([15])
+-
+-      emitter.emit('timeupdate', 7)
+-      expect(afterTen.value).toBeNull()
+-
+-      cleanup()
+-    })
+-
+-    it('should work with subscriptions', () => {
+-      const { stream: timeStream, cleanup } = toStream(emitter, 'timeupdate')
+-      const evenSeconds = filterStream(timeStream, (value) => value !== null && Math.floor(value[0]) % 2 === 0)
+-
+-      const values: any[] = []
+-      evenSeconds.subscribe((value) => values.push(value))
+-
+-      emitter.emit('timeupdate', 1)
+-      emitter.emit('timeupdate', 2)
+-      emitter.emit('timeupdate', 3)
+-      emitter.emit('timeupdate', 4)
+-
+-      expect(values.filter((v) => v !== null)).toEqual([[2], [4]])
+-
+-      cleanup()
+-    })
+-
+-    it('should pass through values that match predicate', () => {
+-      const { stream, cleanup } = toStream(emitter, 'customEvent')
+-      const onlyHello = filterStream(stream, (value) => value !== null && value[0] === 'hello')
+-
+-      emitter.emit('customEvent', 'hello', 1)
+-      expect(onlyHello.value).toEqual(['hello', 1])
+-
+-      emitter.emit('customEvent', 'world', 2)
+-      expect(onlyHello.value).toBeNull()
+-
+-      cleanup()
+-    })
+-  })
+-
+-  describe('integration', () => {
+-    it('should allow chaining stream operations', () => {
+-      const { stream: timeStream, cleanup } = toStream(emitter, 'timeupdate')
+-
+-      // Filter for times > 10, then map to seconds
+-      const filtered = filterStream(timeStream, (value) => (value ? value[0] > 10 : false))
+-      const seconds = mapStream(filtered, (value) => (value ? Math.floor(value[0]) : 0))
+-
+-      const values: number[] = []
+-      seconds.subscribe((value) => values.push(value))
+-
+-      emitter.emit('timeupdate', 5)
+-      emitter.emit('timeupdate', 15.7)
+-      emitter.emit('timeupdate', 20.3)
+-
+-      expect(values).toContain(15)
+-      expect(values).toContain(20)
+-      expect(values).not.toContain(5)
+-
+-      cleanup()
+-    })
+-
+-    it('should work with merged streams', () => {
+-      const { stream: mergedStream, cleanup } = mergeStreams(emitter, ['play', 'pause'])
+-
+-      const eventNames = mapStream(mergedStream, (value) => (value ? value.event : null))
+-
+-      const names: any[] = []
+-      eventNames.subscribe((name) => names.push(name))
+-
+-      emitter.emit('play')
+-      emitter.emit('pause')
+-      emitter.emit('play')
+-
+-      expect(names).toContain('play')
+-      expect(names).toContain('pause')
+-      expect(names.filter((n) => n === 'play')).toHaveLength(2)
+-
+-      cleanup()
+-    })
+-  })
+-})
+diff --git a/src/reactive/__tests__/event-streams.test.ts b/src/reactive/__tests__/event-streams.test.ts
+index a3a9be0..ea373f5 100644
+--- a/src/reactive/__tests__/event-streams.test.ts
++++ b/src/reactive/__tests__/event-streams.test.ts
+@@ -1,5 +1,4 @@
+-import { signal } from '../store'
+-import { fromEvent, map, filter, debounce, throttle, cleanup } from '../event-streams'
++import { fromEvent, cleanup } from '../event-streams'
+ 
+ describe('fromEvent', () => {
+   let button: HTMLButtonElement
+@@ -61,315 +60,3 @@ describe('fromEvent', () => {
+     expect(callback).toHaveBeenCalledWith(expect.objectContaining({ type: 'change' }))
+   })
+ })
+-
+-describe('map', () => {
+-  it('should transform stream values', () => {
+-    const numbers = signal(5)
+-    const doubled = map(numbers, (n) => n * 2)
+-
+-    expect(doubled.value).toBe(10)
+-
+-    numbers.set(10)
+-    expect(doubled.value).toBe(20)
+-  })
+-
+-  it('should notify subscribers when mapped value changes', () => {
+-    const numbers = signal(5)
+-    const doubled = map(numbers, (n) => n * 2)
+-    const callback = jest.fn()
+-
+-    doubled.subscribe(callback)
+-    numbers.set(10)
+-
+-    expect(callback).toHaveBeenCalledWith(20)
+-  })
+-
+-  it('should work with complex transformations', () => {
+-    const button = document.createElement('button')
+-    const clicks = fromEvent(button, 'click')
+-    const positions = map(clicks, (e) => (e ? e.clientX : 0))
+-
+-    expect(positions.value).toBe(0)
+-
+-    button.dispatchEvent(new MouseEvent('click', { clientX: 100 }))
+-    expect(positions.value).toBe(100)
+-  })
+-
+-  it('should cleanup subscriptions on cleanup()', () => {
+-    const numbers = signal(5)
+-    const doubled = map(numbers, (n) => n * 2)
+-    const callback = jest.fn()
+-
+-    doubled.subscribe(callback)
+-    cleanup(doubled)
+-
+-    numbers.set(10)
+-    expect(callback).not.toHaveBeenCalled()
+-  })
+-})
+-
+-describe('filter', () => {
+-  it('should filter stream values by predicate', () => {
+-    const numbers = signal(5)
+-    const evens = filter(numbers, (n) => n % 2 === 0)
+-
+-    expect(evens.value).toBeNull() // 5 is odd
+-
+-    numbers.set(6)
+-    expect(evens.value).toBe(6) // 6 is even
+-
+-    numbers.set(7)
+-    expect(evens.value).toBeNull() // 7 is odd
+-  })
+-
+-  it('should emit null for filtered values', () => {
+-    const numbers = signal(2)
+-    const evens = filter(numbers, (n) => n % 2 === 0)
+-    const values: any[] = []
+-
+-    evens.subscribe((v) => values.push(v))
+-
+-    numbers.set(3) // Odd - should emit null
+-    numbers.set(4) // Even - should emit 4
+-    numbers.set(5) // Odd - should emit null
+-
+-    expect(values).toEqual([null, 4, null])
+-  })
+-
+-  it('should start with correct initial value', () => {
+-    const evens1 = filter(signal(2), (n) => n % 2 === 0)
+-    expect(evens1.value).toBe(2)
+-
+-    const evens2 = filter(signal(3), (n) => n % 2 === 0)
+-    expect(evens2.value).toBeNull()
+-  })
+-
+-  it('should cleanup subscriptions on cleanup()', () => {
+-    const numbers = signal(2)
+-    const evens = filter(numbers, (n) => n % 2 === 0)
+-    const callback = jest.fn()
+-
+-    evens.subscribe(callback)
+-    cleanup(evens)
+-
+-    numbers.set(4)
+-    expect(callback).not.toHaveBeenCalled()
+-  })
+-})
+-
+-describe('debounce', () => {
+-  beforeEach(() => {
+-    jest.useFakeTimers()
+-  })
+-
+-  afterEach(() => {
+-    jest.useRealTimers()
+-  })
+-
+-  it('should delay updates', () => {
+-    const numbers = signal(0)
+-    const debounced = debounce(numbers, 300)
+-    const callback = jest.fn()
+-
+-    debounced.subscribe(callback)
+-
+-    numbers.set(1)
+-    expect(callback).not.toHaveBeenCalled()
+-
+-    jest.advanceTimersByTime(200)
+-    expect(callback).not.toHaveBeenCalled()
+-
+-    jest.advanceTimersByTime(100)
+-    expect(callback).toHaveBeenCalledWith(1)
+-  })
+-
+-  it('should reset timer on new update', () => {
+-    const numbers = signal(0)
+-    const debounced = debounce(numbers, 300)
+-    const callback = jest.fn()
+-
+-    debounced.subscribe(callback)
+-
+-    numbers.set(1)
+-    jest.advanceTimersByTime(200)
+-
+-    numbers.set(2) // Reset timer
+-    jest.advanceTimersByTime(200)
+-    expect(callback).not.toHaveBeenCalled()
+-
+-    jest.advanceTimersByTime(100)
+-    expect(callback).toHaveBeenCalledWith(2)
+-    expect(callback).toHaveBeenCalledTimes(1)
+-  })
+-
+-  it('should emit latest value after delay', () => {
+-    const numbers = signal(0)
+-    const debounced = debounce(numbers, 100)
+-    const values: number[] = []
+-
+-    debounced.subscribe((v) => values.push(v))
+-
+-    numbers.set(1)
+-    numbers.set(2)
+-    numbers.set(3)
+-
+-    jest.advanceTimersByTime(100)
+-    expect(values).toEqual([3]) // Only last value
+-  })
+-
+-  it('should cleanup timeout on cleanup()', () => {
+-    const numbers = signal(0)
+-    const debounced = debounce(numbers, 300)
+-    const callback = jest.fn()
+-
+-    debounced.subscribe(callback)
+-    numbers.set(1)
+-
+-    cleanup(debounced)
+-    jest.advanceTimersByTime(300)
+-
+-    expect(callback).not.toHaveBeenCalled()
+-  })
+-
+-  it('should have initial value', () => {
+-    const numbers = signal(5)
+-    const debounced = debounce(numbers, 300)
+-
+-    expect(debounced.value).toBe(5)
+-  })
+-})
+-
+-describe('throttle', () => {
+-  beforeEach(() => {
+-    jest.useFakeTimers()
+-  })
+-
+-  afterEach(() => {
+-    jest.useRealTimers()
+-  })
+-
+-  it('should emit immediately on first update', () => {
+-    const numbers = signal(0)
+-    const throttled = throttle(numbers, 1000)
+-    const callback = jest.fn()
+-
+-    throttled.subscribe(callback)
+-
+-    numbers.set(1)
+-    expect(callback).toHaveBeenCalledWith(1)
+-  })
+-
+-  it('should throttle subsequent updates', () => {
+-    const numbers = signal(0)
+-    const throttled = throttle(numbers, 1000)
+-    const values: number[] = []
+-
+-    throttled.subscribe((v) => values.push(v))
+-
+-    numbers.set(1) // Immediate
+-    numbers.set(2) // Too soon, scheduled
+-    numbers.set(3) // Too soon, scheduled (replaces 2)
+-
+-    jest.advanceTimersByTime(1000)
+-    expect(values).toEqual([1, 3]) // 1 immediate, 3 after throttle
+-  })
+-
+-  it('should allow emission after throttle period', () => {
+-    const numbers = signal(0)
+-    const throttled = throttle(numbers, 100)
+-    const values: number[] = []
+-
+-    throttled.subscribe((v) => values.push(v))
+-
+-    numbers.set(1) // Immediate
+-    jest.advanceTimersByTime(100)
+-
+-    numbers.set(2) // Enough time passed, immediate
+-    expect(values).toEqual([1, 2])
+-  })
+-
+-  it('should cleanup timeout on cleanup()', () => {
+-    const numbers = signal(0)
+-    const throttled = throttle(numbers, 1000)
+-    const callback = jest.fn()
+-
+-    throttled.subscribe(callback)
+-    numbers.set(1)
+-    numbers.set(2)
+-
+-    cleanup(throttled)
+-    jest.advanceTimersByTime(1000)
+-
+-    expect(callback).toHaveBeenCalledTimes(1) // Only immediate call
+-  })
+-
+-  it('should have initial value', () => {
+-    const numbers = signal(5)
+-    const throttled = throttle(numbers, 1000)
+-
+-    expect(throttled.value).toBe(5)
+-  })
+-})
+-
+-describe('stream composition', () => {
+-  beforeEach(() => {
+-    jest.useFakeTimers()
+-  })
+-
+-  afterEach(() => {
+-    jest.useRealTimers()
+-  })
+-
+-  it('should compose map + filter', () => {
+-    const numbers = signal(1)
+-    const doubled = map(numbers, (n) => n * 2)
+-    const evens = filter(doubled, (n) => n > 5)
+-
+-    expect(evens.value).toBeNull() // 2 is not > 5
+-
+-    numbers.set(3)
+-    expect(evens.value).toBe(6) // 6 is > 5
+-
+-    numbers.set(2)
+-    expect(evens.value).toBeNull() // 4 is not > 5
+-  })
+-
+-  it('should compose map + debounce', () => {
+-    const numbers = signal(0)
+-    const doubled = map(numbers, (n) => n * 2)
+-    const debounced = debounce(doubled, 100)
+-    const values: number[] = []
+-
+-    debounced.subscribe((v) => values.push(v))
+-
+-    numbers.set(1)
+-    numbers.set(2)
+-    numbers.set(3)
+-
+-    jest.advanceTimersByTime(100)
+-    expect(values).toEqual([6]) // 3 * 2 = 6
+-  })
+-
+-  it('should compose fromEvent + map + filter + debounce', () => {
+-    const button = document.createElement('button')
+-    const clicks = fromEvent(button, 'click')
+-    const positions = map(clicks, (e) => (e ? e.clientX : 0))
+-    const filtered = filter(positions, (x) => x > 50)
+-    const debounced = debounce(filtered, 200)
+-    const values: any[] = []
+-
+-    debounced.subscribe((v) => values.push(v))
+-
+-    button.dispatchEvent(new MouseEvent('click', { clientX: 100 }))
+-    button.dispatchEvent(new MouseEvent('click', { clientX: 30 })) // Filtered
+-    button.dispatchEvent(new MouseEvent('click', { clientX: 75 }))
+-
+-    jest.advanceTimersByTime(200)
+-    expect(values).toEqual([75])
+-
+-    cleanup(clicks)
+-    cleanup(positions)
+-    cleanup(filtered)
+-    cleanup(debounced)
+-  })
+-})
+diff --git a/src/reactive/__tests__/media-event-bridge.test.ts b/src/reactive/__tests__/media-event-bridge.test.ts
+deleted file mode 100644
+index 5573b27..0000000
+--- a/src/reactive/__tests__/media-event-bridge.test.ts
++++ /dev/null
+@@ -1,277 +0,0 @@
+-import { bridgeMediaEvents, bridgeMediaEventsWithHandler } from '../media-event-bridge'
+-import { createWaveSurferState } from '../../state/wavesurfer-state'
+-
+-describe('media-event-bridge', () => {
+-  let media: HTMLMediaElement
+-  let actions: ReturnType<typeof createWaveSurferState>['actions']
+-  let state: ReturnType<typeof createWaveSurferState>['state']
+-
+-  beforeEach(() => {
+-    media = document.createElement('audio')
+-    const stateAndActions = createWaveSurferState()
+-    actions = stateAndActions.actions
+-    state = stateAndActions.state
+-  })
+-
+-  describe('bridgeMediaEvents', () => {
+-    it('should create a bridge and return cleanup function', () => {
+-      const cleanup = bridgeMediaEvents(media, actions)
+-      expect(typeof cleanup).toBe('function')
+-      cleanup()
+-    })
+-
+-    it('should update playing state on play event', () => {
+-      const cleanup = bridgeMediaEvents(media, actions)
+-
+-      expect(state.isPlaying.value).toBe(false)
+-
+-      media.dispatchEvent(new Event('play'))
+-      expect(state.isPlaying.value).toBe(true)
+-
+-      cleanup()
+-    })
+-
+-    it('should update playing state on pause event', () => {
+-      const cleanup = bridgeMediaEvents(media, actions)
+-
+-      actions.setPlaying(true)
+-      expect(state.isPlaying.value).toBe(true)
+-
+-      media.dispatchEvent(new Event('pause'))
+-      expect(state.isPlaying.value).toBe(false)
+-
+-      cleanup()
+-    })
+-
+-    it('should update playing state and time on ended event', () => {
+-      const cleanup = bridgeMediaEvents(media, actions)
+-
+-      // Mock duration
+-      Object.defineProperty(media, 'duration', {
+-        value: 100,
+-        writable: true,
+-        configurable: true,
+-      })
+-
+-      actions.setPlaying(true)
+-      actions.setDuration(100)
+-
+-      media.dispatchEvent(new Event('ended'))
+-
+-      expect(state.isPlaying.value).toBe(false)
+-      expect(state.currentTime.value).toBe(100)
+-
+-      cleanup()
+-    })
+-
+-    it('should update current time on timeupdate event', () => {
+-      const cleanup = bridgeMediaEvents(media, actions)
+-
+-      Object.defineProperty(media, 'currentTime', {
+-        value: 42,
+-        writable: true,
+-        configurable: true,
+-      })
+-
+-      media.dispatchEvent(new Event('timeupdate'))
+-      expect(state.currentTime.value).toBe(42)
+-
+-      cleanup()
+-    })
+-
+-    it('should update duration on durationchange event', () => {
+-      const cleanup = bridgeMediaEvents(media, actions)
+-
+-      Object.defineProperty(media, 'duration', {
+-        value: 120,
+-        writable: true,
+-        configurable: true,
+-      })
+-
+-      media.dispatchEvent(new Event('durationchange'))
+-      expect(state.duration.value).toBe(120)
+-
+-      cleanup()
+-    })
+-
+-    it('should update duration on loadedmetadata event', () => {
+-      const cleanup = bridgeMediaEvents(media, actions)
+-
+-      Object.defineProperty(media, 'duration', {
+-        value: 150,
+-        writable: true,
+-        configurable: true,
+-      })
+-
+-      media.dispatchEvent(new Event('loadedmetadata'))
+-      expect(state.duration.value).toBe(150)
+-
+-      cleanup()
+-    })
+-
+-    it('should not update duration if not finite', () => {
+-      const cleanup = bridgeMediaEvents(media, actions)
+-
+-      Object.defineProperty(media, 'duration', {
+-        value: Infinity,
+-        writable: true,
+-        configurable: true,
+-      })
+-
+-      media.dispatchEvent(new Event('durationchange'))
+-      expect(state.duration.value).toBe(0) // Should remain initial value
+-
+-      cleanup()
+-    })
+-
+-    it('should update seeking state on seeking event', () => {
+-      const cleanup = bridgeMediaEvents(media, actions)
+-
+-      expect(state.isSeeking.value).toBe(false)
+-
+-      media.dispatchEvent(new Event('seeking'))
+-      expect(state.isSeeking.value).toBe(true)
+-
+-      cleanup()
+-    })
+-
+-    it('should update seeking state on seeked event', () => {
+-      const cleanup = bridgeMediaEvents(media, actions)
+-
+-      actions.setSeeking(true)
+-      expect(state.isSeeking.value).toBe(true)
+-
+-      media.dispatchEvent(new Event('seeked'))
+-      expect(state.isSeeking.value).toBe(false)
+-
+-      cleanup()
+-    })
+-
+-    it('should update volume on volumechange event', () => {
+-      const cleanup = bridgeMediaEvents(media, actions)
+-
+-      Object.defineProperty(media, 'volume', {
+-        value: 0.5,
+-        writable: true,
+-        configurable: true,
+-      })
+-
+-      media.dispatchEvent(new Event('volumechange'))
+-      expect(state.volume.value).toBe(0.5)
+-
+-      cleanup()
+-    })
+-
+-    it('should update playback rate on ratechange event', () => {
+-      const cleanup = bridgeMediaEvents(media, actions)
+-
+-      Object.defineProperty(media, 'playbackRate', {
+-        value: 1.5,
+-        writable: true,
+-        configurable: true,
+-      })
+-
+-      media.dispatchEvent(new Event('ratechange'))
+-      expect(state.playbackRate.value).toBe(1.5)
+-
+-      cleanup()
+-    })
+-
+-    it('should cleanup all event listeners', () => {
+-      const addSpy = jest.spyOn(media, 'addEventListener')
+-      const removeSpy = jest.spyOn(media, 'removeEventListener')
+-
+-      const cleanup = bridgeMediaEvents(media, actions)
+-
+-      const addCallCount = addSpy.mock.calls.length
+-      expect(addCallCount).toBeGreaterThan(0)
+-
+-      cleanup()
+-
+-      expect(removeSpy).toHaveBeenCalledTimes(addCallCount)
+-
+-      addSpy.mockRestore()
+-      removeSpy.mockRestore()
+-    })
+-
+-    it('should handle multiple events in sequence', () => {
+-      const cleanup = bridgeMediaEvents(media, actions)
+-
+-      // Mock properties
+-      Object.defineProperty(media, 'duration', {
+-        value: 100,
+-        writable: true,
+-        configurable: true,
+-      })
+-      Object.defineProperty(media, 'currentTime', {
+-        value: 0,
+-        writable: true,
+-        configurable: true,
+-      })
+-
+-      // Simulate playback sequence
+-      media.dispatchEvent(new Event('loadedmetadata'))
+-      expect(state.duration.value).toBe(100)
+-
+-      media.dispatchEvent(new Event('play'))
+-      expect(state.isPlaying.value).toBe(true)
+-
+-      Object.defineProperty(media, 'currentTime', { value: 50 })
+-      media.dispatchEvent(new Event('timeupdate'))
+-      expect(state.currentTime.value).toBe(50)
+-
+-      media.dispatchEvent(new Event('pause'))
+-      expect(state.isPlaying.value).toBe(false)
+-
+-      cleanup()
+-    })
+-  })
+-
+-  describe('bridgeMediaEventsWithHandler', () => {
+-    it('should call handler for media events', () => {
+-      const handler = jest.fn()
+-      const cleanup = bridgeMediaEventsWithHandler(media, handler)
+-
+-      media.dispatchEvent(new Event('play'))
+-      expect(handler).toHaveBeenCalledWith('play', expect.any(Event))
+-
+-      media.dispatchEvent(new Event('pause'))
+-      expect(handler).toHaveBeenCalledWith('pause', expect.any(Event))
+-
+-      cleanup()
+-    })
+-
+-    it('should handle multiple events', () => {
+-      const events: string[] = []
+-      const handler = (event: string) => {
+-        events.push(event)
+-      }
+-
+-      const cleanup = bridgeMediaEventsWithHandler(media, handler)
+-
+-      media.dispatchEvent(new Event('loadstart'))
+-      media.dispatchEvent(new Event('loadedmetadata'))
+-      media.dispatchEvent(new Event('canplay'))
+-      media.dispatchEvent(new Event('play'))
+-
+-      expect(events).toContain('loadstart')
+-      expect(events).toContain('loadedmetadata')
+-      expect(events).toContain('canplay')
+-      expect(events).toContain('play')
+-
+-      cleanup()
+-    })
+-
+-    it('should cleanup all listeners', () => {
+-      const handler = jest.fn()
+-      const removeSpy = jest.spyOn(media, 'removeEventListener')
+-
+-      const cleanup = bridgeMediaEventsWithHandler(media, handler)
+-      cleanup()
+-
+-      expect(removeSpy.mock.calls.length).toBeGreaterThan(0)
+-
+-      removeSpy.mockRestore()
+-    })
+-  })
+-})
+diff --git a/src/reactive/__tests__/render-scheduler.test.ts b/src/reactive/__tests__/render-scheduler.test.ts
+deleted file mode 100644
+index fd998c7..0000000
+--- a/src/reactive/__tests__/render-scheduler.test.ts
++++ /dev/null
+@@ -1,278 +0,0 @@
+-import { RenderScheduler } from '../render-scheduler'
+-
+-describe('RenderScheduler', () => {
+-  let scheduler: RenderScheduler
+-  let renderFn: jest.Mock
+-
+-  beforeEach(() => {
+-    scheduler = new RenderScheduler()
+-    renderFn = jest.fn()
+-    jest.useFakeTimers()
+-  })
+-
+-  afterEach(() => {
+-    scheduler.cancelRender()
+-    jest.restoreAllMocks()
+-    jest.useRealTimers()
+-  })
+-
+-  describe('scheduleRender', () => {
+-    it('should schedule a render on next frame', () => {
+-      scheduler.scheduleRender(renderFn)
+-      expect(renderFn).not.toHaveBeenCalled()
+-
+-      // Advance to next frame
+-      jest.advanceTimersByTime(16)
+-      expect(renderFn).toHaveBeenCalledTimes(1)
+-    })
+-
+-    it('should batch multiple render requests into one', () => {
+-      scheduler.scheduleRender(renderFn)
+-      scheduler.scheduleRender(renderFn)
+-      scheduler.scheduleRender(renderFn)
+-
+-      expect(renderFn).not.toHaveBeenCalled()
+-
+-      jest.advanceTimersByTime(16)
+-      expect(renderFn).toHaveBeenCalledTimes(1)
+-    })
+-
+-    it('should allow new render after previous completes', () => {
+-      scheduler.scheduleRender(renderFn)
+-      jest.advanceTimersByTime(16)
+-      expect(renderFn).toHaveBeenCalledTimes(1)
+-
+-      scheduler.scheduleRender(renderFn)
+-      jest.advanceTimersByTime(16)
+-      expect(renderFn).toHaveBeenCalledTimes(2)
+-    })
+-
+-    it('should execute high priority renders immediately', () => {
+-      scheduler.scheduleRender(renderFn, 'high')
+-      expect(renderFn).toHaveBeenCalledTimes(1)
+-
+-      // No additional call on next frame
+-      jest.advanceTimersByTime(16)
+-      expect(renderFn).toHaveBeenCalledTimes(1)
+-    })
+-
+-    it('should cancel batched render when high priority render is called', () => {
+-      const batchedRender = jest.fn()
+-      const highPriorityRender = jest.fn()
+-
+-      scheduler.scheduleRender(batchedRender, 'normal')
+-      expect(batchedRender).not.toHaveBeenCalled()
+-
+-      scheduler.scheduleRender(highPriorityRender, 'high')
+-      expect(highPriorityRender).toHaveBeenCalledTimes(1)
+-
+-      // Batched render should still execute
+-      jest.advanceTimersByTime(16)
+-      expect(batchedRender).not.toHaveBeenCalled()
+-    })
+-
+-    it('should handle low priority same as normal', () => {
+-      scheduler.scheduleRender(renderFn, 'low')
+-      expect(renderFn).not.toHaveBeenCalled()
+-
+-      jest.advanceTimersByTime(16)
+-      expect(renderFn).toHaveBeenCalledTimes(1)
+-    })
+-  })
+-
+-  describe('cancelRender', () => {
+-    it('should cancel pending render', () => {
+-      scheduler.scheduleRender(renderFn)
+-      scheduler.cancelRender()
+-
+-      jest.advanceTimersByTime(16)
+-      expect(renderFn).not.toHaveBeenCalled()
+-    })
+-
+-    it('should allow scheduling after cancel', () => {
+-      scheduler.scheduleRender(renderFn)
+-      scheduler.cancelRender()
+-      scheduler.scheduleRender(renderFn)
+-
+-      jest.advanceTimersByTime(16)
+-      expect(renderFn).toHaveBeenCalledTimes(1)
+-    })
+-
+-    it('should be safe to call multiple times', () => {
+-      scheduler.scheduleRender(renderFn)
+-      scheduler.cancelRender()
+-      scheduler.cancelRender()
+-      scheduler.cancelRender()
+-
+-      jest.advanceTimersByTime(16)
+-      expect(renderFn).not.toHaveBeenCalled()
+-    })
+-
+-    it('should be safe to call when no render is pending', () => {
+-      expect(() => scheduler.cancelRender()).not.toThrow()
+-    })
+-  })
+-
+-  describe('flushRender', () => {
+-    it('should execute render immediately', () => {
+-      scheduler.flushRender(renderFn)
+-      expect(renderFn).toHaveBeenCalledTimes(1)
+-    })
+-
+-    it('should cancel pending batched render', () => {
+-      const batchedRender = jest.fn()
+-      const flushRender = jest.fn()
+-
+-      scheduler.scheduleRender(batchedRender)
+-      scheduler.flushRender(flushRender)
+-
+-      expect(flushRender).toHaveBeenCalledTimes(1)
+-      expect(batchedRender).not.toHaveBeenCalled()
+-
+-      jest.advanceTimersByTime(16)
+-      expect(batchedRender).not.toHaveBeenCalled()
+-    })
+-
+-    it('should work for testing scenarios', () => {
+-      let renderCount = 0
+-      const testRender = () => renderCount++
+-
+-      // Simulate multiple state changes
+-      scheduler.scheduleRender(testRender)
+-      scheduler.scheduleRender(testRender)
+-      scheduler.scheduleRender(testRender)
+-
+-      // Force immediate render for assertion
+-      scheduler.flushRender(testRender)
+-      expect(renderCount).toBe(1)
+-
+-      // No additional render on next frame
+-      jest.advanceTimersByTime(16)
+-      expect(renderCount).toBe(1)
+-    })
+-  })
+-
+-  describe('isPending', () => {
+-    it('should return false initially', () => {
+-      expect(scheduler.isPending()).toBe(false)
+-    })
+-
+-    it('should return true when render is scheduled', () => {
+-      scheduler.scheduleRender(renderFn)
+-      expect(scheduler.isPending()).toBe(true)
+-    })
+-
+-    it('should return false after render executes', () => {
+-      scheduler.scheduleRender(renderFn)
+-      jest.advanceTimersByTime(16)
+-      expect(scheduler.isPending()).toBe(false)
+-    })
+-
+-    it('should return false after cancel', () => {
+-      scheduler.scheduleRender(renderFn)
+-      scheduler.cancelRender()
+-      expect(scheduler.isPending()).toBe(false)
+-    })
+-
+-    it('should return false after flush', () => {
+-      scheduler.scheduleRender(renderFn)
+-      scheduler.flushRender(renderFn)
+-      expect(scheduler.isPending()).toBe(false)
+-    })
+-
+-    it('should return false for high priority renders', () => {
+-      scheduler.scheduleRender(renderFn, 'high')
+-      expect(scheduler.isPending()).toBe(false)
+-    })
+-  })
+-
+-  describe('real-world scenarios', () => {
+-    it('should batch rapid state changes', () => {
+-      let renderCount = 0
+-      const render = () => renderCount++
+-
+-      // Simulate rapid state changes (e.g., during animation)
+-      for (let i = 0; i < 100; i++) {
+-        scheduler.scheduleRender(render)
+-      }
+-
+-      expect(renderCount).toBe(0)
+-
+-      jest.advanceTimersByTime(16)
+-      expect(renderCount).toBe(1)
+-    })
+-
+-    it('should handle mixed priority renders', () => {
+-      const normalRenders: number[] = []
+-      const highRenders: number[] = []
+-
+-      scheduler.scheduleRender(() => normalRenders.push(1), 'normal')
+-      scheduler.scheduleRender(() => highRenders.push(1), 'high')
+-      scheduler.scheduleRender(() => normalRenders.push(2), 'normal')
+-      scheduler.scheduleRender(() => highRenders.push(2), 'high')
+-
+-      expect(highRenders).toEqual([1, 2])
+-      expect(normalRenders).toEqual([])
+-
+-      jest.advanceTimersByTime(16)
+-      expect(normalRenders).toEqual([])
+-    })
+-
+-    it('should handle errors in render function', () => {
+-      const errorRender = () => {
+-        throw new Error('Render error')
+-      }
+-      const successRender = jest.fn()
+-
+-      scheduler.scheduleRender(errorRender)
+-
+-      expect(() => {
+-        jest.advanceTimersByTime(16)
+-      }).toThrow('Render error')
+-
+-      // After error, scheduler is no longer pending
+-      expect(scheduler.isPending()).toBe(false)
+-
+-      // Should be able to schedule after error
+-      scheduler.scheduleRender(successRender)
+-      expect(scheduler.isPending()).toBe(true)
+-
+-      jest.advanceTimersByTime(16)
+-      expect(successRender).toHaveBeenCalledTimes(1)
+-    })
+-
+-    it('should support cleanup on unmount', () => {
+-      scheduler.scheduleRender(renderFn)
+-      expect(scheduler.isPending()).toBe(true)
+-
+-      // Simulate component unmount
+-      scheduler.cancelRender()
+-      expect(scheduler.isPending()).toBe(false)
+-
+-      jest.advanceTimersByTime(100)
+-      expect(renderFn).not.toHaveBeenCalled()
+-    })
+-  })
+-
+-  describe('performance', () => {
+-    it('should handle thousands of schedule calls efficiently', () => {
+-      const start = performance.now()
+-
+-      for (let i = 0; i < 10000; i++) {
+-        scheduler.scheduleRender(renderFn)
+-      }
+-
+-      const duration = performance.now() - start
+-      expect(duration).toBeLessThan(10) // Should be near-instant
+-    })
+-
+-    it('should not leak memory with repeated scheduling', () => {
+-      for (let i = 0; i < 1000; i++) {
+-        scheduler.scheduleRender(renderFn)
+-        scheduler.cancelRender()
+-      }
+-
+-      expect(scheduler.isPending()).toBe(false)
+-    })
+-  })
+-})
+diff --git a/src/reactive/__tests__/scroll-stream.test.ts b/src/reactive/__tests__/scroll-stream.test.ts
+index 063e781..dd469a7 100644
+--- a/src/reactive/__tests__/scroll-stream.test.ts
++++ b/src/reactive/__tests__/scroll-stream.test.ts
+@@ -5,6 +5,7 @@ import {
+   calculateScrollBounds,
+   type ScrollData,
+ } from '../scroll-stream'
++import type { WritableSignal } from '../store'
+ 
+ describe('scroll-stream', () => {
+   describe('calculateScrollPercentages', () => {
+@@ -187,6 +188,22 @@ describe('scroll-stream', () => {
+       addSpy.mockRestore()
+       removeSpy.mockRestore()
+     })
++
++    it('cleanup() disposes derived computeds, not just the DOM listener', () => {
++      const stream = createScrollStream(element)
++      const spy = jest.fn()
++      stream.percentages.subscribe(spy)
++      stream.cleanup()
++      // Force an internal write after cleanup, bypassing the (now-removed)
++      // DOM listener: scrollData is a plain signal, so setting it directly
++      // still notifies subscribers. percentages must no longer recompute.
++      ;(stream.scrollData as WritableSignal<ScrollData>).set({
++        scrollLeft: 999,
++        scrollWidth: 1000,
++        clientWidth: 200,
++      })
++      expect(spy).not.toHaveBeenCalled()
++    })
+   })
+ 
+   describe('createScrollStreamWithAction', () => {
+diff --git a/src/reactive/__tests__/state-event-emitter.test.ts b/src/reactive/__tests__/state-event-emitter.test.ts
+deleted file mode 100644
+index 1aa4337..0000000
+--- a/src/reactive/__tests__/state-event-emitter.test.ts
++++ /dev/null
+@@ -1,368 +0,0 @@
+-import {
+-  setupStateEventEmission,
+-  setupSignalEventEmission,
+-  setupDebouncedEventEmission,
+-  setupConditionalEventEmission,
+-} from '../state-event-emitter'
+-import { createWaveSurferState } from '../../state/wavesurfer-state'
+-import { signal } from '../store'
+-
+-describe('state-event-emitter', () => {
+-  let emitter: { emit: jest.Mock }
+-
+-  beforeEach(() => {
+-    emitter = { emit: jest.fn() }
+-    jest.useFakeTimers()
+-  })
+-
+-  afterEach(() => {
+-    jest.useRealTimers()
+-  })
+-
+-  describe('setupStateEventEmission', () => {
+-    it('should emit play event when isPlaying becomes true', () => {
+-      const { state, actions } = createWaveSurferState()
+-      const cleanup = setupStateEventEmission(state, emitter)
+-
+-      // Initial state triggers pause (isPlaying starts false)
+-      expect(emitter.emit).toHaveBeenCalledWith('pause')
+-
+-      emitter.emit.mockClear()
+-
+-      actions.setPlaying(true)
+-      expect(emitter.emit).toHaveBeenCalledWith('play')
+-
+-      cleanup()
+-    })
+-
+-    it('should emit pause event when isPlaying becomes false', () => {
+-      const { state, actions } = createWaveSurferState()
+-      actions.setPlaying(true)
+-
+-      emitter.emit.mockClear()
+-
+-      const cleanup = setupStateEventEmission(state, emitter)
+-
+-      actions.setPlaying(false)
+-      expect(emitter.emit).toHaveBeenCalledWith('pause')
+-
+-      cleanup()
+-    })
+-
+-    it('should emit timeupdate when currentTime changes', () => {
+-      const { state, actions } = createWaveSurferState()
+-      const cleanup = setupStateEventEmission(state, emitter)
+-
+-      emitter.emit.mockClear()
+-
+-      actions.setCurrentTime(42)
+-      expect(emitter.emit).toHaveBeenCalledWith('timeupdate', 42)
+-
+-      cleanup()
+-    })
+-
+-    it('should emit audioprocess when playing and time changes', () => {
+-      const { state, actions } = createWaveSurferState()
+-      actions.setPlaying(true)
+-
+-      const cleanup = setupStateEventEmission(state, emitter)
+-
+-      emitter.emit.mockClear()
+-
+-      actions.setCurrentTime(10)
+-
+-      expect(emitter.emit).toHaveBeenCalledWith('timeupdate', 10)
+-      expect(emitter.emit).toHaveBeenCalledWith('audioprocess', 10)
+-
+-      cleanup()
+-    })
+-
+-    it('should not emit audioprocess when paused', () => {
+-      const { state, actions } = createWaveSurferState()
+-      actions.setPlaying(false)
+-
+-      const cleanup = setupStateEventEmission(state, emitter)
+-
+-      emitter.emit.mockClear()
+-
+-      actions.setCurrentTime(10)
+-
+-      expect(emitter.emit).toHaveBeenCalledWith('timeupdate', 10)
+-      expect(emitter.emit).not.toHaveBeenCalledWith('audioprocess', expect.anything())
+-
+-      cleanup()
+-    })
+-
+-    it('should emit seeking event when isSeeking becomes true', () => {
+-      const { state, actions } = createWaveSurferState()
+-      actions.setCurrentTime(50)
+-
+-      const cleanup = setupStateEventEmission(state, emitter)
+-
+-      emitter.emit.mockClear()
+-
+-      actions.setSeeking(true)
+-      expect(emitter.emit).toHaveBeenCalledWith('seeking', 50)
+-
+-      cleanup()
+-    })
+-
+-    it('should emit ready event when state becomes ready', () => {
+-      const { state, actions } = createWaveSurferState()
+-      const cleanup = setupStateEventEmission(state, emitter)
+-
+-      emitter.emit.mockClear()
+-
+-      // Set duration and audio buffer to make state ready
+-      actions.setDuration(100)
+-      // Create a mock AudioBuffer since jsdom doesn't support it
+-      const mockAudioBuffer = {
+-        duration: 100,
+-        length: 44100,
+-        sampleRate: 44100,
+-        numberOfChannels: 2,
+-      } as AudioBuffer
+-      actions.setAudioBuffer(mockAudioBuffer)
+-
+-      expect(emitter.emit).toHaveBeenCalledWith('ready', 100)
+-
+-      cleanup()
+-    })
+-
+-    it('should only emit ready event once', () => {
+-      const { state, actions } = createWaveSurferState()
+-      const cleanup = setupStateEventEmission(state, emitter)
+-
+-      // Make ready
+-      actions.setDuration(100)
+-      const mockAudioBuffer = {
+-        duration: 100,
+-        length: 44100,
+-        sampleRate: 44100,
+-        numberOfChannels: 2,
+-      } as AudioBuffer
+-      actions.setAudioBuffer(mockAudioBuffer)
+-
+-      const readyCallCount = emitter.emit.mock.calls.filter((call) => call[0] === 'ready').length
+-
+-      emitter.emit.mockClear()
+-
+-      // Change duration again
+-      actions.setDuration(150)
+-
+-      // Should not emit ready again
+-      expect(emitter.emit).not.toHaveBeenCalledWith('ready', expect.anything())
+-
+-      expect(readyCallCount).toBe(1)
+-
+-      cleanup()
+-    })
+-
+-    it('should emit zoom event when zoom changes', () => {
+-      const { state, actions } = createWaveSurferState()
+-      const cleanup = setupStateEventEmission(state, emitter)
+-
+-      emitter.emit.mockClear()
+-
+-      actions.setZoom(2)
+-      expect(emitter.emit).toHaveBeenCalledWith('zoom', 2)
+-
+-      cleanup()
+-    })
+-
+-    it('should not emit zoom event for zoom=0', () => {
+-      const { state, actions } = createWaveSurferState()
+-      const cleanup = setupStateEventEmission(state, emitter)
+-
+-      emitter.emit.mockClear()
+-
+-      actions.setZoom(0)
+-      expect(emitter.emit).not.toHaveBeenCalledWith('zoom', 0)
+-
+-      cleanup()
+-    })
+-
+-    it('should cleanup all subscriptions', () => {
+-      const { state, actions } = createWaveSurferState()
+-      const cleanup = setupStateEventEmission(state, emitter)
+-
+-      cleanup()
+-
+-      emitter.emit.mockClear()
+-
+-      // These should not trigger events after cleanup
+-      actions.setPlaying(true)
+-      actions.setCurrentTime(42)
+-      actions.setZoom(2)
+-
+-      expect(emitter.emit).not.toHaveBeenCalled()
+-    })
+-  })
+-
+-  describe('setupSignalEventEmission', () => {
+-    it('should emit custom events from signal changes', () => {
+-      const volumeSignal = signal(1)
+-
+-      const cleanup = setupSignalEventEmission(volumeSignal, emitter, (vol) => ['volume', vol])
+-
+-      // Initial emission
+-      expect(emitter.emit).toHaveBeenCalledWith('volume', 1)
+-
+-      emitter.emit.mockClear()
+-
+-      volumeSignal.set(0.5)
+-      expect(emitter.emit).toHaveBeenCalledWith('volume', 0.5)
+-
+-      cleanup()
+-    })
+-
+-    it('should cleanup subscription', () => {
+-      const testSignal = signal(0)
+-      const cleanup = setupSignalEventEmission(testSignal, emitter, (val) => ['test', val])
+-
+-      cleanup()
+-
+-      emitter.emit.mockClear()
+-
+-      testSignal.set(1)
+-      expect(emitter.emit).not.toHaveBeenCalled()
+-    })
+-  })
+-
+-  describe('setupDebouncedEventEmission', () => {
+-    it('should debounce event emission', () => {
+-      const scrollSignal = signal(0)
+-
+-      const cleanup = setupDebouncedEventEmission(scrollSignal, emitter, (pos) => ['scroll', pos], 100)
+-
+-      // Initial emission should be debounced
+-      emitter.emit.mockClear()
+-
+-      scrollSignal.set(10)
+-      expect(emitter.emit).not.toHaveBeenCalled()
+-
+-      scrollSignal.set(20)
+-      expect(emitter.emit).not.toHaveBeenCalled()
+-
+-      scrollSignal.set(30)
+-      expect(emitter.emit).not.toHaveBeenCalled()
+-
+-      // Fast forward time
+-      jest.advanceTimersByTime(100)
+-
+-      // Should emit only the last value
+-      expect(emitter.emit).toHaveBeenCalledTimes(1)
+-      expect(emitter.emit).toHaveBeenCalledWith('scroll', 30)
+-
+-      cleanup()
+-    })
+-
+-    it('should restart debounce timer on each change', () => {
+-      const testSignal = signal(0)
+-
+-      const cleanup = setupDebouncedEventEmission(testSignal, emitter, (val) => ['test', val], 100)
+-
+-      emitter.emit.mockClear()
+-
+-      testSignal.set(1)
+-      jest.advanceTimersByTime(50)
+-
+-      testSignal.set(2)
+-      jest.advanceTimersByTime(50)
+-
+-      // Should not have emitted yet (timer restarted)
+-      expect(emitter.emit).not.toHaveBeenCalled()
+-
+-      jest.advanceTimersByTime(50)
+-
+-      // Now should emit
+-      expect(emitter.emit).toHaveBeenCalledWith('test', 2)
+-
+-      cleanup()
+-    })
+-
+-    it('should cleanup pending timeout', () => {
+-      const testSignal = signal(0)
+-
+-      const cleanup = setupDebouncedEventEmission(testSignal, emitter, (val) => ['test', val], 100)
+-
+-      emitter.emit.mockClear()
+-
+-      testSignal.set(1)
+-
+-      cleanup()
+-
+-      jest.advanceTimersByTime(100)
+-
+-      // Should not emit after cleanup
+-      expect(emitter.emit).not.toHaveBeenCalled()
+-    })
+-  })
+-
+-  describe('setupConditionalEventEmission', () => {
+-    it('should only emit when condition is true', () => {
+-      const stateSignal = signal(0)
+-
+-      const cleanup = setupConditionalEventEmission(
+-        stateSignal,
+-        emitter,
+-        (val) => val > 5,
+-        (val) => ['threshold', val],
+-      )
+-
+-      emitter.emit.mockClear()
+-
+-      stateSignal.set(3)
+-      expect(emitter.emit).not.toHaveBeenCalled()
+-
+-      stateSignal.set(7)
+-      expect(emitter.emit).toHaveBeenCalledWith('threshold', 7)
+-
+-      cleanup()
+-    })
+-
+-    it('should re-evaluate condition on each change', () => {
+-      const testSignal = signal(false)
+-
+-      const cleanup = setupConditionalEventEmission(
+-        testSignal,
+-        emitter,
+-        (val) => val === true,
+-        () => ['activated'],
+-      )
+-
+-      emitter.emit.mockClear()
+-
+-      testSignal.set(false)
+-      expect(emitter.emit).not.toHaveBeenCalled()
+-
+-      testSignal.set(true)
+-      expect(emitter.emit).toHaveBeenCalledWith('activated')
+-
+-      emitter.emit.mockClear()
+-
+-      testSignal.set(false)
+-      expect(emitter.emit).not.toHaveBeenCalled()
+-
+-      cleanup()
+-    })
+-
+-    it('should cleanup subscription', () => {
+-      const testSignal = signal(0)
+-
+-      const cleanup = setupConditionalEventEmission(
+-        testSignal,
+-        emitter,
+-        (val: number) => val > 0,
+-        (val) => ['test', val],
+-      )
+-
+-      cleanup()
+-
+-      emitter.emit.mockClear()
+-
+-      testSignal.set(10)
+-      expect(emitter.emit).not.toHaveBeenCalled()
+-    })
+-  })
+-})
+diff --git a/src/reactive/__tests__/store.test.ts b/src/reactive/__tests__/store.test.ts
+index 9c7d986..73a4902 100644
+--- a/src/reactive/__tests__/store.test.ts
++++ b/src/reactive/__tests__/store.test.ts
+@@ -1,4 +1,4 @@
+-import { signal, computed, effect } from '../store'
++import { signal, computed, effect, batch } from '../store'
+ 
+ describe('signal', () => {
+   it('should create a signal with initial value', () => {
+@@ -360,3 +360,100 @@ describe('integration tests', () => {
+     expect(count.value).toBe(100)
+   })
+ })
++
++describe('store v2', () => {
++  it('computed can be disposed and stops tracking deps', () => {
++    const a = signal(1)
++    const c = computed(() => a.value * 2, [a])
++    expect(c.value).toBe(2)
++    c.dispose()
++    a.set(5)
++    expect(c.value).toBe(2) // frozen after dispose
++  })
++
++  it('computed with no dep array auto-tracks', () => {
++    const a = signal(1)
++    const b = signal(10)
++    const c = computed(() => a.value + b.value)
++    a.set(2)
++    b.set(20)
++    expect(c.value).toBe(22)
++    c.dispose()
++  })
++
++  it('batch coalesces notifications', () => {
++    const a = signal(0)
++    const spy = jest.fn()
++    a.subscribe(spy)
++    batch(() => {
++      a.set(1)
++      a.set(2)
++      a.set(3)
++    })
++    expect(spy).toHaveBeenCalledTimes(1)
++    expect(spy).toHaveBeenCalledWith(3)
++  })
++
++  it('a throwing subscriber does not prevent later subscribers', () => {
++    const a = signal(0)
++    const errSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
++    const second = jest.fn()
++    a.subscribe(() => {
++      throw new Error('boom')
++    })
++    a.subscribe(second)
++    a.set(1)
++    expect(second).toHaveBeenCalledWith(1)
++    errSpy.mockRestore()
++  })
++
++  it('re-entrant set during notification settles without recursion', () => {
++    const a = signal(0)
++    const seen: number[] = []
++    a.subscribe((v) => {
++      seen.push(v)
++      if (v === 1) a.set(2)
++    })
++    a.set(1)
++    expect(a.value).toBe(2)
++    expect(seen).toEqual([1, 2])
++  })
++
++  it('effect with no dep array auto-tracks and disposes', () => {
++    const a = signal(1)
++    const runs: number[] = []
++    const dispose = effect(() => {
++      runs.push(a.value)
++    })
++    a.set(2)
++    dispose()
++    a.set(3)
++    expect(runs).toEqual([1, 2])
++  })
++
++  it('batch coalesces a cascaded set() to a different signal during flush', () => {
++    const a = signal(0)
++    const b = signal(0)
++    const bCalls: number[] = []
++    b.subscribe((v) => bCalls.push(v))
++    a.subscribe(() => b.set(2))
++    batch(() => {
++      b.set(1)
++      a.set(1)
++    })
++    expect(bCalls).toEqual([2])
++  })
++
++  it('a same-signal reentrant set() during batch flush does not double-deliver the final value', () => {
++    const a = signal(0)
++    const seen: number[] = []
++    a.subscribe((v) => {
++      seen.push(v)
++      if (v === 1) a.set(2)
++    })
++    batch(() => {
++      a.set(1)
++    })
++    expect(seen).toEqual([1, 2])
++  })
++})
+diff --git a/src/state/__tests__/wavesurfer-state.test.ts b/src/state/__tests__/wavesurfer-state.test.ts
+index b153dbf..5caf3c1 100644
+--- a/src/state/__tests__/wavesurfer-state.test.ts
++++ b/src/state/__tests__/wavesurfer-state.test.ts
+@@ -1,4 +1,5 @@
+ import { createWaveSurferState } from '../wavesurfer-state'
++import { signal } from '../../reactive/store'
+ 
+ describe('WaveSurferState', () => {
+   it('should create state with default values', () => {
+@@ -123,6 +124,27 @@ describe('WaveSurferState', () => {
+       expect(state.duration.value).toBe(120)
+     })
+ 
++    it('should not overwrite an already-valid duration with a differing AudioBuffer duration', () => {
++      const { state, actions } = createWaveSurferState()
++
++      actions.setDuration(100)
++      const buffer = { duration: 100.02 } as AudioBuffer
++      actions.setAudioBuffer(buffer)
++
++      expect(state.duration.value).toBe(100)
++    })
++
++    it('should set duration from AudioBuffer when the current duration is invalid (0, NaN, Infinity)', () => {
++      const zeroCase = createWaveSurferState()
++      zeroCase.actions.setAudioBuffer({ duration: 55 } as AudioBuffer)
++      expect(zeroCase.state.duration.value).toBe(55)
++
++      const infinityCase = createWaveSurferState()
++      infinityCase.actions.setDuration(Infinity)
++      infinityCase.actions.setAudioBuffer({ duration: 42 } as AudioBuffer)
++      expect(infinityCase.state.duration.value).toBe(42)
++    })
++
+     it('should update peaks', () => {
+       const { state, actions } = createWaveSurferState()
+       const peaks = [new Float32Array([1, 2, 3])]
+@@ -308,6 +330,25 @@ describe('WaveSurferState', () => {
+     })
+   })
+ 
++  describe('dispose', () => {
++    it('dispose() detaches computeds from the player signals', () => {
++      const deps = {
++        isPlaying: signal(false),
++        currentTime: signal(0),
++        duration: signal(0),
++        volume: signal(1),
++        playbackRate: signal(1),
++        isSeeking: signal(false),
++      }
++      const { state, dispose } = createWaveSurferState(deps)
++
++      dispose()
++      deps.currentTime.set(42)
++
++      expect(state.progress.value).toBe(0) // frozen — no longer recomputing
++    })
++  })
++
+   describe('complex state updates', () => {
+     it('should handle multiple rapid updates', () => {
+       const { state, actions } = createWaveSurferState()

@@ -1,0 +1,706 @@
+diff --git a/enola_test.go b/enola_test.go
+new file mode 100644
+index 0000000..aedef7c
+--- /dev/null
++++ b/enola_test.go
+@@ -0,0 +1,207 @@
++package enola
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"io"
++	"net/http"
++	"net/http/httptest"
++	"testing"
++)
++
++func collectResults(ch <-chan Result) []Result {
++	var out []Result
++	for r := range ch {
++		out = append(out, r)
++	}
++	return out
++}
++
++func TestCheckStatusCodeFound(t *testing.T) {
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
++		w.WriteHeader(http.StatusOK)
++	}))
++	defer server.Close()
++
++	data := map[string]Website{
++		"TestSite": {
++			ErrorType: "status_code",
++			URL:       server.URL + "/{}",
++		},
++	}
++
++	e, err := New(WithData(data), WithHTTPClient(server.Client()), WithConcurrency(1))
++	if err != nil {
++		t.Fatalf("New failed: %v", err)
++	}
++
++	ch, err := e.Check(context.Background(), "alice")
++	if err != nil {
++		t.Fatalf("Check failed: %v", err)
++	}
++
++	results := collectResults(ch)
++	if len(results) != 1 {
++		t.Fatalf("got %d results, want 1", len(results))
++	}
++	if !results[0].Found {
++		t.Fatalf("expected found result, got %+v", results[0])
++	}
++}
++
++func TestCheckMessageNotFound(t *testing.T) {
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
++		_, _ = w.Write([]byte("user not found"))
++	}))
++	defer server.Close()
++
++	data := map[string]Website{
++		"TestSite": {
++			ErrorType:     "message",
++			ErrorMessages: []string{"not found"},
++			URL:           server.URL + "/{}",
++		},
++	}
++
++	e, err := New(WithData(data), WithHTTPClient(server.Client()), WithConcurrency(1))
++	if err != nil {
++		t.Fatalf("New failed: %v", err)
++	}
++
++	ch, err := e.Check(context.Background(), "alice")
++	if err != nil {
++		t.Fatalf("Check failed: %v", err)
++	}
++
++	results := collectResults(ch)
++	if len(results) != 1 || results[0].Found {
++		t.Fatalf("expected not found result, got %+v", results)
++	}
++}
++
++func TestCheckRegexInvalid(t *testing.T) {
++	data := map[string]Website{
++		"TestSite": {
++			ErrorType:  "status_code",
++			URL:        "https://example.com/{}",
++			RegexCheck: "^[a-z]+$",
++		},
++	}
++
++	e, err := New(WithData(data), WithConcurrency(1))
++	if err != nil {
++		t.Fatalf("New failed: %v", err)
++	}
++
++	ch, err := e.Check(context.Background(), "Alice123")
++	if err != nil {
++		t.Fatalf("Check failed: %v", err)
++	}
++
++	results := collectResults(ch)
++	if len(results) != 1 {
++		t.Fatalf("got %d results, want 1", len(results))
++	}
++	if results[0].Status != StatusInvalid {
++		t.Fatalf("expected invalid status, got %+v", results[0])
++	}
++}
++
++func TestCheckSiteFilterNotFound(t *testing.T) {
++	e, err := New(WithData(map[string]Website{
++		"Twitter": {ErrorType: "status_code", URL: "https://example.com/{}"},
++	}))
++	if err != nil {
++		t.Fatalf("New failed: %v", err)
++	}
++
++	_, err = e.SetSite("does-not-exist").Check(context.Background(), "alice")
++	if !errors.Is(err, ErrSiteNotFound) {
++		t.Fatalf("expected ErrSiteNotFound, got %v", err)
++	}
++}
++
++func TestCheckChannelCloses(t *testing.T) {
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
++		w.WriteHeader(http.StatusNotFound)
++	}))
++	defer server.Close()
++
++	data := map[string]Website{
++		"A": {ErrorType: "status_code", URL: server.URL + "/a/{}"},
++		"B": {ErrorType: "status_code", URL: server.URL + "/b/{}"},
++	}
++
++	e, err := New(WithData(data), WithHTTPClient(server.Client()), WithConcurrency(2))
++	if err != nil {
++		t.Fatalf("New failed: %v", err)
++	}
++
++	ch, err := e.Check(context.Background(), "alice")
++	if err != nil {
++		t.Fatalf("Check failed: %v", err)
++	}
++
++	results := collectResults(ch)
++	if len(results) != 2 {
++		t.Fatalf("got %d results, want 2", len(results))
++	}
++}
++
++func TestCheckRequestPayloadAndHeaders(t *testing.T) {
++	var gotMethod, gotContentType, gotPath string
++	var gotBody []byte
++	var bodyReadErr error
++
++	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		gotMethod = r.Method
++		gotContentType = r.Header.Get("Content-Type")
++		gotPath = r.URL.Path
++		gotBody, bodyReadErr = io.ReadAll(r.Body)
++		w.WriteHeader(http.StatusOK)
++	}))
++	defer server.Close()
++
++	data := map[string]Website{
++		"TestSite": {
++			ErrorType:      "status_code",
++			URL:            server.URL + "/{}",
++			URLProbe:       server.URL + "/probe",
++			RequestMethod:  http.MethodPost,
++			RequestPayload: map[string]any{"username": "{}"},
++			Headers:        map[string]string{"Content-Type": "application/json"},
++		},
++	}
++
++	e, err := New(WithData(data), WithHTTPClient(server.Client()), WithConcurrency(1))
++	if err != nil {
++		t.Fatalf("New failed: %v", err)
++	}
++
++	ch, err := e.Check(context.Background(), "alice")
++	if err != nil {
++		t.Fatalf("Check failed: %v", err)
++	}
++	_ = collectResults(ch)
++
++	if gotMethod != http.MethodPost {
++		t.Fatalf("method = %q, want POST", gotMethod)
++	}
++	if gotContentType != "application/json" {
++		t.Fatalf("content-type = %q, want application/json", gotContentType)
++	}
++	if gotPath != "/probe" {
++		t.Fatalf("path = %q, want /probe", gotPath)
++	}
++	if bodyReadErr != nil {
++		t.Fatalf("read request body: %v", bodyReadErr)
++	}
++	var gotPayload map[string]any
++	if err := json.Unmarshal(gotBody, &gotPayload); err != nil {
++		t.Fatalf("decode request body as JSON: %v (body = %q)", err, gotBody)
++	}
++	if len(gotPayload) != 1 || gotPayload["username"] != "alice" {
++		t.Fatalf("payload = %#v, want username=alice", gotPayload)
++	}
++}
+diff --git a/internal/checker/checker_test.go b/internal/checker/checker_test.go
+new file mode 100644
+index 0000000..6a680e7
+--- /dev/null
++++ b/internal/checker/checker_test.go
+@@ -0,0 +1,160 @@
++package checker
++
++import (
++	"net/http"
++	"testing"
++)
++
++func TestStatusCodeDetector(t *testing.T) {
++	d := statusCodeDetector{}
++	tests := []struct {
++		name   string
++		resp   Response
++		target Target
++		want   bool
++	}{
++		{
++			name:   "200 ok",
++			resp:   Response{StatusCode: http.StatusOK},
++			target: Target{},
++			want:   true,
++		},
++		{
++			name:   "404 not found",
++			resp:   Response{StatusCode: http.StatusNotFound},
++			target: Target{},
++			want:   false,
++		},
++		{
++			name:   "error code match",
++			resp:   Response{StatusCode: 404},
++			target: Target{ErrorCodes: []int{404}},
++			want:   false,
++		},
++		{
++			name:   "200 with error codes excluding 404",
++			resp:   Response{StatusCode: http.StatusOK},
++			target: Target{ErrorCodes: []int{404}},
++			want:   true,
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			got, err := d.Detect(tt.resp, tt.target)
++			if err != nil {
++				t.Fatalf("unexpected error: %v", err)
++			}
++			if got != tt.want {
++				t.Fatalf("got %v, want %v", got, tt.want)
++			}
++		})
++	}
++}
++
++func TestMessageDetector(t *testing.T) {
++	d := messageDetector{}
++	tests := []struct {
++		name   string
++		resp   Response
++		target Target
++		want   bool
++	}{
++		{
++			name:   "single message absent",
++			resp:   Response{Body: []byte("welcome profile")},
++			target: Target{ErrorMessages: []string{"not found"}},
++			want:   true,
++		},
++		{
++			name:   "single message present",
++			resp:   Response{Body: []byte("user not found")},
++			target: Target{ErrorMessages: []string{"not found"}},
++			want:   false,
++		},
++		{
++			name:   "array any match",
++			resp:   Response{Body: []byte("<title>404 Not Found</title>")},
++			target: Target{ErrorMessages: []string{"something went wrong", "404 Not Found"}},
++			want:   false,
++		},
++		{
++			name:   "array none match",
++			resp:   Response{Body: []byte("profile page")},
++			target: Target{ErrorMessages: []string{"something went wrong", "404 Not Found"}},
++			want:   true,
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			got, err := d.Detect(tt.resp, tt.target)
++			if err != nil {
++				t.Fatalf("unexpected error: %v", err)
++			}
++			if got != tt.want {
++				t.Fatalf("got %v, want %v", got, tt.want)
++			}
++		})
++	}
++}
++
++func TestResponseURLDetector(t *testing.T) {
++	d := responseURLDetector{}
++	tests := []struct {
++		name   string
++		resp   Response
++		target Target
++		want   bool
++	}{
++		{
++			name:   "redirected to error url",
++			resp:   Response{FinalURL: "https://example.com/error404.aspx"},
++			target: Target{ErrorURL: "https://example.com/error404.aspx"},
++			want:   false,
++		},
++		{
++			name:   "profile url kept",
++			resp:   Response{FinalURL: "https://example.com/user/alice"},
++			target: Target{ErrorURL: "https://example.com/error404.aspx"},
++			want:   true,
++		},
++		{
++			name:   "empty error url falls back to status",
++			resp:   Response{StatusCode: http.StatusOK, FinalURL: "https://example.com/user/alice"},
++			target: Target{},
++			want:   true,
++		},
++	}
++
++	for _, tt := range tests {
++		t.Run(tt.name, func(t *testing.T) {
++			got, err := d.Detect(tt.resp, tt.target)
++			if err != nil {
++				t.Fatalf("unexpected error: %v", err)
++			}
++			if got != tt.want {
++				t.Fatalf("got %v, want %v", got, tt.want)
++			}
++		})
++	}
++}
++
++func TestRegistryLookup(t *testing.T) {
++	types := []string{"status_code", "message", "response_url"}
++	for _, errorType := range types {
++		t.Run(errorType, func(t *testing.T) {
++			d, ok := Lookup(errorType)
++			if !ok {
++				t.Fatalf("detector not registered for %q", errorType)
++			}
++			if d == nil {
++				t.Fatal("detector is nil")
++			}
++		})
++	}
++
++	if _, ok := Lookup("unknown"); ok {
++		t.Fatal("expected unknown error type to be missing")
++	}
++}
+diff --git a/internal/export/export_test.go b/internal/export/export_test.go
+new file mode 100644
+index 0000000..27d421b
+--- /dev/null
++++ b/internal/export/export_test.go
+@@ -0,0 +1,207 @@
++package export
++
++import (
++	"bytes"
++	"encoding/csv"
++	"encoding/json"
++	"os"
++	"path/filepath"
++	"reflect"
++	"strconv"
++	"strings"
++	"testing"
++)
++
++func TestCheckExportType(t *testing.T) {
++	tests := []struct {
++		path string
++		want ExportType
++	}{
++		{"results.json", JSON},
++		{"results.JSON", JSON},
++		{"results.csv", CSV},
++		{"results.txt", NotSupported},
++	}
++
++	for _, tt := range tests {
++		if got := CheckExportType(tt.path); got != tt.want {
++			t.Fatalf("CheckExportType(%q) = %q, want %q", tt.path, got, tt.want)
++		}
++	}
++}
++
++func TestNewWriterUnsupported(t *testing.T) {
++	_, err := NewWriter("out.txt", nil)
++	if err == nil {
++		t.Fatal("expected error for unsupported format")
++	}
++}
++
++func TestJSONWriterRoundTrip(t *testing.T) {
++	dir := t.TempDir()
++	path := filepath.Join(dir, "out.json")
++	items := []Item{
++		{Title: "Twitter", URL: "https://twitter.com/alice", Found: true},
++	}
++
++	writer, err := NewWriter(path, items)
++	if err != nil {
++		t.Fatalf("NewWriter failed: %v", err)
++	}
++	if err := writer.Write(); err != nil {
++		t.Fatalf("Write failed: %v", err)
++	}
++
++	data, err := os.ReadFile(path)
++	if err != nil {
++		t.Fatalf("ReadFile failed: %v", err)
++	}
++
++	var got []Item
++	if err := json.Unmarshal(data, &got); err != nil {
++		t.Fatalf("json.Unmarshal failed: %v", err)
++	}
++	if len(got) != 1 || got[0].Title != "Twitter" || !got[0].Found {
++		t.Fatalf("unexpected data: %+v", got)
++	}
++}
++
++func TestCSVWriterRoundTrip(t *testing.T) {
++	dir := t.TempDir()
++	path := filepath.Join(dir, "out.csv")
++	items := []Item{
++		{Title: "GitHub", URL: "https://github.com/alice", Found: false},
++	}
++
++	writer, err := NewWriter(path, items)
++	if err != nil {
++		t.Fatalf("NewWriter failed: %v", err)
++	}
++	if err := writer.Write(); err != nil {
++		t.Fatalf("Write failed: %v", err)
++	}
++
++	data, err := os.ReadFile(path)
++	if err != nil {
++		t.Fatalf("ReadFile failed: %v", err)
++	}
++
++	content := string(data)
++	if !strings.Contains(content, "GitHub") || !strings.Contains(content, "false") {
++		t.Fatalf("unexpected csv content: %q", content)
++	}
++}
++
++func TestCheckExportTypeCaseInsensitiveCSV(t *testing.T) {
++	if got := CheckExportType("results.CSV"); got != CSV {
++		t.Fatalf("uppercase CSV suffix must select CSV, got %q", got)
++	}
++}
++
++// A test-owned row describes the external format, independently of Item's
++// JSON tags or the candidate's decoder. Order is not prescribed by the task.
++type exportedRow struct {
++	Title string
++	URL   string
++	Found bool
++}
++
++func requiredJSONRows(t *testing.T, data []byte) []exportedRow {
++	t.Helper()
++	var records []map[string]any
++	if err := json.Unmarshal(data, &records); err != nil {
++		t.Fatalf("export must contain one complete valid JSON array: %v", err)
++	}
++	rows := make([]exportedRow, 0, len(records))
++	for _, record := range records {
++		title, titleOK := record["title"].(string)
++		url, urlOK := record["url"].(string)
++		found, foundOK := record["found"].(bool)
++		if !titleOK || !urlOK || !foundOK {
++			t.Fatalf("JSON requires title/url string fields and found boolean: %#v", record)
++		}
++		rows = append(rows, exportedRow{title, url, found})
++	}
++	// Additional JSON fields are allowed; whitespace/key order are irrelevant.
++	return rows
++}
++
++func requiredCSVRows(t *testing.T, data []byte) []exportedRow {
++	t.Helper()
++	reader := csv.NewReader(bytes.NewReader(data))
++	reader.FieldsPerRecord = -1
++	records, err := reader.ReadAll()
++	if err != nil {
++		t.Fatalf("export must contain complete valid CSV records: %v", err)
++	}
++	if len(records) == 0 || !reflect.DeepEqual(records[0], []string{"title", "url", "found"}) {
++		t.Fatalf("CSV requires header title,url,found: %#v", records)
++	}
++	rows := make([]exportedRow, 0, len(records)-1)
++	for _, record := range records[1:] {
++		if len(record) != 3 {
++			t.Fatalf("CSV data row requires exactly the three declared columns: %#v", record)
++		}
++		found, err := strconv.ParseBool(record[2])
++		if err != nil {
++			t.Fatalf("CSV found column must express its boolean value: %q", record[2])
++		}
++		rows = append(rows, exportedRow{record[0], record[1], found})
++	}
++	return rows
++}
++
++func exportRowCounts(rows []exportedRow) map[exportedRow]int {
++	counts := make(map[exportedRow]int)
++	for _, row := range rows {
++		counts[row]++
++	}
++	return counts
++}
++
++func TestExportRequiredSchemaAndFileBehavior(t *testing.T) {
++	items := []Item{
++		{Title: `Comma, "quoted" site`, URL: "https://example.com/u/alice?x=one,two&y=three", Found: true},
++		{Title: "Missing profile", URL: "https://other.example/profiles/alice", Found: false},
++	}
++	want := []exportedRow{
++		{`Comma, "quoted" site`, "https://example.com/u/alice?x=one,two&y=three", true},
++		{"Missing profile", "https://other.example/profiles/alice", false},
++	}
++	for _, suffix := range []string{".json", ".JSON", ".csv", ".CSV"} {
++		for _, layout := range []string{"nested", "overwrite"} {
++			t.Run(suffix+"/"+layout, func(t *testing.T) {
++				path := filepath.Join(t.TempDir(), "parent", "child", "results"+suffix)
++				if layout == "overwrite" {
++					if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
++						t.Fatal(err)
++					}
++					// Longer stale content must not remain as suffix or extra rows.
++					if err := os.WriteFile(path, bytes.Repeat([]byte("STALE-EXPORT-DATA,"), 512), 0o600); err != nil {
++						t.Fatal(err)
++					}
++				}
++				writer, err := NewWriter(path, items)
++				if err != nil {
++					t.Fatalf("NewWriter must support the output path: %v", err)
++				}
++				if err := writer.Write(); err != nil {
++					t.Fatalf("Write must create missing parents and replace existing output: %v", err)
++				}
++				data, err := os.ReadFile(path)
++				if err != nil {
++					t.Fatalf("ReadFile failed: %v", err)
++				}
++				var got []exportedRow
++				if strings.EqualFold(suffix, ".json") {
++					got = requiredJSONRows(t, data)
++				} else {
++					got = requiredCSVRows(t, data)
++				}
++				if !reflect.DeepEqual(exportRowCounts(got), exportRowCounts(want)) {
++					t.Fatalf("exported rows must preserve every complete title/URL/found value exactly once: got %#v, want %#v", got, want)
++				}
++			})
++		}
++	}
++}
+diff --git a/regex_test.go b/regex_test.go
+new file mode 100644
+index 0000000..d91899f
+--- /dev/null
++++ b/regex_test.go
+@@ -0,0 +1,47 @@
++package enola
++
++import "testing"
++
++func TestMatchUsernameRegex_GitHub(t *testing.T) {
++	pattern := `^[a-zA-Z0-9](?:[a-zA-Z0-9]|-(?=[a-zA-Z0-9])){0,38}$`
++
++	tests := []struct {
++		username string
++		want     bool
++	}{
++		{"amirrossein", true},
++		{"blue", true},
++		{"-invalid", false},
++		{"invalid-", false},
++	}
++
++	for _, tt := range tests {
++		got, err := matchUsernameRegex(pattern, tt.username)
++		if err != nil {
++			t.Fatalf("matchUsernameRegex(%q) error: %v", tt.username, err)
++		}
++		if got != tt.want {
++			t.Fatalf("matchUsernameRegex(%q) = %v, want %v", tt.username, got, tt.want)
++		}
++	}
++}
++
++func TestMatchUsernameRegex_Stdlib(t *testing.T) {
++	got, err := matchUsernameRegex(`^[a-z]+$`, "alice")
++	if err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++	if !got {
++		t.Fatal("expected match")
++	}
++}
++
++func TestMatchUsernameRegex_Empty(t *testing.T) {
++	got, err := matchUsernameRegex("", "anything")
++	if err != nil {
++		t.Fatalf("unexpected error: %v", err)
++	}
++	if !got {
++		t.Fatal("empty pattern should match anything")
++	}
++}
+diff --git a/website_test.go b/website_test.go
+new file mode 100644
+index 0000000..05ed17d
+--- /dev/null
++++ b/website_test.go
+@@ -0,0 +1,55 @@
++package enola
++
++import (
++	"encoding/json"
++	"reflect"
++	"testing"
++)
++
++func TestWebsiteUnmarshalErrorMsgString(t *testing.T) {
++	raw := `{"errorType":"message","errorMsg":"Page Not Found","url":"https://example.com/{}"}`
++	var w Website
++	if err := json.Unmarshal([]byte(raw), &w); err != nil {
++		t.Fatalf("unmarshal failed: %v", err)
++	}
++	want := []string{"Page Not Found"}
++	if !reflect.DeepEqual(w.ErrorMessages, want) {
++		t.Fatalf("got %v, want %v", w.ErrorMessages, want)
++	}
++}
++
++func TestWebsiteUnmarshalErrorMsgArray(t *testing.T) {
++	raw := `{"errorType":"message","errorMsg":["a","b"],"url":"https://example.com/{}"}`
++	var w Website
++	if err := json.Unmarshal([]byte(raw), &w); err != nil {
++		t.Fatalf("unmarshal failed: %v", err)
++	}
++	want := []string{"a", "b"}
++	if !reflect.DeepEqual(w.ErrorMessages, want) {
++		t.Fatalf("got %v, want %v", w.ErrorMessages, want)
++	}
++}
++
++func TestWebsiteUnmarshalErrorCodeInt(t *testing.T) {
++	raw := `{"errorType":"status_code","errorCode":404,"url":"https://example.com/{}"}`
++	var w Website
++	if err := json.Unmarshal([]byte(raw), &w); err != nil {
++		t.Fatalf("unmarshal failed: %v", err)
++	}
++	want := []int{404}
++	if !reflect.DeepEqual(w.ErrorCodes, want) {
++		t.Fatalf("got %v, want %v", w.ErrorCodes, want)
++	}
++}
++
++func TestWebsiteUnmarshalErrorCodeArray(t *testing.T) {
++	raw := `{"errorType":"status_code","errorCode":[404,500],"url":"https://example.com/{}"}`
++	var w Website
++	if err := json.Unmarshal([]byte(raw), &w); err != nil {
++		t.Fatalf("unmarshal failed: %v", err)
++	}
++	want := []int{404, 500}
++	if !reflect.DeepEqual(w.ErrorCodes, want) {
++		t.Fatalf("got %v, want %v", w.ErrorCodes, want)
++	}
++}

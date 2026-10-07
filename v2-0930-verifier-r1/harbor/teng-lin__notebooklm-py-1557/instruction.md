@@ -1,0 +1,37 @@
+The repository has a guardrail for decoded RPC payload handling that rejects raw single-level positional reads of the form `name[int]` in below-facade feature modules. The existing allowlist for this guardrail still contains 19 files, meaning many domains continue to open-code positional assumptions about `batchexecute`/RPC response shapes instead of routing those reads through the sanctioned schema-drift seams.
+
+Drain the remaining single-level positional RPC decode debt so `SINGLE_LEVEL_ALLOWLIST` in `tests/_guardrails/test_no_raw_positional_rpc_indexing.py` can be empty. A new raw `name[int]` read in any in-scope below-facade module should fail the guardrail unless it is clearly not a decoded RPC payload and is expressed in a way that avoids the type-blind `name[int]` shape.
+
+Affected areas include artifacts, sources, notes/notebooks, sharing, research, mind maps, chat, and labels. Preserve all existing public behavior and soft-vs-strict decoding semantics while moving positional response-shape knowledge behind `_row_adapters` and/or `safe_index` as appropriate.
+
+For soft decode sites, malformed, empty, too-short, wrong-typed, or absent response shapes must continue to degrade exactly as before, typically returning `None`, `[]`, `""`, a default enum/value, or skipping malformed rows rather than raising. Do not introduce new `safe_index` raises at locations that previously returned a soft default. Any `safe_index` use at such sites must be guarded so the slot is already known to exist. For strict or guaranteed slots, preserve the existing strict behavior and error surface.
+
+Specific behavior that must remain intact includes:
+
+`LIST_ARTIFACTS` and `GET_SUGGESTED_REPORTS` may return either a wrapped row envelope `[[row1, row2, ...]]` or an already-flat `[row1, row2, ...]` list. The unwrap logic must treat empty inner lists as wrapped, leave already-flat rows unchanged, and never raise for soft malformed/empty cases.
+
+`GENERATE_MIND_MAP` returns a two-level leaf shape like `[[mind_map_json]]`. Absence of the leaf must produce `MindMapResult(mind_map=None, note_id=None)`, but a present `None` leaf is different from an absent leaf and must still be processed into note content as JSON `"null"`.
+
+Artifact data-table parsing must continue to skip malformed row sections: non-list rows, rows shorter than three elements, and rows whose cell-array slot is not a list. These malformed rows must not cause an artifact parse failure.
+
+Artifact selection and download code contains typed list/tuple head picks, such as lists of `Artifact` or `ArtifactRow`, a one-slot writer error box, and pending poll tuples. These are not decoded RPC payloads, but they should not appear as raw `name[int]` patterns that trip the positional RPC guardrail. Preserve their current behavior, including newest-first artifact selection and re-raising the stored writer exception.
+
+Source metadata helpers `_extract_source_url(metadata, allow_bare_http=True)` and `_extract_source_created_at(metadata)` are public/re-exported compatibility helpers and must keep their exact legacy semantics. `_extract_source_url` must retain the precedence `metadata[7][0]`, then `metadata[5][0]` when it is a string, then a bare `metadata[0]` starting with `"http"` when `allow_bare_http` is true. It must keep the legacy soft behavior and not coerce the URL value returned from `metadata[7][0]`. `_extract_source_created_at` must continue to return `None` unless `metadata[2]` is a non-empty list, then convert its first value through the existing timestamp conversion behavior.
+
+`GET_SOURCE_GUIDE` decoding must preserve the previous positional behavior for summary and keywords. Well-formed payloads like `[[["id", ["the summary"], [["kw1", "kw2"]]]]]` should yield summary `"the summary"` and keywords `["kw1", "kw2"]`. Empty, too-short, malformed, or wrong-typed envelopes must degrade to `""` and `[]`.
+
+`GET_SOURCE` fulltext decoding must preserve the previous behavior for title, metadata, HTML content, and text blocks. Descriptor rows that are too short or malformed should yield empty/default values. The title should be `""` when the title slot is not a string. Metadata should only be exposed when present as a list. Text content and HTML blocks should retain their prior soft handling, including returning `None` for absent or malformed blocks.
+
+Notebook and note decoders must continue to parse `LIST_NOTEBOOKS`, `GET_NOTEBOOK`, `SUMMARIZE`, and `CREATE_NOTE` payloads with the same defaults and errors as before. Notebook title, id, metadata, created/modified timestamps, owner flag, and source count extraction must not change. Short or absent optional slots must still soft-degrade, while malformed non-`None` notebook ids should continue to surface according to the existing policy.
+
+Sharing decoders in `_types/sharing.py` for `SharedUser.from_api_response` and `ShareStatus.from_api_response` must preserve the `GET_SHARE_STATUS` behavior. User rows should continue to parse email, permission, display name, and avatar from their existing slots, defaulting to viewer/default values on malformed input. Public share status should continue to treat an absent, non-list, or empty public block as not public, and use the first value of a non-empty public block to determine public access.
+
+Research decoding must preserve behavior for starting research, importing sources, polling, and waiting for completion. `start()` should keep the existing semantics for task id and optional report id. `import_sources()` must continue to unwrap/import rows softly and skip malformed rows rather than raising. Typed `list[ResearchTask]` head picks in polling/waiting code are not raw RPC payload reads and should avoid the guardrail shape without changing behavior.
+
+Mind map artifact creation response handling must continue to return `None` for degenerate `CREATE_ARTIFACT` response shapes such as `[[]]`, `[None]`, `[[123]]`, `None`, and non-list payloads.
+
+Chat decoding must preserve `get_conversation_id` behavior for the `[[[conv_id]]]` shape: return the conversation id only when a valid string row exists, otherwise return `None` and let the caller keep its warning/diagnostic behavior. Saving a chat answer as a note must preserve the `CREATE_NOTE` saved-from-chat decode: extract the note id and server title from their existing positions when present, raise as before when the id is missing, and keep the requested title when the server title is absent or malformed.
+
+Labels creation contains typed `list[Label]` handling, not decoded RPC payload decoding. Preserve the existing returned label while avoiding a raw positional pattern that the guardrail treats as RPC debt.
+
+Add or update tests to pin parity for the new row-adapter/safe-index seams across present, empty, too-short, malformed, non-list, and wrong-typed inputs. The guardrail test should pass with `SINGLE_LEVEL_ALLOWLIST` empty, and no below-facade feature file should contain open-coded single-level decoded-RPC positional reads. Module-size ratchet expectations may be updated only where small, irreducible restructuring increases measured line counts.

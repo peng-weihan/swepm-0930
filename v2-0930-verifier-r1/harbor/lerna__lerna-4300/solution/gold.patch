@@ -1,0 +1,2239 @@
+diff --git a/.github/workflows/pkg-pr-new.yml b/.github/workflows/pkg-pr-new.yml
+--- a/.github/workflows/pkg-pr-new.yml
++++ b/.github/workflows/pkg-pr-new.yml
+@@ -72,4 +72,4 @@ jobs:
+         run: npm run build
+ 
+       - name: Publish PR branch to pkg.pr.new
+-        run: npx pkg-pr-new publish --compact --peerDeps --no-template --comment=off './packages/lerna' './packages/legacy-structure/commands/create'
++        run: npx pkg-pr-new publish --compact --peerDeps --no-template --comment=off './packages/lerna'
+diff --git a/.gitignore b/.gitignore
+--- a/.gitignore
++++ b/.gitignore
+@@ -23,7 +23,6 @@ composer.lock
+ # Project Specific
+ /node_modules
+ /packages/*/node_modules
+-/packages/legacy-structure/commands/*/node_modules
+ *.log
+ /lib
+ tmp
+diff --git a/CLAUDE.md b/CLAUDE.md
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -54,7 +54,6 @@ This is a monorepo with the following main structure:
+ ### `/packages/` - Published Packages
+ 
+ - **lerna/**: Main Lerna package that gets published to npm
+-- **legacy-structure/**: Legacy structure maintained for compatibility
+ 
+ ### `/e2e/` - End-to-End Tests
+ 
+diff --git a/integration/project.json b/integration/project.json
+--- a/integration/project.json
++++ b/integration/project.json
+@@ -3,7 +3,7 @@
+   "$schema": "../node_modules/nx/schemas/project-schema.json",
+   "projectType": "library",
+   "tags": [],
+-  "implicitDependencies": ["lerna", "legacy-structure-commands-create"],
++  "implicitDependencies": ["lerna"],
+   "targets": {
+     "lint": {
+       "executor": "@nx/eslint:lint",
+diff --git a/libs/commands/create/jest.config.ts b/libs/commands/create/jest.config.ts
+new file mode 100644
+--- /dev/null
++++ b/libs/commands/create/jest.config.ts
+@@ -0,0 +1,7 @@
++export default {
++  displayName: "commands-create",
++  preset: "../../../jest.preset.js",
++  coverageDirectory: "../../../coverage/libs/commands/create",
++  // Needed to add "json" to avoid issue resolving spdx-license-ids
++  moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
++};
+diff --git a/libs/commands/create/project.json b/libs/commands/create/project.json
+--- a/libs/commands/create/project.json
++++ b/libs/commands/create/project.json
+@@ -8,6 +8,13 @@
+     "lint": {
+       "executor": "@nx/eslint:lint",
+       "outputs": ["{options.outputFile}"]
++    },
++    "test": {
++      "executor": "@nx/jest:jest",
++      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
++      "options": {
++        "jestConfig": "libs/commands/create/jest.config.ts"
++      }
+     }
+   }
+ }
+diff --git a/libs/commands/create/tsconfig.json b/libs/commands/create/tsconfig.json
+--- a/libs/commands/create/tsconfig.json
++++ b/libs/commands/create/tsconfig.json
+@@ -5,6 +5,9 @@
+   "references": [
+     {
+       "path": "./tsconfig.lib.json"
++    },
++    {
++      "path": "./tsconfig.spec.json"
+     }
+   ]
+ }
+diff --git a/packages/legacy-structure/commands/create/tsconfig.spec.json b/libs/commands/create/tsconfig.spec.json
+rename from packages/legacy-structure/commands/create/tsconfig.spec.json
+rename to libs/commands/create/tsconfig.spec.json
+--- a/packages/legacy-structure/commands/create/tsconfig.spec.json
++++ b/libs/commands/create/tsconfig.spec.json
+@@ -1,21 +1,16 @@
+ {
+   "extends": "./tsconfig.json",
+   "compilerOptions": {
+-    "outDir": "../../../../dist/out-tsc",
++    "outDir": "../../../dist/out-tsc",
+     "module": "commonjs",
+     "types": ["jest", "node"]
+   },
+   "include": [
+     "jest.config.ts",
+     "src/**/*.test.ts",
+     "src/**/*.spec.ts",
+-    "src/**/*.test.tsx",
+-    "src/**/*.spec.tsx",
+-    "src/**/*.test.js",
+-    "src/**/*.spec.js",
+-    "src/**/*.test.jsx",
+-    "src/**/*.spec.jsx",
+     "src/**/*.d.ts",
+-    "__tests__/**/*.ts"
++    "__tests__/**/*.ts",
++    "../../core/src/types.d.ts"
+   ]
+ }
+diff --git a/package-lock.json b/package-lock.json
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -7,8 +7,7 @@
+       "name": "lerna-monorepo",
+       "license": "MIT",
+       "workspaces": [
+-        "packages/lerna",
+-        "packages/legacy-structure/commands/create"
++        "packages/lerna"
+       ],
+       "devDependencies": {
+         "@nx/esbuild": "22.0.3",
+@@ -3655,10 +3654,6 @@
+         "node": ">=10"
+       }
+     },
+-    "node_modules/@lerna/create": {
+-      "resolved": "packages/legacy-structure/commands/create",
+-      "link": true
+-    },
+     "node_modules/@napi-rs/wasm-runtime": {
+       "version": "0.2.4",
+       "resolved": "https://registry.npmjs.org/@napi-rs/wasm-runtime/-/wasm-runtime-0.2.4.tgz",
+@@ -18411,177 +18406,10 @@
+         "node": ">=20"
+       }
+     },
+-    "packages/legacy-structure/commands/create": {
+-      "name": "@lerna/create",
+-      "version": "9.0.5",
+-      "license": "MIT",
+-      "dependencies": {
+-        "@npmcli/arborist": "9.1.6",
+-        "@npmcli/package-json": "7.0.2",
+-        "@npmcli/run-script": "10.0.3",
+-        "@nx/devkit": ">=21.5.2 < 23.0.0",
+-        "@octokit/plugin-enterprise-rest": "6.0.1",
+-        "@octokit/rest": "20.1.2",
+-        "aproba": "2.0.0",
+-        "byte-size": "8.1.1",
+-        "chalk": "4.1.0",
+-        "ci-info": "4.3.1",
+-        "cmd-shim": "6.0.3",
+-        "color-support": "1.1.3",
+-        "columnify": "1.6.0",
+-        "console-control-strings": "^1.1.0",
+-        "conventional-changelog-core": "5.0.1",
+-        "conventional-recommended-bump": "7.0.1",
+-        "cosmiconfig": "9.0.0",
+-        "dedent": "1.5.3",
+-        "execa": "5.0.0",
+-        "fs-extra": "^11.2.0",
+-        "get-stream": "6.0.0",
+-        "git-url-parse": "14.0.0",
+-        "glob-parent": "6.0.2",
+-        "has-unicode": "2.0.1",
+-        "ini": "^1.3.8",
+-        "init-package-json": "8.2.2",
+-        "inquirer": "12.9.6",
+-        "is-ci": "3.0.1",
+-        "is-stream": "2.0.0",
+-        "js-yaml": "4.1.1",
+-        "libnpmpublish": "11.1.2",
+-        "load-json-file": "6.2.0",
+-        "make-dir": "4.0.0",
+-        "make-fetch-happen": "15.0.2",
+-        "minimatch": "3.1.4",
+-        "multimatch": "5.0.0",
+-        "npm-package-arg": "13.0.1",
+-        "npm-packlist": "10.0.3",
+-        "npm-registry-fetch": "19.1.0",
+-        "nx": ">=21.5.3 < 23.0.0",
+-        "p-map": "4.0.0",
+-        "p-map-series": "2.1.0",
+-        "p-queue": "6.6.2",
+-        "p-reduce": "^2.1.0",
+-        "pacote": "21.0.1",
+-        "pify": "5.0.0",
+-        "read-cmd-shim": "4.0.0",
+-        "resolve-from": "5.0.0",
+-        "rimraf": "^6.1.2",
+-        "semver": "7.7.2",
+-        "set-blocking": "^2.0.0",
+-        "signal-exit": "3.0.7",
+-        "slash": "^3.0.0",
+-        "ssri": "12.0.0",
+-        "string-width": "^4.2.3",
+-        "tar": "7.5.11",
+-        "temp-dir": "1.0.0",
+-        "through": "2.3.8",
+-        "tinyglobby": "0.2.12",
+-        "upath": "2.0.1",
+-        "uuid": "^11.1.0",
+-        "validate-npm-package-license": "3.0.4",
+-        "validate-npm-package-name": "6.0.2",
+-        "wide-align": "1.1.5",
+-        "write-file-atomic": "5.0.1",
+-        "write-pkg": "4.0.0",
+-        "yargs": "17.7.2",
+-        "yargs-parser": "21.1.1"
+-      },
+-      "engines": {
+-        "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+-      }
+-    },
+-    "packages/legacy-structure/commands/create/node_modules/chalk": {
+-      "version": "4.1.0",
+-      "license": "MIT",
+-      "dependencies": {
+-        "ansi-styles": "^4.1.0",
+-        "supports-color": "^7.1.0"
+-      },
+-      "engines": {
+-        "node": ">=10"
+-      },
+-      "funding": {
+-        "url": "https://github.com/chalk/chalk?sponsor=1"
+-      }
+-    },
+-    "packages/legacy-structure/commands/create/node_modules/ci-info": {
+-      "version": "4.3.1",
+-      "resolved": "https://registry.npmjs.org/ci-info/-/ci-info-4.3.1.tgz",
+-      "integrity": "sha512-Wdy2Igu8OcBpI2pZePZ5oWjPC38tmDVx5WKUXKwlLYkA0ozo85sLsLvkBbBn/sZaSCMFOGZJ14fvW9t5/d7kdA==",
+-      "funding": [
+-        {
+-          "type": "github",
+-          "url": "https://github.com/sponsors/sibiraj-s"
+-        }
+-      ],
+-      "license": "MIT",
+-      "engines": {
+-        "node": ">=8"
+-      }
+-    },
+-    "packages/legacy-structure/commands/create/node_modules/glob-parent": {
+-      "version": "6.0.2",
+-      "license": "ISC",
+-      "dependencies": {
+-        "is-glob": "^4.0.3"
+-      },
+-      "engines": {
+-        "node": ">=10.13.0"
+-      }
+-    },
+-    "packages/legacy-structure/commands/create/node_modules/make-fetch-happen": {
+-      "version": "15.0.2",
+-      "resolved": "https://registry.npmjs.org/make-fetch-happen/-/make-fetch-happen-15.0.2.tgz",
+-      "integrity": "sha512-sI1NY4lWlXBAfjmCtVWIIpBypbBdhHtcjnwnv+gtCnsaOffyFil3aidszGC8hgzJe+fT1qix05sWxmD/Bmf/oQ==",
+-      "license": "ISC",
+-      "dependencies": {
+-        "@npmcli/agent": "^4.0.0",
+-        "cacache": "^20.0.1",
+-        "http-cache-semantics": "^4.1.1",
+-        "minipass": "^7.0.2",
+-        "minipass-fetch": "^4.0.0",
+-        "minipass-flush": "^1.0.5",
+-        "minipass-pipeline": "^1.2.4",
+-        "negotiator": "^1.0.0",
+-        "proc-log": "^5.0.0",
+-        "promise-retry": "^2.0.1",
+-        "ssri": "^12.0.0"
+-      },
+-      "engines": {
+-        "node": "^20.17.0 || >=22.9.0"
+-      }
+-    },
+-    "packages/legacy-structure/commands/create/node_modules/minipass": {
+-      "version": "7.1.2",
+-      "resolved": "https://registry.npmjs.org/minipass/-/minipass-7.1.2.tgz",
+-      "integrity": "sha512-qOOzS1cBTWYF4BH8fVePDBOO9iptMnGUEZwNc/cMWnTV2nVLZ7VoNWEPHkYczZA0pdoA7dl6e7FL659nX9S2aw==",
+-      "license": "ISC",
+-      "engines": {
+-        "node": ">=16 || 14 >=14.17"
+-      }
+-    },
+-    "packages/legacy-structure/commands/create/node_modules/negotiator": {
+-      "version": "1.0.0",
+-      "resolved": "https://registry.npmjs.org/negotiator/-/negotiator-1.0.0.tgz",
+-      "integrity": "sha512-8Ofs/AUQh8MaEcrlq5xOX0CQ9ypTF5dl78mjlMNfOK08fzpgTHQRQPBxcPlEtIw0yRpws+Zo/3r+5WRby7u3Gg==",
+-      "license": "MIT",
+-      "engines": {
+-        "node": ">= 0.6"
+-      }
+-    },
+-    "packages/legacy-structure/commands/create/node_modules/validate-npm-package-name": {
+-      "version": "6.0.2",
+-      "resolved": "https://registry.npmjs.org/validate-npm-package-name/-/validate-npm-package-name-6.0.2.tgz",
+-      "integrity": "sha512-IUoow1YUtvoBBC06dXs8bR8B9vuA3aJfmQNKMoaPG/OFsPmoQvw8xh+6Ye25Gx9DQhoEom3Pcu9MKHerm/NpUQ==",
+-      "license": "ISC",
+-      "engines": {
+-        "node": "^18.17.0 || >=20.5.0"
+-      }
+-    },
+     "packages/lerna": {
+       "version": "9.0.5",
+       "license": "MIT",
+       "dependencies": {
+-        "@lerna/create": "9.0.5",
+         "@npmcli/arborist": "9.1.6",
+         "@npmcli/package-json": "7.0.2",
+         "@npmcli/run-script": "10.0.3",
+diff --git a/package.json b/package.json
+--- a/package.json
++++ b/package.json
+@@ -3,8 +3,7 @@
+   "private": true,
+   "description": "lerna dog-fooding lerna",
+   "workspaces": [
+-    "packages/lerna",
+-    "packages/legacy-structure/commands/create"
++    "packages/lerna"
+   ],
+   "volta": {
+     "node": "22.19.0",
+diff --git a/packages/legacy-structure/__mocks__/@lerna/core/check-working-tree.ts b/packages/legacy-structure/__mocks__/@lerna/core/check-working-tree.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/@lerna/core/check-working-tree.ts
++++ /dev/null
+@@ -1,9 +0,0 @@
+-"use strict";
+-
+-const mockCheckWorkingTree = jest.fn(() => Promise.resolve());
+-const mockThrowIfReleased = jest.fn(() => Promise.resolve());
+-const mockThrowIfUncommitted = jest.fn(() => Promise.resolve());
+-
+-module.exports.checkWorkingTree = mockCheckWorkingTree;
+-module.exports.throwIfReleased = mockThrowIfReleased;
+-module.exports.throwIfUncommitted = mockThrowIfUncommitted;
+diff --git a/packages/legacy-structure/__mocks__/@lerna/core/collect-updates.ts b/packages/legacy-structure/__mocks__/@lerna/core/collect-updates.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/@lerna/core/collect-updates.ts
++++ /dev/null
+@@ -1,27 +0,0 @@
+-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+-// @ts-nocheck
+-
+-const { collectPackages, getPackagesForOption } = jest.requireActual("@lerna/core");
+-
+-// collectUpdates.setUpdated(cwd, packageNames...)
+-// otherwise, enables everything
+-const updated = new Map();
+-
+-const mockCollectUpdates = jest.fn((filteredPackages, packageGraph, { cwd }) => {
+-  const targets = updated.get(cwd);
+-  const updates = targets ? new Map(targets.map((name) => [name, packageGraph.get(name)])) : packageGraph;
+-
+-  return Array.from(updates.values());
+-});
+-
+-const setUpdated = (cwd, ...names) => updated.set(cwd, names);
+-
+-// isolate tests
+-afterEach(() => {
+-  updated.clear();
+-});
+-
+-module.exports.collectUpdates = mockCollectUpdates;
+-module.exports.collectUpdates.setUpdated = setUpdated;
+-module.exports.collectPackages = collectPackages;
+-module.exports.getPackagesForOption = getPackagesForOption;
+diff --git a/packages/legacy-structure/__mocks__/@lerna/core/conventional-commits.ts b/packages/legacy-structure/__mocks__/@lerna/core/conventional-commits.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/@lerna/core/conventional-commits.ts
++++ /dev/null
+@@ -1,35 +0,0 @@
+-/* eslint-disable @typescript-eslint/no-var-requires */
+-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+-// @ts-nocheck
+-
+-const fs = jest.requireActual("fs-extra");
+-const path = require("path");
+-const semver = require("semver");
+-
+-const applyBuildMetadata = jest.fn().mockName("applyBuildMetadata");
+-const mockRecommendVersion = jest.fn().mockName("recommendVersion");
+-const mockUpdateChangelog = jest.fn().mockName("updateChangelog");
+-
+-applyBuildMetadata.mockImplementation((version, buildMetadata) => {
+-  if (buildMetadata) {
+-    return `${version}+${buildMetadata}`;
+-  }
+-
+-  return version;
+-});
+-
+-mockRecommendVersion.mockImplementation((node) => semver.inc(node.version, "patch"));
+-
+-mockUpdateChangelog.mockImplementation((pkg) => {
+-  const filePath = path.join(pkg.location, "CHANGELOG.md");
+-
+-  // grumble grumble re-implementing the implementation
+-  return fs.outputFile(filePath, "changelog", "utf8").then(() => ({
+-    logPath: filePath,
+-    newEntry: pkg.version ? `${pkg.name} - ${pkg.version}` : pkg.name,
+-  }));
+-});
+-
+-exports.applyBuildMetadata = applyBuildMetadata;
+-exports.recommendVersion = mockRecommendVersion;
+-exports.updateChangelog = mockUpdateChangelog;
+diff --git a/packages/legacy-structure/__mocks__/@lerna/core/github-client.ts b/packages/legacy-structure/__mocks__/@lerna/core/github-client.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/@lerna/core/github-client.ts
++++ /dev/null
+@@ -1,25 +0,0 @@
+-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+-// @ts-nocheck
+-
+-const releases = new Map();
+-
+-// keep test data isolated
+-afterEach(() => {
+-  releases.clear();
+-});
+-
+-const client = {
+-  repos: {
+-    createRelease: jest.fn((opts) => {
+-      releases.set(opts.name, opts);
+-      return Promise.resolve();
+-    }),
+-  },
+-};
+-
+-module.exports.createGitHubClient = jest.fn(() => client);
+-module.exports.createGitHubClient.releases = releases;
+-module.exports.parseGitRepo = () => ({
+-  owner: "lerna",
+-  name: "lerna",
+-});
+diff --git a/packages/legacy-structure/__mocks__/@lerna/core/gitlab-client.ts b/packages/legacy-structure/__mocks__/@lerna/core/gitlab-client.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/@lerna/core/gitlab-client.ts
++++ /dev/null
+@@ -1,21 +0,0 @@
+-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+-// @ts-nocheck
+-
+-const releases = new Map();
+-
+-// keep test data isolated
+-afterEach(() => {
+-  releases.clear();
+-});
+-
+-const client = {
+-  repos: {
+-    createRelease: jest.fn((opts) => {
+-      releases.set(opts.name, opts);
+-      return Promise.resolve();
+-    }),
+-  },
+-};
+-
+-module.exports.createGitLabClient = jest.fn(() => client);
+-module.exports.createGitLabClient.releases = releases;
+diff --git a/packages/legacy-structure/__mocks__/@lerna/core/has-npm-version.ts b/packages/legacy-structure/__mocks__/@lerna/core/has-npm-version.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/@lerna/core/has-npm-version.ts
++++ /dev/null
+@@ -1,3 +0,0 @@
+-const mockHasNpmVersion = jest.fn(() => true);
+-
+-module.exports.hasNpmVersion = mockHasNpmVersion;
+diff --git a/packages/legacy-structure/__mocks__/@lerna/core/index.ts b/packages/legacy-structure/__mocks__/@lerna/core/index.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/@lerna/core/index.ts
++++ /dev/null
+@@ -1,40 +0,0 @@
+-/* eslint-disable @typescript-eslint/no-var-requires */
+-
+-const checkWorkingTree = require("./check-working-tree");
+-const conventionalCommits = require("./conventional-commits");
+-const { output } = require("./output");
+-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+-// @ts-ignore
+-const prompt = require("./prompt");
+-const npmDistTag = require("./npm-dist-tag");
+-const { hasNpmVersion } = require("./has-npm-version");
+-const { packDirectory } = require("./pack-directory");
+-const { npmPublish } = require("./npm-publish");
+-const { runLifecycle, createRunner } = require("./run-lifecycle");
+-const { createGitLabClient } = require("./gitlab-client");
+-const { createGitHubClient, parseGitRepo } = require("./github-client");
+-
+-module.exports = {
+-  ...jest.requireActual("@lerna/core"),
+-  output,
+-  ...collectUpdates,
+-  ...prompt,
+-  ...checkWorkingTree,
+-  ...conventionalCommits,
+-  createGitLabClient,
+-  createGitHubClient,
+-  parseGitRepo,
+-  npmDistTag,
+-  hasNpmVersion,
+-  runLifecycle,
+-  createRunner,
+-  npmPublish,
+-  packDirectory,
+-  npmRunScript: jest.fn(),
+-  npmRunScriptStreaming: jest.fn(),
+-  promptConfirmation: jest.fn(),
+-  rimrafDir: jest.fn(),
+-  npmInstall: jest.fn(),
+-  npmInstallDependencies: jest.fn(),
+-  getOneTimePassword: jest.fn(),
+-};
+diff --git a/packages/legacy-structure/__mocks__/@lerna/core/npm-dist-tag.ts b/packages/legacy-structure/__mocks__/@lerna/core/npm-dist-tag.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/@lerna/core/npm-dist-tag.ts
++++ /dev/null
+@@ -1,9 +0,0 @@
+-"use strict";
+-
+-const mockAdd = jest.fn(() => Promise.resolve());
+-const mockList = jest.fn(() => Promise.resolve({}));
+-const mockRemove = jest.fn(() => Promise.resolve());
+-
+-exports.add = mockAdd;
+-exports.list = mockList;
+-exports.remove = mockRemove;
+diff --git a/packages/legacy-structure/__mocks__/@lerna/core/npm-publish.ts b/packages/legacy-structure/__mocks__/@lerna/core/npm-publish.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/@lerna/core/npm-publish.ts
++++ /dev/null
+@@ -1,25 +0,0 @@
+-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+-// @ts-nocheck
+-
+-const registry = new Map();
+-
+-// by default, act like a spy that populates registry
+-const mockNpmPublish = jest.fn((pkg, tarData, opts) => {
+-  registry.set(pkg.name, opts.tag);
+-
+-  return Promise.resolve();
+-});
+-
+-// a convenient format for assertions
+-function order() {
+-  return Array.from(registry.keys());
+-}
+-
+-// keep test data isolated
+-afterEach(() => {
+-  registry.clear();
+-});
+-
+-module.exports.npmPublish = mockNpmPublish;
+-module.exports.npmPublish.order = order;
+-module.exports.npmPublish.registry = registry;
+diff --git a/packages/legacy-structure/__mocks__/@lerna/core/output.ts b/packages/legacy-structure/__mocks__/@lerna/core/output.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/@lerna/core/output.ts
++++ /dev/null
+@@ -1,18 +0,0 @@
+-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+-// @ts-nocheck
+-
+-import { multiLineTrimRight } from "@lerna/test-helpers";
+-import chalk from "chalk";
+-
+-// keep snapshots stable cross-platform
+-chalk.level = 0;
+-
+-// @lerna/output is just a wrapper around console.log
+-const mockOutput = jest.fn();
+-
+-function logged() {
+-  return mockOutput.mock.calls.map((args) => multiLineTrimRight(args[0])).join("\n");
+-}
+-
+-module.exports.output = mockOutput;
+-module.exports.output.logged = logged;
+diff --git a/packages/legacy-structure/__mocks__/@lerna/core/pack-directory.ts b/packages/legacy-structure/__mocks__/@lerna/core/pack-directory.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/@lerna/core/pack-directory.ts
++++ /dev/null
+@@ -1,21 +0,0 @@
+-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+-// @ts-nocheck
+-
+-const registry = new Set();
+-
+-const mockPackDirectory = jest.fn((pkg) => {
+-  registry.add(pkg.name);
+-
+-  return Promise.resolve({
+-    filename: `${pkg.name}-MOCKED.tgz`,
+-    tarFilePath: `/TEMP_DIR/${pkg.name}-MOCKED.tgz`,
+-  });
+-});
+-
+-// keep test data isolated
+-afterEach(() => {
+-  registry.clear();
+-});
+-
+-module.exports.packDirectory = mockPackDirectory;
+-module.exports.packDirectory.registry = registry;
+diff --git a/packages/legacy-structure/__mocks__/@lerna/core/prompt.ts b/packages/legacy-structure/__mocks__/@lerna/core/prompt.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/@lerna/core/prompt.ts
++++ /dev/null
+@@ -1,31 +0,0 @@
+-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+-// @ts-nocheck
+-
+-let choiceIndices = [];
+-afterEach(() => {
+-  choiceIndices = [];
+-});
+-
+-const mockConfirm = jest.fn(() => Promise.resolve(true));
+-const mockSelect = jest.fn((_, { choices }) => {
+-  // default selection is "patch"
+-  const idx = choiceIndices.shift() || 0;
+-
+-  // each choice => { value: '<semver>', name: '<desc>' }
+-  return Promise.resolve(choices[idx].value);
+-});
+-const mockInput = jest.fn(() => Promise.resolve());
+-
+-exports.promptConfirmation = mockConfirm;
+-exports.promptSelectOne = mockSelect;
+-exports.promptTextInput = mockInput;
+-
+-const semverIndex = new Map(
+-  ["patch", "minor", "major", "prepatch", "preminor", "premajor", "PRERELEASE", "CUSTOM"].map(
+-    (keyword, idx) => [keyword, idx]
+-  )
+-);
+-
+-mockSelect.chooseBump = (keyword) => {
+-  choiceIndices.push(semverIndex.get(keyword));
+-};
+diff --git a/packages/legacy-structure/__mocks__/@lerna/core/run-lifecycle.ts b/packages/legacy-structure/__mocks__/@lerna/core/run-lifecycle.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/@lerna/core/run-lifecycle.ts
++++ /dev/null
+@@ -1,20 +0,0 @@
+-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+-// @ts-nocheck
+-
+-const mockRunLifecycle = jest.fn((pkg) => Promise.resolve(pkg));
+-const mockCreateRunner = jest.fn((opts) => (pkg, stage) => {
+-  // no longer the actual API, but approximates inner logic of default export
+-  if (pkg.scripts[stage]) {
+-    return mockRunLifecycle(pkg, stage, opts);
+-  }
+-
+-  return Promise.resolve();
+-});
+-
+-function getOrderedCalls() {
+-  return mockRunLifecycle.mock.calls.map(([pkg, script]) => [pkg.name, script]);
+-}
+-
+-module.exports.runLifecycle = mockRunLifecycle;
+-module.exports.createRunner = mockCreateRunner;
+-module.exports.runLifecycle.getOrderedCalls = getOrderedCalls;
+diff --git a/packages/legacy-structure/__mocks__/@lerna/legacy-core/index.ts b/packages/legacy-structure/__mocks__/@lerna/legacy-core/index.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/@lerna/legacy-core/index.ts
++++ /dev/null
+@@ -1,9 +0,0 @@
+-/* eslint-disable @typescript-eslint/no-var-requires */
+-
+-const collectUpdates = require("./collect-updates");
+-
+-module.exports = {
+-  ...jest.requireActual("@lerna/legacy-core"),
+-  ...collectUpdates,
+-  createSymlink: jest.fn(),
+-};
+diff --git a/packages/legacy-structure/__mocks__/load-json-file.js b/packages/legacy-structure/__mocks__/load-json-file.js
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/load-json-file.js
++++ /dev/null
+@@ -1,41 +0,0 @@
+-"use strict";
+-
+-const path = require("path");
+-const normalizePath = require("normalize-path");
+-
+-const loadJsonFile = jest.requireActual("load-json-file");
+-const asyncRegistry = new Map();
+-const syncRegistry = new Map();
+-
+-function incrementCalled(registry, manifestLocation) {
+-  // tempy creates dirnames that are 32 characters long, but we want a readable key
+-  const subPath = manifestLocation.split(/[0-9a-f]{32}/).pop();
+-  const key = normalizePath(path.dirname(subPath));
+-
+-  // keyed off directory subpath, _not_ pkg.name (we don't know it yet)
+-  registry.set(key, (registry.get(key) || 0) + 1);
+-}
+-
+-// by default, act like a spy that counts number of times each location was loaded
+-const mockLoadJsonFile = jest.fn((manifestLocation) => {
+-  incrementCalled(asyncRegistry, manifestLocation);
+-
+-  return loadJsonFile(manifestLocation);
+-});
+-
+-const mockLoadJsonFileSync = jest.fn((manifestLocation) => {
+-  incrementCalled(syncRegistry, manifestLocation);
+-
+-  return loadJsonFile.sync(manifestLocation);
+-});
+-
+-// keep test data isolated
+-afterEach(() => {
+-  asyncRegistry.clear();
+-  syncRegistry.clear();
+-});
+-
+-module.exports = mockLoadJsonFile;
+-module.exports.registry = asyncRegistry;
+-module.exports.sync = mockLoadJsonFileSync;
+-module.exports.sync.registry = syncRegistry;
+diff --git a/packages/legacy-structure/__mocks__/write-pkg.js b/packages/legacy-structure/__mocks__/write-pkg.js
+deleted file mode 100644
+--- a/packages/legacy-structure/__mocks__/write-pkg.js
++++ /dev/null
+@@ -1,34 +0,0 @@
+-"use strict";
+-
+-const writePkg = jest.requireActual("write-pkg");
+-const registry = new Map();
+-
+-// by default, act like a spy that populates registry
+-const mockWritePkg = jest.fn((fp, data) => {
+-  registry.set(data.name, data);
+-
+-  return writePkg(fp, data);
+-});
+-
+-const updatedManifest = (name) => registry.get(name);
+-
+-// a convenient format for assertions
+-function updatedVersions() {
+-  const result = {};
+-
+-  registry.forEach((pkg, name) => {
+-    result[name] = pkg.version;
+-  });
+-
+-  return result;
+-}
+-
+-// keep test data isolated
+-afterEach(() => {
+-  registry.clear();
+-});
+-
+-module.exports = mockWritePkg;
+-module.exports.registry = registry;
+-module.exports.updatedManifest = updatedManifest;
+-module.exports.updatedVersions = updatedVersions;
+diff --git a/packages/legacy-structure/commands/create/.babelrc b/packages/legacy-structure/commands/create/.babelrc
+deleted file mode 100644
+--- a/packages/legacy-structure/commands/create/.babelrc
++++ /dev/null
+@@ -1,10 +0,0 @@
+-{
+-  "presets": [
+-    [
+-      "@nx/js/babel",
+-      {
+-        "useBuiltIns": "usage"
+-      }
+-    ]
+-  ]
+-}
+diff --git a/packages/legacy-structure/commands/create/.gitignore b/packages/legacy-structure/commands/create/.gitignore
+deleted file mode 100644
+--- a/packages/legacy-structure/commands/create/.gitignore
++++ /dev/null
+@@ -1,4 +0,0 @@
+-# We intentionally ignore changes to the README.md in this library because it is generated by
+-# the compile target in project.json by copying the README.md from the relevant library.
+-# This is done to ensure that the README.md in that library is the source of truth.
+-README.md
+diff --git a/packages/legacy-structure/commands/create/CHANGELOG.md b/packages/legacy-structure/commands/create/CHANGELOG.md
+deleted file mode 100644
+--- a/packages/legacy-structure/commands/create/CHANGELOG.md
++++ /dev/null
+@@ -1,799 +0,0 @@
+-# Change Log
+-
+-All notable changes to this project will be documented in this file.
+-See [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
+-
+-## [9.0.5](https://github.com/lerna/lerna/compare/v9.0.4...v9.0.5) (2026-02-28)
+-
+-### Bug Fixes
+-
+-- bump minimatch from 3.0.5 to 3.1.4 ([#4285](https://github.com/lerna/lerna/issues/4285)) ([2e3f99e](https://github.com/lerna/lerna/commit/2e3f99ed2dfa5be614ba3f740ab0579bbd4c51c9))
+-- bump tar from 7.5.7 to 7.5.8 ([#4273](https://github.com/lerna/lerna/issues/4273)) ([bdffd1d](https://github.com/lerna/lerna/commit/bdffd1d97c27cd2a43e853d73296936fbc0e4f27))
+-
+-## [9.0.4](https://github.com/lerna/lerna/compare/v9.0.3...v9.0.4) (2026-02-10)
+-
+-### Bug Fixes
+-
+-- bump tar to 7.5.7, rimraf to 6.1.2, @npmcli/run-script to 10.0.3 ([#4267](https://github.com/lerna/lerna/issues/4267)) ([43e3d46](https://github.com/lerna/lerna/commit/43e3d46fd6d76f05e130e8f8f5a6299f0e93f2ae))
+-
+-## [9.0.3](https://github.com/lerna/lerna/compare/v9.0.2...v9.0.3) (2025-11-27)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [9.0.2](https://github.com/lerna/lerna/compare/v9.0.1...v9.0.2) (2025-11-27)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [9.0.1](https://github.com/lerna/lerna/compare/v9.0.0...v9.0.1) (2025-11-14)
+-
+-### Bug Fixes
+-
+-- expand version range to include nx v22.x ([#4242](https://github.com/lerna/lerna/issues/4242)) ([0cca286](https://github.com/lerna/lerna/commit/0cca28612be720d39f55cc278a9a4a93e112d1e1))
+-
+-# [9.0.0](https://github.com/lerna/lerna/compare/v8.2.4...v9.0.0) (2025-09-23)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [8.2.4](https://github.com/lerna/lerna/compare/v8.2.3...v8.2.4) (2025-07-27)
+-
+-### Bug Fixes
+-
+-- remove all remaining lodash usage ([#4207](https://github.com/lerna/lerna/issues/4207)) ([8211512](https://github.com/lerna/lerna/commit/8211512df9b4ced9be48e62ba0672de261fc2246))
+-
+-## [8.2.3](https://github.com/lerna/lerna/compare/v8.2.2...v8.2.3) (2025-06-29)
+-
+-### Bug Fixes
+-
+-- use internal fork of unmaintained strong-log-transformer ([#4195](https://github.com/lerna/lerna/issues/4195)) ([7115485](https://github.com/lerna/lerna/commit/71154858134982b6d8b829bad226b7b81b0c6498))
+-
+-## [8.2.2](https://github.com/lerna/lerna/compare/v8.2.1...v8.2.2) (2025-04-10)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [8.2.1](https://github.com/lerna/lerna/compare/v8.2.0...v8.2.1) (2025-03-03)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [8.2.0](https://github.com/lerna/lerna/compare/v8.1.9...v8.2.0) (2025-02-19)
+-
+-### Bug Fixes
+-
+-- drop strip-ansi in favor of native stripVTControlCharacters ([#4095](https://github.com/lerna/lerna/issues/4095)) ([9e4ac9c](https://github.com/lerna/lerna/commit/9e4ac9cf720a72d2787a7572b88d12e52139a39b))
+-
+-## [8.1.9](https://github.com/lerna/lerna/compare/v8.1.8...v8.1.9) (2024-10-31)
+-
+-### Bug Fixes
+-
+-- **core:** avoid reading empty .config.json, upgrade cosmiconfig@v9.0.0 ([#4062](https://github.com/lerna/lerna/issues/4062)) ([960bdd9](https://github.com/lerna/lerna/commit/960bdd97cb8c0c8224283cc962f54e606dd24827))
+-- update nx support to latest v20 ([#4103](https://github.com/lerna/lerna/issues/4103)) ([cb37f19](https://github.com/lerna/lerna/commit/cb37f19f1bfed170f3366f7e54154eefd82ea269))
+-
+-## [8.1.8](https://github.com/lerna/lerna/compare/v8.1.7...v8.1.8) (2024-08-05)
+-
+-### Bug Fixes
+-
+-- **publish:** upgrade @npmcli/arborist to 7.5.4 ([#4058](https://github.com/lerna/lerna/issues/4058)) ([89de0eb](https://github.com/lerna/lerna/commit/89de0eb19f9e90863571deaad2e38bb4833f4e1d))
+-
+-## [8.1.7](https://github.com/lerna/lerna/compare/v8.1.6...v8.1.7) (2024-07-21)
+-
+-### Bug Fixes
+-
+-- set explicit strip-ansi dependency ([#4045](https://github.com/lerna/lerna/issues/4045)) ([6e5cfbc](https://github.com/lerna/lerna/commit/6e5cfbc7dc80ade930f950c6a56e130b25a512eb))
+-
+-## [8.1.6](https://github.com/lerna/lerna/compare/v8.1.5...v8.1.6) (2024-07-05)
+-
+-### Bug Fixes
+-
+-- set explicit string-width dependency ([#4038](https://github.com/lerna/lerna/issues/4038)) ([5f3603a](https://github.com/lerna/lerna/commit/5f3603a6f44a858ee65b1535ab91d3497812ddb8))
+-
+-## [8.1.5](https://github.com/lerna/lerna/compare/v8.1.4...v8.1.5) (2024-06-24)
+-
+-### Bug Fixes
+-
+-- update npm utility dependencies and related packages ([#4033](https://github.com/lerna/lerna/issues/4033)) ([bd1c2d8](https://github.com/lerna/lerna/commit/bd1c2d8a267af47b409e2933fde2186dd73f4772))
+-
+-## [8.1.4](https://github.com/lerna/lerna/compare/v8.1.3...v8.1.4) (2024-06-09)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [8.1.3](https://github.com/lerna/lerna/compare/v8.1.2...v8.1.3) (2024-05-13)
+-
+-### Bug Fixes
+-
+-- **deps:** bump tar from 6.1.11 to 6.2.1 ([#3990](https://github.com/lerna/lerna/issues/3990)) ([3fe0cf0](https://github.com/lerna/lerna/commit/3fe0cf0b7f875f900f275320f3919853a953b3bb))
+-- update to nx 19 ([#4003](https://github.com/lerna/lerna/issues/4003)) ([03f476b](https://github.com/lerna/lerna/commit/03f476bb8f49de2ca602a903b27d16d0a3fc8ffc))
+-
+-## [8.1.2](https://github.com/lerna/lerna/compare/v8.1.1...v8.1.2) (2024-02-05)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [8.1.1](https://github.com/lerna/lerna/compare/v8.1.0...v8.1.1) (2024-02-05)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [8.1.0](https://github.com/lerna/lerna/compare/v8.0.2...v8.1.0) (2024-02-05)
+-
+-### Features
+-
+-- support nx v18 ([#3950](https://github.com/lerna/lerna/issues/3950)) ([ea3fb65](https://github.com/lerna/lerna/commit/ea3fb65b5f8f9af11a4acea3c63222283ea869d5))
+-
+-## [8.0.2](https://github.com/lerna/lerna/compare/v8.0.1...v8.0.2) (2024-01-05)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [8.0.1](https://github.com/lerna/lerna/compare/v8.0.0...v8.0.1) (2023-12-15)
+-
+-### Bug Fixes
+-
+-- update node-gyp usage to v10 to resolve npm warning ([#3919](https://github.com/lerna/lerna/issues/3919)) ([f5fdcba](https://github.com/lerna/lerna/commit/f5fdcba1ef53fa8d779dcaf6c617cba3461f343c))
+-
+-# [8.0.0](https://github.com/lerna/lerna/compare/v7.4.2...v8.0.0) (2023-11-23)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [8.0.0-alpha.0](https://github.com/lerna/lerna/compare/v7.4.2...v8.0.0-alpha.0) (2023-11-22)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [7.4.2](https://github.com/lerna/lerna/compare/v7.4.1...v7.4.2) (2023-10-27)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [7.4.1](https://github.com/lerna/lerna/compare/v7.4.0...v7.4.1) (2023-10-18)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [7.4.0](https://github.com/lerna/lerna/compare/v7.3.1...v7.4.0) (2023-10-17)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [7.3.1](https://github.com/lerna/lerna/compare/v7.3.0...v7.3.1) (2023-10-10)
+-
+-### Bug Fixes
+-
+-- **core:** update package engines.node to correctly include only >=16 ([#3861](https://github.com/lerna/lerna/issues/3861)) ([0674555](https://github.com/lerna/lerna/commit/067455559a1ffa25350800bff6c9226d0e24e6b9))
+-
+-# [7.3.0](https://github.com/lerna/lerna/compare/v7.2.0...v7.3.0) (2023-09-13)
+-
+-### Bug Fixes
+-
+-- update make-dir to 4.0.0 and npm audit fix ([#3828](https://github.com/lerna/lerna/issues/3828)) ([373b8bc](https://github.com/lerna/lerna/commit/373b8bc8202f15b4cafb216aee97f43885eebddf))
+-
+-# [7.2.0](https://github.com/lerna/lerna/compare/v7.1.5...v7.2.0) (2023-08-29)
+-
+-### Features
+-
+-- **init:** detect existing package manager and auto-install packages ([#3805](https://github.com/lerna/lerna/issues/3805)) ([2204c34](https://github.com/lerna/lerna/commit/2204c34b8b70e9971f144292cc05f1e23873d050))
+-
+-## [7.1.5](https://github.com/lerna/lerna/compare/v7.1.4...v7.1.5) (2023-08-09)
+-
+-### Bug Fixes
+-
+-- **create:** declare dependencies of @lerna/create ([#3799](https://github.com/lerna/lerna/issues/3799)) ([b5dcbf4](https://github.com/lerna/lerna/commit/b5dcbf4ed97286720892ca73748964c7e8df6588))
+-
+-## [7.1.4](https://github.com/lerna/lerna/compare/v7.1.3...v7.1.4) (2023-07-15)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [7.1.3](https://github.com/lerna/lerna/compare/v7.1.2...v7.1.3) (2023-07-12)
+-
+-### Bug Fixes
+-
+-- changelog entries for 7.1.2 ([f61b087](https://github.com/lerna/lerna/commit/f61b0872b96a95fe2830b300f082b5dff3c5d326))
+-
+-## [7.1.2](https://github.com/lerna/lerna/compare/v6.4.1...v7.1.2) (2023-07-12)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [7.1.1](https://github.com/lerna/lerna/compare/7.1.0...7.1.1) (2023-06-28)
+-
+-### Bug Fixes
+-
+-- **schema:** add missing ref to changelogEntryAdditionalMarkdown ([b41afab](https://github.com/lerna/lerna/commit/b41afabf2ade02cd03bafbc043fa5ed445843640))
+-
+-# [7.1.0](https://github.com/lerna/lerna/compare/7.0.2...7.1.0) (2023-06-25)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [7.0.2](https://github.com/lerna/lerna/compare/7.0.1...7.0.2) (2023-06-15)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [7.0.1](https://github.com/lerna/lerna/compare/7.0.0...7.0.1) (2023-06-13)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [7.0.0](https://github.com/lerna/lerna/compare/7.0.0-alpha.0...7.0.0) (2023-06-08)
+-
+-### Bug Fixes
+-
+-- migration building/publishing issues ([27bf800](https://github.com/lerna/lerna/commit/27bf800b6e7670ea1ec5576fdf008e8d09897d4b))
+-- **publish:** use correct version in log messages ([#3702](https://github.com/lerna/lerna/issues/3702)) ([4be9188](https://github.com/lerna/lerna/commit/4be9188e68c5d4c320c0946e6e386cbee95a8efe))
+-- support nx 16.3.1+ ([#3707](https://github.com/lerna/lerna/issues/3707)) ([647dbb5](https://github.com/lerna/lerna/commit/647dbb512bf6a873cab6362c434b420b18af0ad4))
+-
+-# [7.0.0-alpha.8](https://github.com/lerna/lerna/compare/7.0.0-alpha.0...7.0.0-alpha.8) (2023-06-07)
+-
+-### Bug Fixes
+-
+-- migration building/publishing issues ([27bf800](https://github.com/lerna/lerna/commit/27bf800b6e7670ea1ec5576fdf008e8d09897d4b))
+-- **publish:** use correct version in log messages ([#3702](https://github.com/lerna/lerna/issues/3702)) ([4be9188](https://github.com/lerna/lerna/commit/4be9188e68c5d4c320c0946e6e386cbee95a8efe))
+-- support nx 16.3.1+ ([#3707](https://github.com/lerna/lerna/issues/3707)) ([647dbb5](https://github.com/lerna/lerna/commit/647dbb512bf6a873cab6362c434b420b18af0ad4))
+-
+-# [7.0.0-alpha.7](https://github.com/lerna/lerna/compare/7.0.0-alpha.0...7.0.0-alpha.7) (2023-06-05)
+-
+-### Bug Fixes
+-
+-- migration building/publishing issues ([27bf800](https://github.com/lerna/lerna/commit/27bf800b6e7670ea1ec5576fdf008e8d09897d4b))
+-- **publish:** use correct version in log messages ([#3702](https://github.com/lerna/lerna/issues/3702)) ([4be9188](https://github.com/lerna/lerna/commit/4be9188e68c5d4c320c0946e6e386cbee95a8efe))
+-- support nx 16.3.1+ ([#3707](https://github.com/lerna/lerna/issues/3707)) ([647dbb5](https://github.com/lerna/lerna/commit/647dbb512bf6a873cab6362c434b420b18af0ad4))
+-
+-# [7.0.0-alpha.6](https://github.com/lerna/lerna/compare/7.0.0-alpha.0...7.0.0-alpha.6) (2023-06-02)
+-
+-### Bug Fixes
+-
+-- migration building/publishing issues ([27bf800](https://github.com/lerna/lerna/commit/27bf800b6e7670ea1ec5576fdf008e8d09897d4b))
+-- **publish:** use correct version in log messages ([#3702](https://github.com/lerna/lerna/issues/3702)) ([4be9188](https://github.com/lerna/lerna/commit/4be9188e68c5d4c320c0946e6e386cbee95a8efe))
+-- support nx 16.3.1+ ([#3707](https://github.com/lerna/lerna/issues/3707)) ([647dbb5](https://github.com/lerna/lerna/commit/647dbb512bf6a873cab6362c434b420b18af0ad4))
+-
+-# [7.0.0-alpha.5](https://github.com/lerna/lerna/compare/7.0.0-alpha.0...7.0.0-alpha.5) (2023-06-01)
+-
+-### Bug Fixes
+-
+-- migration building/publishing issues ([27bf800](https://github.com/lerna/lerna/commit/27bf800b6e7670ea1ec5576fdf008e8d09897d4b))
+-- **publish:** use correct version in log messages ([#3702](https://github.com/lerna/lerna/issues/3702)) ([4be9188](https://github.com/lerna/lerna/commit/4be9188e68c5d4c320c0946e6e386cbee95a8efe))
+-
+-# [7.0.0-alpha.4](https://github.com/lerna/lerna/compare/7.0.0-alpha.0...7.0.0-alpha.4) (2023-06-01)
+-
+-### Bug Fixes
+-
+-- migration building/publishing issues ([27bf800](https://github.com/lerna/lerna/commit/27bf800b6e7670ea1ec5576fdf008e8d09897d4b))
+-- **publish:** use correct version in log messages ([#3702](https://github.com/lerna/lerna/issues/3702)) ([4be9188](https://github.com/lerna/lerna/commit/4be9188e68c5d4c320c0946e6e386cbee95a8efe))
+-
+-# [7.0.0-alpha.3](https://github.com/lerna/lerna/compare/7.0.0-alpha.0...7.0.0-alpha.3) (2023-05-31)
+-
+-### Bug Fixes
+-
+-- migration building/publishing issues ([27bf800](https://github.com/lerna/lerna/commit/27bf800b6e7670ea1ec5576fdf008e8d09897d4b))
+-
+-# [7.0.0-alpha.2](https://github.com/lerna/lerna/compare/7.0.0-alpha.0...7.0.0-alpha.2) (2023-05-31)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [7.0.0-alpha.1](https://github.com/lerna/lerna/compare/7.0.0-alpha.0...7.0.0-alpha.1) (2023-05-31)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [7.0.0-alpha.0](https://github.com/lerna/lerna/compare/6.6.2...7.0.0-alpha.0) (2023-05-10)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [6.6.2](https://github.com/lerna/lerna/compare/6.6.1...6.6.2) (2023-05-04)
+-
+-### Bug Fixes
+-
+-- **deps:** bump pacote to latest to remove install warning ([#3624](https://github.com/lerna/lerna/issues/3624)) ([7c34521](https://github.com/lerna/lerna/commit/7c34521b9987b064638dd218b0b417546257d5f3))
+-
+-## [6.6.1](https://github.com/lerna/lerna/compare/6.6.0...6.6.1) (2023-03-24)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [6.6.0](https://github.com/lerna/lerna/compare/6.5.1...6.6.0) (2023-03-23)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [6.5.1](https://github.com/lerna/lerna/compare/6.5.0...6.5.1) (2023-02-14)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [6.5.0](https://github.com/lerna/lerna/compare/v6.4.1...6.5.0) (2023-02-13)
+-
+-### Bug Fixes
+-
+-- **create:** normalize quotes and indents in generated test and lib files ([#3529](https://github.com/lerna/lerna/issues/3529)) ([ad39fe2](https://github.com/lerna/lerna/commit/ad39fe2e4ca4e76cb7be6af83e8fbbc60d0935ce))
+-
+-## [6.4.1](https://github.com/lerna/lerna/compare/v6.4.0...v6.4.1) (2023-01-12)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [6.4.0](https://github.com/lerna/lerna/compare/v6.3.0...v6.4.0) (2023-01-05)
+-
+-### Features
+-
+-- **create:** support relative path from root as lerna create location ([#3478](https://github.com/lerna/lerna/issues/3478)) ([82825ce](https://github.com/lerna/lerna/commit/82825ce98b43720cb7034e98f2b388ab14882bbf))
+-
+-# [6.3.0](https://github.com/lerna/lerna/compare/v6.2.0...v6.3.0) (2022-12-26)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [6.2.0](https://github.com/lerna/lerna/compare/v6.1.0...v6.2.0) (2022-12-13)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [6.1.0](https://github.com/lerna/lerna/compare/v6.0.3...v6.1.0) (2022-11-29)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [6.0.3](https://github.com/lerna/lerna/compare/v6.0.2...v6.0.3) (2022-11-07)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [6.0.2](https://github.com/lerna/lerna/compare/v6.0.1...v6.0.2) (2022-11-02)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [6.0.1](https://github.com/lerna/lerna/compare/v6.0.0...v6.0.1) (2022-10-14)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [6.0.0](https://github.com/lerna/lerna/compare/v6.0.0-alpha.2...v6.0.0) (2022-10-12)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [6.0.0-alpha.2](https://github.com/lerna/lerna/compare/v6.0.0-alpha.1...v6.0.0-alpha.2) (2022-10-12)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [6.0.0-alpha.1](https://github.com/lerna/lerna/compare/v5.6.2...v6.0.0-alpha.1) (2022-10-09)
+-
+-# [6.0.0-alpha.0](https://github.com/lerna/lerna/compare/v5.6.1...v6.0.0-alpha.0) (2022-10-07)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.6.2](https://github.com/lerna/lerna/compare/v5.6.1...v5.6.2) (2022-10-09)
+-
+-### Bug Fixes
+-
+-- **create:** remove unused globby dep ([#3360](https://github.com/lerna/lerna/issues/3360)) ([e873f0c](https://github.com/lerna/lerna/commit/e873f0c0b35275cd2568f43a945a84fbae364c2e))
+-
+-## [5.6.1](https://github.com/lerna/lerna/compare/v5.6.0...v5.6.1) (2022-09-30)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [5.6.0](https://github.com/lerna/lerna/compare/v5.5.4...v5.6.0) (2022-09-29)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.5.4](https://github.com/lerna/lerna/compare/v5.5.3...v5.5.4) (2022-09-28)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.5.3](https://github.com/lerna/lerna/compare/v5.5.2...v5.5.3) (2022-09-28)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.5.2](https://github.com/lerna/lerna/compare/v5.5.1...v5.5.2) (2022-09-20)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.5.1](https://github.com/lerna/lerna/compare/v5.5.0...v5.5.1) (2022-09-09)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [5.5.0](https://github.com/lerna/lerna/compare/v5.4.3...v5.5.0) (2022-08-31)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.4.3](https://github.com/lerna/lerna/compare/v5.4.2...v5.4.3) (2022-08-16)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.4.2](https://github.com/lerna/lerna/compare/v5.4.1...v5.4.2) (2022-08-14)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.4.1](https://github.com/lerna/lerna/compare/v5.4.0...v5.4.1) (2022-08-12)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [5.4.0](https://github.com/lerna/lerna/compare/v5.3.0...v5.4.0) (2022-08-08)
+-
+-### Bug Fixes
+-
+-- **create:** default test script no longer errors ([#3266](https://github.com/lerna/lerna/issues/3266)) ([dfd30fa](https://github.com/lerna/lerna/commit/dfd30fa1b141512c66998ce95777246c38eb1019))
+-
+-# [5.3.0](https://github.com/lerna/lerna/compare/v5.2.0...v5.3.0) (2022-07-27)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [5.2.0](https://github.com/lerna/lerna/compare/v5.1.8...v5.2.0) (2022-07-22)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.1.8](https://github.com/lerna/lerna/compare/v5.1.7...v5.1.8) (2022-07-07)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.1.7](https://github.com/lerna/lerna/compare/v5.1.6...v5.1.7) (2022-07-06)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.1.6](https://github.com/lerna/lerna/compare/v5.1.5...v5.1.6) (2022-06-24)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.1.5](https://github.com/lerna/lerna/compare/v5.1.4...v5.1.5) (2022-06-24)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.1.4](https://github.com/lerna/lerna/compare/v5.1.3...v5.1.4) (2022-06-15)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.1.3](https://github.com/lerna/lerna/compare/v5.1.2...v5.1.3) (2022-06-15)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.1.2](https://github.com/lerna/lerna/compare/v5.1.1...v5.1.2) (2022-06-13)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [5.1.1](https://github.com/lerna/lerna/compare/v5.1.0...v5.1.1) (2022-06-09)
+-
+-### Bug Fixes
+-
+-- allow maintenance LTS node 14 engines starting at 14.15.0 ([#3161](https://github.com/lerna/lerna/issues/3161)) ([72305e4](https://github.com/lerna/lerna/commit/72305e4dbab607a2d87ae4efa6ee577c93a9dda9))
+-
+-# [5.1.0](https://github.com/lerna/lerna/compare/v5.0.0...v5.1.0) (2022-06-07)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [5.1.0-alpha.0](https://github.com/lerna/lerna/compare/v4.0.0...v5.1.0-alpha.0) (2022-05-25)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [5.0.0](https://github.com/lerna/lerna/compare/v4.0.0...v5.0.0) (2022-05-24)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [4.0.0](https://github.com/lerna/lerna/compare/v3.22.1...v4.0.0) (2021-02-10)
+-
+-### Bug Fixes
+-
+-- **create:** Use main as default Github branch ([1a951e9](https://github.com/lerna/lerna/commit/1a951e92376b2aff2e1866791a0ae0b03f19515d))
+-
+-### Features
+-
+-- **deps:** Bump dependencies ([affed1c](https://github.com/lerna/lerna/commit/affed1ce0fce91f01b0a9eafe357db2d985b974f))
+-- Consume named exports of sibling modules ([63499e3](https://github.com/lerna/lerna/commit/63499e33652bc78fe23751875d74017e2f16a689))
+-- **deps:** @evocateur/pacote -> pacote@^11.1.13 ([99b4217](https://github.com/lerna/lerna/commit/99b4217ed143527a45969f3a46f1bd9b84999d68))
+-- **deps:** camelcase -> yargs-parser/camelCase ([d966e8b](https://github.com/lerna/lerna/commit/d966e8b3d36ad9eb02f656b73d9b41882ca7b208))
+-- **deps:** execa@^4.1.0 ([9051dca](https://github.com/lerna/lerna/commit/9051dcab1a68b56db09b82ab0345c5f36bcfee2d))
+-- **deps:** fs-extra@^9.0.1 ([2f6f4e0](https://github.com/lerna/lerna/commit/2f6f4e066d5a41b4cd508b3405ac1d0a342932dc))
+-- **deps:** globby@^11.0.1 ([6cb5bbe](https://github.com/lerna/lerna/commit/6cb5bbec5599cdd93d314ffdc4abea8822e48075))
+-- **deps:** init-package-json@^2.0.1 ([4042e8e](https://github.com/lerna/lerna/commit/4042e8e0a73427d1f9585ff285554e2a954b7be6))
+-- **deps:** npm-package-arg@^8.1.0 ([12c8923](https://github.com/lerna/lerna/commit/12c892342d33b86a00ee2cf9079f9b26fe316dc6))
+-- **deps:** p-reduce@^2.1.0 ([fd4289a](https://github.com/lerna/lerna/commit/fd4289ad20fd9ce5921b83d97f82984abf4f65b0))
+-- **deps:** pify@^5.0.0 ([6b34452](https://github.com/lerna/lerna/commit/6b3445219f0f022411a7cb282b0ba39a072e2ef2))
+-- **deps:** semver@^7.3.2 ([003ad66](https://github.com/lerna/lerna/commit/003ad6641fab8b4e3a82251ebffd27061bd6a31b))
+-- **deps:** slash@^3.0.0 ([5dec383](https://github.com/lerna/lerna/commit/5dec383109bcd1cce9abbc80796369db9314acc9))
+-- **deps:** whatwg-url@^8.4.0 ([5dfb7f0](https://github.com/lerna/lerna/commit/5dfb7f0ee196a0c9b9010339d512a5b5b9b75a47))
+-- Drop support for Node v6.x & v8.x ([ff4bb4d](https://github.com/lerna/lerna/commit/ff4bb4da215555e3bb136f5af09b5cbc631e57bb))
+-
+-### BREAKING CHANGES
+-
+-- Node v6.x & v8.x are no longer supported. Please upgrade to the latest LTS release.
+-
+-Here's the gnarly one-liner I used to make these changes:
+-
+-```
+-npx lerna exec --concurrency 1 --stream -- 'json -I -f package.json -e '"'"'this.engines=this.engines||{};this.engines.node=">= 10.18.0"'"'"
+-```
+-
+-(requires `npm i -g json` beforehand)
+-
+-# [3.22.0](https://github.com/lerna/lerna/compare/v3.21.0...v3.22.0) (2020-05-24)
+-
+-### Bug Fixes
+-
+-- **create:** Use correct variable name in generated CLI output ([#2547](https://github.com/lerna/lerna/issues/2547)) ([a1fd622](https://github.com/lerna/lerna/commit/a1fd622a55e3dbbf47a6a166c01fe17636cd0a76))
+-
+-# [3.21.0](https://github.com/lerna/lerna/compare/v3.20.2...v3.21.0) (2020-05-13)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [3.18.5](https://github.com/lerna/lerna/compare/v3.18.4...v3.18.5) (2019-11-20)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [3.18.0](https://github.com/lerna/lerna/compare/v3.17.0...v3.18.0) (2019-10-15)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [3.16.5](https://github.com/lerna/lerna/compare/v3.16.4...v3.16.5) (2019-10-07)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [3.16.0](https://github.com/lerna/lerna/compare/v3.15.0...v3.16.0) (2019-07-18)
+-
+-### Bug Fixes
+-
+-- **deps:** Bump `@evocateur/pacote` ([03e4797](https://github.com/lerna/lerna/commit/03e4797))
+-- **deps:** Update forked npm libs ([4d67426](https://github.com/lerna/lerna/commit/4d67426))
+-
+-### Features
+-
+-- **deps:** `fs-extra@^8.1.0` ([313287f](https://github.com/lerna/lerna/commit/313287f))
+-- **deps:** `globby@^9.2.0` ([d9aa249](https://github.com/lerna/lerna/commit/d9aa249))
+-- **deps:** `pify@^4.0.1` ([f8ee7e6](https://github.com/lerna/lerna/commit/f8ee7e6))
+-- **deps:** `semver@^6.2.0` ([d8016d9](https://github.com/lerna/lerna/commit/d8016d9))
+-- **deps:** `slash@^2.0.0` ([bedd6af](https://github.com/lerna/lerna/commit/bedd6af))
+-
+-# [3.15.0](https://github.com/lerna/lerna/compare/v3.14.2...v3.15.0) (2019-06-09)
+-
+-### Bug Fixes
+-
+-- **deps:** Consume forked npm libs ([bdd4fa1](https://github.com/lerna/lerna/commit/bdd4fa1))
+-
+-## [3.14.2](https://github.com/lerna/lerna/compare/v3.14.1...v3.14.2) (2019-06-09)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [3.14.0](https://github.com/lerna/lerna/compare/v3.13.4...v3.14.0) (2019-05-14)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [3.13.3](https://github.com/lerna/lerna/compare/v3.13.2...v3.13.3) (2019-04-17)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [3.13.1](https://github.com/lerna/lerna/compare/v3.13.0...v3.13.1) (2019-02-26)
+-
+-### Bug Fixes
+-
+-- **deps:** pacote ^9.5.0 ([cdc2e17](https://github.com/lerna/lerna/commit/cdc2e17))
+-
+-# [3.13.0](https://github.com/lerna/lerna/compare/v3.12.1...v3.13.0) (2019-02-15)
+-
+-### Features
+-
+-- **meta:** Add `repository.directory` field to package.json ([aec5023](https://github.com/lerna/lerna/commit/aec5023))
+-- **meta:** Normalize package.json `homepage` field ([abeb4dc](https://github.com/lerna/lerna/commit/abeb4dc))
+-
+-# [3.12.0](https://github.com/lerna/lerna/compare/v3.11.1...v3.12.0) (2019-02-14)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [3.11.0](https://github.com/lerna/lerna/compare/v3.10.8...v3.11.0) (2019-02-08)
+-
+-### Bug Fixes
+-
+-- **create:** Bump camelcase ([e58a1d0](https://github.com/lerna/lerna/commit/e58a1d0))
+-- **deps:** Explicit npm-package-arg ^6.1.0 ([4b20791](https://github.com/lerna/lerna/commit/4b20791))
+-- **deps:** Explicit pacote ^9.4.1 ([44d05bf](https://github.com/lerna/lerna/commit/44d05bf))
+-- **deps:** Remove unused libnpm (replaced by direct sub-packages) ([1caeb28](https://github.com/lerna/lerna/commit/1caeb28))
+-
+-## [3.10.6](https://github.com/lerna/lerna/compare/v3.10.5...v3.10.6) (2019-01-19)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [3.10.0](https://github.com/lerna/lerna/compare/v3.9.1...v3.10.0) (2019-01-08)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [3.8.5](https://github.com/lerna/lerna/compare/v3.8.4...v3.8.5) (2019-01-05)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [3.8.1](https://github.com/lerna/lerna/compare/v3.8.0...v3.8.1) (2018-12-31)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [3.7.2](https://github.com/lerna/lerna/compare/v3.7.1...v3.7.2) (2018-12-21)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-## [3.7.1](https://github.com/lerna/lerna/compare/v3.7.0...v3.7.1) (2018-12-20)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-# [3.7.0](https://github.com/lerna/lerna/compare/v3.6.0...v3.7.0) (2018-12-19)
+-
+-### Bug Fixes
+-
+-- **create:** Pass options snapshot to pacote.manifest() ([6116680](https://github.com/lerna/lerna/commit/6116680))
+-
+-# [3.6.0](https://github.com/lerna/lerna/compare/v3.5.1...v3.6.0) (2018-12-07)
+-
+-### Features
+-
+-- Migrate existing usage to libnpm ([0d3a786](https://github.com/lerna/lerna/commit/0d3a786)), closes [#1767](https://github.com/lerna/lerna/issues/1767)
+-- **create:** Migrate `npm info` subprocess to libnpm.manifest ([65a1d1b](https://github.com/lerna/lerna/commit/65a1d1b))
+-
+-# [3.5.0](https://github.com/lerna/lerna/compare/v3.4.3...v3.5.0) (2018-11-27)
+-
+-### Bug Fixes
+-
+-- prettier ([001a6df](https://github.com/lerna/lerna/commit/001a6df))
+-
+-## [3.4.1](https://github.com/lerna/lerna/compare/v3.4.0...v3.4.1) (2018-10-04)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-<a name="3.3.1"></a>
+-
+-## [3.3.1](https://github.com/lerna/lerna/compare/v3.3.0...v3.3.1) (2018-09-11)
+-
+-### Bug Fixes
+-
+-- **create:** Upgrade whatwg-url to ^7.0.0 ([00842d6](https://github.com/lerna/lerna/commit/00842d6))
+-
+-<a name="3.3.0"></a>
+-
+-# [3.3.0](https://github.com/lerna/lerna/compare/v3.2.1...v3.3.0) (2018-09-06)
+-
+-### Features
+-
+-- **deps:** Upgrade fs-extra to ^7.0.0 ([042b1a3](https://github.com/lerna/lerna/commit/042b1a3))
+-
+-<a name="3.1.3"></a>
+-
+-## [3.1.3](https://github.com/lerna/lerna/compare/v3.1.2...v3.1.3) (2018-08-21)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-<a name="3.1.2"></a>
+-
+-## [3.1.2](https://github.com/lerna/lerna/compare/v3.1.1...v3.1.2) (2018-08-20)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-<a name="3.1.0"></a>
+-
+-# [3.1.0](https://github.com/lerna/lerna/compare/v3.0.6...v3.1.0) (2018-08-17)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-<a name="3.0.6"></a>
+-
+-## [3.0.6](https://github.com/lerna/lerna/compare/v3.0.5...v3.0.6) (2018-08-16)
+-
+-### Bug Fixes
+-
+-- **create:** Use whatwg-url instead of node 8.x-dependent URL class ([8701b79](https://github.com/lerna/lerna/commit/8701b79))
+-
+-<a name="3.0.5"></a>
+-
+-## [3.0.5](https://github.com/lerna/lerna/compare/v3.0.4...v3.0.5) (2018-08-15)
+-
+-### Bug Fixes
+-
+-- **options:** Provide -y alias for --yes ([3ea460c](https://github.com/lerna/lerna/commit/3ea460c))
+-
+-<a name="3.0.0"></a>
+-
+-# [3.0.0](https://github.com/lerna/lerna/compare/v3.0.0-rc.0...v3.0.0) (2018-08-10)
+-
+-### Bug Fixes
+-
+-- **create:** Use filename without scope when generating imports from test file ([acfd48b](https://github.com/lerna/lerna/commit/acfd48b))
+-
+-<a name="3.0.0-rc.0"></a>
+-
+-# [3.0.0-rc.0](https://github.com/lerna/lerna/compare/v3.0.0-beta.21...v3.0.0-rc.0) (2018-07-27)
+-
+-### Features
+-
+-- Upgrade to fs-extra 6 ([079d873](https://github.com/lerna/lerna/commit/079d873))
+-- **cli:** Upgrade to Yargs 12 ([7899ab8](https://github.com/lerna/lerna/commit/7899ab8))
+-
+-<a name="3.0.0-beta.21"></a>
+-
+-# [3.0.0-beta.21](https://github.com/lerna/lerna/compare/v3.0.0-beta.20...v3.0.0-beta.21) (2018-05-12)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-<a name="3.0.0-beta.20"></a>
+-
+-# [3.0.0-beta.20](https://github.com/lerna/lerna/compare/v3.0.0-beta.19...v3.0.0-beta.20) (2018-05-07)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-<a name="3.0.0-beta.19"></a>
+-
+-# [3.0.0-beta.19](https://github.com/lerna/lerna/compare/v3.0.0-beta.18...v3.0.0-beta.19) (2018-05-03)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-<a name="3.0.0-beta.18"></a>
+-
+-# [3.0.0-beta.18](https://github.com/lerna/lerna/compare/v3.0.0-beta.17...v3.0.0-beta.18) (2018-04-24)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-<a name="3.0.0-beta.17"></a>
+-
+-# [3.0.0-beta.17](https://github.com/lerna/lerna/compare/v3.0.0-beta.16...v3.0.0-beta.17) (2018-04-13)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-<a name="3.0.0-beta.15"></a>
+-
+-# [3.0.0-beta.15](https://github.com/lerna/lerna/compare/v3.0.0-beta.14...v3.0.0-beta.15) (2018-04-09)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-<a name="3.0.0-beta.14"></a>
+-
+-# [3.0.0-beta.14](https://github.com/lerna/lerna/compare/v3.0.0-beta.13...v3.0.0-beta.14) (2018-04-03)
+-
+-### Bug Fixes
+-
+-- **create:** Actually publish the module data helper ([4775cc4](https://github.com/lerna/lerna/commit/4775cc4))
+-
+-<a name="3.0.0-beta.13"></a>
+-
+-# [3.0.0-beta.13](https://github.com/lerna/lerna/compare/v3.0.0-beta.12...v3.0.0-beta.13) (2018-03-31)
+-
+-### Features
+-
+-- Enable progress bars only when necessary ([b766c83](https://github.com/lerna/lerna/commit/b766c83))
+-
+-<a name="3.0.0-beta.12"></a>
+-
+-# [3.0.0-beta.12](https://github.com/lerna/lerna/compare/v3.0.0-beta.11...v3.0.0-beta.12) (2018-03-30)
+-
+-### Bug Fixes
+-
+-- **create:** Silently ignore missing builtin npmrc ([1523520](https://github.com/lerna/lerna/commit/1523520)), closes [#1353](https://github.com/lerna/lerna/issues/1353)
+-
+-### Features
+-
+-- **package:** Add Map-like get/set methods, remove raw json getter ([707d1f0](https://github.com/lerna/lerna/commit/707d1f0))
+-- **project:** Merge `package` and `packageJson` into `manifest` ([9a47ff7](https://github.com/lerna/lerna/commit/9a47ff7))
+-
+-### BREAKING CHANGES
+-
+-- **package:** The `Package` class no longer provides direct access to the JSON object
+-  used to construct the instance. Map-like `get()`/`set(val)` methods are
+-  available to modify the internal representation.
+-
+-<a name="3.0.0-beta.11"></a>
+-
+-# [3.0.0-beta.11](https://github.com/lerna/lerna/compare/v3.0.0-beta.10...v3.0.0-beta.11) (2018-03-29)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-<a name="3.0.0-beta.10"></a>
+-
+-# [3.0.0-beta.10](https://github.com/lerna/lerna/compare/v3.0.0-beta.9...v3.0.0-beta.10) (2018-03-27)
+-
+-### Features
+-
+-- **commands:** Delay require of command instantiation ([a1284f3](https://github.com/lerna/lerna/commit/a1284f3))
+-
+-### BREAKING CHANGES
+-
+-- **commands:** The default export of command packages is now a factory, not the subclass (which is now a named export).
+-
+-<a name="3.0.0-beta.9"></a>
+-
+-# [3.0.0-beta.9](https://github.com/lerna/lerna/compare/v3.0.0-beta.8...v3.0.0-beta.9) (2018-03-24)
+-
+-### Features
+-
+-- **command:** Rename this.repository -> this.project ([43e98a0](https://github.com/lerna/lerna/commit/43e98a0))
+-
+-<a name="3.0.0-beta.8"></a>
+-
+-# [3.0.0-beta.8](https://github.com/lerna/lerna/compare/v3.0.0-beta.7...v3.0.0-beta.8) (2018-03-22)
+-
+-### Bug Fixes
+-
+-- **create:** Skip repository property when git remote is missing ([98c8be6](https://github.com/lerna/lerna/commit/98c8be6))
+-
+-### Features
+-
+-- **utils:** Add "vendored" npm-conf ([9c24a25](https://github.com/lerna/lerna/commit/9c24a25))
+-
+-<a name="3.0.0-beta.7"></a>
+-
+-# [3.0.0-beta.7](https://github.com/lerna/lerna/compare/v3.0.0-beta.6...v3.0.0-beta.7) (2018-03-20)
+-
+-**Note:** Version bump only for package @lerna/create
+-
+-<a name="3.0.0-beta.4"></a>
+-
+-# [3.0.0-beta.4](https://github.com/lerna/lerna/compare/v3.0.0-beta.3...v3.0.0-beta.4) (2018-03-19)
+-
+-### Features
+-
+-- Add `lerna create` command ([#1326](https://github.com/lerna/lerna/issues/1326)) ([f15b224](https://github.com/lerna/lerna/commit/f15b224))
+diff --git a/packages/legacy-structure/commands/create/eslint.config.mjs b/packages/legacy-structure/commands/create/eslint.config.mjs
+deleted file mode 100644
+--- a/packages/legacy-structure/commands/create/eslint.config.mjs
++++ /dev/null
+@@ -1,23 +0,0 @@
+-import baseConfig from "../../../../eslint.config.mjs";
+-
+-export default [
+-  {
+-    ignores: ["**/dist"],
+-  },
+-  ...baseConfig,
+-  {
+-    files: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"],
+-    // Override or add rules here
+-    rules: {},
+-  },
+-  {
+-    files: ["**/*.ts", "**/*.tsx"],
+-    // Override or add rules here
+-    rules: {},
+-  },
+-  {
+-    files: ["**/*.js", "**/*.jsx"],
+-    // Override or add rules here
+-    rules: {},
+-  },
+-];
+diff --git a/packages/legacy-structure/commands/create/jest.config.ts b/packages/legacy-structure/commands/create/jest.config.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/commands/create/jest.config.ts
++++ /dev/null
+@@ -1,15 +0,0 @@
+-export default {
+-  displayName: "legacy-structure-commands-create",
+-  preset: "../../../../jest.preset.js",
+-  transform: {
+-    "^.+\\.[tj]sx?$": [
+-      "ts-jest",
+-      {
+-        tsconfig: "<rootDir>/tsconfig.spec.json",
+-      },
+-    ],
+-  },
+-  // Needed to add "json" to avoid issue resolving spdx-license-ids
+-  moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
+-  coverageDirectory: "../../../../coverage/packages/legacy-structure/commands/create",
+-};
+diff --git a/packages/legacy-structure/commands/create/package.json b/packages/legacy-structure/commands/create/package.json
+deleted file mode 100644
+--- a/packages/legacy-structure/commands/create/package.json
++++ /dev/null
+@@ -1,126 +0,0 @@
+-{
+-  "name": "@lerna/create",
+-  "version": "9.0.5",
+-  "type": "commonjs",
+-  "description": "Create a new lerna-managed package",
+-  "keywords": [
+-    "lerna",
+-    "command"
+-  ],
+-  "homepage": "https://lerna.js.org",
+-  "license": "MIT",
+-  "author": {
+-    "name": "Daniel Stockman",
+-    "url": "https://github.com/evocateur"
+-  },
+-  "files": [
+-    "dist",
+-    "README.md",
+-    "CHANGELOG.md"
+-  ],
+-  "main": "./dist/index.js",
+-  "engines": {
+-    "node": "^20.19.0 || ^22.12.0 || >=24.0.0"
+-  },
+-  "publishConfig": {
+-    "access": "public"
+-  },
+-  "repository": {
+-    "type": "git",
+-    "url": "git+https://github.com/lerna/lerna.git",
+-    "directory": "packages/legacy-structure/commands/create"
+-  },
+-  "dependencies": {
+-    "@npmcli/arborist": "9.1.6",
+-    "@npmcli/package-json": "7.0.2",
+-    "@npmcli/run-script": "10.0.3",
+-    "@nx/devkit": ">=21.5.2 < 23.0.0",
+-    "@octokit/plugin-enterprise-rest": "6.0.1",
+-    "@octokit/rest": "20.1.2",
+-    "aproba": "2.0.0",
+-    "byte-size": "8.1.1",
+-    "chalk": "4.1.0",
+-    "ci-info": "4.3.1",
+-    "cmd-shim": "6.0.3",
+-    "color-support": "1.1.3",
+-    "columnify": "1.6.0",
+-    "console-control-strings": "^1.1.0",
+-    "conventional-changelog-core": "5.0.1",
+-    "conventional-recommended-bump": "7.0.1",
+-    "cosmiconfig": "9.0.0",
+-    "dedent": "1.5.3",
+-    "execa": "5.0.0",
+-    "fs-extra": "^11.2.0",
+-    "get-stream": "6.0.0",
+-    "git-url-parse": "14.0.0",
+-    "glob-parent": "6.0.2",
+-    "has-unicode": "2.0.1",
+-    "ini": "^1.3.8",
+-    "init-package-json": "8.2.2",
+-    "inquirer": "12.9.6",
+-    "is-ci": "3.0.1",
+-    "is-stream": "2.0.0",
+-    "js-yaml": "4.1.1",
+-    "libnpmpublish": "11.1.2",
+-    "load-json-file": "6.2.0",
+-    "make-dir": "4.0.0",
+-    "make-fetch-happen": "15.0.2",
+-    "minimatch": "3.1.4",
+-    "multimatch": "5.0.0",
+-    "npm-package-arg": "13.0.1",
+-    "npm-packlist": "10.0.3",
+-    "npm-registry-fetch": "19.1.0",
+-    "nx": ">=21.5.3 < 23.0.0",
+-    "p-map": "4.0.0",
+-    "p-map-series": "2.1.0",
+-    "p-queue": "6.6.2",
+-    "p-reduce": "^2.1.0",
+-    "pacote": "21.0.1",
+-    "pify": "5.0.0",
+-    "read-cmd-shim": "4.0.0",
+-    "resolve-from": "5.0.0",
+-    "rimraf": "^6.1.2",
+-    "semver": "7.7.2",
+-    "set-blocking": "^2.0.0",
+-    "signal-exit": "3.0.7",
+-    "slash": "^3.0.0",
+-    "ssri": "12.0.0",
+-    "string-width": "^4.2.3",
+-    "tar": "7.5.11",
+-    "temp-dir": "1.0.0",
+-    "through": "2.3.8",
+-    "tinyglobby": "0.2.12",
+-    "upath": "2.0.1",
+-    "uuid": "^11.1.0",
+-    "validate-npm-package-license": "3.0.4",
+-    "validate-npm-package-name": "6.0.2",
+-    "wide-align": "1.1.5",
+-    "write-file-atomic": "5.0.1",
+-    "write-pkg": "4.0.0",
+-    "yargs": "17.7.2",
+-    "yargs-parser": "21.1.1"
+-  },
+-  "exports": {
+-    ".": {
+-      "import": "./dist/index.js",
+-      "require": "./dist/index.js"
+-    },
+-    "./command": {
+-      "import": "./dist/command.js",
+-      "require": "./dist/command.js"
+-    },
+-    "./lib/builtin-npmrc": {
+-      "import": "./dist/lib/builtin-npmrc.js",
+-      "require": "./dist/lib/builtin-npmrc.js"
+-    },
+-    "./lib/cat-file": {
+-      "import": "./dist/lib/cat-file.js",
+-      "require": "./dist/lib/cat-file.js"
+-    },
+-    "./lib/lerna-module-data": {
+-      "import": "./dist/lib/lerna-module-data.js",
+-      "require": "./dist/lib/lerna-module-data.js"
+-    }
+-  },
+-  "gitHead": "18297cc14a6966003424d93688335f52d7711732"
+-}
+diff --git a/packages/legacy-structure/commands/create/project.json b/packages/legacy-structure/commands/create/project.json
+deleted file mode 100644
+--- a/packages/legacy-structure/commands/create/project.json
++++ /dev/null
+@@ -1,67 +0,0 @@
+-{
+-  "name": "legacy-structure-commands-create",
+-  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+-  "sourceRoot": "packages/legacy-structure/commands/create",
+-  "projectType": "application",
+-  "tags": [],
+-  "targets": {
+-    "build": {
+-      "dependsOn": ["compile"],
+-      "executor": "nx:run-commands",
+-      "options": {
+-        "cwd": "packages/legacy-structure/commands/create/dist",
+-        "parallel": false,
+-        "commands": ["rm -rf package.json"]
+-      }
+-    },
+-    "compile": {
+-      "executor": "@nx/esbuild:esbuild",
+-      "outputs": ["{options.outputPath}"],
+-      "options": {
+-        "outputPath": "packages/legacy-structure/commands/create/dist",
+-        "main": "packages/legacy-structure/commands/create/src/index.ts",
+-        "tsConfig": "packages/legacy-structure/commands/create/tsconfig.lib.json",
+-        "assets": [
+-          {
+-            "input": "libs/commands/create",
+-            "glob": "README.md",
+-            "output": "../"
+-          },
+-          {
+-            "input": "packages/legacy-structure/commands/create/src/lib",
+-            "glob": "lerna-module-data.js",
+-            "output": "./lib"
+-          }
+-        ],
+-        "thirdParty": false,
+-        "platform": "node",
+-        "format": ["cjs"],
+-        "additionalEntryPoints": [
+-          "packages/legacy-structure/commands/create/src/command.ts",
+-          "packages/legacy-structure/commands/create/src/lib/builtin-npmrc.ts",
+-          "packages/legacy-structure/commands/create/src/lib/cat-file.ts"
+-        ],
+-        "esbuildOptions": {
+-          "external": ["*package.json"],
+-          "outExtension": {
+-            ".js": ".js"
+-          },
+-          "logOverride": {
+-            "commonjs-variable-in-esm": "silent"
+-          }
+-        }
+-      }
+-    },
+-    "lint": {
+-      "executor": "@nx/eslint:lint",
+-      "outputs": ["{options.outputFile}"]
+-    },
+-    "test": {
+-      "executor": "@nx/jest:jest",
+-      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+-      "options": {
+-        "jestConfig": "packages/legacy-structure/commands/create/jest.config.ts"
+-      }
+-    }
+-  }
+-}
+diff --git a/packages/legacy-structure/commands/create/src/command.ts b/packages/legacy-structure/commands/create/src/command.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/commands/create/src/command.ts
++++ /dev/null
+@@ -1,3 +0,0 @@
+-const command = require("@lerna/commands/create/command");
+-
+-module.exports = command;
+diff --git a/packages/legacy-structure/commands/create/src/index.ts b/packages/legacy-structure/commands/create/src/index.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/commands/create/src/index.ts
++++ /dev/null
+@@ -1,4 +0,0 @@
+-const index = require("@lerna/commands/create");
+-
+-module.exports = index;
+-module.exports.CreateCommand = index.CreateCommand;
+diff --git a/packages/legacy-structure/commands/create/src/lib/builtin-npmrc.ts b/packages/legacy-structure/commands/create/src/lib/builtin-npmrc.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/commands/create/src/lib/builtin-npmrc.ts
++++ /dev/null
+@@ -1,3 +0,0 @@
+-const builtinNpmrc = require("@lerna/commands/create/lib/builtin-npmrc");
+-
+-module.exports = builtinNpmrc;
+diff --git a/packages/legacy-structure/commands/create/src/lib/cat-file.ts b/packages/legacy-structure/commands/create/src/lib/cat-file.ts
+deleted file mode 100644
+--- a/packages/legacy-structure/commands/create/src/lib/cat-file.ts
++++ /dev/null
+@@ -1,3 +0,0 @@
+-const catFile = require("@lerna/commands/create/lib/cat-file");
+-
+-module.exports = catFile;
+diff --git a/packages/legacy-structure/commands/create/src/lib/lerna-module-data.js b/packages/legacy-structure/commands/create/src/lib/lerna-module-data.js
+deleted file mode 100644
+--- a/packages/legacy-structure/commands/create/src/lib/lerna-module-data.js
++++ /dev/null
+@@ -1,205 +0,0 @@
+-/**
+-Original: https://github.com/npm/init-package-json/blob/c649fbe/default-input.js
+-
+-The contents of this file are compiled into a function with this signature:
+-
+-    (function(
+-        yes,
+-        filename,
+-        dirname,
+-        basename,
+-        package,
+-        config,
+-        prompt,
+-        __filename,
+-        __dirname,
+-        __basename,
+-        module,
+-        require,
+-        exports
+-    ) {
+-
+-Because of the `package` parameter, we can't "use strict",
+-as `package` is a reserved word in strict mode.
+-
+-Conveniently, all of these parameters are also available on `this`.
+-We exploit this fact to avoid eslint breaking on the reserved word.
+-*/
+-
+-const validateLicense = require("validate-npm-package-license");
+-const validateName = require("validate-npm-package-name");
+-const npa = require("npm-package-arg");
+-const semver = require("semver");
+-
+-const niceName = (rudeName) =>
+-  rudeName
+-    .replace(/^node-|[.-]js$/g, "")
+-    .replace(" ", "-")
+-    .toLowerCase();
+-
+-let name = this.package.name || this.basename;
+-let spec;
+-try {
+-  spec = npa(name);
+-} catch (e) {
+-  spec = {};
+-}
+-let scope = this.config.get("scope");
+-if (scope) {
+-  if (scope.charAt(0) !== "@") {
+-    scope = `@${scope}`;
+-  }
+-
+-  if (spec.scope) {
+-    name = `${scope}/${spec.name.split("/")[1]}`;
+-  } else {
+-    name = `${scope}/${name}`;
+-  }
+-}
+-
+-exports.name = this.yes
+-  ? name
+-  : this.prompt("package name", niceName(name), (data) => {
+-      const its = validateName(data);
+-      if (its.validForNewPackages) {
+-        return data;
+-      }
+-
+-      const errors = (its.errors || []).concat(its.warnings || []);
+-      const er = new Error(`Sorry, ${errors.join(" and ")}.`);
+-      er.notValid = true;
+-      return er;
+-    });
+-
+-const version = this.package.version || this.config.get("init-version") || "1.0.0";
+-exports.version = this.yes
+-  ? version
+-  : this.prompt("version", version, (data) => {
+-      if (semver.valid(data)) {
+-        return data;
+-      }
+-
+-      const er = new Error(`Invalid version: "${data}"`);
+-      er.notValid = true;
+-      return er;
+-    });
+-
+-if (this.config.get("private")) {
+-  exports.private = true;
+-}
+-
+-if (!this.package.description) {
+-  exports.description = this.yes ? this.config.get("description") : this.prompt("description");
+-}
+-
+-if (!this.package.keywords) {
+-  const keywords = this.config.get("keywords") || "";
+-  exports.keywords = this.yes
+-    ? keywords
+-    : this.prompt("keywords", keywords, (data) => {
+-        if (!data) {
+-          return undefined;
+-        }
+-
+-        if (Array.isArray(data)) {
+-          data = data.join(" ");
+-        }
+-
+-        if (typeof data !== "string") {
+-          return data;
+-        }
+-
+-        return data.split(/[\s,]+/);
+-      });
+-}
+-
+-if (!this.package.author) {
+-  let authorConfig;
+-
+-  if (this.config.get("init-author-name")) {
+-    authorConfig = {
+-      name: this.config.get("init-author-name"),
+-      email: this.config.get("init-author-email"),
+-      url: this.config.get("init-author-url"),
+-    };
+-  }
+-
+-  exports.author = authorConfig || (this.yes ? "" : this.prompt("author"));
+-}
+-
+-if (!this.package.homepage) {
+-  const homepage = this.config.get("homepage");
+-  exports.homepage = this.yes ? homepage : this.prompt("homepage", homepage);
+-}
+-
+-const license = this.package.license || this.config.get("init-license") || "ISC";
+-exports.license = this.yes
+-  ? license
+-  : this.prompt("license", license, (data) => {
+-      const its = validateLicense(data);
+-      if (its.validForNewPackages) {
+-        return data;
+-      }
+-
+-      const errors = (its.errors || []).concat(its.warnings || []);
+-      const er = new Error(`Sorry, ${errors.join(" and ")}.`);
+-      er.notValid = true;
+-      return er;
+-    });
+-
+-if (!this.package.main && this.config.get("init-main")) {
+-  const mainEntry = this.config.get("init-main");
+-
+-  exports.main = this.yes ? mainEntry : this.prompt("entry point", mainEntry);
+-}
+-
+-if (!this.package.module && this.config.get("init-es-module")) {
+-  const moduleEntry = this.config.get("init-es-module");
+-
+-  exports.module = this.yes ? moduleEntry : this.prompt("module entry", moduleEntry);
+-}
+-
+-if (!this.package.bin && this.config.get("bin")) {
+-  exports.bin = this.config.get("bin");
+-}
+-
+-if (!this.package.directories && this.config.get("directories")) {
+-  exports.directories = this.config.get("directories");
+-}
+-
+-if (!this.package.files && this.config.get("files")) {
+-  exports.files = (cb) => {
+-    // callback MUST yield the thread for some inexplicable reason
+-    process.nextTick(cb, null, this.config.get("files"));
+-  };
+-}
+-
+-if (!this.package.publishConfig && this.config.get("publishConfig")) {
+-  exports.publishConfig = this.config.get("publishConfig");
+-}
+-
+-if (!this.package.repository) {
+-  exports.repository = (cb) => {
+-    let val = this.config.get("repository");
+-
+-    if (val && val.match(/^git@github.com:/)) {
+-      val = val.replace(/^git@github.com:/, "https://github.com/");
+-    }
+-
+-    return cb(null, this.yes ? val : this.prompt("git repository", val));
+-  };
+-}
+-
+-if (!this.package.scripts) {
+-  exports.scripts = {
+-    test: `node ./__tests__/${name}.test.js`,
+-  };
+-}
+-
+-if (!this.package.dependencies && this.config.get("dependencies")) {
+-  exports.dependencies = this.config.get("dependencies");
+-}
+-
+-if (this.config.get("esModule")) {
+-  exports.type = "module";
+-}
+diff --git a/packages/legacy-structure/commands/create/tsconfig.json b/packages/legacy-structure/commands/create/tsconfig.json
+deleted file mode 100644
+--- a/packages/legacy-structure/commands/create/tsconfig.json
++++ /dev/null
+@@ -1,13 +0,0 @@
+-{
+-  "extends": "../../../../tsconfig.base.json",
+-  "files": [],
+-  "include": [],
+-  "references": [
+-    {
+-      "path": "./tsconfig.lib.json"
+-    },
+-    {
+-      "path": "./tsconfig.spec.json"
+-    }
+-  ]
+-}
+diff --git a/packages/legacy-structure/commands/create/tsconfig.lib.json b/packages/legacy-structure/commands/create/tsconfig.lib.json
+deleted file mode 100644
+--- a/packages/legacy-structure/commands/create/tsconfig.lib.json
++++ /dev/null
+@@ -1,10 +0,0 @@
+-{
+-  "extends": "./tsconfig.json",
+-  "compilerOptions": {
+-    "outDir": "../../../../dist/out-tsc",
+-    "declaration": true,
+-    "types": ["node"]
+-  },
+-  "include": ["src/**/*.ts"],
+-  "exclude": ["jest.config.ts", "src/**/*.spec.ts"]
+-}
+diff --git a/packages/lerna/package.json b/packages/lerna/package.json
+--- a/packages/lerna/package.json
++++ b/packages/lerna/package.json
+@@ -38,7 +38,6 @@
+     "migrations": "./migrations.json"
+   },
+   "dependencies": {
+-    "@lerna/create": "9.0.5",
+     "@npmcli/arborist": "9.1.6",
+     "@npmcli/package-json": "7.0.2",
+     "@npmcli/run-script": "10.0.3",
+diff --git a/packages/lerna/project.json b/packages/lerna/project.json
+--- a/packages/lerna/project.json
++++ b/packages/lerna/project.json
+@@ -26,6 +26,16 @@
+             "input": "packages/lerna/src",
+             "glob": "cli.js",
+             "output": "."
++          },
++          {
++            "input": "libs/commands/create/src/lib",
++            "glob": "lerna-module-data.js",
++            "output": "lib"
++          },
++          {
++            "input": "libs/commands/create/src/lib",
++            "glob": "lerna-module-data.js",
++            "output": "commands/create/lib"
+           }
+         ],
+         "thirdParty": false,
+@@ -36,6 +46,8 @@
+           "packages/lerna/src/commands/changed/index.ts",
+           "packages/lerna/src/commands/clean/command.ts",
+           "packages/lerna/src/commands/clean/index.ts",
++          "packages/lerna/src/commands/create/command.ts",
++          "packages/lerna/src/commands/create/index.ts",
+           "packages/lerna/src/commands/diff/command.ts",
+           "packages/lerna/src/commands/diff/index.ts",
+           "packages/lerna/src/commands/diff/lib/get-last-commit.ts",
+@@ -89,7 +101,7 @@
+           "packages/lerna/src/utils/index.ts"
+         ],
+         "esbuildOptions": {
+-          "external": ["*package.json", "@lerna/create", "nx/*", "@nx/*"],
++          "external": ["*package.json", "nx/*", "@nx/*"],
+           "outExtension": {
+             ".js": ".js"
+           },
+diff --git a/packages/lerna/src/commands/create/command.ts b/packages/lerna/src/commands/create/command.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/lerna/src/commands/create/command.ts
+@@ -0,0 +1 @@
++module.exports = require("@lerna/commands/create/command");
+diff --git a/packages/lerna/src/commands/create/index.ts b/packages/lerna/src/commands/create/index.ts
+new file mode 100644
+--- /dev/null
++++ b/packages/lerna/src/commands/create/index.ts
+@@ -0,0 +1,4 @@
++const createIndex = require("@lerna/commands/create");
++
++module.exports = createIndex;
++module.exports.CreateCommand = createIndex.CreateCommand;
+diff --git a/packages/lerna/src/index.ts b/packages/lerna/src/index.ts
+--- a/packages/lerna/src/index.ts
++++ b/packages/lerna/src/index.ts
+@@ -2,13 +2,11 @@
+ process.env["NX_ISOLATE_PLUGINS"] = "false";
+ process.env["NX_TUI"] = "false";
+ 
+-// Currently external until the usage of LERNA_MODULE_DATA can be refactored
+-const createCmd = require("@lerna/create/command");
+-
+ // Bundled
+ import { lernaCLI, log } from "@lerna/core";
+ import changedCmd from "@lerna/commands/changed/command";
+ import cleanCmd from "@lerna/commands/clean/command";
++import createCmd from "@lerna/commands/create/command";
+ import diffCmd from "@lerna/commands/diff/command";
+ import execCmd from "@lerna/commands/exec/command";
+ import importCmd from "@lerna/commands/import/command";
+diff --git a/tools/scripts/lerna-release.ts b/tools/scripts/lerna-release.ts
+--- a/tools/scripts/lerna-release.ts
++++ b/tools/scripts/lerna-release.ts
+@@ -56,8 +56,7 @@ function hideFromGitIndex(uncommittedFiles: string[]) {
+     //   "private": true,
+     //   "description": "This package.json exists to facilitate publish built packages via tools/scripts/lerna-release.ts",
+     //   "workspaces": [
+-    //     "packages/*",
+-    //.    "packages/legacy-structure/commands/create"
++    //     "packages/*"
+     //   ]
+     // }`;
+     //     writeFileSync("./lerna.json", distLernaJson);
+diff --git a/tsconfig.base.json b/tsconfig.base.json
+--- a/tsconfig.base.json
++++ b/tsconfig.base.json
+@@ -49,7 +49,6 @@
+       "@lerna/commands/version": ["libs/commands/version/src/index.ts"],
+       "@lerna/commands/version/*": ["libs/commands/version/src/*"],
+       "@lerna/core": ["libs/core/src/index.ts"],
+-      "@lerna/create": ["packages/legacy-structure/commands/create"],
+       "@lerna/e2e-utils": ["libs/e2e-utils/src/index.ts"],
+       "@lerna/legacy-core": ["libs/legacy-core/src/index.ts"],
+       "@lerna/nx-plugin": ["libs/nx-plugin/src/index.ts"],

@@ -1,0 +1,375 @@
+diff --git a/crates/core/tests/message.rs b/crates/core/tests/message.rs
+index e6da5ff..8421358 100644
+--- a/crates/core/tests/message.rs
++++ b/crates/core/tests/message.rs
+@@ -62,7 +62,7 @@ fn assistant_with_tool_calls() {
+ 
+ #[test]
+ fn tool_message() {
+-    let msg = Message::tool("output", "call_1");
++    let msg = Message::tool("output", "call_1", "bash");
+     assert_eq!(msg.role, Role::Tool);
+     assert_eq!(msg.content, "output");
+     assert_eq!(msg.tool_call_id, "call_1");
+@@ -150,7 +150,7 @@ fn message_serde_missing_optional_fields() {
+ 
+ #[test]
+ fn message_serde_tool_message() {
+-    let msg = Message::tool("result text", "call_42");
++    let msg = Message::tool("result text", "call_42", "bash");
+     let json = serde_json::to_string(&msg).unwrap();
+     let deser: Message = serde_json::from_str(&json).unwrap();
+     assert_eq!(deser.role, Role::Tool);
+diff --git a/crates/core/tests/swepm_tool_name.rs b/crates/core/tests/swepm_tool_name.rs
+new file mode 100644
+index 0000000..9bdc172
+--- /dev/null
++++ b/crates/core/tests/swepm_tool_name.rs
+@@ -0,0 +1,48 @@
++//! Behavioral acceptance tests for the tool-result name contract.
++//! These use the existing public Message API and serialized message format.
++
++use crabtalk_core::model::Message;
++use serde_json::json;
++
++#[test]
++fn constructor_preserves_each_tool_name_in_the_message_format() {
++    for (name, content, call_id) in [
++        ("bash", "command output", "call_shell"),
++        ("lookup_document", "a document", "call_lookup"),
++        ("fetch_weather", "", "call_empty_output"),
++    ] {
++        let message = Message::tool(content, call_id, name);
++        let wire = serde_json::to_value(&message).unwrap();
++        assert_eq!(wire["role"], "tool");
++        assert_eq!(wire["name"], name, "the constructor must store its name argument");
++        assert_eq!(wire["tool_call_id"], call_id);
++        let restored: Message = serde_json::from_value(wire).unwrap();
++        assert_eq!(serde_json::to_value(restored).unwrap()["name"], name);
++    }
++}
++
++#[test]
++fn deserialization_keeps_the_name_in_existing_message_records() {
++    let wire = json!({
++        "role": "tool",
++        "content": "answer",
++        "tool_call_id": "call_preserved",
++        "name": "search_local_index"
++    });
++    let restored: Message = serde_json::from_value(wire.clone()).unwrap();
++    let serialized = serde_json::to_value(restored).unwrap();
++    for field in ["role", "content", "tool_call_id", "name"] {
++        assert_eq!(serialized[field], wire[field], "round-trip changed {field}");
++    }
++}
++
++#[test]
++fn old_records_without_a_name_remain_readable() {
++    for role in ["user", "assistant", "tool"] {
++        let old = json!({"role": role, "content": "old content"});
++        let restored: Message = serde_json::from_value(old).unwrap();
++        let wire = serde_json::to_value(restored).unwrap();
++        assert_eq!(wire["content"], "old content");
++        assert!(wire.get("name").is_none_or(|name| name == ""));
++    }
++}
+diff --git a/crates/daemon/tests/swepm_management_protocol.rs b/crates/daemon/tests/swepm_management_protocol.rs
+new file mode 100644
+index 0000000..7d45370
+--- /dev/null
++++ b/crates/daemon/tests/swepm_management_protocol.rs
+@@ -0,0 +1,197 @@
++//! Exercise the real daemon through its public local TCP protocol.
++//! No production/private preset constant is imported or copied into the test.
++
++use std::{path::PathBuf, time::{Duration, SystemTime, UNIX_EPOCH}};
++
++use crabtalk_daemon::{Daemon, DaemonHandle, bridge_shutdown};
++use crabtalk_daemon::daemon::event::DaemonEvent;
++use serde_json::{Value, json};
++use transport::tcp::TcpConnection;
++use wcore::protocol::api::Client;
++
++fn install_test_tls_provider() {
++    static INITIALIZE: std::sync::Once = std::sync::Once::new();
++    INITIALIZE.call_once(|| {
++        // Mirror the CLI's rustls-no-provider initialization. This belongs to
++        // the test process, not to any daemon/provider production change.
++        let _ = rustls::crypto::ring::default_provider().install_default();
++        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
++    });
++}
++
++struct Fixture {
++    daemon: DaemonHandle,
++    transport: tokio::task::JoinHandle<()>,
++    client: TcpConnection,
++    directory: PathBuf,
++}
++
++impl Fixture {
++    async fn start() -> Self {
++        install_test_tls_provider();
++        // The harness sets TMPDIR to its persistent /logs/verifier/tmp bind.
++        let root = std::env::var_os("TMPDIR").expect("set persistent TMPDIR before the test");
++        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
++        let directory = PathBuf::from(root).join(format!("swepm-crabtalk-{}-{nonce}", std::process::id()));
++        std::fs::create_dir_all(&directory).unwrap();
++        std::fs::write(directory.join("config.toml"), r#"
++[provider.offline]
++kind = "openai"
++base_url = "http://127.0.0.1:9/v1"
++api_key = "offline-fixture-only"
++models = ["offline-model"]
++max_retries = 0
++timeout = 1
++[system.crab]
++model = "offline-model"
++"#).unwrap();
++        let daemon = tokio::time::timeout(Duration::from_secs(15), Daemon::start(&directory))
++            .await.expect("daemon startup timed out").expect("offline daemon config should load");
++        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
++        let address = listener.local_addr().unwrap();
++        let events = daemon.event_tx.clone();
++        let shutdown = bridge_shutdown(daemon.shutdown_tx.subscribe());
++        let transport = tokio::spawn(transport::tcp::accept_loop(listener, move |msg, reply| {
++            events.send(DaemonEvent::Message { msg, reply }).unwrap();
++        }, shutdown));
++        let client = TcpConnection::connect(address).await.unwrap();
++        Self { daemon, transport, client, directory }
++    }
++
++    async fn close(self) {
++        drop(self.client);
++        tokio::time::timeout(Duration::from_secs(10), self.daemon.shutdown()).await
++            .expect("daemon shutdown timed out").unwrap();
++        tokio::time::timeout(Duration::from_secs(10), self.transport).await
++            .expect("transport shutdown timed out").unwrap();
++        // Preserve only this small fixture directory for failure investigation.
++        eprintln!("SWEPM_DAEMON_FIXTURE={}", self.directory.display());
++    }
++}
++
++#[tokio::test]
++async fn list_provider_presets_includes_every_required_public_choice() {
++    let mut fixture = Fixture::start().await;
++    let presets = tokio::time::timeout(Duration::from_secs(10), fixture.client.list_provider_presets())
++        .await.expect("ListProviderPresets timed out").expect("ListProviderPresets must be implemented");
++    fixture.close().await;
++    for required in ["anthropic", "openai", "google", "ollama", "azure", "custom"] {
++        assert!(presets.iter().any(|preset| preset.name == required),
++            "public ListProviderPresets omits required choice {required}");
++    }
++}
++
++#[tokio::test]
++async fn granular_provider_changes_round_trip_and_reject_unknown_names() {
++    let mut fixture = Fixture::start().await;
++    let result = tokio::time::timeout(Duration::from_secs(30), async {
++        fixture.client.ping().await.unwrap();
++        let candidate = json!({
++            "kind": "openai", "base_url": "http://127.0.0.1:9/v1",
++            "api_key": "second-offline-fixture", "models": ["second-offline-model", "another-offline-model"],
++            "max_retries": 0, "timeout": 1
++        });
++        let response = fixture.client.set_provider("second".to_owned(), candidate.to_string()).await.unwrap();
++        assert_eq!(response.name, "second");
++        let loaded: Value = serde_json::from_str(&response.config).unwrap();
++        // ProviderDef permits omitted default Openai kind; compare loaded semantics.
++        let loaded_provider: wcore::ProviderDef = serde_json::from_str(&response.config).unwrap();
++        assert_eq!(loaded_provider.kind, wcore::ApiStandard::Openai);
++        assert!(loaded.get("standard").is_none(), "canonical config must use kind");
++        let expected_provider: wcore::ProviderDef = serde_json::from_value(candidate.clone()).unwrap();
++        assert_eq!(serde_json::to_value(&loaded_provider).unwrap(),
++                   serde_json::to_value(&expected_provider).unwrap(),
++                   "SetProvider must preserve the supplied provider configuration");
++        assert_eq!(loaded["models"], json!(["second-offline-model", "another-offline-model"]));
++        let listed = fixture.client.list_providers().await.unwrap();
++        let matches: Vec<_> = listed.iter().filter(|provider| provider.name == "second").collect();
++        assert_eq!(matches.len(), 1, "one provider entry is returned regardless of its model count");
++        let listed_json: Value = serde_json::from_str(&matches[0].config).unwrap();
++        assert!(listed_json.get("standard").is_none(), "listed canonical config must use kind");
++        let listed_provider: wcore::ProviderDef = serde_json::from_value(listed_json).unwrap();
++        assert_eq!(serde_json::to_value(&listed_provider).unwrap(),
++                   serde_json::to_value(&expected_provider).unwrap(),
++                   "ListProviders must return the complete provider configuration");
++
++        fixture.client.set_active_model("second-offline-model".to_owned()).await.unwrap();
++        let config: Value = serde_json::from_str(&fixture.client.get_config().await.unwrap()).unwrap();
++        assert_eq!(config["system"]["crab"]["model"], "second-offline-model");
++        let missing_model = fixture.client.set_active_model("swepm-missing-model".to_owned()).await.unwrap_err();
++        assert!(missing_model.to_string().contains("model 'swepm-missing-model' not found in any provider"));
++        let missing_provider = fixture.client.delete_provider("swepm-missing-provider".to_owned()).await.unwrap_err();
++        assert!(missing_provider.to_string().contains("provider 'swepm-missing-provider' not found"));
++
++        // Duplicate model names must be rejected before any invalid config is persisted.
++        let duplicate = json!({"kind": "openai", "base_url": "http://127.0.0.1:9/v1",
++            "api_key": "unused", "models": ["offline-model"]});
++        assert!(fixture.client.set_provider("bad-duplicate".to_owned(), duplicate.to_string()).await.is_err());
++        assert!(!fixture.client.list_providers().await.unwrap().iter().any(|provider| provider.name == "bad-duplicate"));
++
++        fixture.client.set_active_model("offline-model".to_owned()).await.unwrap();
++        fixture.client.delete_provider("second".to_owned()).await.unwrap();
++        assert!(!fixture.client.list_providers().await.unwrap().iter().any(|provider| provider.name == "second"));
++    }).await;
++    fixture.close().await;
++    result.expect("management protocol scenario timed out");
++}
++
++
++#[tokio::test]
++async fn local_mcp_configuration_preserves_round_trippable_fields() {
++    use wcore::protocol::message::McpInfo;
++    let mut fixture = Fixture::start().await;
++    let result = tokio::time::timeout(Duration::from_secs(30), async {
++        // Connections may fail immediately: these are local config-only fixtures,
++        // not real remote MCP services. No provider inference is requested.
++        let stdio = McpInfo {
++            name: "swepm-local-stdio".to_owned(),
++            command: "/bin/false".to_owned(),
++            args: vec!["swepm-argument".to_owned(), "value with spaces".to_owned()],
++            env: [("SWEPM_SAMPLE".to_owned(), "value=with spaces".to_owned())].into(),
++            url: String::new(), auth: true, source: "local".to_owned(), auto_restart: true,
++        };
++        let http = McpInfo {
++            name: "swepm-local-http".to_owned(), command: String::new(), args: vec![],
++            env: [("SWEPM_HTTP".to_owned(), "opaque-value".to_owned())].into(),
++            url: "http://127.0.0.1:1/mcp".to_owned(), auth: true,
++            source: "local".to_owned(), auto_restart: true,
++        };
++        let original = vec![stdio, http];
++        fixture.client.set_local_mcps(original.clone()).await.unwrap();
++        let first = fixture.client.list_mcps().await.unwrap();
++        for expected in &original {
++            let rows: Vec<_> = first.iter().filter(|m| m.name == expected.name).collect();
++            assert_eq!(rows.len(), 1, "saved MCP must be listed exactly once");
++            let actual = rows[0];
++            assert_eq!(actual.command, expected.command);
++            assert_eq!(actual.args, expected.args);
++            assert_eq!(actual.env, expected.env);
++            assert_eq!(actual.url, expected.url);
++            assert_eq!(actual.auth, expected.auth);
++            assert_eq!(actual.auto_restart, expected.auto_restart);
++            assert!(!actual.source.is_empty(), "MCP source must be reported");
++        }
++        // Auth UI style read-modify-write: saving the returned representation
++        // must not lose fields on the second round trip either.
++        let mut updated = first;
++        for config in &mut updated {
++            config.auth = false;
++            config.auto_restart = false;
++            config.env.insert("SWEPM_UPDATED".to_owned(), "second".to_owned());
++        }
++        fixture.client.set_local_mcps(updated.clone()).await.unwrap();
++        let second = fixture.client.list_mcps().await.unwrap();
++        for expected in &updated {
++            let actual = second.iter().find(|m| m.name == expected.name).unwrap();
++            assert_eq!(actual.command, expected.command);
++            assert_eq!(actual.args, expected.args);
++            assert_eq!(actual.env, expected.env);
++            assert_eq!(actual.url, expected.url);
++            assert_eq!(actual.auth, expected.auth);
++            assert_eq!(actual.auto_restart, expected.auto_restart);
++            assert!(!actual.source.is_empty());
++        }
++    }).await;
++    fixture.close().await;
++    result.expect("MCP config roundtrip timed out");
++}
+diff --git a/crates/model/tests/swepm_tool_name_wire.rs b/crates/model/tests/swepm_tool_name_wire.rs
+new file mode 100644
+index 0000000..f130147
+--- /dev/null
++++ b/crates/model/tests/swepm_tool_name_wire.rs
+@@ -0,0 +1,90 @@
++//! Exercise the public Provider through a local HTTP peer, without an API key
++//! or any external endpoint. In particular, test the real conversion layer.
++
++use std::time::Duration;
++
++use crabtalk_model::{Client, ProviderDef, build_provider};
++use serde_json::{Value, json};
++use tokio::io::{AsyncReadExt, AsyncWriteExt};
++use tokio::net::TcpListener;
++use wcore::model::{Message, Model, Request};
++
++fn install_test_tls_provider() {
++    static INITIALIZE: std::sync::Once = std::sync::Once::new();
++    INITIALIZE.call_once(|| {
++        // reqwest uses rustls-no-provider. Match CLI startup before constructing
++        // a Client, including clients which only talk to this HTTP fixture.
++        // Another test may already have installed the process-wide provider.
++        let _ = rustls::crypto::ring::default_provider().install_default();
++        assert!(rustls::crypto::CryptoProvider::get_default().is_some());
++    });
++}
++
++#[tokio::test]
++async fn provider_wire_format_preserves_both_tool_names_and_call_ids() {
++    install_test_tls_provider();
++    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
++    let address = listener.local_addr().unwrap();
++    let peer = tokio::spawn(async move {
++        let (mut socket, _) = tokio::time::timeout(Duration::from_secs(8), listener.accept())
++            .await.expect("provider never reached the local fixture").unwrap();
++        let mut request = Vec::new();
++        let (header_end, content_length) = loop {
++            let mut bytes = [0_u8; 4096];
++            let count = tokio::time::timeout(Duration::from_secs(8), socket.read(&mut bytes))
++                .await.expect("provider request timed out").unwrap();
++            assert!(count > 0, "incomplete HTTP headers");
++            request.extend_from_slice(&bytes[..count]);
++            assert!(request.len() < 65536, "unexpectedly large fixture request");
++            if let Some(end) = request.windows(4).position(|value| value == b"\r\n\r\n") {
++                let headers = std::str::from_utf8(&request[..end]).unwrap();
++                assert!(headers.starts_with("POST /v1/chat/completions "), "{headers}");
++                let length: usize = headers.lines().find_map(|line| {
++                    let (name, value) = line.split_once(':')?;
++                    name.eq_ignore_ascii_case("content-length").then(|| value.trim().parse().unwrap())
++                }).expect("JSON request must have a content length");
++                break (end + 4, length);
++            }
++        };
++        while request.len() < header_end + content_length {
++            let mut bytes = [0_u8; 4096];
++            let count = tokio::time::timeout(Duration::from_secs(8), socket.read(&mut bytes))
++                .await.expect("provider body timed out").unwrap();
++            assert!(count > 0, "incomplete HTTP body");
++            request.extend_from_slice(&bytes[..count]);
++            assert!(request.len() < 65536);
++        }
++        let body: Value = serde_json::from_slice(&request[header_end..header_end + content_length]).unwrap();
++        let response = json!({
++            "id": "offline-fixture", "object": "chat.completion", "created": 0,
++            "model": "offline-model", "choices": [{"index": 0,
++                "message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}],
++            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}
++        }).to_string();
++        socket.write_all(format!(
++            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
++            response.len(), response
++        ).as_bytes()).await.unwrap();
++        body
++    });
++    let definition: ProviderDef = serde_json::from_value(json!({
++        "kind": "openai", "api_key": "offline-fixture-only", "models": ["offline-model"],
++        "base_url": format!("http://{address}/v1/chat/completions"),
++        "max_retries": 0, "timeout": 8
++    })).unwrap();
++    let client = Client::builder().no_proxy().build().unwrap();
++    let provider = build_provider(&definition, "offline-model", client).unwrap();
++    let request = Request::new("offline-model").with_messages(vec![
++        Message::tool("shell output", "call_a", "bash"),
++        Message::tool("search output", "call_b", "search_docs"),
++    ]);
++    provider.send(&request).await.expect("local provider response must be readable");
++    let body = peer.await.unwrap();
++    let messages = body["messages"].as_array().expect("messages array");
++    assert_eq!(messages.len(), 2);
++    for (message, name, call_id) in [(&messages[0], "bash", "call_a"), (&messages[1], "search_docs", "call_b")] {
++        assert_eq!(message["role"], "tool");
++        assert_eq!(message["name"], name, "provider conversion discarded the function name");
++        assert_eq!(message["tool_call_id"], call_id);
++    }
++}

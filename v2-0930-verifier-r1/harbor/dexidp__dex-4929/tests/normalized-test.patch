@@ -1,0 +1,910 @@
+diff --git a/cmd/dex/swepm_connector_config_test.go b/cmd/dex/swepm_connector_config_test.go
+new file mode 100644
+index 00000000..12568e04
+--- /dev/null
++++ b/cmd/dex/swepm_connector_config_test.go
+@@ -0,0 +1,90 @@
++package main
++
++import (
++	"encoding/json"
++	"reflect"
++	"testing"
++
++	"github.com/dexidp/dex/connector/atlassiancrowd"
++	"github.com/dexidp/dex/connector/authproxy"
++	"github.com/dexidp/dex/connector/bitbucketcloud"
++	"github.com/dexidp/dex/connector/gitea"
++	"github.com/dexidp/dex/connector/github"
++	"github.com/dexidp/dex/connector/gitlab"
++	"github.com/dexidp/dex/connector/google"
++	"github.com/dexidp/dex/connector/keystone"
++	"github.com/dexidp/dex/connector/ldap"
++	"github.com/dexidp/dex/connector/linkedin"
++	"github.com/dexidp/dex/connector/microsoft"
++	"github.com/dexidp/dex/connector/mock"
++	"github.com/dexidp/dex/connector/oauth"
++	"github.com/dexidp/dex/connector/oidc"
++	"github.com/dexidp/dex/connector/openshift"
++	"github.com/dexidp/dex/connector/saml"
++)
++
++// Exercise the public CLI configuration parser. Constructing a config value
++// must not open the connector or require any external identity-provider server.
++func TestSWEPMBuiltinConnectorConfigurationParsing(t *testing.T) {
++	for _, test := range []struct {
++		kind string
++		want any
++	}{
++		{"ldap", &ldap.Config{}},
++		{"github", &github.Config{}},
++		{"gitlab", &gitlab.Config{}},
++		{"google", &google.Config{}},
++		{"oidc", &oidc.Config{}},
++		{"oauth", &oauth.Config{}},
++		{"saml", &saml.Config{}},
++		{"authproxy", &authproxy.Config{}},
++		{"linkedin", &linkedin.Config{}},
++		{"microsoft", &microsoft.Config{}},
++		{"bitbucket-cloud", &bitbucketcloud.Config{}},
++		{"openshift", &openshift.Config{}},
++		{"atlassian-crowd", &atlassiancrowd.Config{}},
++		{"samlExperimental", &saml.Config{}},
++		// These built-ins also exist before the refactor and must be preserved.
++		{"gitea", &gitea.Config{}},
++		{"keystone", &keystone.Config{}},
++		{"mockCallback", &mock.CallbackConfig{}},
++		{"mockPassword", &mock.PasswordConfig{}},
++	} {
++		t.Run(test.kind, func(t *testing.T) {
++			data, err := json.Marshal(map[string]any{
++				"connectors": []any{map[string]any{
++					"type": test.kind, "id": "swepm-" + test.kind, "name": "SWEPM " + test.kind,
++					"config": map[string]any{}, "grantTypes": []string{"authorization_code"},
++				}},
++			})
++			if err != nil {
++				t.Fatal(err)
++			}
++			var parsed Config
++			if err := json.Unmarshal(data, &parsed); err != nil {
++				t.Fatalf("parse built-in %q through Config: %v", test.kind, err)
++			}
++			if len(parsed.StaticConnectors) != 1 {
++				t.Fatalf("Config lost the connector: %v", parsed.StaticConnectors)
++			}
++			connector := parsed.StaticConnectors[0]
++			if connector.Type != test.kind || connector.ID != "swepm-"+test.kind || connector.Name != "SWEPM "+test.kind {
++				t.Errorf("connector identity was not preserved: type=%q id=%q name=%q", connector.Type, connector.ID, connector.Name)
++			}
++			if reflect.TypeOf(connector.Config) != reflect.TypeOf(test.want) {
++				t.Errorf("%s config decoded into %T, want existing public config type %T", test.kind, connector.Config, test.want)
++			}
++			if !reflect.DeepEqual(connector.GrantTypes, []string{"authorization_code"}) {
++				t.Errorf("connector grant restrictions were lost: %v", connector.GrantTypes)
++			}
++		})
++	}
++}
++
++func TestSWEPMUnknownConnectorConfigurationRejected(t *testing.T) {
++	var parsed Config
++	err := json.Unmarshal([]byte(`{"connectors":[{"type":"swepm-not-a-connector","id":"unknown","config":{}}]}`), &parsed)
++	if err == nil {
++		t.Fatal("unknown connector type was accepted by public Config parsing")
++	}
++}
+diff --git a/cmd/dex/swepm_discovery_cli_test.go b/cmd/dex/swepm_discovery_cli_test.go
+new file mode 100644
+index 00000000..52e83ab0
+--- /dev/null
++++ b/cmd/dex/swepm_discovery_cli_test.go
+@@ -0,0 +1,371 @@
++package main
++
++import (
++	"context"
++	"encoding/json"
++	"fmt"
++	"io"
++	"net"
++	"net/http"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"reflect"
++	"sort"
++	"strconv"
++	"strings"
++	"sync"
++	"testing"
++	"time"
++
++	"google.golang.org/grpc"
++	"google.golang.org/grpc/credentials/insecure"
++
++	"github.com/dexidp/dex/api/v2"
++)
++
++// The child is the already compiled test binary, not "go run" or a new build.
++// Calling the language entrypoint exercises the real public `dex serve` command
++// and lets production choose its API/discovery wiring, without test references
++// to a particular Server getter, field, or constructor's dependency shape.
++func TestSWEPMDiscoveryCLIHelperProcess(t *testing.T) {
++	config := os.Getenv("SWEPM_DEX_DISCOVERY_CONFIG")
++	if config == "" {
++		return
++	}
++	os.Args = []string{"dex", "serve", config}
++	main()
++}
++
++type swepmDiscoveryConfig struct {
++	path          string
++	responseTypes []string
++	grants        []string
++	pkce          []string
++	sessions      bool
++}
++
++func TestSWEPMConfiguredDiscoveryMatchesHTTP(t *testing.T) {
++	for _, configuration := range []swepmDiscoveryConfig{
++		{
++			path: "/swepm/code-only", responseTypes: []string{"code"},
++			grants: []string{"authorization_code"}, pkce: []string{"S256"},
++		},
++		{
++			path: "/swepm/implicit-and-refresh", responseTypes: []string{"code", "token"},
++			grants: []string{"authorization_code", "implicit", "refresh_token"}, pkce: []string{"S256", "plain"},
++		},
++	} {
++		t.Run(configuration.path, func(t *testing.T) {
++			swepmCheckConfiguredDiscovery(t, configuration)
++		})
++	}
++}
++
++func TestSWEPMConfiguredDiscoveryWithSessionsMatchesHTTP(t *testing.T) {
++	swepmCheckConfiguredDiscovery(t, swepmDiscoveryConfig{
++		path: "/swepm/with-sessions", responseTypes: []string{"code"},
++		grants: []string{"authorization_code", "refresh_token"}, pkce: []string{"S256"}, sessions: true,
++	})
++}
++
++type swepmDiscoveryProcess struct {
++	command *exec.Cmd
++	done    chan struct{}
++	err     error // Read only after done is closed.
++	log     *os.File
++	logPath string
++	issuer  string
++	grpc    string
++	stop    sync.Once
++}
++
++func (process *swepmDiscoveryProcess) close() {
++	process.stop.Do(func() {
++		select {
++		case <-process.done:
++		default:
++			_ = process.command.Process.Signal(os.Interrupt)
++			select {
++			case <-process.done:
++			case <-time.After(5 * time.Second):
++				_ = process.command.Process.Kill()
++				<-process.done
++			}
++		}
++		_ = process.log.Close()
++	})
++}
++
++func (process *swepmDiscoveryProcess) diagnostic() string {
++	file, err := os.Open(process.logPath)
++	if err != nil {
++		return fmt.Sprintf("cannot read %s: %v", process.logPath, err)
++	}
++	defer file.Close()
++	data, _ := io.ReadAll(io.LimitReader(file, 32<<10))
++	return string(data)
++}
++
++func swepmStartDiscoveryCLI(t *testing.T, configuration swepmDiscoveryConfig) (*swepmDiscoveryProcess, []byte) {
++	t.Helper()
++	temporaryRoot := os.Getenv("TMPDIR")
++	if temporaryRoot == "" || temporaryRoot == "/tmp" {
++		t.Fatal("set persistent TMPDIR (for example /logs/verifier/tmp) before running CLI tests")
++	}
++	directory, err := os.MkdirTemp(temporaryRoot, "swepm-dex-discovery-")
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Logf("SWEPM_DISCOVERY_FIXTURE=%s", directory)
++	webDirectory, err := filepath.Abs("../../web")
++	if err != nil {
++		t.Fatal(err)
++	}
++
++	// Reserve two distinct ports until immediately before child startup. A rare
++	// bind race is retried only when the child's actual error says address in use;
++	// assertion failures and other startup errors are never retried away.
++	for attempt := 0; attempt < 3; attempt++ {
++		httpReservation, err := net.Listen("tcp", "127.0.0.1:0")
++		if err != nil {
++			t.Fatal(err)
++		}
++		grpcReservation, err := net.Listen("tcp", "127.0.0.1:0")
++		if err != nil {
++			httpReservation.Close()
++			t.Fatal(err)
++		}
++		httpAddress := httpReservation.Addr().String()
++		grpcAddress := grpcReservation.Addr().String()
++		issuer := "http://" + httpAddress + configuration.path
++		config := map[string]any{
++			"issuer":   issuer,
++			"storage":  map[string]any{"type": "memory", "config": map[string]any{}},
++			"web":      map[string]any{"http": httpAddress},
++			"grpc":     map[string]any{"addr": grpcAddress},
++			"frontend": map[string]any{"dir": webDirectory},
++			"logger":   map[string]any{"level": "info", "format": "json"},
++			"connectors": []any{map[string]any{
++				"type": "mockCallback", "id": "swepm-mock", "name": "SWEPM Mock", "config": map[string]any{},
++			}},
++			"signer": map[string]any{"type": "local", "config": map[string]any{
++				"keysRotationPeriod": "6h", "algorithm": "ES256",
++			}},
++			"oauth2": map[string]any{
++				"responseTypes": configuration.responseTypes, "grantTypes": configuration.grants,
++				"pkce": map[string]any{"codeChallengeMethodsSupported": configuration.pkce},
++			},
++		}
++		if configuration.sessions {
++			config["sessions"] = map[string]any{
++				"cookieName": "swepm_session", "absoluteLifetime": "24h", "validIfNotUsedFor": "1h",
++			}
++		}
++		data, err := json.Marshal(config)
++		if err != nil {
++			httpReservation.Close()
++			grpcReservation.Close()
++			t.Fatal(err)
++		}
++		configPath := filepath.Join(directory, fmt.Sprintf("config-%d.json", attempt))
++		if err := os.WriteFile(configPath, data, 0600); err != nil {
++			httpReservation.Close()
++			grpcReservation.Close()
++			t.Fatal(err)
++		}
++		logPath := filepath.Join(directory, fmt.Sprintf("cli-%d.log", attempt))
++		log, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
++		if err != nil {
++			httpReservation.Close()
++			grpcReservation.Close()
++			t.Fatal(err)
++		}
++		command := exec.Command(os.Args[0], "-test.run=^TestSWEPMDiscoveryCLIHelperProcess$")
++		command.Stdout, command.Stderr = log, log
++		for _, value := range os.Environ() {
++			key, _, _ := strings.Cut(value, "=")
++			switch key {
++			case "SWEPM_DEX_DISCOVERY_CONFIG", "DEX_SESSIONS_ENABLED", "DEX_CONFIG_DISALLOW_UNKNOWN_FIELDS", "DEX_EXPAND_ENV":
++			default:
++				command.Env = append(command.Env, value)
++			}
++		}
++		command.Env = append(command.Env,
++			"SWEPM_DEX_DISCOVERY_CONFIG="+configPath,
++			"DEX_SESSIONS_ENABLED="+strconv.FormatBool(configuration.sessions),
++			"DEX_CONFIG_DISALLOW_UNKNOWN_FIELDS=true", "DEX_EXPAND_ENV=false",
++		)
++		_ = httpReservation.Close()
++		_ = grpcReservation.Close()
++		if err := command.Start(); err != nil {
++			log.Close()
++			t.Fatalf("start existing test binary: %v", err)
++		}
++		process := &swepmDiscoveryProcess{
++			command: command, done: make(chan struct{}), log: log, logPath: logPath, issuer: issuer, grpc: grpcAddress,
++		}
++		go func() {
++			process.err = command.Wait()
++			close(process.done)
++		}()
++		t.Cleanup(process.close)
++		body, err := swepmWaitForHTTPDiscovery(process)
++		if err == nil {
++			return process, body
++		}
++		process.close()
++		diagnostic := process.diagnostic()
++		if strings.Contains(diagnostic, "address already in use") && attempt < 2 {
++			t.Logf("retrying loopback bind race; log=%s", logPath)
++			continue
++		}
++		t.Fatalf("CLI discovery did not become ready: %v\nlog=%s\n%s", err, logPath, diagnostic)
++	}
++	t.Fatal("loopback bind retries exhausted")
++	return nil, nil
++}
++
++func swepmWaitForHTTPDiscovery(process *swepmDiscoveryProcess) ([]byte, error) {
++	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
++	defer cancel()
++	transport := &http.Transport{Proxy: nil}
++	defer transport.CloseIdleConnections()
++	client := &http.Client{Transport: transport, Timeout: time.Second}
++	for {
++		select {
++		case <-process.done:
++			return nil, fmt.Errorf("CLI exited: %v", process.err)
++		case <-ctx.Done():
++			return nil, ctx.Err()
++		default:
++		}
++		request, err := http.NewRequestWithContext(ctx, http.MethodGet, process.issuer+"/.well-known/openid-configuration", nil)
++		if err != nil {
++			return nil, err
++		}
++		response, err := client.Do(request)
++		if err == nil {
++			body, readError := io.ReadAll(io.LimitReader(response.Body, 1<<20))
++			response.Body.Close()
++			if response.StatusCode != http.StatusOK {
++				return nil, fmt.Errorf("HTTP discovery status %d: %s", response.StatusCode, body)
++			}
++			return body, readError
++		}
++		select {
++		case <-time.After(25 * time.Millisecond):
++		case <-ctx.Done():
++			return nil, ctx.Err()
++		}
++	}
++}
++
++func swepmCheckConfiguredDiscovery(t *testing.T, configuration swepmDiscoveryConfig) {
++	t.Helper()
++	process, httpJSON := swepmStartDiscoveryCLI(t, configuration)
++	httpDocument := swepmDiscoveryJSON(t, httpJSON)
++	connection, err := grpc.NewClient("passthrough:///"+process.grpc,
++		grpc.WithTransportCredentials(insecure.NewCredentials()),
++		grpc.WithContextDialer(func(ctx context.Context, address string) (net.Conn, error) {
++			return (&net.Dialer{}).DialContext(ctx, "tcp", process.grpc)
++		}),
++	)
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { connection.Close() })
++	client := api.NewDexClient(connection)
++	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
++	defer cancel()
++	versionBefore, err := client.GetVersion(ctx, &api.VersionReq{}, grpc.WaitForReady(true))
++	if err != nil || versionBefore == nil || versionBefore.Server == "" {
++		t.Fatalf("real gRPC GetVersion: response=%v error=%v\n%s", versionBefore, err, process.diagnostic())
++	}
++	document, err := client.GetDiscovery(ctx, &api.DiscoveryReq{})
++	if err != nil {
++		t.Fatalf("configured gRPC GetDiscovery: %v", err)
++	}
++	if document == nil {
++		t.Fatal("configured GetDiscovery returned a nil document")
++	}
++	apiJSON, err := json.Marshal(document)
++	if err != nil {
++		t.Fatalf("serialize actual RPC response: %v", err)
++	}
++	apiDocument := swepmDiscoveryJSON(t, apiJSON)
++	for field, suffix := range map[string]string{
++		"issuer": "", "authorization_endpoint": "/auth", "token_endpoint": "/token",
++		"jwks_uri": "/keys", "userinfo_endpoint": "/userinfo", "device_authorization_endpoint": "/device/code",
++		"introspection_endpoint": "/token/introspect",
++	} {
++		want := process.issuer + suffix
++		if httpDocument[field] != want {
++			t.Errorf("HTTP %s = %v, want configured %q", field, httpDocument[field], want)
++		}
++		if apiDocument[field] != want {
++			t.Errorf("GetDiscovery %s = %v, want configured %q", field, apiDocument[field], want)
++		}
++	}
++	for field, want := range map[string][]string{
++		"response_types_supported": configuration.responseTypes, "grant_types_supported": configuration.grants,
++		"code_challenge_methods_supported": configuration.pkce, "id_token_signing_alg_values_supported": {"ES256"},
++	} {
++		swepmAssertStringSet(t, "HTTP", field, httpDocument[field], want)
++		swepmAssertStringSet(t, "GetDiscovery", field, apiDocument[field], want)
++	}
++	if configuration.sessions {
++		want := process.issuer + "/logout"
++		if httpDocument["end_session_endpoint"] != want {
++			t.Errorf("HTTP discovery lost configured session endpoint: %v", httpDocument["end_session_endpoint"])
++		}
++		if apiDocument["end_session_endpoint"] != want {
++			t.Errorf("GetDiscovery JSON lost HTTP end_session_endpoint: got %v, want %q", apiDocument["end_session_endpoint"], want)
++		}
++	}
++	// Compare the entire HTTP object to the actual protobuf-roundtripped response.
++	// Never project HTTP JSON into DiscoveryResp, which would hide unknown fields.
++	if !reflect.DeepEqual(httpDocument, apiDocument) {
++		t.Errorf("GetDiscovery JSON does not match HTTP discovery:\nHTTP: %s\nAPI: %s", httpJSON, apiJSON)
++	}
++	versionAfter, err := client.GetVersion(ctx, &api.VersionReq{})
++	if err != nil || versionAfter == nil || versionAfter.Server != versionBefore.Server || versionAfter.Api != versionBefore.Api {
++		t.Errorf("GetDiscovery changed GetVersion: before=%v after=%v error=%v", versionBefore, versionAfter, err)
++	}
++}
++
++func swepmDiscoveryJSON(t *testing.T, data []byte) map[string]any {
++	t.Helper()
++	var result map[string]any
++	if err := json.Unmarshal(data, &result); err != nil {
++		t.Fatalf("invalid discovery JSON: %v", err)
++	}
++	if len(result) == 0 {
++		t.Fatal("discovery document must not be empty")
++	}
++	return result
++}
++
++func swepmAssertStringSet(t *testing.T, channel, field string, raw any, expected []string) {
++	t.Helper()
++	values, ok := raw.([]any)
++	if !ok {
++		t.Errorf("%s %s is not a string array: %v", channel, field, raw)
++		return
++	}
++	actual := make([]string, 0, len(values))
++	for _, value := range values {
++		text, ok := value.(string)
++		if !ok {
++			t.Errorf("%s %s contains a non-string: %v", channel, field, value)
++			return
++		}
++		actual = append(actual, text)
++	}
++	want := append([]string(nil), expected...)
++	sort.Strings(actual)
++	sort.Strings(want)
++	if !reflect.DeepEqual(actual, want) {
++		t.Errorf("%s %s = %v, want configured %v", channel, field, actual, want)
++	}
++}
+diff --git a/server/authflow/handler_test.go b/server/authflow/handler_test.go
+index 6abdfde0..ed7ccc2b 100644
+--- a/server/authflow/handler_test.go
++++ b/server/authflow/handler_test.go
+@@ -19,6 +19,7 @@ import (
+ 	"github.com/dexidp/dex/server/consent"
+ 	"github.com/dexidp/dex/server/logout"
+ 	"github.com/dexidp/dex/server/mfa"
++	"github.com/dexidp/dex/server/oauth2"
+ 	"github.com/dexidp/dex/server/session"
+ 	"github.com/dexidp/dex/server/signer"
+ 	"github.com/dexidp/dex/server/templates"
+@@ -107,7 +108,7 @@ func newTestHandler(t *testing.T, updateConfig func(c *testFlowConfig)) (*httpte
+ 
+ 	tc := testFlowConfig{
+ 		Handler: Handler{
+-			IssuerURL:              *issuerURL,
++			IssuerURL:              oauth2.IssuerURL{URL: *issuerURL},
+ 			Connectors:             conns,
+ 			Storage:                store,
+ 			Templates:              tmpls,
+@@ -126,10 +127,10 @@ func newTestHandler(t *testing.T, updateConfig func(c *testFlowConfig)) (*httpte
+ 
+ 	// Assemble the flow the same way the server does: shared infrastructure plus
+ 	// independent step handlers that hand off by redirect.
+-	sessions := &session.Manager{Storage: store, Config: tc.SessionConfig, Now: now, Logger: logger, IssuerURL: *issuerURL}
+-	mfaManager := &mfa.Handler{IssuerURL: *issuerURL, Storage: store, Templates: tmpls, Logger: logger, MFAProviders: tc.MFAProviders, DefaultMFAChain: tc.DefaultMFAChain, Now: now, Connectors: conns}
+-	consentManager := &consent.Handler{IssuerURL: *issuerURL, Storage: store, Templates: tmpls, Logger: logger, Sessions: sessions, SkipApproval: tc.SkipApproval}
+-	logoutManager := &logout.Handler{Storage: store, Templates: tmpls, Logger: logger, Sessions: sessions, Connectors: conns, Issuer: issuer, Signer: sig, IssuerURL: *issuerURL}
++	sessions := &session.Manager{Storage: store, Config: tc.SessionConfig, Now: now, Logger: logger, IssuerURL: oauth2.IssuerURL{URL: *issuerURL}}
++	mfaManager := &mfa.Handler{IssuerURL: oauth2.IssuerURL{URL: *issuerURL}, Storage: store, Templates: tmpls, Logger: logger, MFAProviders: tc.MFAProviders, DefaultMFAChain: tc.DefaultMFAChain, Now: now, Connectors: conns}
++	consentManager := &consent.Handler{IssuerURL: oauth2.IssuerURL{URL: *issuerURL}, Storage: store, Templates: tmpls, Logger: logger, Sessions: sessions, SkipApproval: tc.SkipApproval}
++	logoutManager := &logout.Handler{Storage: store, Templates: tmpls, Logger: logger, Sessions: sessions, Connectors: conns, Issuer: issuer, Signer: sig, IssuerURL: oauth2.IssuerURL{URL: *issuerURL}}
+ 
+ 	tc.Sessions = sessions
+ 	tc.Issuer = issuer
+diff --git a/server/authflow/request_test.go b/server/authflow/request_test.go
+index 3111e83b..b874a920 100644
+--- a/server/authflow/request_test.go
++++ b/server/authflow/request_test.go
+@@ -774,7 +774,7 @@ func TestValidateIDTokenHint(t *testing.T) {
+ 
+ 	s := &Handler{
+ 		Signer:    sig,
+-		IssuerURL: *issuerURL,
++		IssuerURL: oauth2.IssuerURL{URL: *issuerURL},
+ 		Logger:    slog.Default(),
+ 	}
+ 
+diff --git a/server/authflow/sessionlogin_test.go b/server/authflow/sessionlogin_test.go
+index 462e2cf2..c0eb5a23 100644
+--- a/server/authflow/sessionlogin_test.go
++++ b/server/authflow/sessionlogin_test.go
+@@ -46,10 +46,10 @@ func newTestSessionServer(t *testing.T) *sessionTestServer {
+ 		Storage:   memory.New(nil),
+ 		Now:       func() time.Time { return now },
+ 		Logger:    slog.Default(),
+-		IssuerURL: *issuerURL,
++		IssuerURL: oauth2.IssuerURL{URL: *issuerURL},
+ 	}
+ 	h.Connectors = connectors.NewCache(h.Storage, testResolveConnector)
+-	h.Sessions = &session.Manager{Storage: h.Storage, Config: sessionCfg, Now: h.Now, Logger: slog.Default(), IssuerURL: *issuerURL}
++	h.Sessions = &session.Manager{Storage: h.Storage, Config: sessionCfg, Now: h.Now, Logger: slog.Default(), IssuerURL: oauth2.IssuerURL{URL: *issuerURL}}
+ 	return &sessionTestServer{Handler: h}
+ }
+ 
+@@ -2151,5 +2151,5 @@ func TestRememberMeDefault(t *testing.T) {
+ // resetSessions rebuilds the Handler's session manager with the given config and
+ // issuer, for tests that exercise Manager behavior under a different config.
+ func resetSessions(s *sessionTestServer, cfg *session.Config, issuer url.URL) {
+-	s.Sessions = &session.Manager{Storage: s.Storage, Config: cfg, Now: s.Now, Logger: slog.Default(), IssuerURL: issuer}
++	s.Sessions = &session.Manager{Storage: s.Storage, Config: cfg, Now: s.Now, Logger: slog.Default(), IssuerURL: oauth2.IssuerURL{URL: issuer}}
+ }
+diff --git a/server/device/device_test.go b/server/device/device_test.go
+index 555349b5..f437cafa 100644
+--- a/server/device/device_test.go
++++ b/server/device/device_test.go
+@@ -5,12 +5,14 @@ import (
+ 	"testing"
+ 
+ 	"github.com/stretchr/testify/require"
++
++	"github.com/dexidp/dex/server/oauth2"
+ )
+ 
+ func TestGetDeviceVerificationURI(t *testing.T) {
+ 	u, err := url.Parse("https://dex.example.com/non-root-path")
+ 	require.NoError(t, err)
+ 
+-	h := &Handler{IssuerURL: *u}
++	h := &Handler{IssuerURL: oauth2.IssuerURL{URL: *u}}
+ 	require.Equal(t, "/non-root-path/device/auth/verify_code", h.getDeviceVerificationURI())
+ }
+diff --git a/server/mfa/handler_test.go b/server/mfa/handler_test.go
+index 43dc7d68..307d9b9c 100644
+--- a/server/mfa/handler_test.go
++++ b/server/mfa/handler_test.go
+@@ -16,6 +16,7 @@ import (
+ 	"github.com/dexidp/dex/connector/mock"
+ 	"github.com/dexidp/dex/server/connectors"
+ 	"github.com/dexidp/dex/server/internal"
++	"github.com/dexidp/dex/server/oauth2"
+ 	"github.com/dexidp/dex/server/templates"
+ 	"github.com/dexidp/dex/storage"
+ 	"github.com/dexidp/dex/storage/memory"
+@@ -67,7 +68,7 @@ func newTestHandler(t *testing.T, providers map[string]Provider, defaultChain []
+ 		Storage:         store,
+ 		Templates:       tmpls,
+ 		Logger:          logger,
+-		IssuerURL:       *issuerURL,
++		IssuerURL:       oauth2.IssuerURL{URL: *issuerURL},
+ 		MFAProviders:    providers,
+ 		DefaultMFAChain: defaultChain,
+ 		Now:             time.Now,
+diff --git a/server/server_api_cache_test.go b/server/server_api_cache_test.go
+index 3a2d1205..6c579c8b 100644
+--- a/server/server_api_cache_test.go
++++ b/server/server_api_cache_test.go
+@@ -23,9 +23,11 @@ func TestConnectorCacheInvalidation(t *testing.T) {
+ 		storage: s,
+ 		logger:  logger,
+ 	}
+-	serv.connectors = connectors.NewCache(s, serv.resolveConnector)
++	serv.connectors = connectors.NewCache(s, connectors.Resolver(s, logger, ConnectorsConfig))
+ 
+-	apiServer := apiserver.NewAPI(s, logger, "test", serv.connectors, serv.ConstructDiscovery)
++	// This test exercises connector-cache invalidation, not discovery, so no
++	// discovery handler is wired (GetDiscovery guards against nil).
++	apiServer := apiserver.NewAPI(s, logger, "test", serv.connectors, nil)
+ 	ctx := context.Background()
+ 
+ 	connID := "mock-conn"
+diff --git a/server/server_authorize_test.go b/server/server_authorize_test.go
+index e601a232..71a70cdf 100644
+--- a/server/server_authorize_test.go
++++ b/server/server_authorize_test.go
+@@ -364,7 +364,7 @@ func TestBackLinkIncludesPromptSelectAccount(t *testing.T) {
+ 		Config:          []byte(`{"username": "foo", "password": "bar"}`),
+ 	}
+ 	require.NoError(t, s.storage.CreateConnector(ctx, pwConn))
+-	_, err := s.OpenConnector(pwConn)
++	_, err := s.connectors.Open(pwConn)
+ 	require.NoError(t, err)
+ 
+ 	client := storage.Client{
+diff --git a/server/server_grant_password_test.go b/server/server_grant_password_test.go
+index 42cb16c6..f8afdde0 100644
+--- a/server/server_grant_password_test.go
++++ b/server/server_grant_password_test.go
+@@ -14,6 +14,7 @@ import (
+ 	"github.com/stretchr/testify/require"
+ 	"golang.org/x/crypto/bcrypt"
+ 
++	"github.com/dexidp/dex/server/connectors"
+ 	"github.com/dexidp/dex/storage"
+ )
+ 
+@@ -117,12 +118,12 @@ func TestHandlePassword_LocalPasswordDBClaims(t *testing.T) {
+ 	// Enable local connector.
+ 	localConn := storage.Connector{
+ 		ID:              "local",
+-		Type:            LocalConnector,
++		Type:            connectors.LocalConnector,
+ 		Name:            "Email",
+ 		ResourceVersion: "1",
+ 	}
+ 	require.NoError(t, s.storage.CreateConnector(ctx, localConn))
+-	_, err := s.OpenConnector(localConn)
++	_, err := s.connectors.Open(localConn)
+ 	require.NoError(t, err)
+ 
+ 	// Create a user in the password DB with groups and preferred_username.
+diff --git a/server/server_introspection_test.go b/server/server_introspection_test.go
+index 1d6a09a7..b44f969b 100644
+--- a/server/server_introspection_test.go
++++ b/server/server_introspection_test.go
+@@ -194,7 +194,7 @@ func TestHandleIntrospect(t *testing.T) {
+ 		{
+ 			testName:           "Access Token: active",
+ 			token:              activeAccessToken,
+-			response:           toJSON(getIntrospectionValue(s.issuerURL, t0, expiry, "access_token")),
++			response:           toJSON(getIntrospectionValue(s.issuerURL.URL, t0, expiry, "access_token")),
+ 			responseStatusCode: 200,
+ 		},
+ 		{
+@@ -207,7 +207,7 @@ func TestHandleIntrospect(t *testing.T) {
+ 		{
+ 			testName:           "Refresh Token: active",
+ 			token:              activeRefreshToken,
+-			response:           toJSON(getIntrospectionValue(s.issuerURL, t0, t0.Add(s.refreshTokenPolicy.AbsoluteLifetime()), "refresh_token")),
++			response:           toJSON(getIntrospectionValue(s.issuerURL.URL, t0, t0.Add(refreshTokenPolicy.AbsoluteLifetime()), "refresh_token")),
+ 			responseStatusCode: 200,
+ 		},
+ 		{
+diff --git a/server/server_login_test.go b/server/server_login_test.go
+index 0905a53b..fa483b03 100644
+--- a/server/server_login_test.go
++++ b/server/server_login_test.go
+@@ -98,7 +98,7 @@ func TestFinalizeLoginCreatesUserIdentity(t *testing.T) {
+ 		Config:          []byte(`{"username": "foo", "password": "password"}`),
+ 	}
+ 	require.NoError(t, s.storage.CreateConnector(ctx, sc))
+-	_, err := s.OpenConnector(sc)
++	_, err := s.connectors.Open(sc)
+ 	require.NoError(t, err)
+ 
+ 	authReq := storage.AuthRequest{
+@@ -148,7 +148,7 @@ func TestFinalizeLoginUpdatesUserIdentity(t *testing.T) {
+ 		Config:          []byte(`{"username": "foo", "password": "password"}`),
+ 	}
+ 	require.NoError(t, s.storage.CreateConnector(ctx, sc))
+-	_, err := s.OpenConnector(sc)
++	_, err := s.connectors.Open(sc)
+ 	require.NoError(t, err)
+ 
+ 	// Pre-create UserIdentity with old data
+@@ -211,7 +211,7 @@ func TestFinalizeLoginSkipsUserIdentityWhenDisabled(t *testing.T) {
+ 		Config:          []byte(`{"username": "foo", "password": "password"}`),
+ 	}
+ 	require.NoError(t, s.storage.CreateConnector(ctx, sc))
+-	_, err := s.OpenConnector(sc)
++	_, err := s.connectors.Open(sc)
+ 	require.NoError(t, err)
+ 
+ 	authReq := storage.AuthRequest{
+@@ -354,7 +354,7 @@ func TestHandlePasswordLoginWithSkipApproval(t *testing.T) {
+ 			if err := s.storage.CreateConnector(ctx, sc); err != nil {
+ 				t.Fatalf("create connector: %v", err)
+ 			}
+-			if _, err := s.OpenConnector(sc); err != nil {
++			if _, err := s.connectors.Open(sc); err != nil {
+ 				t.Fatalf("open connector: %v", err)
+ 			}
+ 			if err := s.storage.CreateAuthRequest(ctx, tc.authReq); err != nil {
+@@ -541,7 +541,7 @@ func TestHandlePasswordLogin_SPNEGOShortCircuit(t *testing.T) {
+ 		Config:          []byte("{\"username\": \"foo\", \"password\": \"password\"}"),
+ 	}
+ 	require.NoError(t, s.storage.CreateConnector(ctx, sc))
+-	_, err := s.OpenConnector(sc)
++	_, err := s.connectors.Open(sc)
+ 	require.NoError(t, err)
+ 
+ 	// Prepare auth request
+@@ -611,7 +611,7 @@ func TestHandlePasswordLogin_SPNEGOError(t *testing.T) {
+ 		Config:          []byte("{\"username\": \"foo\", \"password\": \"password\"}"),
+ 	}
+ 	require.NoError(t, s.storage.CreateConnector(ctx, sc))
+-	_, err := s.OpenConnector(sc)
++	_, err := s.connectors.Open(sc)
+ 	require.NoError(t, err)
+ 
+ 	// Prepare auth request
+diff --git a/server/server_oauth2_test.go b/server/server_oauth2_test.go
+index ee8999e6..ce1c36a9 100644
+--- a/server/server_oauth2_test.go
++++ b/server/server_oauth2_test.go
+@@ -180,19 +180,11 @@ func TestNewIDTokenUsesStoredAlgorithmUntilNextRotation(t *testing.T) {
+ 	issuerURL, err := url.Parse("https://issuer.example.com")
+ 	require.NoError(t, err)
+ 
+-	s := &Server{
+-		signer:           sig,
+-		issuerURL:        *issuerURL,
+-		logger:           logger,
+-		now:              func() time.Time { return now },
+-		idTokensValidFor: time.Hour,
+-	}
+-
+-	s.issuer = tokens.NewIssuer(store, s.signer, s.issuerURL, s.idTokensValidFor, s.now, s.logger)
++	issuer := tokens.NewIssuer(store, sig, *issuerURL, time.Hour, func() time.Time { return now }, logger)
+ 
+ 	accessToken := "test-access-token"
+ 	code := "test-auth-code"
+-	idToken, _, err := s.issuer.SignIDToken(ctx, tokens.Authorization{
++	idToken, _, err := issuer.SignIDToken(ctx, tokens.Authorization{
+ 		Client:      storage.Client{ID: "test-client"},
+ 		Claims:      storage.Claims{UserID: "1", Username: "jane"},
+ 		Scopes:      []string{"openid"},
+@@ -267,15 +259,7 @@ func TestNewIDTokenContainsJTI(t *testing.T) {
+ 	issuerURL, err := url.Parse("https://issuer.example.com")
+ 	require.NoError(t, err)
+ 
+-	s := &Server{
+-		signer:           sig,
+-		issuerURL:        *issuerURL,
+-		logger:           logger,
+-		now:              func() time.Time { return now },
+-		idTokensValidFor: time.Hour,
+-	}
+-
+-	s.issuer = tokens.NewIssuer(store, s.signer, s.issuerURL, s.idTokensValidFor, s.now, s.logger)
++	issuer := tokens.NewIssuer(store, sig, *issuerURL, time.Hour, func() time.Time { return now }, logger)
+ 
+ 	keys, err := sig.ValidationKeys(ctx)
+ 	require.NoError(t, err)
+@@ -297,7 +281,7 @@ func TestNewIDTokenContainsJTI(t *testing.T) {
+ 
+ 	mint := func(nonce string) string {
+ 		t.Helper()
+-		token, _, err := s.issuer.SignIDToken(ctx, tokens.Authorization{
++		token, _, err := issuer.SignIDToken(ctx, tokens.Authorization{
+ 			Client:      storage.Client{ID: "client"},
+ 			Claims:      storage.Claims{UserID: "1", Username: "alice"},
+ 			Scopes:      []string{"openid"},
+diff --git a/server/server_test.go b/server/server_test.go
+index c3ddfef8..08fe9d8c 100644
+--- a/server/server_test.go
++++ b/server/server_test.go
+@@ -33,6 +33,7 @@ import (
+ 	"github.com/dexidp/dex/connector"
+ 	"github.com/dexidp/dex/connector/mock"
+ 	"github.com/dexidp/dex/pkg/featureflags"
++	"github.com/dexidp/dex/server/connectors"
+ 	"github.com/dexidp/dex/server/device"
+ 	"github.com/dexidp/dex/server/oauth2"
+ 	"github.com/dexidp/dex/server/session"
+@@ -173,6 +174,7 @@ func newTestServerMultipleConnectors(t *testing.T, updateConfig func(c *Config))
+ 		Logger:             logger,
+ 		PrometheusRegistry: prometheus.NewRegistry(),
+ 		Signer:             sig,
++		SkipApprovalScreen: true, // Don't prompt for approval, just immediately redirect with code.
+ 	}
+ 	if updateConfig != nil {
+ 		updateConfig(&config)
+@@ -210,7 +212,6 @@ func newTestServerMultipleConnectors(t *testing.T, updateConfig func(c *Config))
+ 	if server, err = newServer(ctx, config); err != nil {
+ 		t.Fatal(err)
+ 	}
+-	server.skipApproval = true // Don't prompt for approval, just immediately redirect with code.
+ 	return s, server
+ }
+ 
+@@ -1298,7 +1299,7 @@ func TestPasswordDB(t *testing.T) {
+ 
+ 	logger := newLogger(t)
+ 	s := memory.New(logger)
+-	conn := newPasswordDB(s)
++	conn := connectors.NewPasswordDB(s)
+ 
+ 	pw := "hi"
+ 
+@@ -1388,7 +1389,7 @@ func TestPasswordDB(t *testing.T) {
+ func TestPasswordDBUsernamePrompt(t *testing.T) {
+ 	logger := newLogger(t)
+ 	s := memory.New(logger)
+-	conn := newPasswordDB(s)
++	conn := connectors.NewPasswordDB(s)
+ 
+ 	expected := "Email Address"
+ 	if actual := conn.Prompt(); actual != expected {
+@@ -1652,7 +1653,7 @@ func TestOAuth2DeviceFlow(t *testing.T) {
+ 				// Add the Clients to the test server
+ 				client := storage.Client{
+ 					ID:           clientID,
+-					RedirectURIs: []string{s.absPath(oauth2.DeviceCallbackURI)},
++					RedirectURIs: []string{s.issuerURL.AbsPath(oauth2.DeviceCallbackURI)},
+ 					Public:       true,
+ 				}
+ 				if err := s.storage.CreateClient(ctx, client); err != nil {
+@@ -1763,7 +1764,7 @@ func TestOAuth2DeviceFlow(t *testing.T) {
+ 					ClientSecret: client.Secret,
+ 					Endpoint:     p.Endpoint(),
+ 					Scopes:       requestedScopes,
+-					RedirectURL:  s.absURL(oauth2.DeviceCallbackURI),
++					RedirectURL:  s.issuerURL.AbsURL(oauth2.DeviceCallbackURI),
+ 				}
+ 				if len(tc.scopes) != 0 {
+ 					oauth2Config.Scopes = tc.scopes
+@@ -1832,7 +1833,7 @@ func TestServerSupportedGrants(t *testing.T) {
+ 	for _, tc := range tests {
+ 		t.Run(tc.name, func(t *testing.T) {
+ 			_, srv := newTestServer(t, tc.config)
+-			require.Equal(t, tc.resGrants, srv.supportedGrantTypes)
++			require.Equal(t, tc.resGrants, srv.discovery.GrantTypes)
+ 		})
+ 	}
+ }
+diff --git a/server/swepm_discovery_api_test.go b/server/swepm_discovery_api_test.go
+new file mode 100644
+index 00000000..a89826d2
+--- /dev/null
++++ b/server/swepm_discovery_api_test.go
+@@ -0,0 +1,54 @@
++package server
++
++import (
++	"context"
++	"io"
++	"log/slog"
++	"strings"
++	"testing"
++
++	"github.com/dexidp/dex/api/v2"
++	"github.com/dexidp/dex/server/apiserver"
++	"github.com/dexidp/dex/storage/memory"
++)
++
++// The public API must remain usable when the optional discovery dependency is
++// absent. This deliberately passes nil rather than choosing a concrete
++// discovery implementation or accessing the private dexAPI fields.
++func TestSWEPMGetDiscoveryWithoutConfiguration(t *testing.T) {
++	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
++	store := memory.New(logger)
++	t.Cleanup(func() {
++		if err := store.Close(); err != nil {
++			t.Errorf("close in-memory storage: %v", err)
++		}
++	})
++
++	apiServer := apiserver.NewAPI(store, logger, "swepm-discovery-test", nil, nil)
++	ctx := context.Background()
++
++	// A nil discovery dependency should not prevent unrelated API requests.
++	version, err := apiServer.GetVersion(ctx, &api.VersionReq{})
++	if err != nil {
++		t.Fatalf("GetVersion without discovery: %v", err)
++	}
++	if version == nil || version.Server != "swepm-discovery-test" {
++		t.Fatalf("GetVersion lost the configured server version: %v", version)
++	}
++
++	defer func() {
++		if recovered := recover(); recovered != nil {
++			t.Errorf("GetDiscovery must return a configuration error, not panic: %v", recovered)
++		}
++	}()
++	_, err = apiServer.GetDiscovery(ctx, &api.DiscoveryReq{})
++	if err == nil {
++		t.Fatal("GetDiscovery must report that discovery is not configured")
++	}
++	message := strings.ToLower(err.Error())
++	// The wording is not an API contract; the error should identify discovery
++	// as the missing dependency without requiring the reference's exact text.
++	if !strings.Contains(message, "discovery") {
++		t.Errorf("GetDiscovery must identify missing discovery configuration; got %q", err)
++	}
++}

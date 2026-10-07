@@ -1,0 +1,797 @@
+diff --git a/server-go/cmd/aimee-module/main_test.go b/server-go/cmd/aimee-module/main_test.go
+index f929ab740..64773c8d3 100644
+--- a/server-go/cmd/aimee-module/main_test.go
++++ b/server-go/cmd/aimee-module/main_test.go
+@@ -18,7 +18,7 @@ func TestModuleRegistryMatchesProcessContracts(t *testing.T) {
+ 		{"memory", 7, []uint32{5889, 5890, 5891, 5892, 5893, 5894}},
+ 		{"learning", 8, []uint32{6145}},
+ 		{"routing", 9, []uint32{6401}},
+-		{"delegates", 10, []uint32{6657, 6658, 6659, 6660, 6661, 6662, 6663, 6664, 6665, 6666, 6667, 6668, 6669, 6670, 6671, 6672}},
++		{"delegates", 10, []uint32{6657, 6658, 6659, 6660, 6661, 6662, 6663, 6664, 6665, 6666, 6667, 6668, 6669, 6670, 6671, 6672, 6673}},
+ 		{"tools", 11, []uint32{6913}},
+ 		{"workspace", 12, []uint32{7169, 7170, 7171}},
+ 		{"git", 13, []uint32{7425, 7426, 7427, 7428, 7429, 7430}},
+diff --git a/server-go/modules/delegates/routefilter_stage_test.go b/server-go/modules/delegates/routefilter_stage_test.go
+new file mode 100644
+index 000000000..6a1ba670e
+--- /dev/null
++++ b/server-go/modules/delegates/routefilter_stage_test.go
+@@ -0,0 +1,170 @@
++package delegates
++
++import (
++	"encoding/binary"
++	"testing"
++
++	"github.com/JBailes/aimee/server-go/bus"
++)
++
++func routeFilterRequest(agents []RouteAgent, caps uint32, minContext int, drop bool) []byte {
++	out := make([]byte, routeFilterReqHeaderLen+len(agents)*routeFilterAgentLen)
++	binary.LittleEndian.PutUint32(out[0:4], routeFilterRequestMagic)
++	out[4] = wireVersion
++	if drop {
++		out[5] = 1
++	}
++	binary.LittleEndian.PutUint32(out[8:12], uint32(len(agents)))
++	binary.LittleEndian.PutUint32(out[12:16], caps)
++	binary.LittleEndian.PutUint32(out[16:20], uint32(int32(minContext)))
++
++	for i, a := range agents {
++		at := routeFilterReqHeaderLen + i*routeFilterAgentLen
++		var flags uint32
++		if a.Enabled {
++			flags |= routeFilterFlagEnabled
++		}
++		if a.HasRole {
++			flags |= routeFilterFlagHasRole
++		}
++		if a.HaveCap {
++			flags |= routeFilterFlagHaveCap
++		}
++		if a.Deprecated {
++			flags |= routeFilterFlagDeprecated
++		}
++		if a.ToolsEnabled {
++			flags |= routeFilterFlagTools
++		}
++		binary.LittleEndian.PutUint32(out[at:at+4], flags)
++		binary.LittleEndian.PutUint32(out[at+4:at+8], a.CapFlags)
++		binary.LittleEndian.PutUint32(out[at+8:at+12], uint32(int32(a.OverrideContext)))
++		binary.LittleEndian.PutUint32(out[at+12:at+16], uint32(int32(a.CatalogContext)))
++		binary.LittleEndian.PutUint32(out[at+16:at+20], uint32(int32(a.CLIContext)))
++	}
++	return out
++}
++
++func callRouteFilter(t *testing.T, agents []RouteAgent, caps uint32, minContext int,
++	drop bool) RouteFilterResult {
++	t.Helper()
++	response, status := Handle(bus.ModuleInvocation{StageID: StageRouteFilter},
++		routeFilterRequest(agents, caps, minContext, drop))
++	if status != bus.ModuleStatusOK {
++		t.Fatalf("status = %v, want OK", status)
++	}
++	if len(response) != 16+len(agents)*4 ||
++		binary.LittleEndian.Uint32(response[0:4]) != routeFilterResponseMagic {
++		t.Fatal("bad response")
++	}
++	out := RouteFilterResult{
++		Kept:          int(binary.LittleEndian.Uint32(response[4:8])),
++		Relaxed:       binary.LittleEndian.Uint32(response[8:12]) == 1,
++		EffectiveCaps: binary.LittleEndian.Uint32(response[12:16]),
++		Keep:          make([]bool, len(agents)),
++	}
++	for i := range agents {
++		out.Keep[i] = binary.LittleEndian.Uint32(response[16+i*4:20+i*4]) == 1
++	}
++	return out
++}
++
++func TestRouteFilterStageCarriesTheDecision(t *testing.T) {
++	vision := capableAgent()
++	textOnly := capableAgent()
++	textOnly.CapFlags = ModelCapTools
++
++	got := callRouteFilter(t, []RouteAgent{textOnly, vision}, ModelCapTools|ModelCapVision, 0, false)
++	if got.Relaxed || got.Kept != 1 || got.Keep[0] || !got.Keep[1] {
++		t.Errorf("%+v, want only the vision agent kept and no relaxation", got)
++	}
++}
++
++// The fleet-wide part has to survive the wire, including the flag saying it
++// happened and the caps that were actually enforced.
++func TestRouteFilterStageReportsRelaxation(t *testing.T) {
++	textOnly := capableAgent()
++	textOnly.CapFlags = ModelCapTools
++
++	got := callRouteFilter(t, []RouteAgent{textOnly}, ModelCapTools|ModelCapVision, 0, false)
++	if !got.Relaxed {
++		t.Error("relaxation did not survive the wire")
++	}
++	if got.EffectiveCaps != ModelCapTools {
++		t.Errorf("effective caps = %d, want the hard set", got.EffectiveCaps)
++	}
++	if got.Kept != 1 || !got.Keep[0] {
++		t.Errorf("%+v, want the text agent kept", got)
++	}
++}
++
++// Every context source has to arrive intact, or an agent is judged on a window
++// it does not have.
++func TestRouteFilterStageCarriesEveryContextSource(t *testing.T) {
++	cliOnly := RouteAgent{Enabled: true, HasRole: true, ToolsEnabled: true, CLIContext: 128000}
++	if got := callRouteFilter(t, []RouteAgent{cliOnly}, 0, 100000, false); got.Kept != 1 {
++		t.Errorf("the CLI-declared window did not reach the rule: %+v", got)
++	}
++	if got := callRouteFilter(t, []RouteAgent{cliOnly}, 0, 200000, false); got.Kept != 0 {
++		t.Errorf("an agent under the minimum was kept: %+v", got)
++	}
++
++	override := RouteAgent{Enabled: true, HasRole: true, ToolsEnabled: true, HaveCap: true,
++		CatalogContext: 8000, OverrideContext: 400000}
++	if got := callRouteFilter(t, []RouteAgent{override}, 0, 200000, false); got.Kept != 1 {
++		t.Errorf("the override window did not win over the catalog: %+v", got)
++	}
++}
++
++func TestRouteFilterStageCarriesDropDeprecated(t *testing.T) {
++	old := capableAgent()
++	old.Deprecated = true
++	if got := callRouteFilter(t, []RouteAgent{old}, 0, 0, true); got.Kept != 0 {
++		t.Errorf("a deprecated model survived: %+v", got)
++	}
++	if got := callRouteFilter(t, []RouteAgent{old}, 0, 0, false); got.Kept != 1 {
++		t.Errorf("a deprecated model was dropped unasked: %+v", got)
++	}
++}
++
++func TestRouteFilterStageRejectsMalformedRequests(t *testing.T) {
++	good := routeFilterRequest([]RouteAgent{capableAgent()}, ModelCapTools, 0, false)
++
++	cases := map[string][]byte{
++		"empty":         {},
++		"short header":  good[:16],
++		"trailing byte": append(append([]byte{}, good...), 0),
++		"truncated":     good[:len(good)-1],
++	}
++	badMagic := append([]byte{}, good...)
++	binary.LittleEndian.PutUint32(badMagic[0:4], 0xDEADBEEF)
++	cases["wrong magic"] = badMagic
++
++	badVersion := append([]byte{}, good...)
++	badVersion[4] = wireVersion + 1
++	cases["wrong version"] = badVersion
++
++	// A count that does not match the body is the dangerous one: it would read
++	// agents that were never sent.
++	lying := append([]byte{}, good...)
++	binary.LittleEndian.PutUint32(lying[8:12], 5)
++	cases["count disagrees with the body"] = lying
++
++	tooMany := append([]byte{}, good...)
++	binary.LittleEndian.PutUint32(tooMany[8:12], routeFilterMaxAgents+1)
++	cases["agent count over the bound"] = tooMany
++
++	for name, request := range cases {
++		if _, status := Handle(bus.ModuleInvocation{StageID: StageRouteFilter}, request); status != bus.ModuleStatusInvalidRequest {
++			t.Errorf("%s: status = %v, want InvalidRequest", name, status)
++		}
++	}
++}
++
++func TestRouteFilterStageHonoursCancellation(t *testing.T) {
++	invocation := bus.ModuleInvocation{StageID: StageRouteFilter, DeadlineNS: 1}
++	request := routeFilterRequest([]RouteAgent{capableAgent()}, ModelCapTools, 0, false)
++	if _, status := Handle(invocation, request); status != bus.ModuleStatusCancelled {
++		t.Errorf("status = %v, want Cancelled", status)
++	}
++}
+diff --git a/server-go/modules/delegates/routefilter_test.go b/server-go/modules/delegates/routefilter_test.go
+new file mode 100644
+index 000000000..4850d4c69
+--- /dev/null
++++ b/server-go/modules/delegates/routefilter_test.go
+@@ -0,0 +1,190 @@
++package delegates
++
++import "testing"
++
++func capableAgent() RouteAgent {
++	return RouteAgent{
++		Enabled: true, HasRole: true,
++		CapFlags: ModelCapTools | ModelCapVision, HaveCap: true,
++		ToolsEnabled: true, CatalogContext: 200000,
++	}
++}
++
++// The agent's own tools setting overrides the catalog in BOTH directions: a
++// capable model on an agent with tools off cannot serve a packet needing tools.
++func TestToolsSettingOverridesTheCatalog(t *testing.T) {
++	a := capableAgent()
++	a.ToolsEnabled = false
++	if AgentMeetsFilter(a, ModelCapTools, 0, false) {
++		t.Error("an agent with tools disabled served a packet requiring tools")
++	}
++
++	// ...and the other way: the agent asserts tools the catalog did not list.
++	b := RouteAgent{Enabled: true, HasRole: true, HaveCap: true, ToolsEnabled: true}
++	if !AgentMeetsFilter(b, ModelCapTools, 0, false) {
++		t.Error("an agent with tools enabled was refused a tools packet")
++	}
++}
++
++// Precedence, most specific first. The CLI window exists because a tmux-CLI
++// agent carries no model to resolve one from, and it must not shadow a real one.
++func TestEffectiveContextPrecedence(t *testing.T) {
++	a := RouteAgent{HaveCap: true, OverrideContext: 111, CatalogContext: 222, CLIContext: 333}
++	if got := EffectiveContext(a); got != 111 {
++		t.Errorf("override should win, got %d", got)
++	}
++	a.OverrideContext = 0
++	if got := EffectiveContext(a); got != 222 {
++		t.Errorf("catalog should win over the CLI, got %d", got)
++	}
++	a.CatalogContext = 0
++	if got := EffectiveContext(a); got != 333 {
++		t.Errorf("the CLI window should be the fallback, got %d", got)
++	}
++	a.CLIContext = 0
++	if got := EffectiveContext(a); got != 0 {
++		t.Errorf("no window should resolve to 0, got %d", got)
++	}
++	// An unknown model must not inherit a catalog window.
++	b := RouteAgent{HaveCap: false, CatalogContext: 999, CLIContext: 100}
++	if got := EffectiveContext(b); got != 100 {
++		t.Errorf("an unknown model used the catalog window anyway, got %d", got)
++	}
++}
++
++func TestMinContextIsEnforced(t *testing.T) {
++	a := capableAgent()
++	a.CatalogContext = 8000
++	if AgentMeetsFilter(a, 0, 200000, false) {
++		t.Error("a small window served a packet needing a large one")
++	}
++	if !AgentMeetsFilter(a, 0, 8000, false) {
++		t.Error("a window exactly meeting the requirement was refused")
++	}
++	// No window at all cannot satisfy a requirement.
++	b := RouteAgent{Enabled: true, HasRole: true, HaveCap: true, ToolsEnabled: true}
++	if AgentMeetsFilter(b, 0, 1, false) {
++		t.Error("an agent with no known window served a packet with a minimum")
++	}
++}
++
++func TestDeprecatedIsDroppedOnlyWhenAsked(t *testing.T) {
++	a := capableAgent()
++	a.Deprecated = true
++	if AgentMeetsFilter(a, 0, 0, true) {
++		t.Error("a deprecated model survived drop_deprecated")
++	}
++	if !AgentMeetsFilter(a, 0, 0, false) {
++		t.Error("a deprecated model was dropped without being asked")
++	}
++	// Deprecation is only known when the catalog knew the model.
++	a.HaveCap = false
++	if !AgentMeetsFilter(a, 0, 0, true) {
++		t.Error("an unknown model was treated as deprecated")
++	}
++}
++
++// The reason this takes the whole fleet: modality is INFERRED from prompt text,
++// so requiring it can wipe out a fleet over a filename. If dropping it leaves
++// somebody, it is dropped.
++func TestModalityIsRelaxedRatherThanFailingTheFleet(t *testing.T) {
++	textOnly := RouteAgent{
++		Enabled: true, HasRole: true,
++		CapFlags: ModelCapTools, HaveCap: true, ToolsEnabled: true, CatalogContext: 200000,
++	}
++	got := RouteFilter([]RouteAgent{textOnly}, ModelCapTools|ModelCapVision, 0, false)
++
++	if !got.Relaxed {
++		t.Error("modality was not relaxed, so a text fleet fails on an inferred capability")
++	}
++	if got.EffectiveCaps != ModelCapTools {
++		t.Errorf("effective caps = %d, want the hard set only", got.EffectiveCaps)
++	}
++	if got.Kept != 1 || !got.Keep[0] {
++		t.Errorf("the text agent was dropped: kept=%d", got.Kept)
++	}
++}
++
++// Relaxation only fires when it CHANGES the outcome. With a capable agent
++// present, the modality requirement stands and the incapable one is dropped.
++func TestModalityStandsWhenSomethingSatisfiesIt(t *testing.T) {
++	vision := capableAgent()
++	textOnly := capableAgent()
++	textOnly.CapFlags = ModelCapTools
++
++	got := RouteFilter([]RouteAgent{textOnly, vision}, ModelCapTools|ModelCapVision, 0, false)
++	if got.Relaxed {
++		t.Error("modality was relaxed even though an agent satisfied it")
++	}
++	if got.Keep[0] {
++		t.Error("the text-only agent was kept for a vision packet")
++	}
++	if !got.Keep[1] || got.Kept != 1 {
++		t.Errorf("the vision agent was dropped: %+v", got)
++	}
++}
++
++// The HARD requirements are asserted by the caller, not inferred, so they are
++// never relaxed -- an empty fleet is the correct answer there.
++func TestHardRequirementsAreNeverRelaxed(t *testing.T) {
++	small := capableAgent()
++	small.CatalogContext = 8000
++
++	got := RouteFilter([]RouteAgent{small}, ModelCapTools|ModelCapVision, 200000, false)
++	if got.Kept != 0 {
++		t.Errorf("an agent that fails min_context was kept: %+v", got)
++	}
++	// Relaxing modality would not have helped, so it must not claim it did.
++	if got.Relaxed {
++		t.Error("relaxation was reported when it could not have changed the outcome")
++	}
++}
++
++// Agents that are disabled or lack the role were never candidates, and the
++// filter must not resurrect them.
++func TestNonCandidatesAreNeverKept(t *testing.T) {
++	disabled := capableAgent()
++	disabled.Enabled = false
++	wrongRole := capableAgent()
++	wrongRole.HasRole = false
++	ok := capableAgent()
++
++	got := RouteFilter([]RouteAgent{disabled, wrongRole, ok}, ModelCapTools, 0, false)
++	if got.Keep[0] || got.Keep[1] {
++		t.Errorf("a non-candidate was kept: %+v", got.Keep)
++	}
++	if !got.Keep[2] || got.Kept != 1 {
++		t.Errorf("the candidate was not kept: %+v", got)
++	}
++}
++
++// Nothing to enforce: every candidate stands, and no work is done.
++func TestNoRequirementsKeepsEveryCandidate(t *testing.T) {
++	a, b := capableAgent(), capableAgent()
++	b.CapFlags = 0
++	b.HaveCap = false
++
++	got := RouteFilter([]RouteAgent{a, b}, 0, 0, false)
++	if got.Kept != 2 || !got.Keep[0] || !got.Keep[1] {
++		t.Errorf("a candidate was dropped with nothing to enforce: %+v", got)
++	}
++}
++
++// No candidate for the role is not this rule's refusal to phrase: the caller
++// has a better message for it.
++func TestNoCandidatesIsEmptyRatherThanRelaxed(t *testing.T) {
++	none := capableAgent()
++	none.HasRole = false
++
++	got := RouteFilter([]RouteAgent{none}, ModelCapTools|ModelCapVision, 0, false)
++	if got.Kept != 0 || got.Relaxed {
++		t.Errorf("%+v, want an empty result with no relaxation claimed", got)
++	}
++}
++
++func TestEmptyFleet(t *testing.T) {
++	got := RouteFilter(nil, ModelCapTools, 1000, true)
++	if got.Kept != 0 || len(got.Keep) != 0 {
++		t.Errorf("%+v, want nothing", got)
++	}
++}
+diff --git a/src/tests/Rules.mk b/src/tests/Rules.mk
+index f58040b8a..33eb5f8a0 100644
+--- a/src/tests/Rules.mk
++++ b/src/tests/Rules.mk
+@@ -1935,7 +1935,7 @@ $(TESTPREFIX)/unit-test-server-compute: $(OBJDIR)/tests/test_server_compute.o $(
+                                $(OBJDIR)/db1/execution_plans.o $(OBJDIR)/db1/coord_jobs.o \
+ 		                               $(OBJDIR)/modules/delegates/delegate_launch.o $(OBJDIR)/modules/delegates/delegate_source_authority.o $(OBJDIR)/modules/delegates/delegate_economics.o $(OBJDIR)/server/server_coord_dispatcher.o \
+ 		                               $(OBJDIR)/modules/delegates/gw_orch_delegates.o $(OBJDIR)/pipeline/gw_orchestration_seam.o \
+-		                               $(OBJDIR)/modules/delegates/delegate_routing.o \
++		                               $(OBJDIR)/modules/delegates/delegate_routing.o $(OBJDIR)/modules/delegates/delegate_launch_args.o \
+ 		                               $(OBJDIR)/model_registry.o \
+ 		                               $(OBJDIR)/models_dev.o $(OBJDIR)/models_dev_cache.o \
+ 		                               $(OBJDIR)/server/server_delegate_status.o \
+@@ -4027,7 +4027,7 @@ $(TESTPREFIX)/unit-test-cmd-cancel: $(OBJDIR)/tests/test_cmd_cancel.o \
+ $(TESTPREFIX)/unit-test-cmd-delegate: $(OBJDIR)/tests/test_cmd_delegate.o \
+                              $(OBJDIR)/modules/delegates/delegate_depth.o $(OBJDIR)/modules/delegates/delegate_role.o \
+                              $(OBJDIR)/role_templates.o \
+-                             $(OBJDIR)/modules/delegates/delegate_prompt.o $(OBJDIR)/modules/delegates/delegate_routing.o \
++                             $(OBJDIR)/modules/delegates/delegate_prompt.o $(OBJDIR)/modules/delegates/delegate_routing.o $(OBJDIR)/modules/delegates/delegate_launch_args.o \
+                              $(OBJDIR)/modules/delegates/delegate_checkout.o $(OBJDIR)/cJSON.o \
+                              $(OBJDIR)/tests/module_handlers/delegates.o \
+                              $(OBJDIR)/util.o $(OBJDIR)/posix/platform_process.o $(OBJDIR)/posix/util.o
+diff --git a/src/tests/test_cmd_delegate.c b/src/tests/test_cmd_delegate.c
+index 4ec0c3d06..faf2f9959 100644
+--- a/src/tests/test_cmd_delegate.c
++++ b/src/tests/test_cmd_delegate.c
+@@ -51,6 +51,7 @@ static int capabilities_via_module(const char *prompt, int tools_enabled, unsign
+ #include "modules/tools/agent_tools_internal.h"
+ #include "provider_cli_adapter.h"
+ #include "cJSON.h"
++#include <aimee/delegates/delegate_launch_args.h>
+ 
+ /* role_template_max_turns() (via delegate_role.o, reached by the max-turns policy)
+  * reads the role_templates dir under config_default_dir() and parses `max_turns:`
+@@ -886,100 +887,70 @@ static void test_via_override_rejects_role_mismatch(void)
+    printf("  PASS: test_via_override_rejects_role_mismatch\n");
+ }
+ 
+-static void test_capability_filter_drops_deprecated_on_auto_route(void)
++/* The capability POLICY moved to the module (stage 17): the predicate, the
++ * context-window precedence and the modality relaxation are decided and tested
++ * there, where the fleet-wide relaxation can actually be exercised.
++ *
++ * What stays here is the wrapper's own job, and it is the half most likely to
++ * rot silently: RESOLVING each agent's facts out of the catalog, the registry
++ * and the CLI adapters, and APPLYING the verdict to the fleet. A recording
++ * provider makes both visible. */
++static unsigned g_rf_flags[8];
++static int g_rf_override_ctx[8], g_rf_catalog_ctx[8], g_rf_cli_ctx[8];
++static unsigned g_rf_count, g_rf_required_caps;
++static int g_rf_min_context, g_rf_drop_deprecated;
++static int g_rf_keep[8];
++
++static int recording_route_filter(const uint8_t *request, size_t request_len, uint8_t *response,
++                                  size_t response_cap, size_t *response_len)
+ {
+-   agent_config_t cfg;
+-   memset(&cfg, 0, sizeof(cfg));
+-   cfg.agent_count = 2;
+-   snprintf(cfg.agents[0].name, sizeof(cfg.agents[0].name), "old");
+-   snprintf(cfg.agents[0].model, sizeof(cfg.agents[0].model), "deprecated-model");
+-   snprintf(cfg.agents[0].provider, sizeof(cfg.agents[0].provider), "openai");
+-   snprintf(cfg.agents[0].roles[0], sizeof(cfg.agents[0].roles[0]), "diagnose");
+-   cfg.agents[0].role_count = 1;
+-   cfg.agents[0].enabled = 1;
++   if (request_len < AIMEE_DELEGATES_ROUTEFILTER_HEADER_LEN)
++      return -1;
++   g_rf_drop_deprecated = request[5];
++   g_rf_count = aimee_delegates_get_u32(request + 8);
++   g_rf_required_caps = aimee_delegates_get_u32(request + 12);
++   g_rf_min_context = (int)aimee_delegates_get_u32(request + 16);
++   if (g_rf_count > 8)
++      return -1;
+ 
+-   snprintf(cfg.agents[1].name, sizeof(cfg.agents[1].name), "new");
+-   snprintf(cfg.agents[1].model, sizeof(cfg.agents[1].model), "vision-model");
+-   snprintf(cfg.agents[1].provider, sizeof(cfg.agents[1].provider), "openai");
+-   snprintf(cfg.agents[1].roles[0], sizeof(cfg.agents[1].roles[0]), "diagnose");
+-   cfg.agents[1].role_count = 1;
+-   cfg.agents[1].enabled = 1;
++   for (unsigned i = 0; i < g_rf_count; i++)
++   {
++      const uint8_t *at = request + AIMEE_DELEGATES_ROUTEFILTER_HEADER_LEN +
++                          (size_t)i * AIMEE_DELEGATES_ROUTEFILTER_AGENT_LEN;
++      g_rf_flags[i] = aimee_delegates_get_u32(at);
++      g_rf_override_ctx[i] = (int)aimee_delegates_get_u32(at + 8);
++      g_rf_catalog_ctx[i] = (int)aimee_delegates_get_u32(at + 12);
++      g_rf_cli_ctx[i] = (int)aimee_delegates_get_u32(at + 16);
++   }
+ 
+-   char errbuf[128];
+-   assert(delegate_filter_route_capabilities(&cfg, "diagnose", MODEL_CAP_VISION, 0, 1, errbuf,
+-                                             sizeof(errbuf)) == 0);
+-   assert(cfg.agents[0].enabled == 0);
+-   assert(cfg.agents[1].enabled == 1);
+-   printf("  PASS: test_capability_filter_drops_deprecated_on_auto_route\n");
++   size_t need = 16u + (size_t)g_rf_count * 4u;
++   if (response_cap < need)
++      return -1;
++   memset(response, 0, need);
++   aimee_delegates_put_u32(response, AIMEE_DELEGATES_ROUTEFILTER_RESPONSE_MAGIC);
++   unsigned kept = 0;
++   for (unsigned i = 0; i < g_rf_count; i++)
++      if (g_rf_keep[i])
++      {
++         aimee_delegates_put_u32(response + 16 + i * 4, 1u);
++         kept++;
++      }
++   aimee_delegates_put_u32(response + 4, kept);
++   *response_len = need;
++   return 0;
+ }
+ 
+-static void test_capability_filter_enforces_min_context(void)
++static void test_route_filter_resolves_facts_and_applies_the_verdict(void)
+ {
+-   agent_config_t cfg;
+-   memset(&cfg, 0, sizeof(cfg));
+-   cfg.agent_count = 2;
+-   snprintf(cfg.agents[0].name, sizeof(cfg.agents[0].name), "small");
+-   snprintf(cfg.agents[0].model, sizeof(cfg.agents[0].model), "vision-tinyctx-model");
+-   snprintf(cfg.agents[0].provider, sizeof(cfg.agents[0].provider), "openai");
+-   snprintf(cfg.agents[0].roles[0], sizeof(cfg.agents[0].roles[0]), "diagnose");
+-   cfg.agents[0].role_count = 1;
+-   cfg.agents[0].enabled = 1;
+-
+-   snprintf(cfg.agents[1].name, sizeof(cfg.agents[1].name), "large");
+-   snprintf(cfg.agents[1].model, sizeof(cfg.agents[1].model), "vision-large-model");
+-   snprintf(cfg.agents[1].provider, sizeof(cfg.agents[1].provider), "openai");
+-   snprintf(cfg.agents[1].roles[0], sizeof(cfg.agents[1].roles[0]), "diagnose");
+-   cfg.agents[1].role_count = 1;
+-   cfg.agents[1].enabled = 1;
+-
+-   char errbuf[128];
+-   assert(delegate_filter_route_capabilities(&cfg, "diagnose", MODEL_CAP_VISION, 10000, 0, errbuf,
+-                                             sizeof(errbuf)) == 0);
+-   assert(cfg.agents[0].enabled == 0);
+-   assert(cfg.agents[1].enabled == 1);
+-   printf("  PASS: test_capability_filter_enforces_min_context\n");
+-}
++   delegate_register_route_filter_provider(recording_route_filter);
+ 
+-static void test_capability_filter_honors_tools_enabled(void)
+-{
+    agent_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.agent_count = 2;
+-   snprintf(cfg.agents[0].name, sizeof(cfg.agents[0].name), "metadata-only");
+-   snprintf(cfg.agents[0].model, sizeof(cfg.agents[0].model), "notools-model");
+-   snprintf(cfg.agents[0].provider, sizeof(cfg.agents[0].provider), "openai");
+-   snprintf(cfg.agents[0].roles[0], sizeof(cfg.agents[0].roles[0]), "diagnose");
+-   cfg.agents[0].role_count = 1;
+-   cfg.agents[0].enabled = 1;
+-   cfg.agents[0].tools_enabled = 0;
+ 
+-   snprintf(cfg.agents[1].name, sizeof(cfg.agents[1].name), "configured-tools");
+-   snprintf(cfg.agents[1].model, sizeof(cfg.agents[1].model), "notools-model");
+-   snprintf(cfg.agents[1].provider, sizeof(cfg.agents[1].provider), "openai");
+-   snprintf(cfg.agents[1].roles[0], sizeof(cfg.agents[1].roles[0]), "diagnose");
+-   cfg.agents[1].role_count = 1;
+-   cfg.agents[1].enabled = 1;
+-   cfg.agents[1].tools_enabled = 1;
+-
+-   char errbuf[128];
+-   assert(delegate_filter_route_capabilities(&cfg, "diagnose", MODEL_CAP_TOOLS, 0, 0, errbuf,
+-                                             sizeof(errbuf)) == 0);
+-   assert(cfg.agents[0].enabled == 0);
+-   assert(cfg.agents[1].enabled == 1);
+-   printf("  PASS: test_capability_filter_honors_tools_enabled\n");
+-}
+-
+-/* A tmux-CLI agent (codex) has no `model` and may have context_window=0 (records
+- * registered before the window was persisted). The filter must fall back to the
+- * CLI adapter's declared window so it survives a min-context floor — and still
+- * drop a CLI agent whose adapter is unknown / declares no window. */
+-static void test_capability_filter_cli_agent_uses_adapter_context(void)
+-{
+-   agent_config_t cfg;
+-   memset(&cfg, 0, sizeof(cfg));
+-   cfg.agent_count = 2;
+-
+-   /* codex: no model, no explicit window — resolves via the codex adapter (272k). */
++   /* A tmux-CLI agent: no model and no explicit window, so its window can only
++    * come from the codex adapter. That resolution is the wrapper's, and the
++    * module cannot do it -- so it must arrive on the wire. */
+    snprintf(cfg.agents[0].name, sizeof(cfg.agents[0].name), "codex");
+    snprintf(cfg.agents[0].provider, sizeof(cfg.agents[0].provider), "codex");
+    snprintf(cfg.agents[0].cli_kind, sizeof(cfg.agents[0].cli_kind), "codex");
+@@ -987,81 +958,70 @@ static void test_capability_filter_cli_agent_uses_adapter_context(void)
+    cfg.agents[0].role_count = 1;
+    cfg.agents[0].enabled = 1;
+    cfg.agents[0].tools_enabled = 1;
+-   cfg.agents[0].middleware.context_window = 0;
+ 
+-   /* unknown CLI kind, no model/window — must NOT resolve a window, so dropped. */
+-   snprintf(cfg.agents[1].name, sizeof(cfg.agents[1].name), "mystery-cli");
++   /* An explicit override, which must be sent as itself rather than resolved. */
++   snprintf(cfg.agents[1].name, sizeof(cfg.agents[1].name), "other");
+    snprintf(cfg.agents[1].provider, sizeof(cfg.agents[1].provider), "mystery");
+    snprintf(cfg.agents[1].cli_kind, sizeof(cfg.agents[1].cli_kind), "no-such-cli");
+    snprintf(cfg.agents[1].roles[0], sizeof(cfg.agents[1].roles[0]), "review");
+    cfg.agents[1].role_count = 1;
+    cfg.agents[1].enabled = 1;
+-   cfg.agents[1].tools_enabled = 1;
+-   cfg.agents[1].middleware.context_window = 0;
++   cfg.agents[1].tools_enabled = 0;
++   cfg.agents[1].middleware.context_window = 400000;
++
++   g_rf_keep[0] = 1; /* the module's answer: keep the first, drop the second */
++   g_rf_keep[1] = 0;
+ 
+    char errbuf[128];
+-   assert(delegate_filter_route_capabilities(&cfg, "review", MODEL_CAP_TOOLS, 5131, 0, errbuf,
++   assert(delegate_filter_route_capabilities(&cfg, "review", MODEL_CAP_TOOLS, 5131, 1, errbuf,
+                                              sizeof(errbuf)) == 0);
+-   assert(cfg.agents[0].enabled == 1); /* codex kept via adapter window */
+-   assert(cfg.agents[1].enabled == 0); /* unknown CLI dropped */
+-   printf("  PASS: test_capability_filter_cli_agent_uses_adapter_context\n");
+-}
+ 
+-/* An inferred modality cap (vision/pdf/audio) that no model satisfies must NOT
+- * hard-fail the fleet: it is relaxed to the hard caps (tools + min_context) so
+- * the text models stay routable. Guards the fleet-wide false-fail where a text
+- * task merely mentioning an image required vision no model had. */
+-static void test_capability_filter_relaxes_unmet_modality(void)
+-{
+-   agent_config_t cfg;
+-   memset(&cfg, 0, sizeof(cfg));
+-   cfg.agent_count = 2;
+-   snprintf(cfg.agents[0].name, sizeof(cfg.agents[0].name), "text-a");
+-   snprintf(cfg.agents[0].model, sizeof(cfg.agents[0].model), "text-model");
+-   snprintf(cfg.agents[0].provider, sizeof(cfg.agents[0].provider), "openai");
+-   snprintf(cfg.agents[0].roles[0], sizeof(cfg.agents[0].roles[0]), "diagnose");
+-   cfg.agents[0].role_count = 1;
+-   cfg.agents[0].enabled = 1;
+-   cfg.agents[0].tools_enabled = 1;
+-
+-   snprintf(cfg.agents[1].name, sizeof(cfg.agents[1].name), "text-b");
+-   snprintf(cfg.agents[1].model, sizeof(cfg.agents[1].model), "text-model");
+-   snprintf(cfg.agents[1].provider, sizeof(cfg.agents[1].provider), "openai");
+-   snprintf(cfg.agents[1].roles[0], sizeof(cfg.agents[1].roles[0]), "diagnose");
+-   cfg.agents[1].role_count = 1;
+-   cfg.agents[1].enabled = 1;
+-   cfg.agents[1].tools_enabled = 1;
+-
+-   /* Require TOOLS (hard) + VISION (soft); no text-model has vision. The hard
+-    * TOOLS must be enforced, the unmet VISION relaxed -> both kept, no error. */
+-   char errbuf[128];
+-   assert(delegate_filter_route_capabilities(&cfg, "diagnose", MODEL_CAP_TOOLS | MODEL_CAP_VISION,
+-                                             0, 0, errbuf, sizeof(errbuf)) == 0);
++   /* The requirement reached the module unchanged. */
++   assert(g_rf_count == 2);
++   assert(g_rf_required_caps == MODEL_CAP_TOOLS);
++   assert(g_rf_min_context == 5131);
++   assert(g_rf_drop_deprecated == 1);
++
++   /* Facts the module cannot look up: role membership, the agent's own tools
++    * setting, and the CLI adapter's window. */
++   assert(g_rf_flags[0] & AIMEE_DELEGATES_RF_ENABLED);
++   assert(g_rf_flags[0] & AIMEE_DELEGATES_RF_HAS_ROLE);
++   assert(g_rf_flags[0] & AIMEE_DELEGATES_RF_TOOLS);
++   assert(g_rf_cli_ctx[0] > 0); /* resolved from the codex adapter */
++   assert(g_rf_override_ctx[0] == 0);
++
++   assert(!(g_rf_flags[1] & AIMEE_DELEGATES_RF_TOOLS)); /* tools off travels */
++   assert(g_rf_override_ctx[1] == 400000);              /* sent, not resolved */
++   assert(g_rf_cli_ctx[1] == 0);                        /* unknown CLI has none */
++
++   /* And the verdict was applied to the fleet. */
+    assert(cfg.agents[0].enabled == 1);
+-   assert(cfg.agents[1].enabled == 1);
+-   printf("  PASS: test_capability_filter_relaxes_unmet_modality\n");
++   assert(cfg.agents[1].enabled == 0);
++   printf("  PASS: test_route_filter_resolves_facts_and_applies_the_verdict\n");
+ }
+ 
+-/* A hard capability (tools) that no model satisfies still fails closed — only the
+- * inferred modality caps are soft. */
+-static void test_capability_filter_hard_cap_still_fails(void)
++/* With no provider there is no verdict, and the router must refuse rather than
++ * route on requirements nothing checked. */
++static void test_route_filter_refuses_without_a_provider(void)
+ {
++   delegate_register_route_filter_provider(NULL);
++
+    agent_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    cfg.agent_count = 1;
+-   snprintf(cfg.agents[0].name, sizeof(cfg.agents[0].name), "metadata-only");
+-   snprintf(cfg.agents[0].model, sizeof(cfg.agents[0].model), "notools-model");
+-   snprintf(cfg.agents[0].provider, sizeof(cfg.agents[0].provider), "openai");
+-   snprintf(cfg.agents[0].roles[0], sizeof(cfg.agents[0].roles[0]), "diagnose");
++   snprintf(cfg.agents[0].name, sizeof(cfg.agents[0].name), "a");
++   snprintf(cfg.agents[0].roles[0], sizeof(cfg.agents[0].roles[0]), "review");
+    cfg.agents[0].role_count = 1;
+    cfg.agents[0].enabled = 1;
+-   cfg.agents[0].tools_enabled = 0;
++   cfg.agents[0].tools_enabled = 1;
+ 
+-   char errbuf[128];
+-   assert(delegate_filter_route_capabilities(&cfg, "diagnose", MODEL_CAP_TOOLS, 0, 0, errbuf,
++   char errbuf[128] = "";
++   assert(delegate_filter_route_capabilities(&cfg, "review", MODEL_CAP_TOOLS, 0, 0, errbuf,
+                                              sizeof(errbuf)) == -1);
+-   assert(cfg.agents[0].enabled == 0);
+-   printf("  PASS: test_capability_filter_hard_cap_still_fails\n");
++   assert(errbuf[0] != '\0');
++
++   delegate_register_route_filter_provider(recording_route_filter);
++   printf("  PASS: test_route_filter_refuses_without_a_provider\n");
+ }
+ 
+ static void test_capability_inference_audio_extension_not_keyword(void)
+@@ -1298,12 +1258,8 @@ int main(void)
+    test_tier_override_keeps_same_tier_pool();
+    test_delegate_checkout_records_unavailable_heads();
+    test_via_override_rejects_role_mismatch();
+-   test_capability_filter_drops_deprecated_on_auto_route();
+-   test_capability_filter_enforces_min_context();
+-   test_capability_filter_honors_tools_enabled();
+-   test_capability_filter_cli_agent_uses_adapter_context();
+-   test_capability_filter_relaxes_unmet_modality();
+-   test_capability_filter_hard_cap_still_fails();
++   test_route_filter_resolves_facts_and_applies_the_verdict();
++   test_route_filter_refuses_without_a_provider();
+    test_capability_inference_audio_extension_not_keyword();
+    test_capability_inference_detects_modalities();
+    test_delegate_filter_route_scope();
+diff --git a/src/tests/test_server_compute.c b/src/tests/test_server_compute.c
+index cbb1e751e..5c4006cb5 100644
+--- a/src/tests/test_server_compute.c
++++ b/src/tests/test_server_compute.c
+@@ -3693,10 +3693,48 @@ static int compute_test_may_write(const char *role, const char *prompt, int *may
+    return 0;
+ }
+ 
++/* The route filter, as the module answers it.
++ *
++ * These cases are about compute and dispatch behaviour, not about capability
++ * routing, so the fleet is small and every candidate qualifies. The decode side
++ * is exercised for real, which is what keeps the harness honest about the wire
++ * shape even though the policy is tested against the module. */
++static int compute_test_route_filter(const uint8_t *request, size_t request_len, uint8_t *response,
++                                     size_t response_cap, size_t *response_len)
++{
++   if (request_len < AIMEE_DELEGATES_ROUTEFILTER_HEADER_LEN)
++      return -1;
++   unsigned count = aimee_delegates_get_u32(request + 8);
++   size_t need = 16u + (size_t)count * 4u;
++   if (response_cap < need)
++      return -1;
++
++   memset(response, 0, need);
++   aimee_delegates_put_u32(response, AIMEE_DELEGATES_ROUTEFILTER_RESPONSE_MAGIC);
++   unsigned kept = 0;
++   for (unsigned i = 0; i < count; i++)
++   {
++      const uint8_t *at = request + AIMEE_DELEGATES_ROUTEFILTER_HEADER_LEN +
++                          (size_t)i * AIMEE_DELEGATES_ROUTEFILTER_AGENT_LEN;
++      unsigned flags = aimee_delegates_get_u32(at);
++      int candidate = (flags & AIMEE_DELEGATES_RF_ENABLED) && (flags & AIMEE_DELEGATES_RF_HAS_ROLE);
++      if (candidate)
++      {
++         aimee_delegates_put_u32(response + 16 + i * 4, 1u);
++         kept++;
++      }
++   }
++   aimee_delegates_put_u32(response + 4, kept);
++   aimee_delegates_put_u32(response + 12, aimee_delegates_get_u32(request + 12));
++   *response_len = need;
++   return 0;
++}
++
+ int main(void)
+ {
+    register_test_workspace_root();
+    delegate_register_may_write_provider(compute_test_may_write);
++   delegate_register_route_filter_provider(compute_test_route_filter);
+    assert(delegate_backend_register(&g_fake_docker) == 0);
+    delegate_register_handoff_provider(compute_test_handoff_provider);
+    test_codex_oauth_vault_server_principal_fallback();
+diff --git a/tests/baselines/refactor/index.json b/tests/baselines/refactor/index.json
+index cd86ad6fe..22760da51 100644
+--- a/tests/baselines/refactor/index.json
++++ b/tests/baselines/refactor/index.json
+@@ -1435,7 +1435,7 @@
+         },
+         {
+           "path": "src/modules/delegates/include/aimee/delegates/delegate_launch_args.h",
+-          "sha256": "2ede79b877618c32da2946e4f27e844ed509ce2aea4b936be4f00cd95ea7e327"
++          "sha256": "45f30203d8b2d4bacb54bb6fb35c762475e548369828617e3e025349c2e9e41b"
+         },
+         {
+           "path": "src/modules/delegates/include/aimee/delegates/delegate_patch_coordinator.h",
+@@ -1471,7 +1471,7 @@
+         },
+         {
+           "path": "src/modules/delegates/include/aimee/delegates/module_api.h",
+-          "sha256": "38e07191f787e88d8725725277edc6b9d2f5b402017691ef41f6aaca7d977c95"
++          "sha256": "93236d5572f5edb5a4e4ab572faeea4368e33c1ce24d8c6c2c1bc6cb874ea450"
+         },
+         {
+           "path": "src/modules/delegates/include/aimee/delegates/panel_provider.h",
+@@ -1628,7 +1628,7 @@
+       ]
+     },
+     "public-symbols": {
+-      "sha256": "a09297449a44221a0f75bccc92936546e25ae17d589169d147a4c84785e4c634",
++      "sha256": "7f0c3d5bc5d9a3ad4f0361d3666b3bc268ee365c8fe4762f6e701b8db39e1cbe",
+       "source": "complete normalized contents of public-headers"
+     },
+     "routes": {

@@ -1,0 +1,33 @@
+schema_version = "1.0"
+
+[[artifacts]]
+source = "/logs/agent/solution.patch"
+destination = "solution.patch"
+
+[metadata]
+benchmark = "swepmv2"
+instance_id = "Hans-Halverson__brimstone-412"
+repository = "Hans-Halverson/brimstone"
+language = "rust"
+base_commit = "8eb2ae9f597df2d867af9a784bc7b2608e8185df"
+category = "debugging"
+
+[verifier]
+environment_mode = "separate"
+timeout_sec = 3600.0
+
+[[verifier.collect]]
+command = "bash -c 'set -eu; cd /testbed; mkdir -p /logs/agent; export GIT_INDEX_FILE=/logs/agent/capture.index; git read-tree 8eb2ae9f597df2d867af9a784bc7b2608e8185df; git add -u; git ls-files --others --exclude-standard -z -- . '\"'\"':(exclude).venv'\"'\"' '\"'\"':(exclude)venv'\"'\"' '\"'\"':(exclude)node_modules'\"'\"' '\"'\"':(exclude)**/node_modules'\"'\"' '\"'\"':(exclude).pytest_cache'\"'\"' '\"'\"':(exclude)**/__pycache__'\"'\"' '\"'\"':(exclude)build'\"'\"' '\"'\"':(exclude)target'\"'\"' '\"'\"':(exclude).codex'\"'\"' > /logs/agent/new-files.nul; if [ -s /logs/agent/new-files.nul ]; then git --literal-pathspecs add --pathspec-from-file=/logs/agent/new-files.nul --pathspec-file-nul; fi; git diff --cached --binary 8eb2ae9f597df2d867af9a784bc7b2608e8185df > /logs/agent/solution.patch'"
+timeout_sec = 180.0
+
+[agent]
+timeout_sec = 7200.0
+
+[environment]
+build_timeout_sec = 1800.0
+docker_image = "key4127/refactor-dockerhub:Hans-Halverson__brimstone-412"
+workdir = "/testbed"
+cpus = 4
+memory_mb = 32768
+storage_mb = 30720
+gpus = 0

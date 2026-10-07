@@ -1,0 +1,33 @@
+The native complex scalar syntax should be represented and validated as dedicated language forms rather than as ordinary builtin identifiers.
+
+The keywords `C`, `i`, `re`, `img`, and `C_abs` must remain reserved keywords, but they must not be treated as builtin identifier names and must not allocate builtin `SymbolId`s. In particular, `is_keyword(name)` should still be true for each of these names, while `is_builtin_identifier_name(name)` should be false and `builtin_symbol_ref(name)` should return `None`.
+
+The complex object syntax must continue to support the intended mathematical behavior. `i` is the native imaginary unit and should verify as an element of `C`. The unary forms `re(z)`, `img(z)`, and `C_abs(z)` should be valid only when their argument is in `C`, and their result should be known to be in `R` and therefore also in `C`. For example, a file should be able to verify facts such as:
+
+```litex
+i $in C
+i * i = -1
+
+forall z C:
+    re(z) $in R
+    img(z) $in R
+    C_abs(z) $in R
+    z = re(z) + img(z) * i
+    C_abs(z) = sqrt(re(z) ^ 2 + img(z) ^ 2)
+    C_abs(z) >= 0
+
+forall r R:
+    re(r) = r
+    img(r) = 0
+    C_abs(r) = abs(r)
+```
+
+The bare names `re`, `img`, and `C_abs` should no longer behave as first-class builtin function objects. Declarations or facts that rely on them as ordinary identifiers, such as `re $in fn(z C) R`, should not be required for the native complex syntax to work. Higher-order use should instead require an explicit lambda such as `fn(z C) R {re(z)}`.
+
+All verifier logic that traverses objects should correctly handle the native complex forms, including `i`, `re(...)`, `img(...)`, and `C_abs(...)`, in the same way it handles other expression forms for well-definedness, syntactic equality, free parameter checks, forall parameter coverage, and dependency checks.
+
+The evaluator should reject native complex syntax consistently because native complex values are symbolic and are not supported by evaluation. Any `eval` path that encounters `i`, `re(...)`, `img(...)`, or `C_abs(...)`, including after resolving an identifier to its executable definition, should fail with:
+
+```text
+eval: native complex values are symbolic and are not supported by the evaluator
+```

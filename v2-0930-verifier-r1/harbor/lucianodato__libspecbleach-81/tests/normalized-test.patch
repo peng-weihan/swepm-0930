@@ -1,0 +1,790 @@
+diff --git a/tests/meson.build b/tests/meson.build
+index 9aea948..cd87a9a 100644
+--- a/tests/meson.build
++++ b/tests/meson.build
+@@ -176,14 +176,23 @@ test('specbleach_2d_denoiser', test_specbleach_2d_denoiser)
+ test('adaptive_noise_estimator_null', test_adaptive_noise_estimator_null)
+ test('nlm_filter', test_nlm_filter)
+ 
+-test_louizou = executable('test_louizou',
+-  sources: ['test_louizou_noise_estimator.c'],
++test_martin = executable('test_martin',
++  sources: ['test_martin_noise_estimator.c'],
+   dependencies: [libspecbleach_dep, m_dep],
+   c_args: test_c_args,
+   link_args: test_link_args,
+   include_directories: inc
+ )
+-test('louizou', test_louizou)
++test('martin', test_martin)
++
++test_brandt = executable('test_brandt',
++  sources: ['test_brandt_noise_estimator.c'],
++  dependencies: [libspecbleach_dep, m_dep],
++  c_args: test_c_args,
++  link_args: test_link_args,
++  include_directories: inc
++)
++test('brandt', test_brandt)
+ 
+ test_spp_mmse = executable('test_spp_mmse',
+   sources: ['test_spp_mmse_noise_estimator.c'],
+diff --git a/tests/test_adaptive_noise_estimator_null.c b/tests/test_adaptive_noise_estimator_null.c
+index 85b27a8..648b44b 100644
+--- a/tests/test_adaptive_noise_estimator_null.c
++++ b/tests/test_adaptive_noise_estimator_null.c
+@@ -74,9 +74,9 @@ int main(void) {
+ 
+   // Adaptive Noise Estimators
+   adaptive_estimator_free(NULL);
+-  AdaptiveNoiseEstimator* le = adaptive_estimator_initialize(
+-      real_spectrum_size, sample_rate, fft_size, LOUIZOU_METHOD);
+-  adaptive_estimator_free(le);
++  AdaptiveNoiseEstimator* mar = adaptive_estimator_initialize(
++      real_spectrum_size, sample_rate, fft_size, MARTIN_METHOD);
++  adaptive_estimator_free(mar);
+ 
+   AdaptiveNoiseEstimator* spp = adaptive_estimator_initialize(
+       real_spectrum_size, sample_rate, fft_size, SPP_MMSE_METHOD);
+@@ -161,21 +161,21 @@ int main(void) {
+   printf("Testing Adaptive Estimator Dispatcher...\n");
+   float* noise_profile = (float*)calloc(real_spectrum_size, sizeof(float));
+ 
+-  AdaptiveNoiseEstimator* lou_est = adaptive_estimator_initialize(
+-      real_spectrum_size, sample_rate, fft_size, LOUIZOU_METHOD);
++  AdaptiveNoiseEstimator* mar_est = adaptive_estimator_initialize(
++      real_spectrum_size, sample_rate, fft_size, MARTIN_METHOD);
+   AdaptiveNoiseEstimator* spp_est = adaptive_estimator_initialize(
+       real_spectrum_size, sample_rate, fft_size, SPP_MMSE_METHOD);
+ 
+-  adaptive_estimator_set_state(lou_est, noise_profile, LOUIZOU_METHOD);
++  adaptive_estimator_set_state(mar_est, noise_profile, MARTIN_METHOD);
+   adaptive_estimator_set_state(spp_est, noise_profile, SPP_MMSE_METHOD);
+ 
+-  adaptive_estimator_apply_floor(lou_est, noise_profile);
+-  adaptive_estimator_update_seed(lou_est, noise_profile);
++  adaptive_estimator_apply_floor(mar_est, noise_profile);
++  adaptive_estimator_update_seed(mar_est, noise_profile);
+ 
+   adaptive_estimator_apply_floor(spp_est, noise_profile);
+   adaptive_estimator_update_seed(spp_est, noise_profile);
+ 
+-  adaptive_estimator_free(lou_est);
++  adaptive_estimator_free(mar_est);
+   adaptive_estimator_free(spp_est);
+   free(noise_profile);
+ 
+diff --git a/tests/test_audio_regression.c b/tests/test_audio_regression.c
+index 65a9d0f..dea2eb5 100644
+--- a/tests/test_audio_regression.c
++++ b/tests/test_audio_regression.c
+@@ -338,60 +338,61 @@ void test_adaptive_denoising(void) {
+   printf("✓ Adaptive denoiser test passed\n");
+ }
+ 
+-// Test that both noise estimation methods work correctly
+ // Test that both noise estimation methods work correctly
+ void test_noise_estimation_methods(void) {
+-  printf("Testing noise estimation methods (Louizou vs SPP-MMSE)...\n");
++  printf("Testing noise estimation methods (Martin MS vs SPP-MMSE)...\n");
+ 
+   float frame_size_ms = 20.0f;
+   float* input = calloc(TEST_SAMPLES, sizeof(float));
+-  float* output_louizou = calloc(TEST_SAMPLES, sizeof(float));
++  float* output_martin = calloc(TEST_SAMPLES, sizeof(float));
+   float* output_spp_mmse = calloc(TEST_SAMPLES, sizeof(float));
+-  TEST_ASSERT(input && output_louizou && output_spp_mmse,
++  TEST_ASSERT(input && output_martin && output_spp_mmse,
+               "Failed to allocate test buffers");
+ 
+   // Generate noisy signal
+   generate_test_signal(input, TEST_SAMPLES, 12345);
+ 
+-  // Process with Louizou method (default)
+-  SpectralBleachDenoiserParameters params_louizou =
+-      (SpectralBleachDenoiserParameters){.reduction_amount = 20.0f,
+-                                         .smoothing_factor = 0.0f,
+-                                         .noise_rescale = 0.0f,
+-                                         .noise_scaling_type = 0,
+-                                         .post_filter_threshold = 0.0f,
+-                                         .residual_listen = false,
+-                                         .whitening_factor = 0.0f,
+-                                         .adaptive_noise = 1,
+-                                         .noise_estimation_method = 0};
++  // Process with Martin MS method (Default)
++  SpectralBleachDenoiserParameters params_martin =
++      (SpectralBleachDenoiserParameters){
++          .reduction_amount = 20.0f,
++          .smoothing_factor = 0.0f,
++          .noise_rescale = 0.0f,
++          .noise_scaling_type = 0,
++          .post_filter_threshold = 0.0f,
++          .residual_listen = false,
++          .whitening_factor = 0.0f,
++          .adaptive_noise = 1,
++          .noise_estimation_method = 2}; // 2: Martin MS
+ 
+-  SpectralBleachHandle handle_louizou =
++  SpectralBleachHandle handle_martin =
+       specbleach_initialize(SAMPLE_RATE, frame_size_ms);
+-  TEST_ASSERT(handle_louizou != NULL, "Failed to initialize Louizou denoiser");
++  TEST_ASSERT(handle_martin != NULL, "Failed to initialize Martin denoiser");
+ 
+-  specbleach_load_parameters(handle_louizou, params_louizou);
++  specbleach_load_parameters(handle_martin, params_martin);
+ 
+   for (int i = 0; i < TEST_SAMPLES; i += BLOCK_SIZE) {
+     int block_size =
+         (i + BLOCK_SIZE > TEST_SAMPLES) ? TEST_SAMPLES - i : BLOCK_SIZE;
+-    TEST_ASSERT(specbleach_process(handle_louizou, block_size, input + i,
+-                                   output_louizou + i),
+-                "Failed to process with Louizou method");
++    TEST_ASSERT(specbleach_process(handle_martin, block_size, input + i,
++                                   output_martin + i),
++                "Failed to process with Martin method");
+   }
+ 
+-  specbleach_free(handle_louizou);
++  specbleach_free(handle_martin);
+ 
+   // Process with SPP-MMSE method
+   SpectralBleachDenoiserParameters params_spp_mmse =
+-      (SpectralBleachDenoiserParameters){.reduction_amount = 20.0f,
+-                                         .smoothing_factor = 0.0f,
+-                                         .noise_rescale = 0.0f,
+-                                         .noise_scaling_type = 0,
+-                                         .post_filter_threshold = 0.0f,
+-                                         .residual_listen = false,
+-                                         .whitening_factor = 0.0f,
+-                                         .adaptive_noise = 1,
+-                                         .noise_estimation_method = 1};
++      (SpectralBleachDenoiserParameters){
++          .reduction_amount = 20.0f,
++          .smoothing_factor = 0.0f,
++          .noise_rescale = 0.0f,
++          .noise_scaling_type = 0,
++          .post_filter_threshold = 0.0f,
++          .residual_listen = false,
++          .whitening_factor = 0.0f,
++          .adaptive_noise = 1,
++          .noise_estimation_method = 0}; // 0: SPP-MMSE
+ 
+   SpectralBleachHandle handle_spp_mmse =
+       specbleach_initialize(SAMPLE_RATE, frame_size_ms);
+@@ -411,45 +412,45 @@ void test_noise_estimation_methods(void) {
+   specbleach_free(handle_spp_mmse);
+ 
+   // Verify both methods produced valid output (finite values, reduced noise)
+-  double input_power = 0.0, louizou_power = 0.0, spp_mmse_power = 0.0;
++  double input_power = 0.0, martin_power = 0.0, spp_mmse_power = 0.0;
+   for (int i = 0; i < TEST_SAMPLES; i++) {
+-    TEST_ASSERT(isfinite(output_louizou[i]),
+-                "Louizou output contains non-finite values");
++    TEST_ASSERT(isfinite(output_martin[i]),
++                "Martin output contains non-finite values");
+     TEST_ASSERT(isfinite(output_spp_mmse[i]),
+                 "SPP-MMSE output contains non-finite values");
+ 
+     input_power += input[i] * input[i];
+-    louizou_power += output_louizou[i] * output_louizou[i];
++    martin_power += output_martin[i] * output_martin[i];
+     spp_mmse_power += output_spp_mmse[i] * output_spp_mmse[i];
+   }
+ 
+   input_power /= TEST_SAMPLES;
+-  louizou_power /= TEST_SAMPLES;
++  martin_power /= TEST_SAMPLES;
+   spp_mmse_power /= TEST_SAMPLES;
+ 
+   printf("  Input power: %.6f\n", input_power);
+-  printf("  Louizou output power: %.6f\n", louizou_power);
++  printf("  Martin output power: %.6f\n", martin_power);
+   printf("  SPP-MMSE output power: %.6f\n", spp_mmse_power);
+ 
+   // Both methods should reduce noise
+-  TEST_ASSERT(louizou_power < input_power * 0.95f,
+-              "Louizou method should reduce signal power");
++  TEST_ASSERT(martin_power < input_power * 0.95f,
++              "Martin method should reduce signal power");
+   TEST_ASSERT(spp_mmse_power < input_power * 0.95f,
+               "SPP-MMSE method should reduce signal power");
+ 
+-  // Methods should produce different results (they use different algorithms)
++  // Methods should produce different results
+   bool identical = true;
+   for (int i = 5000; i < TEST_SAMPLES; i++) { // Skip initial frames
+-    if (fabsf(output_louizou[i] - output_spp_mmse[i]) > 1e-4f) {
++    if (fabsf(output_martin[i] - output_spp_mmse[i]) > 1e-4f) {
+       identical = false;
+       break;
+     }
+   }
+   TEST_ASSERT(!identical,
+-              "Louizou and SPP-MMSE methods should produce different results");
++              "Martin and SPP-MMSE methods should produce different results");
+ 
+   free(input);
+-  free(output_louizou);
++  free(output_martin);
+   free(output_spp_mmse);
+ 
+   printf("✓ Noise estimation methods test passed\n");
+diff --git a/tests/test_brandt_noise_estimator.c b/tests/test_brandt_noise_estimator.c
+new file mode 100644
+index 0000000..916a4bb
+--- /dev/null
++++ b/tests/test_brandt_noise_estimator.c
+@@ -0,0 +1,271 @@
++/*
++ * Unit tests for Brandt Noise Estimator
++ */
++
++#include <float.h>
++#include <math.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "../src/shared/configurations.h"
++#include "../src/shared/noise_estimation/brandt_noise_estimator.h"
++#include "../src/shared/utils/spectral_utils.h"
++
++#define TEST_ASSERT(condition, message)                                        \
++  do {                                                                         \
++    if (!(condition)) {                                                        \
++      fprintf(stderr, "TEST FAILED: %s\n", message);                           \
++      exit(1);                                                                 \
++    }                                                                          \
++  } while (0)
++
++#define TEST_FLOAT_CLOSE(a, b, tolerance)                                      \
++  TEST_ASSERT(fabsf((a) - (b)) < (tolerance), "Float values not close enough")
++
++void test_brandt_initialization(void) {
++  printf("Testing Brandt initialization...\n");
++
++  uint32_t real_size = 257;
++  float duration = 1000.0f;
++  uint32_t sr = 44100;
++  uint32_t fft_size = 512;
++
++  BrandtNoiseEstimator* est =
++      brandt_noise_estimator_initialize(real_size, duration, sr, fft_size);
++  TEST_ASSERT(est != NULL, "Initialization should succeed");
++
++  brandt_noise_estimator_free(est);
++  brandt_noise_estimator_free(NULL); // Should be safe
++  printf("✓ Brandt initialization tests passed\n");
++}
++
++void test_brandt_run_logic(void) {
++  printf("Testing Brandt run logic...\n");
++
++  uint32_t real_size = 64;
++  uint32_t sr = 44100;
++  uint32_t fft_size = 128;
++
++  BrandtNoiseEstimator* est =
++      brandt_noise_estimator_initialize(real_size, 500.0f, sr, fft_size);
++
++  float* spectrum = (float*)calloc(real_size, sizeof(float));
++  float* noise_spectrum = (float*)calloc(real_size, sizeof(float));
++
++  for (uint32_t i = 0; i < real_size; i++) {
++    spectrum[i] = 1.0f;
++  }
++
++  // Use set_state to bypass the learning period/confidence rejected start
++  brandt_noise_estimator_set_state(est, spectrum);
++
++  TEST_ASSERT(brandt_noise_estimator_run(est, spectrum, noise_spectrum),
++              "Run should succeed");
++  // Check output matches the set state
++  for (uint32_t i = 0; i < real_size; i++) {
++    TEST_FLOAT_CLOSE(noise_spectrum[i], 1.0f, 1e-4f);
++  }
++
++  // Silence check logic
++  for (uint32_t i = 0; i < real_size; i++) {
++    spectrum[i] = 0.0f;
++  }
++  TEST_ASSERT(brandt_noise_estimator_run(est, spectrum, noise_spectrum),
++              "Run should succeed in silence");
++  // Should keep output from previous state (1.0) due to silence threshold skip
++  for (uint32_t i = 0; i < real_size; i++) {
++    TEST_FLOAT_CLOSE(noise_spectrum[i], 1.0f, 1e-4f);
++  }
++
++  // NULL checks
++  TEST_ASSERT(!brandt_noise_estimator_run(NULL, spectrum, noise_spectrum),
++              "Should fail with NULL estimator");
++  TEST_ASSERT(!brandt_noise_estimator_run(est, NULL, noise_spectrum),
++              "Should fail with NULL input");
++  TEST_ASSERT(!brandt_noise_estimator_run(est, spectrum, NULL),
++              "Should fail with NULL output");
++
++  brandt_noise_estimator_free(est);
++  free(spectrum);
++  free(noise_spectrum);
++  printf("✓ Brandt run logic tests passed\n");
++}
++
++void test_brandt_state_management(void) {
++  printf("Testing Brandt state management...\n");
++
++  uint32_t real_size = 64;
++  BrandtNoiseEstimator* est =
++      brandt_noise_estimator_initialize(real_size, 500.0f, 44100, 128);
++
++  float* profile = (float*)calloc(real_size, sizeof(float));
++  for (uint32_t i = 0; i < real_size; i++) {
++    profile[i] = 0.5f;
++  }
++
++  // Test set state
++  brandt_noise_estimator_set_state(est, profile);
++  brandt_noise_estimator_set_state(NULL, profile);
++  brandt_noise_estimator_set_state(est, NULL);
++
++  // Test update seed
++  brandt_noise_estimator_update_seed(est, profile);
++  brandt_noise_estimator_update_seed(NULL, profile);
++  brandt_noise_estimator_update_seed(est, NULL);
++
++  // Test apply floor
++  float* floor = (float*)calloc(real_size, sizeof(float));
++  for (uint32_t i = 0; i < real_size; i++) {
++    floor[i] = 0.8f;
++  }
++  brandt_noise_estimator_apply_floor(est, floor);
++  brandt_noise_estimator_apply_floor(NULL, floor);
++  brandt_noise_estimator_apply_floor(est, NULL);
++
++  brandt_noise_estimator_free(est);
++  free(profile);
++  free(floor);
++  printf("✓ Brandt state management tests passed\n");
++}
++
++/*
++ * Behavioral regression tests for the opaque Brandt API. These tests never
++ * inspect the estimator representation, chosen percentile, sorting algorithm,
++ * candidate percentile list, or confidence score.
++ *
++ * Midpoint quantiles give reproducible exponential noise-power samples without
++ * an RNG or fixtures. Different frequency bins see different permutations and
++ * means. Eight repeated cycles allow adaptation after a distribution change;
++ * tolerances test large observable effects, not reference numeric traces.
++ */
++enum { LEARNING_BINS = 65, NOISE_PERIOD = 64, LEARNING_FRAMES = 512 };
++
++static float bin_power_scale(uint32_t bin) {
++  return 1.0f + (float)bin / (float)LEARNING_BINS;
++}
++
++static void make_noise_frame(uint32_t frame, float level, float* spectrum) {
++  for (uint32_t k = 0; k < LEARNING_BINS; k++) {
++    uint32_t rank = (17U * frame + 11U * k) % NOISE_PERIOD;
++    float quantile = ((float)rank + 0.5f) / (float)NOISE_PERIOD;
++    spectrum[k] = -logf(1.0f - quantile) * level * bin_power_scale(k);
++  }
++}
++
++static void observe_noise_phase(BrandtNoiseEstimator* estimator, float level,
++                                float* observed_mean) {
++  float input[LEARNING_BINS];
++  float output[LEARNING_BINS];
++  float minimum[LEARNING_BINS];
++  float maximum[LEARNING_BINS];
++  for (uint32_t k = 0; k < LEARNING_BINS; k++) {
++    observed_mean[k] = 0.0f;
++    minimum[k] = FLT_MAX;
++    maximum[k] = 0.0f;
++  }
++  for (uint32_t frame = 0; frame < LEARNING_FRAMES; frame++) {
++    make_noise_frame(frame, level, input);
++    TEST_ASSERT(brandt_noise_estimator_run(estimator, input, output),
++                "Brandt should accept finite nonnegative noise spectra");
++    for (uint32_t k = 0; k < LEARNING_BINS; k++) {
++      TEST_ASSERT(isfinite(output[k]) && output[k] >= 0.0f,
++                  "Brandt output should stay finite and nonnegative");
++      if (frame >= LEARNING_FRAMES - NOISE_PERIOD) {
++        observed_mean[k] += output[k] / (float)NOISE_PERIOD;
++        minimum[k] = fminf(minimum[k], output[k]);
++        maximum[k] = fmaxf(maximum[k], output[k]);
++      }
++    }
++  }
++  for (uint32_t k = 0; k < LEARNING_BINS; k++) {
++    TEST_ASSERT(maximum[k] <= 2.0f * minimum[k] + 1e-6f,
++                "Stationary noise estimate should not follow individual samples");
++  }
++}
++
++void test_brandt_learns_changed_noise_power(void) {
++  printf("Testing Brandt learning after noise-power changes...\n");
++  BrandtNoiseEstimator* est =
++      brandt_noise_estimator_initialize(LEARNING_BINS, 512.0f, 8000, 128);
++  TEST_ASSERT(est != NULL, "Learning estimator initialization should succeed");
++  float seed[LEARNING_BINS];
++  float low[LEARNING_BINS];
++  float high[LEARNING_BINS];
++  float recovered[LEARNING_BINS];
++  for (uint32_t k = 0; k < LEARNING_BINS; k++) {
++    seed[k] = bin_power_scale(k);
++  }
++  brandt_noise_estimator_set_state(est, seed);
++  observe_noise_phase(est, 1.0f, low);
++  observe_noise_phase(est, 32.0f, high);
++  observe_noise_phase(est, 1.0f, recovered);
++  for (uint32_t k = 0; k < LEARNING_BINS; k++) {
++    TEST_ASSERT(low[k] > 0.0f,
++                "Positive stationary noise should have a positive estimate");
++    TEST_ASSERT(high[k] > 4.0f * low[k],
++                "Brandt must learn a persistent increase in noise power");
++    TEST_ASSERT(high[k] < 64.0f * low[k],
++                "Learned noise increase should remain bounded");
++    TEST_ASSERT(recovered[k] < high[k] / 4.0f && recovered[k] > 0.0f,
++                "Brandt must relearn after noise power decreases");
++  }
++  brandt_noise_estimator_free(est);
++}
++
++void test_brandt_learns_without_seed(void) {
++  printf("Testing Brandt learning without an injected noise profile...\n");
++  BrandtNoiseEstimator* est =
++      brandt_noise_estimator_initialize(LEARNING_BINS, 512.0f, 8000, 128);
++  TEST_ASSERT(est != NULL, "Unseeded estimator initialization should succeed");
++  float observed[LEARNING_BINS];
++  observe_noise_phase(est, 2.0f, observed);
++  for (uint32_t k = 0; k < LEARNING_BINS; k++) {
++    float level = 2.0f * bin_power_scale(k);
++    TEST_ASSERT(observed[k] > 0.1f * level && observed[k] < 8.0f * level,
++                "Unseeded Brandt must learn finite noise power from its input");
++  }
++  brandt_noise_estimator_free(est);
++}
++
++void test_brandt_rejects_persistent_nonnoise_plateau(void) {
++  printf("Testing confidence protection against a nonnoise plateau...\n");
++  BrandtNoiseEstimator* est =
++      brandt_noise_estimator_initialize(LEARNING_BINS, 512.0f, 8000, 128);
++  TEST_ASSERT(est != NULL, "Confidence estimator initialization should succeed");
++  float baseline[LEARNING_BINS];
++  float input[LEARNING_BINS];
++  float output[LEARNING_BINS];
++  observe_noise_phase(est, 1.0f, baseline);
++  for (uint32_t k = 0; k < LEARNING_BINS; k++) {
++    input[k] = 1000.0f * bin_power_scale(k);
++  }
++  /* Constant power is deliberately inconsistent with noise-power statistics.
++   * Do not require an exact confidence score or a bit-for-bit held estimate. */
++  for (uint32_t frame = 0; frame < LEARNING_FRAMES; frame++) {
++    TEST_ASSERT(brandt_noise_estimator_run(est, input, output),
++                "Nonnoise frames should not make processing fail");
++  }
++  for (uint32_t k = 0; k < LEARNING_BINS; k++) {
++    TEST_ASSERT(isfinite(output[k]) && output[k] > 0.0f,
++                "Confidence rejection should preserve a usable noise estimate");
++    TEST_ASSERT(output[k] < 100.0f * baseline[k],
++                "Low-confidence nonnoise plateau must not become the noise floor");
++  }
++  brandt_noise_estimator_free(est);
++}
++
++
++int main(void) {
++  printf("Running Brandt Noise Estimator tests...\n\n");
++
++  test_brandt_initialization();
++  test_brandt_run_logic();
++  test_brandt_state_management();
++  test_brandt_learns_changed_noise_power();
++  test_brandt_learns_without_seed();
++  test_brandt_rejects_persistent_nonnoise_plateau();
++
++  printf("\n✅ All Brandt tests passed!\n");
++  return 0;
++}
+diff --git a/tests/test_louizou_noise_estimator.c b/tests/test_louizou_noise_estimator.c
+deleted file mode 100644
+index 9bbdf46..0000000
+--- a/tests/test_louizou_noise_estimator.c
++++ /dev/null
+@@ -1,133 +0,0 @@
+-/*
+- * Unit tests for Louizou Noise Estimator
+- */
+-
+-#include <float.h>
+-#include <math.h>
+-#include <stdio.h>
+-#include <stdlib.h>
+-#include <string.h>
+-
+-#include "../src/shared/configurations.h"
+-#include "../src/shared/noise_estimation/louizou_noise_estimator.h"
+-#include "../src/shared/utils/spectral_utils.h"
+-
+-#define TEST_ASSERT(condition, message)                                        \
+-  do {                                                                         \
+-    if (!(condition)) {                                                        \
+-      fprintf(stderr, "TEST FAILED: %s\n", message);                           \
+-      exit(1);                                                                 \
+-    }                                                                          \
+-  } while (0)
+-
+-#define TEST_FLOAT_CLOSE(a, b, tolerance)                                      \
+-  TEST_ASSERT(fabsf((a) - (b)) < (tolerance), "Float values not close enough")
+-
+-void test_louizou_initialization(void) {
+-  printf("Testing Louizou initialization...\n");
+-
+-  uint32_t real_size = 257;
+-  uint32_t sr = 44100;
+-  uint32_t fft_size = 512;
+-
+-  LouizouNoiseEstimator* est =
+-      louizou_noise_estimator_initialize(real_size, sr, fft_size);
+-  TEST_ASSERT(est != NULL, "Initialization should succeed");
+-
+-  louizou_noise_estimator_free(est);
+-  louizou_noise_estimator_free(NULL); // Should be safe
+-  printf("✓ Louizou initialization tests passed\n");
+-}
+-
+-void test_louizou_run_logic(void) {
+-  printf("Testing Louizou run logic...\n");
+-
+-  uint32_t real_size = 64;
+-  uint32_t sr = 44100;
+-  uint32_t fft_size = 127; // Odd size to check crossover bins
+-
+-  LouizouNoiseEstimator* est =
+-      louizou_noise_estimator_initialize(real_size, sr, fft_size);
+-
+-  float* spectrum = (float*)calloc(real_size, sizeof(float));
+-  float* noise_spectrum = (float*)calloc(real_size, sizeof(float));
+-
+-  for (uint32_t i = 0; i < real_size; i++) {
+-    spectrum[i] = 1.0f;
+-  }
+-
+-  // First frame
+-  TEST_ASSERT(louizou_noise_estimator_run(est, spectrum, noise_spectrum),
+-              "Run should succeed");
+-  for (uint32_t i = 0; i < real_size; i++) {
+-    TEST_FLOAT_CLOSE(noise_spectrum[i], 1.0f, 1e-6f);
+-  }
+-
+-  // Subsequent frames (increasing spectrum to trigger speech detection logic)
+-  for (uint32_t i = 0; i < real_size; i++) {
+-    spectrum[i] = 10.0f;
+-  }
+-  TEST_ASSERT(louizou_noise_estimator_run(est, spectrum, noise_spectrum),
+-              "Run should succeed");
+-
+-  // NULL checks
+-  TEST_ASSERT(!louizou_noise_estimator_run(NULL, spectrum, noise_spectrum),
+-              "Should fail with NULL estimator");
+-  TEST_ASSERT(!louizou_noise_estimator_run(est, NULL, noise_spectrum),
+-              "Should fail with NULL input");
+-  TEST_ASSERT(!louizou_noise_estimator_run(est, spectrum, NULL),
+-              "Should fail with NULL output");
+-
+-  louizou_noise_estimator_free(est);
+-  free(spectrum);
+-  free(noise_spectrum);
+-  printf("✓ Louizou run logic tests passed\n");
+-}
+-
+-void test_louizou_state_management(void) {
+-  printf("Testing Louizou state management...\n");
+-
+-  uint32_t real_size = 64;
+-  LouizouNoiseEstimator* est =
+-      louizou_noise_estimator_initialize(real_size, 44100, 128);
+-
+-  float* profile = (float*)calloc(real_size, sizeof(float));
+-  for (uint32_t i = 0; i < real_size; i++) {
+-    profile[i] = 0.5f;
+-  }
+-
+-  // Test set state
+-  louizou_noise_estimator_set_state(est, profile);
+-  louizou_noise_estimator_set_state(NULL, profile);
+-  louizou_noise_estimator_set_state(est, NULL);
+-
+-  // Test update seed
+-  louizou_noise_estimator_update_seed(est, profile);
+-  louizou_noise_estimator_update_seed(NULL, profile);
+-  louizou_noise_estimator_update_seed(est, NULL);
+-
+-  // Test apply floor
+-  float* floor = (float*)calloc(real_size, sizeof(float));
+-  for (uint32_t i = 0; i < real_size; i++) {
+-    floor[i] = 0.8f;
+-  }
+-  louizou_noise_estimator_apply_floor(est, floor);
+-  louizou_noise_estimator_apply_floor(NULL, floor);
+-  louizou_noise_estimator_apply_floor(est, NULL);
+-
+-  louizou_noise_estimator_free(est);
+-  free(profile);
+-  free(floor);
+-  printf("✓ Louizou state management tests passed\n");
+-}
+-
+-int main(void) {
+-  printf("Running Louizou Noise Estimator tests...\n\n");
+-
+-  test_louizou_initialization();
+-  test_louizou_run_logic();
+-  test_louizou_state_management();
+-
+-  printf("\n✅ All Louizou tests passed!\n");
+-  return 0;
+-}
+diff --git a/tests/test_martin_noise_estimator.c b/tests/test_martin_noise_estimator.c
+new file mode 100644
+index 0000000..6b7c640
+--- /dev/null
++++ b/tests/test_martin_noise_estimator.c
+@@ -0,0 +1,137 @@
++/*
++ * Unit tests for Martin (2001) Minimum Statistics Noise Estimator
++ */
++
++#include <float.h>
++#include <math.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++
++#include "../src/shared/configurations.h"
++#include "../src/shared/noise_estimation/martin_noise_estimator.h"
++#include "../src/shared/utils/spectral_utils.h"
++
++#define TEST_ASSERT(condition, message)                                        \
++  do {                                                                         \
++    if (!(condition)) {                                                        \
++      fprintf(stderr, "TEST FAILED: %s\n", message);                           \
++      exit(1);                                                                 \
++    }                                                                          \
++  } while (0)
++
++#define TEST_FLOAT_CLOSE(a, b, tolerance)                                      \
++  TEST_ASSERT(fabsf((a) - (b)) < (tolerance), "Float values not close enough")
++
++void test_martin_initialization(void) {
++  printf("Testing Martin initialization...\n");
++
++  uint32_t real_size = 257;
++  uint32_t sr = 44100;
++  uint32_t fft_size = 512;
++
++  MartinNoiseEstimator* est =
++      martin_noise_estimator_initialize(real_size, sr, fft_size);
++  TEST_ASSERT(est != NULL, "Initialization should succeed");
++
++  martin_noise_estimator_free(est);
++  martin_noise_estimator_free(NULL); // Should be safe
++  printf("✓ Martin initialization tests passed\n");
++}
++
++void test_martin_run_logic(void) {
++  printf("Testing Martin run logic...\n");
++
++  uint32_t real_size = 64;
++  uint32_t sr = 44100;
++  uint32_t fft_size = 128;
++
++  MartinNoiseEstimator* est =
++      martin_noise_estimator_initialize(real_size, sr, fft_size);
++
++  float* spectrum = (float*)calloc(real_size, sizeof(float));
++  float* noise_spectrum = (float*)calloc(real_size, sizeof(float));
++
++  for (uint32_t i = 0; i < real_size; i++) {
++    spectrum[i] = 1.0f;
++  }
++
++  // First frame: Should snap to spectrum
++  TEST_ASSERT(martin_noise_estimator_run(est, spectrum, noise_spectrum),
++              "Run should succeed");
++  for (uint32_t i = 0; i < real_size; i++) {
++    TEST_FLOAT_CLOSE(noise_spectrum[i], 1.0f, 1e-6f);
++  }
++
++  // Silence check logic
++  for (uint32_t i = 0; i < real_size; i++) {
++    spectrum[i] = 0.0f;
++  }
++  TEST_ASSERT(martin_noise_estimator_run(est, spectrum, noise_spectrum),
++              "Run should succeed in silence");
++  // Should keep previous output (snapped 1.0) because of silence threshold
++  for (uint32_t i = 0; i < real_size; i++) {
++    TEST_FLOAT_CLOSE(noise_spectrum[i], 1.0f, 1e-6f);
++  }
++
++  // NULL checks
++  TEST_ASSERT(!martin_noise_estimator_run(NULL, spectrum, noise_spectrum),
++              "Should fail with NULL estimator");
++  TEST_ASSERT(!martin_noise_estimator_run(est, NULL, noise_spectrum),
++              "Should fail with NULL input");
++  TEST_ASSERT(!martin_noise_estimator_run(est, spectrum, NULL),
++              "Should fail with NULL output");
++
++  martin_noise_estimator_free(est);
++  free(spectrum);
++  free(noise_spectrum);
++  printf("✓ Martin run logic tests passed\n");
++}
++
++void test_martin_state_management(void) {
++  printf("Testing Martin state management...\n");
++
++  uint32_t real_size = 64;
++  MartinNoiseEstimator* est =
++      martin_noise_estimator_initialize(real_size, 44100, 128);
++
++  float* profile = (float*)calloc(real_size, sizeof(float));
++  for (uint32_t i = 0; i < real_size; i++) {
++    profile[i] = 0.5f;
++  }
++
++  // Test set state
++  martin_noise_estimator_set_state(est, profile);
++  martin_noise_estimator_set_state(NULL, profile);
++  martin_noise_estimator_set_state(est, NULL);
++
++  // Test update seed
++  martin_noise_estimator_update_seed(est, profile);
++  martin_noise_estimator_update_seed(NULL, profile);
++  martin_noise_estimator_update_seed(est, NULL);
++
++  // Test apply floor
++  float* floor = (float*)calloc(real_size, sizeof(float));
++  for (uint32_t i = 0; i < real_size; i++) {
++    floor[i] = 0.8f;
++  }
++  martin_noise_estimator_apply_floor(est, floor);
++  martin_noise_estimator_apply_floor(NULL, floor);
++  martin_noise_estimator_apply_floor(est, NULL);
++
++  martin_noise_estimator_free(est);
++  free(profile);
++  free(floor);
++  printf("✓ Martin state management tests passed\n");
++}
++
++int main(void) {
++  printf("Running Martin Noise Estimator tests...\n\n");
++
++  test_martin_initialization();
++  test_martin_run_logic();
++  test_martin_state_management();
++
++  printf("\n✅ All Martin tests passed!\n");
++  return 0;
++}
